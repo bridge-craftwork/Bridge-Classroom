@@ -91,6 +91,16 @@
                 <input type="checkbox" v-model="rotateDeals">
                 Rotate randomly
               </label>
+              <label v-if="!EMBEDDED" class="bp-rotate-toggle">
+                <input type="checkbox" v-model="playCardplay">
+                Play the hand after bidding
+              </label>
+              <label v-if="!EMBEDDED && playCardplay" class="bp-bot-label">
+                Bot:
+                <select class="bp-bot-select" v-model="cardplayBotName">
+                  <option v-for="b in availableBots" :key="b" :value="b">{{ b }}</option>
+                </select>
+              </label>
               <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="auctionLoading || selectedScenarios.size === 0">Next deal &rarr;</button>
               <button class="bp-btn" @click="resetAuction" :disabled="auctionLoading">Restart this deal</button>
             </div>
@@ -145,9 +155,22 @@
               :hidden-seats="hiddenSeats"
               :show-hcp="true"
               :show-total-points="true"
+              :clickable-seat="cardplay.clickableSeat.value"
+              :played-cards="cardplay.playedBySeat.value"
+              :hide-played-cards="cardplayHidePlayed"
+              @card-click="onCardClick"
             >
               <template #center>
-                <div class="bp-center">
+                <TrickArea
+                  v-if="cardplayPhase === 'playing' || cardplayPhase === 'complete'"
+                  :current-trick="cardplay.currentTrick"
+                  :last-finished-trick="cardplay.lastFinishedTrick.value"
+                  :tricks-taken="cardplay.tricksTaken.value"
+                  :next-seat="cardplay.currentPlayer.value"
+                  :bot-loading="cardplay.botLoading.value"
+                  :bot-name="botName"
+                />
+                <div v-else class="bp-center">
                   <div class="bp-vul-tag" :class="{ 'is-vul': vulForSide('NS') || vulForSide('EW') }">
                     {{ currentDeal.vulnerable === 'None' ? 'None vul' : currentDeal.vulnerable + ' vul' }}
                   </div>
@@ -183,7 +206,42 @@
                 />
               </div>
 
-              <div v-if="auctionComplete" class="bp-contract">
+              <div v-if="cardplayPhase === 'playing'" class="bp-card bp-cardplay-card">
+                <h3>Cardplay</h3>
+                <div class="bp-cardplay-status">
+                  Tricks <strong>NS&nbsp;{{ cardplay.tricksTaken.value.NS }} · EW&nbsp;{{ cardplay.tricksTaken.value.EW }}</strong>
+                </div>
+                <div v-if="cardplay.botLoading.value" class="bp-cardplay-thinking">{{ botName }} thinking&hellip;</div>
+                <div v-if="cardplay.botError.value" class="bp-cardplay-error">⚠ {{ cardplay.botError.value }}</div>
+                <div v-if="cardplay.botStats.value.count > 0" class="bp-cardplay-stats">
+                  {{ botName }}: {{ cardplay.botStats.value.count }} call{{ cardplay.botStats.value.count === 1 ? '' : 's' }} ·
+                  last {{ fmtMs(cardplay.botStats.value.last) }} ·
+                  avg {{ fmtMs(cardplay.botStats.value.mean) }} ·
+                  max {{ fmtMs(cardplay.botStats.value.max) }}
+                </div>
+                <div class="bp-cardplay-toggles">
+                  <label class="bp-cardplay-toggle">
+                    <input type="checkbox" v-model="cardplayShowPlayed">
+                    Show played cards
+                  </label>
+                  <label class="bp-cardplay-toggle">
+                    <input type="checkbox" v-model="cardplayShowAll">
+                    Show all hands
+                  </label>
+                  <label class="bp-cardplay-toggle">
+                    <input type="checkbox" v-model="cardplay.autoplayUserSingletons.value">
+                    Auto-play singletons
+                  </label>
+                </div>
+                <button class="bp-btn" @click="restartCardplay" :disabled="cardplay.botLoading.value">Restart cardplay</button>
+              </div>
+
+              <div v-if="cardplayPhase === 'unsupported'" class="bp-card bp-cardplay-notice">
+                Cardplay is currently only supported when South is declarer.
+                Defender and dummy modes will arrive in a future release.
+              </div>
+
+              <div v-if="auctionComplete && (cardplayPhase === 'off' || cardplayPhase === 'unsupported' || cardplayPhase === 'complete')" class="bp-contract">
                 <div class="bp-contract-line">
                   Final contract:
                   <span v-if="finalContract.contract === 'Pass'">Passed out</span>
@@ -193,6 +251,20 @@
                   </span>
                 </div>
                 <div class="bp-contract-meta">{{ summary }}</div>
+
+                <div v-if="cardplayPhase === 'complete' && cardplayResult" class="bp-cardplay-result">
+                  You took <strong>{{ cardplayResult.took }}</strong> trick{{ cardplayResult.took === 1 ? '' : 's' }}
+                  <span v-if="cardplayResult.needed != null">
+                    · needed {{ cardplayResult.needed }} to make
+                    <span :class="cardplayResult.made ? 'bp-made' : 'bp-down'">— {{ cardplayResult.made ? 'made' : 'down ' + (cardplayResult.needed - cardplayResult.took) }}</span>
+                  </span>
+                </div>
+                <div v-if="cardplayPhase === 'complete' && cardplay.botStats.value.count > 0" class="bp-cardplay-stats">
+                  {{ botName }}: {{ cardplay.botStats.value.count }} calls ·
+                  avg {{ fmtMs(cardplay.botStats.value.mean) }} ·
+                  max {{ fmtMs(cardplay.botStats.value.max) }} ·
+                  total {{ fmtMs(cardplay.botStats.value.total) }}
+                </div>
 
                 <div v-if="ddRows" class="bp-dd-label">Double-dummy tricks</div>
                 <table v-if="ddRows" class="bp-dd-table">
@@ -242,7 +314,11 @@ import BridgeTable from '../components/BridgeTable.vue'
 import HandDisplay from '../components/HandDisplay.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
+import TrickArea from '../components/TrickArea.vue'
 import { formatBid } from '../utils/cardFormatting.js'
+import { useCardPlay } from '../composables/useCardPlay.js'
+import { getBot, listBots } from '../utils/cardplayBots.js'
+import { warmBen } from '../utils/benClient.js'
 
 // ── Config ────────────────────────────────────────────────────────────
 const CONFIG = {
@@ -331,6 +407,78 @@ watch(rotateDeals, (v) => {
   try { localStorage.setItem(ROTATE_KEY, v ? '1' : '0') } catch {}
 })
 
+// Cardplay toggle — when on, after each auction completes we transition into
+// trick-by-trick cardplay (currently South-declarer only).
+const PLAY_KEY = 'bp.playCardplay'
+const BOT_KEY = 'bp.cardplayBot'
+const SHOW_PLAYED_KEY = 'bp.cardplayShowPlayed'
+const SHOW_ALL_KEY = 'bp.cardplayShowAll'
+const AUTOPLAY_SINGLETONS_KEY = 'bp.cardplayAutoplaySingletons'
+const playCardplay = ref(
+  typeof localStorage !== 'undefined' && localStorage.getItem(PLAY_KEY) === '1'
+)
+const cardplayBotName = ref(
+  (typeof localStorage !== 'undefined' && localStorage.getItem(BOT_KEY)) || 'random'
+)
+// Teaching toggles — both default OFF.
+//   showPlayed: keep played cards visible (strike-through) instead of removing them.
+//     Useful for beginners learning trick mechanics. Also forced-true during 'complete'
+//     so the user can review all original cards after the deal ends.
+//   showAll: expose defender hands during cardplay. Useful for advanced study
+//     (squeezes, endplays). At 'complete' all hands are revealed regardless.
+const cardplayShowPlayed = ref(
+  typeof localStorage !== 'undefined' && localStorage.getItem(SHOW_PLAYED_KEY) === '1'
+)
+const cardplayShowAll = ref(
+  typeof localStorage !== 'undefined' && localStorage.getItem(SHOW_ALL_KEY) === '1'
+)
+watch(playCardplay, (v) => {
+  try { localStorage.setItem(PLAY_KEY, v ? '1' : '0') } catch {}
+  // Pre-warm BEN when the user opts into cardplay so the cold start happens
+  // before the first real call. No-op if BEN isn't the active bot.
+  if (v) maybeWarmBen()
+})
+watch(cardplayBotName, (v) => {
+  try { localStorage.setItem(BOT_KEY, v) } catch {}
+  if (v === 'ben') maybeWarmBen()
+})
+watch(cardplayShowPlayed, (v) => {
+  try { localStorage.setItem(SHOW_PLAYED_KEY, v ? '1' : '0') } catch {}
+})
+watch(cardplayShowAll, (v) => {
+  try { localStorage.setItem(SHOW_ALL_KEY, v ? '1' : '0') } catch {}
+})
+
+const cardplay = useCardPlay()
+const availableBots = listBots()
+
+// Keep the engine's autoplay-singletons ref synced to a persisted user pref.
+cardplay.autoplayUserSingletons.value = (
+  typeof localStorage !== 'undefined' && localStorage.getItem(AUTOPLAY_SINGLETONS_KEY) === '1'
+)
+watch(cardplay.autoplayUserSingletons, (v) => {
+  try { localStorage.setItem(AUTOPLAY_SINGLETONS_KEY, v ? '1' : '0') } catch {}
+})
+
+// Pre-warm BEN once per page load. Idempotent.
+let _benWarmed = false
+function maybeWarmBen() {
+  if (_benWarmed) return
+  if (!playCardplay.value) return
+  if (cardplayBotName.value !== 'ben') return
+  _benWarmed = true
+  warmBen()
+}
+
+// True when played cards should be hidden from the hand display
+// (the default during live cardplay; always false at 'complete' so users
+// can review the dealt hands).
+const cardplayHidePlayed = computed(() => {
+  if (cardplayPhase.value === 'complete') return false
+  if (cardplayPhase.value !== 'playing') return false
+  return !cardplayShowPlayed.value
+})
+
 const expectedAuction = ref([])
 // Snapshot of BBA's original (no-prefix) auction & meanings at deal load time,
 // used to restore the auction on Restart after the user has driven divergent
@@ -368,6 +516,18 @@ const poolLabels = computed(() => [...selectedScenarios.value].map(prettifyLabel
 
 const visibleHands = computed(() => {
   if (!currentDeal.value) return { N: null, E: null, S: null, W: null }
+  // During cardplay, defer to the engine for which seats are visible — but
+  // the "Show all hands" teaching toggle overrides to reveal defenders too.
+  if (cardplayPhase.value === 'playing') {
+    if (cardplayShowAll.value) return currentDeal.value.hands
+    const out = { N: null, E: null, S: null, W: null }
+    for (const seat of ['N', 'E', 'S', 'W']) {
+      if (!cardplay.hiddenSeats.value.includes(seat)) {
+        out[seat] = currentDeal.value.hands[seat]
+      }
+    }
+    return out
+  }
   if (auctionComplete.value) return currentDeal.value.hands
   // During bidding, only the student's seat is visible.
   const visible = { N: null, E: null, S: null, W: null }
@@ -376,6 +536,10 @@ const visibleHands = computed(() => {
 })
 const hiddenSeats = computed(() => {
   if (!currentDeal.value) return []
+  if (cardplayPhase.value === 'playing') {
+    if (cardplayShowAll.value) return []
+    return cardplay.hiddenSeats.value
+  }
   if (auctionComplete.value) return []
   return ['N', 'E', 'S', 'W'].filter(s => s !== STUDENT_SEAT)
 })
@@ -412,6 +576,44 @@ const summary = computed(() => {
   const n = Object.keys(divergedBids.value).length
   if (n === 0) return 'You matched the BBA all the way through.'
   return `${n} of your bids differed from the BBA — see the divergent cells above.`
+})
+
+// Cardplay phase derived from auction + toggle + cardplay engine state.
+//   bidding     — auction in progress
+//   off         — auction done, toggle off (existing flow: reveal all 4 hands)
+//   unsupported — toggle on but S isn't declarer (v1 limitation; reveal + notice)
+//   playing     — actively playing tricks
+//   complete    — 13 tricks done; show DD + result
+const cardplayPossible = computed(() => {
+  if (!auctionComplete.value) return false
+  const fc = finalContract.value
+  return fc && fc.contract && fc.contract !== 'Pass' && fc.declarer === STUDENT_SEAT
+})
+const cardplayPhase = computed(() => {
+  if (!auctionComplete.value) return 'bidding'
+  if (!playCardplay.value) return 'off'
+  if (!cardplayPossible.value) return 'unsupported'
+  if (cardplay.playComplete.value) return 'complete'
+  if (cardplay.isActive.value) return 'playing'
+  // Toggle on, auction done, S declares, but engine not yet started — about
+  // to be entered by the watcher below.
+  return 'playing'
+})
+const botName = computed(() => {
+  try { return getBot(cardplayBotName.value).name } catch { return cardplayBotName.value }
+})
+
+// Result-vs-DD comparison (shown post-cardplay).
+const cardplayResult = computed(() => {
+  if (!cardplay.playComplete.value) return null
+  const fc = finalContract.value
+  if (!fc?.contract || fc.contract === 'Pass') return null
+  // Tricks declarer's side took.
+  const declarerSide = (fc.declarer === 'N' || fc.declarer === 'S') ? 'NS' : 'EW'
+  const took = cardplay.tricksTaken.value[declarerSide]
+  const m = fc.contract.match(/^(\d)/)
+  const needed = m ? parseInt(m[1], 10) + 6 : null
+  return { took, needed, made: needed != null && took >= needed }
 })
 
 const ddRows = computed(() => {
@@ -494,6 +696,14 @@ function vulForSide(side) {
 
 function formatContractHtml(contract) {
   return formatBid(contract).html || contract
+}
+
+// Format a latency in ms as either "ms" or "Xs" / "X.Ys" depending on magnitude.
+function fmtMs(ms) {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${ms.toFixed(0)}ms`
+  if (ms < 10000) return `${(ms / 1000).toFixed(1)}s`
+  return `${(ms / 1000).toFixed(0)}s`
 }
 
 // ── PBN parsing (multi-deal) ──────────────────────────────────────────
@@ -668,6 +878,10 @@ function ddTrickAt(ddtricks, seatIdx, suitIdx) {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
 onMounted(async () => {
+  // If cardplay is already enabled with BEN selected, warm the model now
+  // so the user's first opening lead doesn't eat the cold start.
+  maybeWarmBen()
+
   if (EMBEDDED) {
     menuLoading.value = false
     postEmbedded({ type: 'bridge-classroom:ready' })
@@ -725,6 +939,31 @@ watch(() => auctionComplete.value, (isComplete) => {
     dealer: currentDeal.value.dealer,
     studentSeat: STUDENT_SEAT,
     meanings: meanings.value.slice(),
+  })
+})
+
+// Enter cardplay when the auction completes if the toggle is on and the
+// contract is South-declared. The engine then drives bots to the first user
+// turn (or to completion if no user seat is active).
+watch(() => auctionComplete.value, async (isComplete) => {
+  if (!isComplete || EMBEDDED) return
+  if (!playCardplay.value) return
+  if (!cardplayPossible.value) return
+  const fc = finalContract.value
+  let bot
+  try { bot = getBot(cardplayBotName.value) } catch { bot = getBot('random') }
+  // v1: South declares → user controls S (own hand) + N (dummy). Defenders
+  // are bots. Wider scopes (defender / N-declares) are deferred per plan.
+  const dummySeat = fc.declarer === 'N' ? 'S' : fc.declarer === 'S' ? 'N' : fc.declarer === 'E' ? 'W' : 'E'
+  await cardplay.startPlay({
+    hands: currentDeal.value.hands,
+    dealer: currentDeal.value.dealer,
+    vulnerable: currentDeal.value.vulnerable,
+    bids: bids.value.slice(),
+    contract: fc.contract,
+    declarer: fc.declarer,
+    bot,
+    userSeats: [fc.declarer, dummySeat],
   })
 })
 
@@ -884,6 +1123,7 @@ async function loadDealAt(idx) {
   expectedAuction.value = []
   auctionLoading.value = true
   doubleDummy.value = null
+  cardplay.reset()
 
   const dealRef = currentDeal.value
   fetchDoubleDummy(dealRef).then(dd => {
@@ -973,11 +1213,46 @@ async function resetAuction() {
   if (!currentDeal.value) return
   bids.value = []
   divergedBids.value = {}
+  cardplay.reset()
   // Restore BBA's original (no-prefix) auction so the user starts from a
   // clean slate even after divergent re-requests overwrote expectedAuction.
   expectedAuction.value = originalExpectedAuction.value
   meanings.value = originalMeanings.value
   await playToHumanTurn()
+}
+
+// Cardplay click handler — routes user clicks on S or N (dummy) into the
+// cardplay engine. Mirrors the suit-letter / rank-letter shape that
+// HandDisplay emits.
+async function onCardClick({ seat, suit, rank }) {
+  void seat  // Engine tracks whose turn it is; we just need the card.
+  const result = await cardplay.onUserCard(suit, rank)
+  if (!result.ok && result.reason) {
+    // HandDisplay's clickable-cards UI doesn't yet filter to legal cards, so
+    // users can click illegal cards and the engine rejects them silently.
+    // TODO: pass legalCardsForCurrent down to HandDisplay for proper greyout.
+    if (typeof console !== 'undefined') console.warn('Cardplay click rejected:', result.reason)
+  }
+}
+
+async function restartCardplay() {
+  cardplay.reset()
+  // Re-enter cardplay using the same logic as the auction-complete watcher.
+  const fc = finalContract.value
+  if (!fc || !cardplayPossible.value) return
+  let bot
+  try { bot = getBot(cardplayBotName.value) } catch { bot = getBot('random') }
+  const dummySeat = fc.declarer === 'N' ? 'S' : fc.declarer === 'S' ? 'N' : fc.declarer === 'E' ? 'W' : 'E'
+  await cardplay.startPlay({
+    hands: currentDeal.value.hands,
+    dealer: currentDeal.value.dealer,
+    vulnerable: currentDeal.value.vulnerable,
+    bids: bids.value.slice(),
+    contract: fc.contract,
+    declarer: fc.declarer,
+    bot,
+    userSeats: [fc.declarer, dummySeat],
+  })
 }
 
 async function playToHumanTurn() {
@@ -1235,6 +1510,83 @@ async function onUserBid(bid) {
 }
 .bp-rotate-toggle input { cursor: pointer; }
 
+.bp-bot-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #555;
+  user-select: none;
+  margin-right: 4px;
+}
+.bp-bot-select {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #444;
+}
+
+.bp-cardplay-card .bp-cardplay-status {
+  font-size: 13px;
+  color: #444;
+  margin-bottom: 8px;
+}
+.bp-cardplay-card .bp-cardplay-thinking {
+  font-size: 11px;
+  color: #1D9E75;
+  font-style: italic;
+  margin-bottom: 8px;
+}
+.bp-cardplay-stats {
+  font-size: 11px;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 8px;
+}
+.bp-cardplay-error {
+  font-size: 11px;
+  color: #b00;
+  background: #fee;
+  border: 0.5px solid #fbb;
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin-bottom: 8px;
+}
+.bp-cardplay-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding-top: 8px;
+  border-top: 0.5px solid #eee;
+}
+.bp-cardplay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  user-select: none;
+}
+.bp-cardplay-toggle input { cursor: pointer; }
+.bp-cardplay-notice {
+  background: #fff8e6;
+  border: 0.5px solid #ead38d;
+  color: #6e520f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.bp-cardplay-result {
+  font-size: 14px;
+  color: #444;
+  margin-top: 4px;
+}
+.bp-cardplay-result .bp-made { color: #1D9E75; font-weight: 600; }
+.bp-cardplay-result .bp-down { color: #d32f2f; font-weight: 600; }
+
 /* Stage states */
 .bp-empty { color: #888; font-size: 14px; padding: 60px 20px; text-align: center; }
 .bp-error-box {
@@ -1283,7 +1635,10 @@ async function onUserBid(bid) {
   gap: 24px;
   align-items: start;
   width: 100%;
-  max-width: 940px;
+  /* Cardplay needs ~240px for the center trick area; with two 220-min
+     hand columns + 320px right rail + 24px gap, 1100px max-width gives
+     the table enough breathing room. */
+  max-width: 1100px;
 }
 @media (max-width: 1100px) {
   .bp-table-wrap { grid-template-columns: minmax(0, 1fr); gap: 14px; }

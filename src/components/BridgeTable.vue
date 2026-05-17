@@ -10,6 +10,7 @@
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'N'"
           :playedCards="playedCards?.N"
+          :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
         />
       </div>
@@ -24,6 +25,7 @@
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'W'"
         :playedCards="playedCards?.W"
+        :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
       />
     </div>
@@ -42,6 +44,7 @@
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'E'"
         :playedCards="playedCards?.E"
+        :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
       />
     </div>
@@ -56,6 +59,7 @@
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'S'"
           :playedCards="playedCards?.S"
+          :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
         />
       </div>
@@ -95,6 +99,10 @@ defineProps({
   playedCards: {
     type: Object,
     default: null
+  },
+  hidePlayedCards: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -104,7 +112,9 @@ defineEmits(['card-click'])
 <style scoped>
 .bridge-table {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* Reserve space in the center column so a TrickArea (or any wider center
+     content) can render without being clipped by the side hand columns. */
+  grid-template-columns: 1fr minmax(240px, auto) 1fr;
   grid-template-rows: auto auto auto;
   gap: 8px;
   padding: 16px;

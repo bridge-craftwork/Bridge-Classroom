@@ -1,5 +1,5 @@
 <template>
-  <div class="hand" :class="{ hidden: hidden, compact: compact, minimal: minimal, clickable: clickable }">
+  <div class="hand" :class="{ hidden: hidden, compact: compact, minimal: minimal, clickable: clickable, 'hide-played': hidePlayedCards }">
     <!-- Minimal mode: just suit symbols in a row (for hidden E/W on desktop) -->
     <template v-if="minimal && hidden">
       <div class="minimal-hand">
@@ -98,6 +98,14 @@ const props = defineProps({
   playedCards: {
     type: Array,
     default: null
+  },
+  // When true, cards already played disappear from the hand entirely (matches
+  // real-bridge default where played cards are turned face-down). When false,
+  // they show with strike-through styling — useful as a teaching mode and as
+  // a post-deal review state.
+  hidePlayedCards: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -183,6 +191,8 @@ function isCardPlayed(suit, rank) {
   border-radius: 8px;
   padding: 12px;
   min-width: 220px;  /* Wide enough to align N/S hands consistently */
+  /* Transparent baseline so toggling .clickable doesn't shift layout. */
+  border: 2px solid transparent;
 }
 
 .seat-label {
@@ -235,10 +245,18 @@ function isCardPlayed(suit, rank) {
   user-select: none;
 }
 
-/* Clickable cards mode */
+/* Clickable cards mode (border color only — baseline is always rendered
+   so toggling clickable doesn't reflow surrounding layout). */
 .hand.clickable {
   background: #e3f2fd;
-  border: 2px solid #2196f3;
+  border-color: #2196f3;
+}
+
+/* "Cards turned face-down after play" mode. Default during live cardplay.
+   When off (the strike-through view), played cards stay visible — useful
+   as a teaching mode and as the post-deal review state. */
+.hand.hide-played .card-played {
+  display: none;
 }
 
 .clickable-cards {
