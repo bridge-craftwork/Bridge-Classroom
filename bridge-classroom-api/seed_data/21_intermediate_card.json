@@ -14,7 +14,8 @@
     "min_hcp_open": 12,
     "min_hcp_respond": 6,
     "third_fourth_light": true,
-    "forcing_opening": "2C"
+    "forcing_opening_2c": true,
+    "nt_open_style": "strong"
   },
 
   "notrump": {
@@ -37,6 +38,8 @@
     "transfers": {
       "jacoby": true,
       "texas": true,
+      "texas_4d": true,
+      "texas_4h": true,
       "skill_path": "bidding_conventions/jacoby_transfers"
     }
   },

@@ -34,6 +34,9 @@ pub struct CreateConventionCardRequest {
     pub description: Option<String>,
     pub card_data: serde_json::Value, // Accept JSON object
     pub visibility: Option<String>,   // private, shared, public
+    /// User performing the create. Required. Public-visibility cards
+    /// further require this user's role to be 'admin'.
+    pub acting_user_id: String,
 }
 
 /// Response after creating a convention card
@@ -43,12 +46,34 @@ pub struct CreateConventionCardResponse {
     pub card_id: String,
 }
 
+/// Request to update an existing convention card. All fields except
+/// `acting_user_id` are optional — only the provided ones are written.
+#[derive(Debug, Deserialize)]
+pub struct UpdateConventionCardRequest {
+    pub acting_user_id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub card_data: Option<serde_json::Value>,
+    pub visibility: Option<String>,
+}
+
+/// Response after updating a convention card.
+#[derive(Debug, Serialize)]
+pub struct UpdateConventionCardResponse {
+    pub success: bool,
+}
+
 /// Request to link a card to a user
 #[derive(Debug, Deserialize)]
 pub struct LinkCardRequest {
     pub card_id: String,
     pub is_primary: Option<bool>,
     pub label: Option<String>,
+    /// User performing the link. Required when linking a private card —
+    /// must be the card's owner or an admin. Omittable when linking a
+    /// public card.
+    #[serde(default)]
+    pub acting_user_id: Option<String>,
 }
 
 /// Response after linking a card

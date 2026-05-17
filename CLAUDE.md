@@ -139,13 +139,12 @@ Users have one of three roles: `student`, `teacher`, `admin`. The lobby (`src/vi
 | Classrooms |   | ✓ | ✓ |
 | Assignments |   | ✓ | ✓ |
 | Exercises |   | ✓ | ✓ |
-| Convention Card | (hidden) | (hidden) | (hidden) |
+| Convention Card | ✓ | ✓ | ✓ |
 | Admin |   |   | ✓ |
 
 - Default tab: **Classrooms** for teacher/admin, **Lessons** for student.
-- When a role only has a single visible tab (current student case), the tab strip itself is hidden (`LobbyView` only renders `<LobbyTabs>` when `visibleTabs.length > 1`).
-- Convention Card is intentionally omitted from `visibleTabs` until it has real content.
-- Exercises and Convention Card render a shared `ComingSoon` placeholder.
+- When a role only has a single visible tab, the tab strip itself is hidden (`LobbyView` only renders `<LobbyTabs>` when `visibleTabs.length > 1`).
+- Exercises is the only tab that still renders a shared `ComingSoon` placeholder.
 - The tab strip lives **only on the lobby view**, not on practice/collection screens. The header's "Lessons" and "Lobby" buttons handle returning from practice.
 
 **Tab content components** (in `src/components/lobby/tabs/`):
@@ -163,6 +162,24 @@ Users have one of three roles: `student`, `teacher`, `admin`. The lobby (`src/vi
 ### SyncStatus Visibility
 
 `SyncStatus.vue` only renders when `isOffline` or `hasError` is true. The healthy/synced/pending/syncing states are intentionally invisible — users shouldn't need to think about sync unless it's actively failing.
+
+### Convention Card
+
+Issue #8 Phase 1. A single Vue view ([src/views/ConventionCardView.vue](src/views/ConventionCardView.vue)) mounts at two places: standalone route `/convention-card` (no auth required — falls back to the public "2/1 Intermediate" system card) and inline as the Convention Card lobby tab via `<ConventionCardView embedded />`. The view is read-only in Phase 1; Phase 2 makes it editable.
+
+**Data flow**:
+1. [src/utils/conventionCatalog.js](src/utils/conventionCatalog.js) is the presentation catalog of conventions — each entry maps a dotted `card_data` path to a display name, description, section, and underlying `skillPath`.
+2. [src/utils/bakerBridgeTaxonomy.js](src/utils/bakerBridgeTaxonomy.js) maps every skill path to its lesson, deal count, and **skill level** (`basic` / `intermediate` / `advanced` / `expert`). `level` is a first-class property of the skill, intended to spread across the site (lesson browser filters, progress views, etc.) — not specific to the convention editor.
+3. [src/composables/useConventionCard.js](src/composables/useConventionCard.js) loads the user's primary card (or the public system card for unauthed visitors) and the lesson-mastery map, then computes per-entry status (covered? checked? user's tier?).
+4. Tier → proficiency mapping: `Mastering`/`Retaining` → "Proficient" (green), `Learning` → "Practicing" (amber), `Exploring` → "Learning" (peach), no observations → "Not started" (grey).
+
+**Subfolder/PBN basename join**: the lesson-mastery endpoint keys by `deal_subfolder`; the taxonomy keys by skill_path with a `pbn` filename. We bridge them via `getSubfolderForSkill(skillPath)` in `bakerBridgeTaxonomy.js`, which strips `.pbn`. If any lesson ever stores a subfolder that diverges from its PBN basename, promote `subfolder` to an explicit field on the taxonomy entry.
+
+**Visual structure** (matches the user's prototype at `/Users/rick/Desktop/bridge_convention_card_editor_v3.html`):
+- Header with card title + subtitle + Save/Export buttons (disabled in Phase 1).
+- Control bar with `SHOW` skill-level pills (multi-select; default `{basic}`) and `OVERLAYS` toggles for "Solo practice coverage" and "My proficiency".
+- Two-column grid: left section tree with `selected/total` counts, right detail panel (structured fields + conventions list).
+- Footer with `N conventions selected` + last-saved timestamp.
 
 ### User Role Sync
 
@@ -200,8 +217,15 @@ src/
 ├── views/
 │   ├── MainLayout.vue          # Top-level app shell, route orchestration, header greeting
 │   ├── LobbyView.vue           # Tab orchestrator (visible tabs by role, active tab content)
+│   ├── ConventionCardView.vue  # Convention Card editor / viewer (Phase 1 read-only)
 │   └── JoinClassroomView.vue   # /join/:code handler
 ├── components/
+│   ├── conventionCard/
+│   │   ├── CardTree.vue        # Left-pane section list with selected/total
+│   │   ├── CardDetail.vue      # Right-pane structured fields + conventions list
+│   │   ├── ConventionRow.vue   # Single convention row with overlays
+│   │   ├── SkillPills.vue      # Multi-select skill-level filter
+│   │   └── OverlayLegend.vue   # Legend strip for coverage/proficiency overlays
 │   ├── lobby/
 │   │   ├── LobbyTabs.vue       # Tab strip — emits update:active
 │   │   ├── TeacherLobby.vue    # Classrooms-tab content (summary row + dashboard grid)

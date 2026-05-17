@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import MainLayout from '../views/MainLayout.vue'
+import ConventionCardView from '../views/ConventionCardView.vue'
 
 const JoinClassroomView = () => import('../views/JoinClassroomView.vue')
 const BiddingPracticeView = () => import('../views/BiddingPracticeView.vue')
@@ -14,6 +15,11 @@ const routes = [
     path: '/bidding-practice',
     name: 'bidding-practice',
     component: BiddingPracticeView
+  },
+  {
+    path: '/convention-card',
+    name: 'convention-card',
+    component: ConventionCardView
   },
   {
     // Catch-all: the main app layout handles lobby/collection/practice

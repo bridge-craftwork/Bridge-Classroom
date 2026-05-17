@@ -24,7 +24,7 @@
     />
     <AssignmentsTab v-else-if="activeTab === 'assignments'" />
     <ComingSoon v-else-if="activeTab === 'exercises'" title="Exercises" />
-    <ComingSoon v-else-if="activeTab === 'conventionCard'" title="Convention Card" />
+    <ConventionCardView v-else-if="activeTab === 'conventionCard'" embedded />
     <AdminLobby v-else-if="activeTab === 'admin'" />
   </div>
 </template>
@@ -39,6 +39,7 @@ import AssignmentsTab from '../components/lobby/tabs/AssignmentsTab.vue'
 import ComingSoon from '../components/lobby/tabs/ComingSoon.vue'
 import TeacherLobby from '../components/lobby/TeacherLobby.vue'
 import AdminLobby from '../components/lobby/AdminLobby.vue'
+import ConventionCardView from './ConventionCardView.vue'
 
 defineEmits([
   'select-collection',
@@ -54,15 +55,14 @@ const userStore = useUserStore()
 
 const userRole = computed(() => userStore.currentUser.value?.role || 'student')
 
-// Convention Card is intentionally omitted everywhere until it has real content.
 const visibleTabs = computed(() => {
   if (userRole.value === 'admin') {
-    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'admin']
+    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'conventionCard', 'admin']
   }
   if (userRole.value === 'teacher') {
-    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises']
+    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'conventionCard']
   }
-  return ['lessons']
+  return ['lessons', 'conventionCard']
 })
 
 const activeTab = ref(

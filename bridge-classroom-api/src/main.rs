@@ -1,6 +1,6 @@
 use axum::{
     http::{header, Method},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use sqlx::{Pool, Sqlite};
@@ -99,6 +99,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/cards", get(routes::list_cards))
         .route("/api/cards", post(routes::create_card))
         .route("/api/cards/:card_id", get(routes::get_card))
+        .route("/api/cards/:card_id", put(routes::update_card))
+        .route("/api/cards/:card_id", delete(routes::delete_card))
         .route("/api/users/:user_id/cards", get(routes::get_user_cards))
         .route("/api/users/:user_id/cards", post(routes::link_card_to_user))
         .route(

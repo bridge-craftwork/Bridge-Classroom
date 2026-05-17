@@ -1119,17 +1119,34 @@ See `PARTNERSHIP_MATRIX_PDF_IMPORT.md` for full matrix specification.
 
 ## Interoperability
 
+Reference samples + a detailed schema-by-schema comparison live in
+[convention-card-formats/](convention-card-formats/README.md). That doc
+is the source of truth for current status and roadmap; the table below
+is a quick-glance summary.
+
 ### Import/Export Formats
 
-| Format | Import | Export | Notes |
-|--------|--------|--------|-------|
-| **Bridge Classroom JSON** | Native | Native | Full taxonomy support |
-| **Bridgodex JSON** | Yes | Yes | Export from bridgodex.com |
-| **BBO BSS** | Yes | Partial | Legacy Full Disclosure, deprecated by BBO |
-| **BML** | Yes | Yes | Bridge Markup Language, human-readable |
-| **ACBL PDF (fillable)** | Yes | Yes | Form field extraction |
-| **Bridge Hackathon YAML** | Yes | Yes | Open standard proposal |
-| **Simplified JSON** | Generate | — | Quick reference format |
+| Format | Import | Export | Reference sample | Notes |
+|--------|--------|--------|------|-------|
+| **Bridge Classroom JSON** | Native | Native | (in-tree) | Internal `card_data` shape — see [src/utils/conventionCatalog.js](../src/utils/conventionCatalog.js) |
+| **Bridgeodex JSON** | ✅ shipped | planned | seed cards | [src/utils/bridgeodexImport.js](../src/utils/bridgeodexImport.js) |
+| **BBO XML** | planned | planned | [bbo-card-example.xml](convention-card-formats/bbo-card-example.xml) | Flat key/value tag soup (`<E_*>` / `<C_*>` / `<L_*>`); has DOPI/DEPO/ROPI which other formats lack |
+| **Swan Bridge JSON (BridgeWinners)** | planned | planned | [swan-bridge-card-schema.json](convention-card-formats/swan-bridge-card-schema.json) | Nested tree, structurally close to our internal shape |
+| **BBO BSS** | researched | — | — | Legacy Full Disclosure, deprecated by BBO; superseded by the BBO XML format above |
+| **BML** | planned | planned | — | Bridge Markup Language, human-readable |
+| **ACBL PDF (fillable)** | planned | planned | — | Form field extraction |
+| **Bridge Hackathon YAML** | planned | planned | — | Open standard proposal |
+| **Simplified JSON** | n/a | planned | — | Generated from full card; quick partner reference |
+
+### Canonical-shape decision
+
+We do **not** plan to migrate our internal `card_data` to match any
+external format's shape. Each importer/exporter is a thin
+path-translation table on top of our schema. Rationale lives in
+[convention-card-formats/README.md § Should we adopt Swan's shape as
+canonical?](convention-card-formats/README.md#should-we-adopt-swans-shape-as-canonical).
+Re-evaluate after BBO + Swan importers ship and we can see where
+translation friction actually concentrates.
 
 ### Bridgodex Import
 
