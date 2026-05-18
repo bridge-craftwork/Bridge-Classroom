@@ -2,13 +2,13 @@
   <div class="bp-app" :class="{ embedded: EMBEDDED }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
-      <button class="bp-nav-toggle" @click="sidebarOpen = !sidebarOpen">
-        {{ sidebarOpen ? 'Close' : '☰ Scenarios' }}
+      <button class="bp-nav-toggle" @click="sidebarOpen = !sidebarOpen" :title="sidebarOpen ? 'Hide scenario menu' : 'Show scenario menu'">
+        {{ sidebarOpen ? '⟨ Hide scenarios' : '☰ Scenarios' }}
       </button>
       <a class="bp-nav-back" href="/">&larr; All tools</a>
     </nav>
 
-    <div class="bp-main">
+    <div class="bp-main" :class="{ 'sidebar-closed': !sidebarOpen }">
       <aside v-if="!EMBEDDED" class="bp-sidebar" :class="{ open: sidebarOpen }">
         <div v-if="selectedScenarios.size > 0" class="bp-selection-summary">
           <div class="bp-selection-count">
@@ -233,7 +233,24 @@
                     Auto-play singletons
                   </label>
                 </div>
-                <button class="bp-btn" @click="restartCardplay" :disabled="cardplay.botLoading.value">Restart cardplay</button>
+                <!-- Claim flow: button opens an inline picker. v1 trusts the
+                     claim; future enhancement is DD validation via libdds. -->
+                <div v-if="!claimFormOpen" class="bp-cardplay-actions">
+                  <button class="bp-btn" @click="openClaimForm" :disabled="cardplay.botLoading.value || cardplay.remainingTricks.value === 0">Claim&hellip;</button>
+                  <button class="bp-btn" @click="restartCardplay" :disabled="cardplay.botLoading.value">Restart cardplay</button>
+                </div>
+                <div v-else class="bp-claim-form">
+                  <div class="bp-claim-prompt">Claim how many of the {{ cardplay.remainingTricks.value }} remaining?</div>
+                  <div class="bp-claim-buttons">
+                    <button
+                      v-for="n in claimOptions"
+                      :key="n"
+                      class="bp-claim-btn"
+                      @click="confirmClaim(n)"
+                    >{{ n }}</button>
+                  </div>
+                  <button class="bp-btn bp-claim-cancel" @click="cancelClaim">Cancel</button>
+                </div>
               </div>
 
               <div v-if="cardplayPhase === 'unsupported'" class="bp-card bp-cardplay-notice">
@@ -257,6 +274,9 @@
                   <span v-if="cardplayResult.needed != null">
                     · needed {{ cardplayResult.needed }} to make
                     <span :class="cardplayResult.made ? 'bp-made' : 'bp-down'">— {{ cardplayResult.made ? 'made' : 'down ' + (cardplayResult.needed - cardplayResult.took) }}</span>
+                  </span>
+                  <span v-if="cardplay.claim.value" class="bp-claim-tag">
+                    (claimed at trick {{ cardplay.claim.value.atTrick }})
                   </span>
                 </div>
                 <div v-if="cardplayPhase === 'complete' && cardplay.botStats.value.count > 0" class="bp-cardplay-stats">
@@ -384,7 +404,18 @@ const openSections = reactive({})
 
 const isNarrow = () => typeof window !== 'undefined'
   && window.matchMedia('(max-width: 1100px)').matches
-const sidebarOpen = ref(!isNarrow())
+// Sidebar visibility — persisted across reloads so a student who hides it
+// once stays hidden. Default visible (the student needs to pick a scenario
+// to get going).
+const SIDEBAR_KEY = 'bp.sidebarOpen'
+const sidebarOpen = ref(
+  typeof localStorage !== 'undefined' && localStorage.getItem(SIDEBAR_KEY) != null
+    ? localStorage.getItem(SIDEBAR_KEY) === '1'
+    : !isNarrow()
+)
+watch(sidebarOpen, (v) => {
+  try { localStorage.setItem(SIDEBAR_KEY, v ? '1' : '0') } catch {}
+})
 
 // Selected scenario set (multi-select). currentScenario tracks which scenario
 // the LOADED deal came from (for display + "next from same set" logic).
@@ -451,6 +482,23 @@ watch(cardplayShowAll, (v) => {
 
 const cardplay = useCardPlay()
 const availableBots = listBots()
+
+// Claim form: shown inline in the Cardplay status card when the user
+// clicks "Claim…". The user picks how many of the remaining tricks they
+// claim for the declaring side; defenders implicitly get the rest.
+const claimFormOpen = ref(false)
+const claimOptions = computed(() => {
+  const r = cardplay.remainingTricks.value
+  const out = []
+  for (let i = 0; i <= r; i++) out.push(i)
+  return out
+})
+function openClaimForm() { claimFormOpen.value = true }
+function cancelClaim() { claimFormOpen.value = false }
+function confirmClaim(declarerTricks) {
+  cardplay.claimTricks(declarerTricks)
+  claimFormOpen.value = false
+}
 
 // Keep the engine's autoplay-singletons ref synced to a persisted user pref.
 cardplay.autoplayUserSingletons.value = (
@@ -1385,7 +1433,7 @@ async function onUserBid(bid) {
 .bp-nav-back { font-size: 12px; color: #666; text-decoration: none; }
 .bp-nav-back:hover { color: #222; }
 .bp-nav-toggle {
-  display: none;
+  display: inline-block;
   font-size: 13px;
   color: #1D9E75;
   background: none;
@@ -1395,13 +1443,20 @@ async function onUserBid(bid) {
   font-weight: 500;
   cursor: pointer;
 }
-@media (max-width: 1100px) { .bp-nav-toggle { display: inline-block; } }
 
 .bp-main {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   min-height: 0;
   position: relative;
+}
+/* Sidebar hidden — table area takes the full width. The toggle button in
+   the nav brings the sidebar back. */
+.bp-main.sidebar-closed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.bp-main.sidebar-closed .bp-sidebar {
+  display: none;
 }
 .bp-sidebar {
   background: #fff;
@@ -1572,6 +1627,50 @@ async function onUserBid(bid) {
   user-select: none;
 }
 .bp-cardplay-toggle input { cursor: pointer; }
+
+.bp-cardplay-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bp-claim-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #f0fdf6;
+  border: 0.5px solid #c8e8d6;
+  border-radius: 6px;
+}
+.bp-claim-prompt {
+  font-size: 12px;
+  color: #444;
+}
+.bp-claim-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.bp-claim-btn {
+  min-width: 30px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid #1D9E75;
+  background: #fff;
+  color: #1D9E75;
+  border-radius: 4px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.bp-claim-btn:hover { background: #1D9E75; color: #fff; }
+.bp-claim-cancel { align-self: flex-start; font-size: 11px; padding: 3px 8px; }
+.bp-claim-tag {
+  font-size: 12px;
+  color: #1D9E75;
+  font-style: italic;
+  margin-left: 4px;
+}
 .bp-cardplay-notice {
   background: #fff8e6;
   border: 0.5px solid #ead38d;

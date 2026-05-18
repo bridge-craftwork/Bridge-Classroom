@@ -41,11 +41,15 @@ const botLatencies = ref([])         // ms per bot call, in chronological order
 // no point asking BEN about a play with no decision in it. This is a BBO
 // quality-of-life feature; default off so beginners get full manual control.
 const autoplayUserSingletons = ref(false)
+// When set, cardplay ended via a claim. Records the declarer-side trick
+// count the claim awarded; defenders get the rest of the remaining tricks.
+const claim = ref(null)  // { declarerTricks, atTrick }
 
 // ── Derived ────────────────────────────────────────────────────────────
 
 const isActive = computed(() => dealCtx.value !== null)
-const playComplete = computed(() => completedTricks.value.length === 13)
+const playComplete = computed(() => completedTricks.value.length === 13 || claim.value !== null)
+const remainingTricks = computed(() => 13 - completedTricks.value.length)
 
 // Whose turn it is. Returns null when no deal is loaded or play is complete.
 const currentPlayer = computed(() => {
@@ -154,9 +158,35 @@ export function startPlay({
   botError.value = ''
   lastFinishedTrick.value = null
   botLatencies.value = []
+  claim.value = null
 
   // Kick off bot driver if the opening leader is a bot.
   return advanceBotsIfTheirTurn()
+}
+
+// Award `declarerTricks` of the remaining tricks to the declaring side and
+// the rest to the defenders, then end cardplay. No DD validation in v1 — we
+// trust the declarer's claim. Future enhancement: pass remaining hands +
+// contract through libdds (already used elsewhere for the DD table) to
+// verify the claim is achievable.
+export function claimTricks(declarerTricks) {
+  if (!isActive.value) throw new Error('claimTricks: cardplay not active')
+  if (playComplete.value) throw new Error('claimTricks: cardplay already complete')
+  const remaining = remainingTricks.value
+  if (declarerTricks < 0 || declarerTricks > remaining) {
+    throw new Error(`claimTricks: must be between 0 and ${remaining}`)
+  }
+  const declarerSide = SIDE_OF[dealCtx.value.declarer]
+  const oppSide = declarerSide === 'NS' ? 'EW' : 'NS'
+  tricksTaken.value = {
+    ...tricksTaken.value,
+    [declarerSide]: tricksTaken.value[declarerSide] + declarerTricks,
+    [oppSide]: tricksTaken.value[oppSide] + (remaining - declarerTricks),
+  }
+  claim.value = {
+    declarerTricks,
+    atTrick: completedTricks.value.length + 1,
+  }
 }
 
 // Reset play to pre-cardplay state. Caller can then call startPlay again.
@@ -172,6 +202,7 @@ export function reset() {
   botError.value = ''
   lastFinishedTrick.value = null
   botLatencies.value = []
+  claim.value = null
 }
 
 // Handle a user click on one of their seats. Returns { ok, reason }.
@@ -349,6 +380,7 @@ export function useCardPlay() {
     lastFinishedTrick,
     botLatencies,
     autoplayUserSingletons,
+    claim,
     // derived
     playComplete,
     currentPlayer,
@@ -357,9 +389,11 @@ export function useCardPlay() {
     clickableSeat,
     legalCardsForCurrent,
     botStats,
+    remainingTricks,
     // actions
     startPlay,
     reset,
     onUserCard,
+    claimTricks,
   }
 }

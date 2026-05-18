@@ -222,6 +222,43 @@ describe('useCardPlay', () => {
     cp.autoplayUserSingletons.value = false  // reset for other tests
   })
 
+  it('claimTricks awards N tricks to declarer, the rest to defenders, and ends play', async () => {
+    // Park the engine after the opening lead by W (only user seats are passing
+    // ones). Use a lazy bot to ensure we can interrupt.
+    const lazyBot = {
+      name: 'lazy',
+      chooseOpeningLead: (ctx) => Promise.resolve(ctx.legalCards[0]),
+      chooseCard: (ctx) => Promise.resolve(ctx.legalCards[0]),
+    }
+    await cp.startPlay({
+      ...FIXTURE,
+      bot: lazyBot,
+      userSeats: ['N', 'S'],
+      pacing: { betweenPlays: 0, betweenTricks: 0 },
+    })
+    // At this point W has led (and possibly N played) — opening trick in progress.
+    // Remaining tricks should be 13 (no trick finalized yet) or 12 if the first
+    // trick has been completed by autoplay. Either way, claim 9 of those.
+    const remainingBefore = cp.remainingTricks.value
+    const NS_before = cp.tricksTaken.value.NS
+    cp.claimTricks(9)
+    expect(cp.playComplete.value).toBe(true)
+    expect(cp.claim.value).toEqual({ declarerTricks: 9, atTrick: 13 - remainingBefore + 1 })
+    expect(cp.tricksTaken.value.NS).toBe(NS_before + 9)
+    expect(cp.tricksTaken.value.NS + cp.tricksTaken.value.EW).toBe(13)
+  })
+
+  it('claimTricks rejects out-of-range counts', async () => {
+    await cp.startPlay({
+      ...FIXTURE,
+      bot: RandomLegalBot,
+      userSeats: ['N', 'S'],
+      pacing: { betweenPlays: 0, betweenTricks: 0 },
+    })
+    expect(() => cp.claimTricks(-1)).toThrow()
+    expect(() => cp.claimTricks(14)).toThrow()
+  })
+
   it('decisionMakerSeat = declarer for declarer-side plays, defender for defenders', async () => {
     const bot = makeAssertingBot()
     await cp.startPlay({
