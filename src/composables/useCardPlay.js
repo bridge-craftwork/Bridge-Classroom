@@ -164,12 +164,45 @@ export function startPlay({
   return advanceBotsIfTheirTurn()
 }
 
+// Ask the active bot whether a claim of `declarerTricks` is achievable. If
+// the bot has no validator (e.g. RandomLegalBot), returns { accepted: true,
+// message: '', validated: false } so the caller can commit unconditionally.
+// On network/bot errors, also accepts silently — claim validation should
+// never block the user.
+export async function validateClaim(declarerTricks) {
+  if (!isActive.value) throw new Error('validateClaim: cardplay not active')
+  if (playComplete.value) throw new Error('validateClaim: cardplay already complete')
+  const bot = dealCtx.value.bot
+  if (!bot || typeof bot.validateClaim !== 'function') {
+    return { accepted: true, message: '', validated: false }
+  }
+  try {
+    const result = await bot.validateClaim({
+      tricks: declarerTricks,
+      declarerHand: dealCtx.value.hands[dealCtx.value.declarer],
+      dummyHand: dealCtx.value.hands[dealCtx.value.dummySeat],
+      declarer: dealCtx.value.declarer,
+      dealer: dealCtx.value.dealer,
+      vulnerable: dealCtx.value.vulnerable,
+      bids: dealCtx.value.bids,
+      played: played.value,
+    })
+    return { ...result, validated: true }
+  } catch (err) {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn('[cardplay] claim validation failed; accepting silently:', err.message)
+    }
+    return { accepted: true, message: '', validated: false }
+  }
+}
+
 // Award `declarerTricks` of the remaining tricks to the declaring side and
 // the rest to the defenders, then end cardplay. No DD validation in v1 — we
 // trust the declarer's claim. Future enhancement: pass remaining hands +
 // contract through libdds (already used elsewhere for the DD table) to
 // verify the claim is achievable.
-export function claimTricks(declarerTricks) {
+export function claimTricks(declarerTricks, { overridden = false, rejectionMessage = '' } = {}) {
   if (!isActive.value) throw new Error('claimTricks: cardplay not active')
   if (playComplete.value) throw new Error('claimTricks: cardplay already complete')
   const remaining = remainingTricks.value
@@ -186,6 +219,8 @@ export function claimTricks(declarerTricks) {
   claim.value = {
     declarerTricks,
     atTrick: completedTricks.value.length + 1,
+    overridden,
+    rejectionMessage,
   }
 }
 
@@ -395,5 +430,6 @@ export function useCardPlay() {
     reset,
     onUserCard,
     claimTricks,
+    validateClaim,
   }
 }

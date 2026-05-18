@@ -142,6 +142,28 @@ export async function fetchBotCard({ hand, dummy, seat, dealer, vul, ctx, played
   return { card: json.card, player: json.player, elapsedMs, raw: json }
 }
 
+// GET /claim — ask BEN whether a claim of N tricks is achievable from the
+// current play state. Returns { accepted, message, tricks, elapsedMs, raw }.
+// BEN's response is { tricks: <N>, result: "Contract: 4S Accepted declarers
+// claim of 10 tricks" } when valid; we detect "Accepted" / "Rejected" in
+// the message string. Caller can show `message` directly to the user.
+export async function fetchClaimValidation({ tricks, hand, dummy, seat, dealer, vul, ctx, played }, opts = {}) {
+  const params = {
+    tricks,
+    hand: handToPbn(hand),
+    dummy: handToPbn(dummy),
+    seat,
+    dealer,
+    vul: typeof vul === 'string' ? vul : vulToBen(vul, seat),
+    ctx: typeof ctx === 'string' ? ctx : bidsToCtx(ctx),
+    played: typeof played === 'string' ? played : playedToString(played),
+  }
+  const { json, elapsedMs } = await benFetch('/claim', params, opts)
+  const message = json.result || ''
+  const accepted = /\baccepted\b/i.test(message) && !/\brejected\b/i.test(message)
+  return { accepted, message, tricks: json.tricks, elapsedMs, raw: json }
+}
+
 // Fire-and-forget call to wake BEN up. The first /bid or /lead after a long
 // idle costs ~10-20s as the TensorFlow models load; subsequent calls drop
 // to ~300-1000ms. Calling this on app mount (or when cardplay toggle goes

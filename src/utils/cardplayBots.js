@@ -1,4 +1,4 @@
-import { fetchOpeningLead, fetchBotCard } from './benClient.js'
+import { fetchOpeningLead, fetchBotCard, fetchClaimValidation } from './benClient.js'
 
 // Pluggable cardplay bots.
 //
@@ -86,6 +86,22 @@ export const BenBot = {
       played: ctx.played,
     })
     return parseCardCode(card)
+  },
+
+  // Optional validation hook called by the engine before committing a claim.
+  // Returns { accepted: bool, message: string } so the UI can either commit
+  // silently or surface BEN's rejection + an override button.
+  async validateClaim(ctx) {
+    return await fetchClaimValidation({
+      tricks: ctx.tricks,
+      hand: ctx.declarerHand,
+      dummy: ctx.dummyHand,
+      seat: ctx.declarer,
+      dealer: ctx.dealer,
+      vul: ctx.vulnerable,
+      ctx: ctx.bids,
+      played: ctx.played,
+    })
   },
 }
 

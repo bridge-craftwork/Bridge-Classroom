@@ -243,9 +243,38 @@ describe('useCardPlay', () => {
     const NS_before = cp.tricksTaken.value.NS
     cp.claimTricks(9)
     expect(cp.playComplete.value).toBe(true)
-    expect(cp.claim.value).toEqual({ declarerTricks: 9, atTrick: 13 - remainingBefore + 1 })
+    expect(cp.claim.value).toEqual({
+      declarerTricks: 9,
+      atTrick: 13 - remainingBefore + 1,
+      overridden: false,
+      rejectionMessage: '',
+    })
     expect(cp.tricksTaken.value.NS).toBe(NS_before + 9)
     expect(cp.tricksTaken.value.NS + cp.tricksTaken.value.EW).toBe(13)
+  })
+
+  it('validateClaim accepts when bot has no validator (random bot)', async () => {
+    await cp.startPlay({
+      ...FIXTURE,
+      bot: RandomLegalBot,
+      userSeats: ['N', 'S'],
+      pacing: { betweenPlays: 0, betweenTricks: 0 },
+    })
+    const result = await cp.validateClaim(9)
+    expect(result.accepted).toBe(true)
+    expect(result.validated).toBe(false)  // no validator was actually consulted
+  })
+
+  it('claimTricks records overridden=true when passed', async () => {
+    await cp.startPlay({
+      ...FIXTURE,
+      bot: RandomLegalBot,
+      userSeats: ['N', 'S'],
+      pacing: { betweenPlays: 0, betweenTricks: 0 },
+    })
+    cp.claimTricks(5, { overridden: true, rejectionMessage: 'no way' })
+    expect(cp.claim.value.overridden).toBe(true)
+    expect(cp.claim.value.rejectionMessage).toBe('no way')
   })
 
   it('claimTricks rejects out-of-range counts', async () => {
