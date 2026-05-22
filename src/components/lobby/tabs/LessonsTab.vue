@@ -6,13 +6,8 @@
       :loading="assignmentsLoading"
       @select-assignment="onSelectAssignment"
     />
-    <!--
-      RecentLessons reads the LOCAL observation store on this device, so in
-      view-as mode it would surface the admin's own recent activity rather
-      than the impersonated user's. Hide it to avoid that confusion.
-    -->
     <RecentLessons
-      v-if="isStudent && !readOnly"
+      v-if="isStudent"
       @resume-lesson="onResumeLesson"
       @show-progress="$emit('show-progress')"
     />

@@ -70,13 +70,19 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useRecentLessons } from '../../composables/useRecentLessons.js'
+import { useUserStore } from '../../composables/useUserStore.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
 
 defineEmits(['resume-lesson', 'show-progress'])
 
 const { recentLessons, hasRecentLessons, totalStartedLessons, ensureBoardCounts } = useRecentLessons()
+const userStore = useUserStore()
+
+// Re-populate caches when the effective user changes — e.g. admin
+// entering or switching "View as user" sessions while on the lobby.
+watch(() => userStore.effectiveUserId.value, ensureBoardCounts)
 
 // Bucket per CORRECTNESS_AND_MASTERY.md §5. close_correct + corrected
 // share the orange swatch (§5.4 drilldown rule) but stay distinct in

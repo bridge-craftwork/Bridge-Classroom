@@ -6,7 +6,10 @@ const API_KEY = import.meta.env.VITE_API_KEY || ''
 
 // Singleton cache: { "userId::subfolder" → { boards: [...], fetchedAt: timestamp } }
 const cache = reactive({})
-// Lesson-mastery cache: { userId → { tiers: { subfolder → "Exploring"|"Learning"|"Retaining"|"Mastering" }, fetchedAt } }
+// Lesson-mastery cache: { userId → { tiers, entries, fetchedAt } }
+//   tiers:   { subfolder → "Exploring"|"Learning"|"Retaining"|"Mastering" }
+//   entries: full LessonMasteryEntry[] from /api/lesson-mastery (subfolder, tier,
+//            total_boards, attempted_boards, silver_or_better, gold, fresh_paw, deep)
 const lessonMasteryCache = reactive({})
 const loading = ref(false)
 const cacheVersion = ref(0)
@@ -278,13 +281,15 @@ async function fetchLessonMastery(userId, force = false) {
       return lessonMasteryCache[userId]?.tiers || {}
     }
     const data = await res.json()
+    const entries = data.lessons || []
     const tiers = {}
-    for (const entry of data.lessons || []) {
+    for (const entry of entries) {
       if (entry.deal_subfolder && entry.tier) {
         tiers[entry.deal_subfolder] = entry.tier
       }
     }
-    lessonMasteryCache[userId] = { tiers, fetchedAt: Date.now() }
+    lessonMasteryCache[userId] = { tiers, entries, fetchedAt: Date.now() }
+    cacheVersion.value++
     return tiers
   } catch (err) {
     console.error('Failed to fetch lesson mastery:', err)
@@ -304,6 +309,19 @@ function getCachedLessonTiers(userId) {
   return lessonMasteryCache[userId]?.tiers || null
 }
 
+/**
+ * Read cached lesson-mastery entries synchronously — the full set of
+ * lessons the user has touched, with attempted/total counts and tier.
+ * Returns null if not yet fetched.
+ *
+ * @param {string} userId
+ * @returns {Array|null}
+ */
+function getCachedLessonEntries(userId) {
+  if (!userId) return null
+  return lessonMasteryCache[userId]?.entries || null
+}
+
 export function useBoardStatus() {
   return {
     loading,
@@ -315,6 +333,7 @@ export function useBoardStatus() {
     mergeLocalPending,
     getCachedBoards,
     fetchLessonMastery,
-    getCachedLessonTiers
+    getCachedLessonTiers,
+    getCachedLessonEntries
   }
 }

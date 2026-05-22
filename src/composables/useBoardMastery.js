@@ -471,6 +471,7 @@ export function useBoardMastery() {
     extractLessonsFromObservations,
     saveLessonBoardNumbers,
     fetchMissingBoardCounts,
+    boardCountCache,
     saveLessonCollection,
     getLessonCollection,
     // Exposed for testing

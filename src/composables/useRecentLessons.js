@@ -42,17 +42,45 @@ export function useRecentLessons() {
    * `useBoardStatus`. The cache is populated by `ensureLessonData()`,
    * called once on mount by the consuming component. Until the cache
    * is populated, lessons show with zero-attempt boards (all grey).
+   *
+   * In admin "View as user" mode the lesson list is sourced from the
+   * server's `/api/lesson-mastery` endpoint instead of the local
+   * observation store (which holds the admin's data, not the viewed
+   * user's). lastActivity is derived from the max `last_observation_at`
+   * across the user's board_status rows for each lesson.
    */
   const recentLessons = computed(() => {
-    const allObs = mastery.getObservations()
-    if (allObs.length === 0) return []
-
-    const lessons = mastery.extractLessonsFromObservations(allObs)
-    if (lessons.length === 0) return []
-
     const userId = userStore.effectiveUserId.value
     // Touch the cache version so the computed re-runs after invalidation.
     boardStatusApi.cacheVersion.value
+
+    const isViewingAs = userStore.isViewingAs.value
+    const boardCounts = mastery.boardCountCache.value
+
+    // Source the lesson list. Two paths so view-as picks up the impersonated
+    // user's server-side data rather than the admin's local observations.
+    let lessons
+    if (isViewingAs && userId) {
+      const entries = boardStatusApi.getCachedLessonEntries(userId) || []
+      lessons = entries
+        .filter(e => (e.attempted_boards || 0) > 0)
+        .map(e => {
+          const subfolder = e.deal_subfolder
+          const cached = boardCounts[subfolder]
+          let boardNumbers = cached
+          if (!boardNumbers) {
+            boardNumbers = []
+            for (let i = 1; i <= (e.total_boards || 0); i++) boardNumbers.push(i)
+          }
+          return { subfolder, boardNumbers, lastActivity: null }
+        })
+    } else {
+      const allObs = mastery.getObservations()
+      if (allObs.length === 0) return []
+      lessons = mastery.extractLessonsFromObservations(allObs)
+    }
+
+    if (lessons.length === 0) return []
 
     const tiersByLesson = userId
       ? (boardStatusApi.getCachedLessonTiers(userId) || {})
@@ -92,6 +120,16 @@ export function useRecentLessons() {
         ? appConfig.COLLECTIONS.find(c => c.id === collectionId)
         : null
 
+      // In view-as mode, derive lastActivity from the latest
+      // last_observation_at across the user's board_status rows.
+      let lastActivity = lesson.lastActivity
+      if (!lastActivity) {
+        for (const b of apiBoards) {
+          const t = b.last_observation_at
+          if (t && (!lastActivity || t > lastActivity)) lastActivity = t
+        }
+      }
+
       return {
         subfolder: lesson.subfolder,
         displayName: accomplishments.formatLessonName(lesson.subfolder),
@@ -101,21 +139,33 @@ export function useRecentLessons() {
         tried: triedCount,
         stateCounts,
         resumeDealNumber,
-        lastActivity: lesson.lastActivity,
-        relativeTime: formatRelativeTime(lesson.lastActivity),
+        lastActivity,
+        relativeTime: lastActivity ? formatRelativeTime(lastActivity) : '',
         // Lesson mastery tier per CORRECTNESS_AND_MASTERY.md §13.
         // Null until /api/lesson-mastery has been fetched.
         tier: tiersByLesson[lesson.subfolder] || null
       }
     })
 
-    enriched.sort((a, b) => b.lastActivity.localeCompare(a.lastActivity))
+    enriched.sort((a, b) => {
+      if (a.lastActivity && b.lastActivity) return b.lastActivity.localeCompare(a.lastActivity)
+      if (a.lastActivity) return -1
+      if (b.lastActivity) return 1
+      return 0
+    })
     return enriched.slice(0, MAX_RECENT)
   })
 
   const hasRecentLessons = computed(() => recentLessons.value.length > 0)
 
   const totalStartedLessons = computed(() => {
+    if (userStore.isViewingAs.value) {
+      const userId = userStore.effectiveUserId.value
+      // Touch the cache version so this computed reacts to fetches.
+      boardStatusApi.cacheVersion.value
+      const entries = userId ? (boardStatusApi.getCachedLessonEntries(userId) || []) : []
+      return entries.filter(e => (e.attempted_boards || 0) > 0).length
+    }
     const allObs = mastery.getObservations()
     if (allObs.length === 0) return 0
     return mastery.extractLessonsFromObservations(allObs).length
@@ -124,17 +174,35 @@ export function useRecentLessons() {
   /**
    * Populate caches the lobby needs: board-number cache (for the
    * "X of N boards mastered" count) and the `board_status` cache for
-   * each lesson. Called once on mount by the consuming component.
+   * each lesson. Called once on mount by the consuming component and
+   * re-called when the effective user changes (e.g. entering view-as).
+   *
+   * In view-as mode the subfolder list is sourced from the server's
+   * lesson-mastery endpoint, since local observations belong to the
+   * admin, not the impersonated user.
    */
   async function ensureLessonData() {
-    const allObs = mastery.getObservations()
-    const lessons = mastery.extractLessonsFromObservations(allObs)
-    const subfolders = lessons.map(l => l.subfolder)
+    const userId = userStore.effectiveUserId.value
+    const isViewingAs = userStore.isViewingAs.value
+
+    let subfolders
+    if (isViewingAs && userId) {
+      // Server-driven: lesson-mastery is the source of truth for which
+      // lessons the impersonated user has touched.
+      await boardStatusApi.fetchLessonMastery(userId, true)
+      const entries = boardStatusApi.getCachedLessonEntries(userId) || []
+      subfolders = entries
+        .filter(e => (e.attempted_boards || 0) > 0)
+        .map(e => e.deal_subfolder)
+    } else {
+      const allObs = mastery.getObservations()
+      const lessons = mastery.extractLessonsFromObservations(allObs)
+      subfolders = lessons.map(l => l.subfolder)
+    }
     if (subfolders.length === 0) return
 
     await mastery.fetchMissingBoardCounts(subfolders)
 
-    const userId = userStore.effectiveUserId.value
     if (userId) {
       await Promise.all([
         ...subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf)),
