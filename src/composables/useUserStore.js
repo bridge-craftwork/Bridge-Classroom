@@ -16,6 +16,9 @@ const currentUserId = ref(null)
 const adminViewerId = ref(null)
 const initialized = ref(false)
 
+// View-as state — admin "View as user" mode. Transient: never persisted to localStorage.
+const viewAsUser = ref(null)
+
 // Flag to track if user just registered (for showing key backup modal)
 const showKeyBackupModal = ref(false)
 
@@ -594,12 +597,47 @@ async function syncRole() {
   }
 }
 
+/**
+ * Enter "View as user" mode — used by admins to render the app from another user's perspective.
+ * Accepts a UserInfo record as returned by GET /admin/users/search (snake_case fields).
+ * The viewed user is transient and is not added to the persisted `users` map.
+ */
+function startViewingAs(userInfo) {
+  if (!userInfo || !userInfo.id) return
+  viewAsUser.value = {
+    id: userInfo.id,
+    firstName: userInfo.first_name || userInfo.firstName || '',
+    lastName: userInfo.last_name || userInfo.lastName || '',
+    email: userInfo.email || '',
+    role: userInfo.role || 'student',
+    classrooms: userInfo.classroom ? [userInfo.classroom] : (userInfo.classrooms || []),
+    // No secretKey / viewerPrivateKey — we only read server data keyed by id in this mode.
+  }
+}
+
+/**
+ * Exit "View as user" mode.
+ */
+function stopViewingAs() {
+  viewAsUser.value = null
+}
+
 export function useUserStore() {
   // Computed properties
   const currentUser = computed(() => {
+    if (viewAsUser.value) return viewAsUser.value
     if (!currentUserId.value) return null
     return users.value[currentUserId.value] || null
   })
+
+  const realUser = computed(() => {
+    if (!currentUserId.value) return null
+    return users.value[currentUserId.value] || null
+  })
+
+  const isViewingAs = computed(() => viewAsUser.value !== null)
+
+  const effectiveUserId = computed(() => viewAsUser.value?.id || currentUserId.value)
 
   const allUsers = computed(() => {
     return Object.values(users.value)
@@ -627,6 +665,9 @@ export function useUserStore() {
 
     // Computed
     currentUser,
+    realUser,
+    isViewingAs,
+    effectiveUserId,
     allUsers,
     hasUsers,
     userCount,
@@ -640,6 +681,8 @@ export function useUserStore() {
     updateUser,
     deleteUser,
     switchUser,
+    startViewingAs,
+    stopViewingAs,
     findUserByName,
     findUserByEmail,
     getUser,

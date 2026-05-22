@@ -9,6 +9,7 @@
 
     <LessonsTab
       v-if="activeTab === 'lessons'"
+      :read-only="isViewingAs"
       @select-collection="$emit('select-collection', $event)"
       @select-assignment="$emit('select-assignment', $event)"
       @resume-lesson="$emit('resume-lesson', $event)"
@@ -30,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useUserStore } from '../composables/useUserStore.js'
 import LobbyTabs from '../components/lobby/LobbyTabs.vue'
 import LessonsTab from '../components/lobby/tabs/LessonsTab.vue'
@@ -54,6 +55,7 @@ defineEmits([
 const userStore = useUserStore()
 
 const userRole = computed(() => userStore.currentUser.value?.role || 'student')
+const isViewingAs = computed(() => userStore.isViewingAs.value)
 
 const visibleTabs = computed(() => {
   if (userRole.value === 'admin') {
@@ -65,9 +67,17 @@ const visibleTabs = computed(() => {
   return ['lessons', 'conventionCard']
 })
 
-const activeTab = ref(
-  userRole.value === 'teacher' || userRole.value === 'admin' ? 'classrooms' : 'lessons'
-)
+function defaultTabForRole(role) {
+  return role === 'teacher' || role === 'admin' ? 'classrooms' : 'lessons'
+}
+
+const activeTab = ref(defaultTabForRole(userRole.value))
+
+// Snap to a valid default tab whenever the effective role changes — covers both
+// entering view-as (admin → student tabs) and exiting back to admin.
+watch(userRole, (newRole) => {
+  activeTab.value = defaultTabForRole(newRole)
+})
 </script>
 
 <style scoped>

@@ -50,7 +50,7 @@ export function useRecentLessons() {
     const lessons = mastery.extractLessonsFromObservations(allObs)
     if (lessons.length === 0) return []
 
-    const userId = userStore.currentUserId.value
+    const userId = userStore.effectiveUserId.value
     // Touch the cache version so the computed re-runs after invalidation.
     boardStatusApi.cacheVersion.value
 
@@ -134,7 +134,7 @@ export function useRecentLessons() {
 
     await mastery.fetchMissingBoardCounts(subfolders)
 
-    const userId = userStore.currentUserId.value
+    const userId = userStore.effectiveUserId.value
     if (userId) {
       await Promise.all([
         ...subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf)),

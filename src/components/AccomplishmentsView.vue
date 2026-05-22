@@ -181,7 +181,7 @@ function onBoardClick(subfolder, dealNumber) {
 const lessonMasteryList = computed(() => {
   const observations = mastery.getObservations()
   const lessons = mastery.extractLessonsFromObservations(observations)
-  const userId = userStore.currentUserId.value
+  const userId = userStore.effectiveUserId.value
 
   // Touch the cache version so this computed re-runs when fetches land.
   boardStatusApi.cacheVersion.value
@@ -211,7 +211,7 @@ watch(lessonMasteryList, async (lessons) => {
   if (lessons.length === 0) return
   const subfolders = lessons.map(l => l.subfolder)
   mastery.fetchMissingBoardCounts(subfolders)
-  const userId = userStore.currentUserId.value
+  const userId = userStore.effectiveUserId.value
   if (userId) {
     await Promise.all(
       subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf))

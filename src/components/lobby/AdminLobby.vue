@@ -83,7 +83,7 @@
 
       <!-- User Name Correction -->
       <div class="name-correction-section">
-        <h3 class="section-title">Correct User Name</h3>
+        <h3 class="section-title">Find User</h3>
         <div class="search-row">
           <input
             v-model="searchEmail"
@@ -108,6 +108,11 @@
             <span class="result-name">{{ user.first_name }} {{ user.last_name }}</span>
             <span class="result-email">{{ user.email }}</span>
             <span v-if="user.name_corrected_at" class="corrected-badge">corrected</span>
+            <button
+              class="view-as-btn"
+              @click.stop="handleViewAs(user)"
+              title="Render the app from this user's perspective (read-only)"
+            >View as user</button>
           </div>
         </div>
 
@@ -175,6 +180,7 @@
 import { ref, onMounted } from 'vue'
 import { useAdminDashboard } from '../../composables/useAdminDashboard.js'
 import { useAnnouncement } from '../../composables/useAnnouncement.js'
+import { useUserStore } from '../../composables/useUserStore.js'
 import { API_URL } from '@/utils/apiUrl.js'
 import AdminStatsRow from './AdminStatsRow.vue'
 import PopularLessons from './PopularLessons.vue'
@@ -184,7 +190,12 @@ import SystemHealth from './SystemHealth.vue'
 
 const admin = useAdminDashboard()
 const ann = useAnnouncement()
+const userStore = useUserStore()
 const refreshing = ref(false)
+
+function handleViewAs(user) {
+  userStore.startViewingAs(user)
+}
 
 // Announcement form state
 const newMessage = ref('')
@@ -697,6 +708,19 @@ onMounted(loadData)
   background: #e8f5e9;
   color: #2e7d32;
 }
+
+.view-as-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: var(--radius-button, 6px);
+  cursor: pointer;
+}
+.view-as-btn:hover { background: #fde68a; }
 
 .no-results {
   color: var(--text-muted, #9ca3af);

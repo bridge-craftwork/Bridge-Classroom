@@ -7,6 +7,13 @@
 
   <!-- Main App (shown when user is authenticated) -->
   <div v-else class="app" @click.capture="dismissWelcome">
+    <!-- View-as banner — shown when admin is rendering the app as another user -->
+    <div v-if="isViewingAs" class="view-as-banner">
+      <span class="view-as-text">
+        Viewing as <strong>{{ viewedUserName }}</strong> — read-only preview
+      </span>
+      <button class="stop-viewing-btn" @click="handleStopViewing">Stop viewing</button>
+    </div>
     <header class="app-header">
       <h1><a href="/" style="color:inherit;text-decoration:none">{{ deals.length ? dealTitle : appTitle }}</a></h1>
       <span v-if="showWelcome" class="welcome-greeting">Welcome back, {{ firstName }}</span>
@@ -372,6 +379,15 @@ const userName = computed(() => {
 })
 
 const firstName = computed(() => userStore.currentUser.value?.firstName || '')
+const isViewingAs = computed(() => userStore.isViewingAs.value)
+const viewedUserName = computed(() => {
+  const u = userStore.currentUser.value
+  return u ? `${u.firstName} ${u.lastName}` : ''
+})
+
+function handleStopViewing() {
+  userStore.stopViewingAs()
+}
 
 const userInitials = computed(() => {
   const user = userStore.currentUser.value
@@ -405,6 +421,7 @@ onMounted(async () => {
   // clear current user so WelcomeScreen renders and handles the claim
   const urlParams = new URLSearchParams(window.location.search)
   if (urlParams.get('recover') && urlParams.get('user_id') && userStore.isAuthenticated.value) {
+    userStore.stopViewingAs()
     userStore.currentUserId.value = null
   }
 
@@ -484,7 +501,8 @@ function handleSwitchUser() {
   appConfig.setCollectionInUrl(null)
   appConfig.setLessonInUrl(null)
 
-  // Clear current user to show welcome screen
+  // Exit any active view-as session and clear current user to show welcome screen
+  userStore.stopViewingAs()
   userStore.currentUserId.value = null
   showSettings.value = false
 }
@@ -734,10 +752,12 @@ function handleNavigateToDeal(payload) {
 }
 
 function handleResumeLesson({ subfolder, dealNumber }) {
+  if (userStore.isViewingAs.value) return
   navigateToDeal({ subfolder, dealNumber })
 }
 
 function handleTeacherNavigateToLesson(subfolder, boardNumber) {
+  if (userStore.isViewingAs.value) return
   navigateToDeal({ subfolder, dealNumber: boardNumber || 1 })
 }
 
@@ -801,6 +821,7 @@ function handleOpenIntro(url) {
 
 // Select a lesson collection (updates URL and shows inline lesson browser)
 function selectCollection(collectionId) {
+  if (userStore.isViewingAs.value) return
   currentCollection.value = collectionId
   appConfig.setCollectionInUrl(collectionId)
 }
@@ -811,6 +832,7 @@ function selectCollection(collectionId) {
  * filters to just the assigned boards, and enters practice mode.
  */
 async function handleSelectAssignment(assignment) {
+  if (userStore.isViewingAs.value) return
   const boards = await assignmentsApi.fetchExerciseBoards(assignment.exercise_id)
   if (!boards || boards.length === 0) {
     alert('Could not load exercise boards.')
@@ -1066,6 +1088,32 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+.view-as-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  background: #fde68a;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-button, 6px);
+  color: #78350f;
+  font-size: 14px;
+}
+.view-as-text strong { color: #422006; }
+.stop-viewing-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #b45309;
+  background: #fffbeb;
+  color: #78350f;
+  border-radius: var(--radius-button, 6px);
+  cursor: pointer;
+}
+.stop-viewing-btn:hover { background: #fef3c7; }
 
 .app-header {
   position: relative;
