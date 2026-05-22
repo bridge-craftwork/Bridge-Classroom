@@ -58,18 +58,16 @@
 
         <div class="mastery-section">
           <div class="mastery-bar">
+            <template v-if="getMastery(a)">
+              <div
+                v-for="seg in masterySegments(a)" :key="seg.label"
+                class="segment"
+                :style="{ width: seg.pct, backgroundColor: seg.color }"
+                :title="`${seg.label}: ${seg.count}`"
+              ></div>
+            </template>
             <div
-              v-if="getMastery(a)"
-              class="segment mastered"
-              :style="{ width: masteryPct(a, 'mastered') }"
-            ></div>
-            <div
-              v-if="getMastery(a)"
-              class="segment progressing"
-              :style="{ width: masteryPct(a, 'progressing') }"
-            ></div>
-            <div
-              v-if="!getMastery(a)"
+              v-else
               class="segment fallback"
               :style="{ width: progressPercent(a) + '%' }"
             ></div>
@@ -115,18 +113,16 @@
 
               <div class="mastery-section">
                 <div class="mastery-bar">
+                  <template v-if="getMastery(a)">
+                    <div
+                      v-for="seg in masterySegments(a)" :key="seg.label"
+                      class="segment"
+                      :style="{ width: seg.pct, backgroundColor: seg.color }"
+                      :title="`${seg.label}: ${seg.count}`"
+                    ></div>
+                  </template>
                   <div
-                    v-if="getMastery(a)"
-                    class="segment mastered"
-                    :style="{ width: masteryPct(a, 'mastered') }"
-                  ></div>
-                  <div
-                    v-if="getMastery(a)"
-                    class="segment progressing"
-                    :style="{ width: masteryPct(a, 'progressing') }"
-                  ></div>
-                  <div
-                    v-if="!getMastery(a)"
+                    v-else
                     class="segment fallback"
                     :style="{ width: progressPercent(a) + '%' }"
                   ></div>
@@ -145,6 +141,7 @@
 import { ref, computed, watch } from 'vue'
 import { useAssignments } from '../../composables/useAssignments.js'
 import { useBoardMastery } from '../../composables/useBoardMastery.js'
+import { STATUS_COLORS } from '../../utils/studentProgressData.js'
 
 const ACTIVE_WINDOW_DAYS = 7
 
@@ -199,24 +196,23 @@ watch(() => props.assignments, async (assignments) => {
         bySubfolder[b.deal_subfolder].push(b.deal_number)
       }
 
-      let masteredCount = 0, progressingCount = 0, untriedCount = 0
+      // Bucket per CORRECTNESS_AND_MASTERY.md §5. computeBoardMastery
+      // returns live-tile colors; we collapse to the §5.4 drilldown
+      // palette (yellow → orange) for a static summary bar.
+      const buckets = { clean_correct: 0, close_correct: 0, failed: 0, not_attempted: 0 }
       for (const [subfolder, boardNumbers] of Object.entries(bySubfolder)) {
         const boardMastery = mastery.computeBoardMastery(filteredObs, subfolder, boardNumbers)
         for (const b of boardMastery) {
-          if (b.status === 'green') masteredCount++
-          else if (b.status === 'grey') untriedCount++
-          else progressingCount++
+          if (b.status === 'green') buckets.clean_correct++
+          else if (b.status === 'red') buckets.failed++
+          else if (b.status === 'grey') buckets.not_attempted++
+          else buckets.close_correct++  // yellow + orange both render as "close" here
         }
       }
 
       masteryMap.value = {
         ...masteryMap.value,
-        [a.id]: {
-          mastered: masteredCount,
-          progressing: progressingCount,
-          untried: untriedCount,
-          total: boards.length
-        }
+        [a.id]: { ...buckets, total: boards.length }
       }
     } catch {
       // Mastery data unavailable — fallback to simple progress bar
@@ -228,11 +224,22 @@ function getMastery(assignment) {
   return masteryMap.value[assignment.id] || null
 }
 
-function masteryPct(assignment, type) {
+// Bar segments per CORRECTNESS_AND_MASTERY.md §5, matching the
+// vocabulary used by RecentLessons and StudentProgressPanel. The
+// assignment view buckets close_correct + corrected together (yellow
+// collapses to orange per the §5.4 drilldown rule).
+function masterySegments(assignment) {
   const m = getMastery(assignment)
-  if (!m || m.total === 0) return '0%'
-  const count = type === 'mastered' ? m.mastered : m.progressing
-  return (count / m.total * 100) + '%'
+  if (!m || m.total === 0) return []
+  const segments = [
+    { count: m.clean_correct,  color: STATUS_COLORS.clean_correct, label: 'Clean correct' },
+    { count: m.close_correct,  color: STATUS_COLORS.close_correct, label: 'Corrected / close' },
+    { count: m.failed,         color: STATUS_COLORS.failed,        label: 'Failed' },
+    { count: m.not_attempted,  color: STATUS_COLORS.not_attempted, label: 'Not attempted' },
+  ].filter(s => s.count > 0)
+  const sum = segments.reduce((s, seg) => s + seg.count, 0) || 1
+  segments.forEach(s => { s.pct = `${(s.count / sum * 100).toFixed(1)}%` })
+  return segments
 }
 
 function progressPercent(assignment) {
@@ -545,22 +552,15 @@ function dueClass(assignment) {
 .mastery-bar {
   display: flex;
   height: 8px;
-  background: #ddd;
+  background: var(--card-border, #e0ddd7);
   border-radius: 4px;
   overflow: hidden;
+  gap: 1px;
 }
 
 .segment {
   height: 100%;
   transition: width 0.3s ease;
-}
-
-.segment.mastered {
-  background: #4caf50;
-}
-
-.segment.progressing {
-  background: #42a5f5;
 }
 
 .segment.fallback {

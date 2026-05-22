@@ -67,7 +67,7 @@
           <span class="sp-legend-dot" :style="{ backgroundColor: l.color }"></span>
           {{ l.label }}
         </span>
-        <span class="sp-legend-hint">line color = mastery status</span>
+        <span class="sp-legend-hint">dot = play outcome · bar = current board state</span>
       </div>
 
       <!-- Lesson card grid -->
@@ -80,9 +80,17 @@
           <!-- Card header -->
           <div class="sp-card-header">
             <div class="sp-card-info">
-              <div class="sp-card-name">{{ lesson.name }}</div>
+              <div class="sp-card-name-row">
+                <span class="sp-card-name">{{ lesson.name }}</span>
+                <span
+                  v-if="lesson.tier"
+                  class="sp-tier-badge"
+                  :style="{ backgroundColor: tierColor(lesson.tier) }"
+                  :title="`Lesson mastery tier (CORRECTNESS_AND_MASTERY.md §13): ${lesson.tier}`"
+                >{{ lesson.tier }}</span>
+              </div>
               <div class="sp-card-meta">
-                {{ lesson.tried }} boards &middot; {{ lesson.totalAttempts }} attempts &middot;
+                {{ lesson.tried }} of {{ lesson.totalBoards }} boards &middot; {{ lesson.totalAttempts }} attempts &middot;
                 last {{ formatDate(lesson.lastActivity) }}{{ formatSpan(lesson) ? ` &middot; span ${formatSpan(lesson)}` : '' }}
               </div>
             </div>
@@ -138,9 +146,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { processData, buildLessonMeta, STATUS_COLORS } from '../utils/studentProgressData.js'
+import { ref, computed, watch, onMounted } from 'vue'
+import { processData, buildLessonMeta, STATUS_COLORS, TIER_COLORS } from '../utils/studentProgressData.js'
+import { getSubfolderForSkill } from '../utils/bakerBridgeTaxonomy.js'
 import { useTeacherRole } from '../composables/useTeacherRole.js'
+import { useBoardStatus } from '../composables/useBoardStatus.js'
+import { useUserStore } from '../composables/useUserStore.js'
 import StudentProgressSparkline from './StudentProgressSparkline.vue'
 import StudentProgressDetails from './StudentProgressDetails.vue'
 import ObservationPopupManager from './ObservationPopupManager.vue'
@@ -154,20 +165,69 @@ const props = defineProps({
 const selectedLesson = ref(null)
 const popupManager = ref(null)
 const teacherRole = useTeacherRole()
+const boardStatusApi = useBoardStatus()
+const userStore = useUserStore()
+
+// Whose board_status / lesson_mastery we're showing — the viewed student
+// when the panel is rendered from a teacher detail view, otherwise the
+// current user looking at their own progress.
+const subjectUserId = computed(() => props.studentId || userStore.currentUser.value?.id || '')
+
+const apiBoards = ref([])
+const apiTiers = ref({})
+
+async function refreshBackendState() {
+  const uid = subjectUserId.value
+  if (!uid) {
+    apiBoards.value = []
+    apiTiers.value = {}
+    return
+  }
+  const [boards, tiers] = await Promise.all([
+    boardStatusApi.fetchBoardStatus(uid),
+    boardStatusApi.fetchLessonMastery(uid),
+  ])
+  apiBoards.value = boards || []
+  apiTiers.value = tiers || {}
+}
+
+onMounted(refreshBackendState)
+watch(subjectUserId, refreshBackendState)
+// Re-fetch when the observation list changes (sync just landed new data)
+watch(() => props.observations.length, refreshBackendState)
 
 const lessons = computed(() => {
   if (!props.observations || props.observations.length === 0) return []
   const { lessonTotals, lessonNames } = buildLessonMeta(props.observations)
-  return processData(props.observations, lessonTotals, lessonNames)
+
+  // Group board_status rows by skill_path (via the lesson's subfolder).
+  // The endpoint keys on deal_subfolder; the panel keys on skill_path,
+  // so we bridge through getSubfolderForSkill — same join the convention
+  // card uses (see CLAUDE.md ConventionCard section).
+  const boardStatusByPath = {}
+  const tiersByPath = {}
+  const paths = new Set(props.observations.map(o => o.skill_path).filter(Boolean))
+  for (const path of paths) {
+    const subfolder = getSubfolderForSkill(path)
+    if (!subfolder) continue
+    boardStatusByPath[path] = apiBoards.value.filter(b => b.deal_subfolder === subfolder)
+    if (apiTiers.value[subfolder]) tiersByPath[path] = apiTiers.value[subfolder]
+  }
+
+  return processData(props.observations, lessonTotals, lessonNames, boardStatusByPath, tiersByPath)
 })
 
 const totalBoards = computed(() => lessons.value.reduce((s, l) => s + l.tried, 0))
 const totalObs = computed(() => lessons.value.reduce((s, l) => s + l.totalAttempts, 0))
 
+// Matches the §5.3 drilldown palette: clean_correct → green, close_correct
+// and corrected share orange in history views, failed → red, not_attempted
+// → grey. See CORRECTNESS_AND_MASTERY.md §5.
 const legend = [
-  { color: '#10b981', label: 'Clean correct' },
-  { color: '#f59e0b', label: 'Corrected (errors fixed)' },
-  { color: '#f43f5e', label: 'Fail (uncorrected)' },
+  { color: STATUS_COLORS.clean_correct, label: 'Clean correct' },
+  { color: STATUS_COLORS.corrected,     label: 'Corrected / close' },
+  { color: STATUS_COLORS.failed,        label: 'Failed' },
+  { color: STATUS_COLORS.not_attempted, label: 'Not attempted' },
 ]
 
 function lessonColor(index) {
@@ -222,17 +282,31 @@ async function handleDotClick({ rawTs, dealNum, correct, event }) {
   }
 }
 
+// Lesson card bar: distribution of board states across the lesson per
+// CORRECTNESS_AND_MASTERY.md §5. close_correct and corrected share the
+// orange swatch (§5.4 drilldown rule) but stay distinct in tooltips.
 function masterySegments(lesson) {
-  const untried = Math.max(0, (lesson.totalBoards || 0) - lesson.tried)
+  const c = lesson.stateCounts || { clean_correct: 0, close_correct: 0, corrected: 0, failed: 0 }
+  const orangeCount = c.close_correct + c.corrected
+  const notAttempted = Math.max(0, (lesson.totalBoards || 0) - lesson.tried)
+  const orangeLabel = c.close_correct && c.corrected
+    ? `Corrected / close (${c.corrected} corrected, ${c.close_correct} close)`
+    : c.corrected
+      ? 'Corrected'
+      : 'Close correct'
   const segments = [
-    { count: lesson.mastered, color: STATUS_COLORS.mastered, label: 'Mastered' },
-    { count: lesson.progressing, color: STATUS_COLORS.progressing, label: 'Progressing' },
-    { count: lesson.struggling, color: STATUS_COLORS.struggling, label: 'Struggling' },
-    { count: untried, color: STATUS_COLORS.untried, label: 'Untried' },
+    { count: c.clean_correct,  color: STATUS_COLORS.clean_correct, label: 'Clean correct' },
+    { count: orangeCount,      color: STATUS_COLORS.close_correct, label: orangeLabel },
+    { count: c.failed,         color: STATUS_COLORS.failed,        label: 'Failed' },
+    { count: notAttempted,     color: STATUS_COLORS.not_attempted, label: 'Not attempted' },
   ].filter(s => s.count > 0)
-  const sum = segments.reduce((s, seg) => s + seg.count, 0)
+  const sum = segments.reduce((s, seg) => s + seg.count, 0) || 1
   segments.forEach(s => { s.pct = `${(s.count / sum * 100).toFixed(1)}%` })
   return segments
+}
+
+function tierColor(tier) {
+  return TIER_COLORS[tier] || TIER_COLORS.Exploring
 }
 
 // Activity chart data (stacked bars by day per lesson)
@@ -464,11 +538,29 @@ const activityChartData = computed(() => {
   min-width: 0;
 }
 
+.sp-card-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .sp-card-name {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
   line-height: 1.3;
+}
+
+.sp-tier-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.4;
 }
 
 .sp-card-meta {

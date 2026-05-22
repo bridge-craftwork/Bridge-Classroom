@@ -46,30 +46,22 @@
           </div>
         </div>
 
-        <div v-if="lesson.untried > 0" class="untried-badge">
-          {{ lesson.untried }} untried board{{ lesson.untried !== 1 ? 's' : '' }}
-        </div>
-
         <div class="mastery-bar">
           <div
-            class="segment mastered"
-            :style="{ width: segmentPct(lesson, 'mastered') }"
-          ></div>
-          <div
-            class="segment progressing"
-            :style="{ width: segmentPct(lesson, 'progressing') }"
+            v-for="seg in masterySegments(lesson)" :key="seg.label"
+            class="segment"
+            :style="{ width: seg.pct, backgroundColor: seg.color }"
+            :title="`${seg.label}: ${seg.count}`"
           ></div>
         </div>
 
         <div class="mastery-counts">
-          <span v-if="lesson.mastered" class="count mastered-dot">
-            {{ lesson.mastered }} Mastered
-          </span>
-          <span v-if="lesson.progressing" class="count progressing-dot">
-            {{ lesson.progressing }} Progressing
-          </span>
-          <span v-if="lesson.untried" class="count untried-dot">
-            {{ lesson.untried }} Untried
+          <span
+            v-for="seg in masterySegments(lesson)" :key="seg.label"
+            class="count"
+          >
+            <span class="count-dot" :style="{ backgroundColor: seg.color }"></span>
+            {{ seg.count }} {{ seg.label }}
           </span>
         </div>
       </div>
@@ -80,20 +72,36 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useRecentLessons } from '../../composables/useRecentLessons.js'
+import { STATUS_COLORS } from '../../utils/studentProgressData.js'
 
 defineEmits(['resume-lesson', 'show-progress'])
 
 const { recentLessons, hasRecentLessons, totalStartedLessons, ensureBoardCounts } = useRecentLessons()
 
-function segmentPct(lesson, type) {
-  if (lesson.totalBoards === 0) return '0%'
-  const count = type === 'mastered' ? lesson.mastered : lesson.progressing
-  return (count / lesson.totalBoards * 100) + '%'
+// Bucket per CORRECTNESS_AND_MASTERY.md §5. close_correct + corrected
+// share the orange swatch (§5.4 drilldown rule) but stay distinct in
+// tooltips. Mirrors StudentProgressPanel.masterySegments.
+function masterySegments(lesson) {
+  const c = lesson.stateCounts || { clean_correct: 0, close_correct: 0, corrected: 0, failed: 0, not_attempted: 0 }
+  const orangeCount = c.close_correct + c.corrected
+  const orangeLabel = c.close_correct && c.corrected
+    ? `Corrected / close (${c.corrected} corrected, ${c.close_correct} close)`
+    : c.corrected
+      ? 'Corrected'
+      : 'Close correct'
+  const segments = [
+    { count: c.clean_correct,   color: STATUS_COLORS.clean_correct, label: 'Clean correct' },
+    { count: orangeCount,       color: STATUS_COLORS.close_correct, label: orangeLabel },
+    { count: c.failed,          color: STATUS_COLORS.failed,        label: 'Failed' },
+    { count: c.not_attempted,   color: STATUS_COLORS.not_attempted, label: 'Not attempted' },
+  ].filter(s => s.count > 0)
+  const sum = segments.reduce((s, seg) => s + seg.count, 0) || 1
+  segments.forEach(s => { s.pct = `${(s.count / sum * 100).toFixed(1)}%` })
+  return segments
 }
 
 function boardProgressText(lesson) {
-  const tried = lesson.mastered + lesson.progressing
-  return `${tried} of ${lesson.totalBoards} tried`
+  return `${lesson.tried || 0} of ${lesson.totalBoards} tried`
 }
 
 onMounted(() => {
@@ -244,24 +252,14 @@ onMounted(() => {
   background: var(--green-mid, #40916c);
 }
 
-.untried-badge {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
-  color: #b45309;
-  background: #fef3c7;
-  padding: 2px 10px;
-  border-radius: 10px;
-  margin-bottom: 8px;
-}
-
 .mastery-bar {
   display: flex;
   height: 8px;
-  background: #ddd;
+  background: var(--card-border, #e0ddd7);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 8px;
+  gap: 1px;
 }
 
 .segment {
@@ -269,41 +267,25 @@ onMounted(() => {
   transition: width 0.3s ease;
 }
 
-.segment.mastered {
-  background: #4caf50;
-}
-
-.segment.progressing {
-  background: #42a5f5;
-}
-
 .mastery-counts {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   font-size: 12px;
   color: var(--text-secondary, #6b7280);
+  flex-wrap: wrap;
 }
 
-.count::before {
-  content: '';
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.count-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-
-.mastered-dot::before {
-  background: #4caf50;
-}
-
-.progressing-dot::before {
-  background: #42a5f5;
-}
-
-.untried-dot::before {
-  background: #ccc;
 }
 
 @media (max-width: 600px) {

@@ -163,6 +163,7 @@ function buildBoardMastery(apiBoards, boardNumbers) {
       return {
         boardNumber: bn,
         status: 'grey',
+        apiStatus: 'not_attempted',
         achievement: 'none',
         maxStars: 0,
         wildAchievement: null,
@@ -177,6 +178,9 @@ function buildBoardMastery(apiBoards, boardNumbers) {
       // Display color derived from stored status + cooldown decay
       // against last_error_date. See §5.3 of the doc.
       status: getDisplayColor(entry.status, entry.last_error_date),
+      // Raw §5.1 stored state, preserved so consumers can bucket by
+      // spec vocabulary (e.g. distinguish close_correct from corrected).
+      apiStatus: entry.status || 'not_attempted',
       // Backwards-compat string for components that still read
       // `board.achievement`. New components should read `maxStars`
       // (and `wildAchievement`) directly.

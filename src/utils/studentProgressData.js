@@ -12,48 +12,80 @@ import { getSkillFromPath } from './skillPath.js'
 const ONE_HOUR = 3600000
 
 /**
- * Classify a deal's mastery status based on attempt history.
- * @param {Array} attempts - [{correct: boolean, ts: Date}] sorted by time
- * @returns {'mastered'|'progressing'|'struggling'|'untried'}
+ * Board states from CORRECTNESS_AND_MASTERY.md §5.1. Returned by
+ * classifyBoard, and matches the values stored on `board_status.status`.
  */
-export function classifyDeal(attempts) {
-  if (!attempts || attempts.length === 0) return 'untried'
+export const BOARD_STATES = [
+  'clean_correct',
+  'close_correct',
+  'corrected',
+  'failed',
+  'not_attempted',
+]
+
+/**
+ * Effective per-play verdict — `board_result` if present, otherwise
+ * derived from the boolean `correct`. Returns 'correct' | 'corrected' |
+ * 'failed'.
+ */
+function effectiveResult(a) {
+  if (a.board_result === 'correct' || a.board_result === 'corrected' || a.board_result === 'failed') {
+    return a.board_result
+  }
+  return a.correct ? 'correct' : 'failed'
+}
+
+/**
+ * Classify a board's current state per CORRECTNESS_AND_MASTERY.md §5.
+ *
+ * If an authoritative `board_status` entry is supplied, its `status` is
+ * returned verbatim — the backend is the single source of truth.
+ *
+ * Otherwise this falls back to deriving state from raw attempts using
+ * the same rules: failed/corrected come straight from the last play's
+ * verdict; clean_correct vs close_correct is decided by whether the
+ * most recent error happened within the cooldown window (1 hour).
+ *
+ * @param {Array} attempts - [{correct, board_result, ts}] in any order
+ * @param {Object|null} [boardStatusEntry] - Authoritative API row
+ * @returns {'clean_correct'|'close_correct'|'corrected'|'failed'|'not_attempted'}
+ */
+export function classifyBoard(attempts, boardStatusEntry = null) {
+  if (boardStatusEntry && boardStatusEntry.status) {
+    return boardStatusEntry.status
+  }
+  if (!attempts || attempts.length === 0) return 'not_attempted'
+
   const sorted = [...attempts].sort((a, b) => a.ts - b.ts)
-  const lastCorrect = sorted[sorted.length - 1].correct
-
-  if (!lastCorrect) return 'struggling'
-
   const last = sorted[sorted.length - 1]
-  const recentFail = sorted.slice(0, -1).reverse()
-    .find(a => !a.correct && (last.ts - a.ts) < ONE_HOUR)
-  const lastClean = !recentFail
+  const lastResult = effectiveResult(last)
 
-  const recent = sorted.slice(-5)
-  const recentCorrect = recent.filter(a => a.correct).length
-  const recentFails = recent.length - recentCorrect
+  if (lastResult === 'failed') return 'failed'
+  if (lastResult === 'corrected') return 'corrected'
 
-  if (lastClean && recentCorrect / recent.length >= 0.8 && recentFails <= 1) return 'mastered'
-
-  const recentClean = recent.filter(a => {
-    if (!a.correct) return false
-    const prevFail = sorted.filter(p => p.ts < a.ts).reverse()
-      .find(p => !p.correct && (a.ts - p.ts) < ONE_HOUR)
-    return !prevFail
-  }).length
-
-  if (recentClean >= 1) return 'progressing'
-
-  return 'struggling'
+  const prevError = sorted.slice(0, -1).reverse()
+    .find(a => effectiveResult(a) !== 'correct')
+  if (!prevError) return 'clean_correct'
+  return (last.ts - prevError.ts) < ONE_HOUR ? 'close_correct' : 'clean_correct'
 }
 
 /**
  * Process raw observation data into per-lesson summaries with sparkline data.
- * @param {Array} rawData - [{id, timestamp, skill_path, correct, deal_subfolder, deal_number}]
+ *
+ * When `boardStatusByPath` is supplied (skill_path → array of board_status
+ * rows from `/api/board-status`), per-board state is read straight from
+ * the backend. Otherwise it's derived locally from raw observations
+ * using the same rules — the doc says backend is authoritative, so the
+ * local path is a fallback for offline / pre-fetch render.
+ *
+ * @param {Array} rawData - [{id, timestamp, skill_path, correct, board_result, deal_subfolder, deal_number}]
  * @param {Object} lessonTotals - {skill_path: totalBoardCount}
  * @param {Object} lessonNames - {skill_path: "Display Name"}
+ * @param {Object} [boardStatusByPath] - {skill_path: [{deal_number, status, ...}, ...]}
+ * @param {Object} [lessonTiers] - {skill_path: 'Exploring'|'Learning'|'Retaining'|'Mastering'}
  * @returns {Array} Lesson objects sorted by last activity desc
  */
-export function processData(rawData, lessonTotals = {}, lessonNames = {}) {
+export function processData(rawData, lessonTotals = {}, lessonNames = {}, boardStatusByPath = {}, lessonTiers = {}) {
   const byLesson = {}
   rawData.forEach(r => {
     if (!byLesson[r.skill_path]) byLesson[r.skill_path] = {}
@@ -65,12 +97,23 @@ export function processData(rawData, lessonTotals = {}, lessonNames = {}) {
   const lessons = Object.entries(byLesson).map(([path, deals]) => {
     const dealNums = Object.keys(deals).map(Number).sort((a, b) => a - b)
 
-    let mastered = 0, progressing = 0, struggling = 0
+    // Index board_status entries by deal_number for this lesson
+    const statusByDeal = {}
+    for (const row of boardStatusByPath[path] || []) {
+      statusByDeal[row.deal_number] = row
+    }
+
+    const stateCounts = {
+      clean_correct: 0,
+      close_correct: 0,
+      corrected: 0,
+      failed: 0,
+    }
+    const boardStates = {}
     dealNums.forEach(dn => {
-      const cls = classifyDeal(deals[dn])
-      if (cls === 'mastered') mastered++
-      else if (cls === 'progressing') progressing++
-      else struggling++
+      const state = classifyBoard(deals[dn], statusByDeal[dn])
+      boardStates[dn] = state
+      if (state !== 'not_attempted') stateCounts[state]++
     })
     const tried = dealNums.length
 
@@ -84,7 +127,7 @@ export function processData(rawData, lessonTotals = {}, lessonNames = {}) {
 
     const boardLines = dealNums.map(dn => {
       const attempts = deals[dn].slice().sort((a, b) => a.ts - b.ts)
-      const status = classifyDeal(attempts)
+      const status = boardStates[dn]
       const lastCorrect = attempts[attempts.length - 1]?.correct ?? false
 
       const points = attempts.map((a, i) => {
@@ -124,7 +167,18 @@ export function processData(rawData, lessonTotals = {}, lessonNames = {}) {
         i = j + 1
       }
 
-      return { dealNum: dn, status, lastCorrect, points: spreadPts }
+      const entry = statusByDeal[dn]
+      return {
+        dealNum: dn,
+        status,
+        lastCorrect,
+        points: spreadPts,
+        // Per-board achievement state — populated when board_status is
+        // available. See CORRECTNESS_AND_MASTERY.md §6 (stars) and §7
+        // (paws). Consumers may render these as badges in detail views.
+        maxStars: entry?.max_stars || 0,
+        wildAchievement: entry?.wild_achievement || null,
+      }
     })
 
     // Global time range based on real timestamps (rawTs)
@@ -154,9 +208,8 @@ export function processData(rawData, lessonTotals = {}, lessonNames = {}) {
       path,
       name: lessonNames[path] || path.split('/').pop().replace(/_/g, ' '),
       tried,
-      mastered,
-      progressing,
-      struggling,
+      stateCounts,
+      tier: lessonTiers[path] || (tried > 0 ? 'Exploring' : null),
       totalBoards: lessonTotals[path] ?? tried,
       totalAttempts: allAttempts.length,
       recentRate,
@@ -239,12 +292,26 @@ export function buildLessonMeta(observations) {
   return { lessonTotals, lessonNames }
 }
 
-/** Status → color mapping for sparklines and mastery bars */
+/**
+ * Board state → display color, per CORRECTNESS_AND_MASTERY.md §5.3 with the
+ * §5.4 drilldown rule applied (corrected and close_correct render orange
+ * unconditionally in history views; the yellow flavor only exists on
+ * the live tile).
+ */
 export const STATUS_COLORS = {
-  mastered: '#10b981',
-  progressing: '#3b82f6',
-  struggling: '#f59e0b',
-  untried: '#d1d5db',
+  clean_correct: '#10b981',  // green
+  close_correct: '#f59e0b',  // orange (drilldown)
+  corrected:     '#f59e0b',  // orange (drilldown)
+  failed:        '#f43f5e',  // red
+  not_attempted: '#d1d5db',  // grey
+}
+
+/** Tier → swatch color used by the lesson card badge. */
+export const TIER_COLORS = {
+  Exploring: '#9ca3af',
+  Learning:  '#3b82f6',
+  Retaining: '#10b981',
+  Mastering: '#d4a900',  // gold, mirrors the §6.4 gold-star badge
 }
 
 /** Attempt quality → dot color */

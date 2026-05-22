@@ -64,15 +64,26 @@ export function useRecentLessons() {
         : []
       const boards = boardStatusApi.buildBoardMastery(apiBoards, lesson.boardNumbers)
 
-      const masteredCount = boards.filter(b => b.status === 'green').length
-      const progressingCount = boards.filter(b =>
-        b.status !== 'grey' && b.status !== 'green'
-      ).length
-      const untriedCount = boards.filter(b => b.status === 'grey').length
+      // Bucket per CORRECTNESS_AND_MASTERY.md §5.1 stored states.
+      // close_correct and corrected share the orange swatch per §5.4
+      // drilldown rule, so we sum them into one display bucket here.
+      const stateCounts = {
+        clean_correct: 0,
+        close_correct: 0,
+        corrected: 0,
+        failed: 0,
+        not_attempted: 0,
+      }
+      for (const b of boards) {
+        const s = b.apiStatus || 'not_attempted'
+        if (stateCounts[s] !== undefined) stateCounts[s]++
+        else stateCounts.not_attempted++
+      }
       const totalBoards = boards.length
+      const triedCount = totalBoards - stateCounts.not_attempted
 
       // Resume target: first untried board, or board 1 if all attempted
-      const firstUntried = boards.find(b => b.status === 'grey')
+      const firstUntried = boards.find(b => b.apiStatus === 'not_attempted')
       const resumeDealNumber = firstUntried ? firstUntried.boardNumber : 1
 
       // Collection mapping
@@ -87,9 +98,8 @@ export function useRecentLessons() {
         collectionName: collection?.name || null,
         collectionId,
         totalBoards,
-        mastered: masteredCount,
-        progressing: progressingCount,
-        untried: untriedCount,
+        tried: triedCount,
+        stateCounts,
         resumeDealNumber,
         lastActivity: lesson.lastActivity,
         relativeTime: formatRelativeTime(lesson.lastActivity),

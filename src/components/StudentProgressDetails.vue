@@ -22,7 +22,7 @@
           :fill="i % 2 === 0 ? '#ffffff' : '#f9fafb'"
         />
 
-        <!-- Board labels on Y axis -->
+        <!-- Board labels on Y axis, with star (\u00a76) and paw (\u00a77) badges -->
         <g v-for="(dn, i) in boardNums" :key="'label-' + dn">
           <rect
             :x="2" :y="PAD.t + i * BOARD_H + 3"
@@ -31,6 +31,29 @@
             :fill="boardLabelColor(dn)"
             :fill-opacity="hasBoardData(dn) ? 0.12 : 0.05"
           />
+          <!-- Star badge (max_stars \u2265 1) -->
+          <text
+            v-if="starColor(dn)"
+            :x="8"
+            :y="PAD.t + i * BOARD_H + BOARD_H / 2 + 5"
+            font-size="14"
+            :fill="starColor(dn)"
+            style="font-family: serif"
+          >
+            &#9733;
+            <title>{{ badgeTooltip(dn) }}</title>
+          </text>
+          <!-- Paw badge (wild_achievement) -->
+          <circle
+            v-if="pawColor(dn)"
+            :cx="22"
+            :cy="PAD.t + i * BOARD_H + BOARD_H / 2"
+            r="4"
+            :fill="pawColor(dn)"
+            stroke="#fff" stroke-width="1"
+          >
+            <title>{{ badgeTooltip(dn) }}</title>
+          </circle>
           <text
             :x="Y_LABEL_W - 16"
             :y="PAD.t + i * BOARD_H + BOARD_H / 2 + 4"
@@ -106,6 +129,21 @@
           {{ l.label }}
         </span>
       </div>
+      <div v-if="badgeLegend.length" class="details-legend badge-legend">
+        <span v-for="l in badgeLegend" :key="l.label" class="legend-item">
+          <span
+            v-if="l.kind === 'star'"
+            class="legend-star"
+            :style="{ color: l.color }"
+          >&#9733;</span>
+          <span
+            v-else
+            class="legend-dot legend-paw"
+            :style="{ backgroundColor: l.color }"
+          ></span>
+          {{ l.label }}
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -151,6 +189,34 @@ function boardLabelColor(dn) {
   const bl = props.lesson.boardLines.find(b => b.dealNum === dn)
   if (!bl) return '#d1d5db'
   return STATUS_COLORS[bl.status] || '#6b7280'
+}
+
+// Star badge color per CORRECTNESS_AND_MASTERY.md §6.4: silver at
+// max_stars = 1, gold at max_stars ≥ 2. Returns null when no badge.
+function starColor(dn) {
+  const bl = props.lesson.boardLines.find(b => b.dealNum === dn)
+  if (!bl || !bl.maxStars) return null
+  return bl.maxStars >= 2 ? '#d4a900' : '#9ca3af'
+}
+
+// Paw badge color per §7.1: yellow for Recent (any other obs within
+// the 6-day spacing window before the wild clean_correct), green for
+// Fresh (cold board at time of the wild clean_correct).
+function pawColor(dn) {
+  const bl = props.lesson.boardLines.find(b => b.dealNum === dn)
+  if (!bl || !bl.wildAchievement) return null
+  return bl.wildAchievement === 'Fresh' ? '#10b981' : '#f5cd47'
+}
+
+function badgeTooltip(dn) {
+  const bl = props.lesson.boardLines.find(b => b.dealNum === dn)
+  if (!bl) return ''
+  const parts = []
+  if (bl.maxStars === 1) parts.push('Silver star')
+  if (bl.maxStars >= 2) parts.push('Gold star')
+  if (bl.wildAchievement === 'Recent') parts.push('Recent paw')
+  if (bl.wildAchievement === 'Fresh') parts.push('Fresh paw')
+  return parts.join(' · ')
 }
 
 // Build positioned dots with collision spreading
@@ -337,10 +403,23 @@ const statsItems = computed(() => {
 
 const legend = [
   { color: '#10b981', label: 'Clean correct' },
-  { color: '#3b82f6', label: 'Recent correct (after fail within 1 hr)' },
-  { color: '#f59e0b', label: 'Corrected (errors fixed within board)' },
-  { color: '#f43f5e', label: 'Fail (uncorrected)' },
+  { color: '#f59e0b', label: 'Corrected / close (errors fixed or recent prior fail)' },
+  { color: '#f43f5e', label: 'Failed (uncorrected)' },
 ]
+
+// Badge legend — only shown when at least one board has a star or paw.
+const badgeLegend = computed(() => {
+  const items = []
+  const hasSilver = props.lesson.boardLines.some(b => b.maxStars === 1)
+  const hasGold = props.lesson.boardLines.some(b => b.maxStars >= 2)
+  const hasRecentPaw = props.lesson.boardLines.some(b => b.wildAchievement === 'Recent')
+  const hasFreshPaw = props.lesson.boardLines.some(b => b.wildAchievement === 'Fresh')
+  if (hasSilver) items.push({ kind: 'star', color: '#9ca3af', label: 'Silver star' })
+  if (hasGold)   items.push({ kind: 'star', color: '#d4a900', label: 'Gold star' })
+  if (hasRecentPaw) items.push({ kind: 'paw', color: '#f5cd47', label: 'Recent paw' })
+  if (hasFreshPaw)  items.push({ kind: 'paw', color: '#10b981', label: 'Fresh paw' })
+  return items
+})
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -482,5 +561,15 @@ function formatTime(ts) {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
+}
+
+.legend-star {
+  font-size: 16px;
+  line-height: 1;
+  font-family: serif;
+}
+
+.badge-legend {
+  margin-top: 6px;
 }
 </style>
