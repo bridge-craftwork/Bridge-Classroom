@@ -544,6 +544,56 @@ pub async fn get_assignment(
         }
     }
 
+    // Grid view (issue #7): ordered board list + one cell per
+    // (student, board) for the latest observation. Cells with no
+    // observation are omitted; the frontend treats those as
+    // not_attempted.
+    let boards: Vec<crate::models::AssignmentGridBoard> = sqlx::query_as(
+        r#"
+        SELECT deal_subfolder, deal_number, sort_order
+        FROM exercise_boards
+        WHERE exercise_id = ?
+        ORDER BY sort_order ASC, deal_subfolder ASC, deal_number ASC
+        "#,
+    )
+    .bind(&row.exercise_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Latest observation per (student, board) joined to this
+    // assignment_id. Uses a window-function-style "max timestamp per
+    // group" trick: a subquery picks the max timestamp, then we
+    // re-join to fetch the matching row's columns.
+    let cells: Vec<crate::models::AssignmentGridCell> = sqlx::query_as(
+        r#"
+        SELECT o.user_id        AS student_id,
+               o.deal_subfolder AS deal_subfolder,
+               o.deal_number    AS deal_number,
+               o.status         AS status,
+               o.correct        AS correct,
+               o.id             AS observation_id,
+               o.timestamp      AS timestamp
+        FROM observations o
+        JOIN (
+            SELECT user_id, deal_subfolder, deal_number, MAX(timestamp) AS max_ts
+            FROM observations
+            WHERE assignment_id = ?
+            GROUP BY user_id, deal_subfolder, deal_number
+        ) latest
+          ON latest.user_id        = o.user_id
+         AND latest.deal_subfolder = o.deal_subfolder
+         AND latest.deal_number    = o.deal_number
+         AND latest.max_ts         = o.timestamp
+        WHERE o.assignment_id = ?
+        "#,
+    )
+    .bind(&assignment_id)
+    .bind(&assignment_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     Ok(Json(AssignmentDetailResponse {
         success: true,
         assignment: AssignmentDetail {
@@ -558,6 +608,8 @@ pub async fn get_assignment(
             due_at: row.due_at,
             total_boards: board_count,
             student_progress,
+            boards,
+            cells,
         },
     }))
 }

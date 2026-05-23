@@ -65,6 +65,31 @@ pub struct StudentAssignmentProgress {
     pub total_boards: i64,
 }
 
+/// One column header in the assignment grid view (issue #7).
+#[derive(Debug, Clone, sqlx::FromRow, Serialize)]
+pub struct AssignmentGridBoard {
+    pub deal_subfolder: String,
+    pub deal_number: i32,
+    pub sort_order: i32,
+}
+
+/// One cell in the assignment grid: the most recent observation a
+/// student has logged for a given board within this assignment.
+/// `status` matches the §5.1 stored values. Cells for (student, board)
+/// pairs with no observation are omitted — the frontend renders those
+/// as `not_attempted` (grey).
+#[derive(Debug, Clone, sqlx::FromRow, Serialize)]
+pub struct AssignmentGridCell {
+    pub student_id: String,
+    pub deal_subfolder: String,
+    pub deal_number: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    pub correct: bool,
+    pub observation_id: String,
+    pub timestamp: String,
+}
+
 /// Assignment detail with per-student progress (for teacher drill-down)
 #[derive(Debug, Serialize)]
 pub struct AssignmentDetail {
@@ -83,6 +108,10 @@ pub struct AssignmentDetail {
     pub due_at: Option<String>,
     pub total_boards: i64,
     pub student_progress: Vec<StudentAssignmentProgress>,
+    /// Ordered list of boards in this assignment's exercise (column headers).
+    pub boards: Vec<AssignmentGridBoard>,
+    /// Per-(student, board) outcome for the grid (issue #7).
+    pub cells: Vec<AssignmentGridCell>,
 }
 
 /// Response after creating an assignment

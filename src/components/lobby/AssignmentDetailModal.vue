@@ -17,42 +17,61 @@
         <!-- Content -->
         <template v-else-if="assignment">
           <div class="modal-header">
-            <h2>{{ assignment.exercise_name }}</h2>
+            <div>
+              <h2>{{ assignment.exercise_name }}</h2>
+              <div class="assignment-meta">
+                <span class="meta-item">{{ assignment.total_boards }} {{ assignment.total_boards === 1 ? 'board' : 'boards' }}</span>
+                <span v-if="assignment.due_at" class="meta-item">Due {{ formatDate(assignment.due_at) }}</span>
+                <span v-if="assignment.classroom_name" class="meta-item">{{ assignment.classroom_name }}</span>
+              </div>
+            </div>
             <button class="close-btn" @click="$emit('close')" aria-label="Close">&times;</button>
           </div>
 
-          <div class="assignment-meta">
-            <span class="meta-item">{{ assignment.total_boards }} {{ assignment.total_boards === 1 ? 'board' : 'boards' }}</span>
-            <span v-if="assignment.due_at" class="meta-item">Due {{ formatDate(assignment.due_at) }}</span>
-            <span v-if="assignment.classroom_name" class="meta-item">{{ assignment.classroom_name }}</span>
-          </div>
-
-          <!-- Student progress table -->
-          <div v-if="assignment.student_progress && assignment.student_progress.length" class="progress-table-wrapper">
-            <table class="progress-table">
+          <!-- Grid (issue #7) -->
+          <div v-if="rows.length && boards.length" class="grid-wrapper">
+            <table class="grid-table">
               <thead>
                 <tr>
                   <th class="col-name">Student</th>
-                  <th class="col-progress">Progress</th>
-                  <th class="col-correct">Correct</th>
-                  <th class="col-accuracy">Accuracy</th>
+                  <th v-for="(b, i) in boards" :key="boardKey(b)" class="col-board" :title="boardTooltip(b)">
+                    {{ boardLabel(b, i) }}
+                  </th>
+                  <th class="col-score">Score</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="s in assignment.student_progress" :key="s.student_id">
-                  <td class="col-name">{{ s.first_name }} {{ s.last_name }}</td>
-                  <td class="col-progress">
-                    <div class="progress-cell">
-                      <div class="progress-bar-track">
-                        <div class="progress-bar-fill" :style="{ width: progressPct(s) }" :class="progressClass(s)"></div>
-                      </div>
-                      <span class="progress-label">{{ s.attempted_boards }}/{{ s.total_boards }}</span>
-                    </div>
+                <tr v-for="row in rows" :key="row.student.student_id">
+                  <td class="col-name">{{ row.student.first_name }} {{ row.student.last_name }}</td>
+                  <td
+                    v-for="b in boards" :key="boardKey(b)"
+                    class="col-board cell"
+                  >
+                    <button
+                      v-if="row.byBoard[boardKey(b)]"
+                      class="cell-btn"
+                      :style="{ backgroundColor: cellColor(row.byBoard[boardKey(b)].status) }"
+                      :title="cellTooltip(row.student, b, row.byBoard[boardKey(b)])"
+                      @click="openCell(row.student, row.byBoard[boardKey(b)], $event)"
+                    >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}</button>
+                    <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
                   </td>
-                  <td class="col-correct">{{ s.correct_boards }}/{{ s.total_boards }}</td>
-                  <td class="col-accuracy" :class="accuracyClass(s)">{{ accuracyPct(s) }}</td>
+                  <td class="col-score">
+                    <span class="score-text">{{ row.correctCount }}/{{ row.attemptedCount }}</span>
+                    <span v-if="row.attemptedCount > 0" class="accuracy-text" :class="accuracyClass(row)">{{ Math.round(row.correctCount / row.attemptedCount * 100) }}%</span>
+                  </td>
                 </tr>
               </tbody>
+              <tfoot>
+                <tr class="pass-row">
+                  <td class="col-name pass-label">Pass rate</td>
+                  <td v-for="b in boards" :key="boardKey(b)" class="col-board pass-cell" :title="boardPassTooltip(b)">
+                    <span v-if="boardStats(b).attempted > 0" :class="passClass(boardStats(b))">{{ Math.round(boardStats(b).clean / boardStats(b).attempted * 100) }}%</span>
+                    <span v-else class="pass-empty">—</span>
+                  </td>
+                  <td class="col-score"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
@@ -65,16 +84,29 @@
           <div v-if="summary" class="summary-row">
             <span>{{ summary.completed }}/{{ summary.total }} students completed</span>
             <span v-if="summary.avgAccuracy !== null">{{ summary.avgAccuracy }}% avg accuracy</span>
+            <span class="legend">
+              <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('clean_correct') }"></span>Clean</span>
+              <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('corrected') }"></span>Corrected / close</span>
+              <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('failed') }"></span>Failed</span>
+              <span class="legend-item"><span class="legend-dot legend-empty">·</span>Not attempted</span>
+            </span>
           </div>
         </template>
       </div>
     </div>
+
+    <!-- Floating non-modal observation viewers (issue #7). Lives outside
+         .modal-content so the grid stays visible behind. -->
+    <ObservationPopupManager ref="popupManager" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAssignments } from '../../composables/useAssignments.js'
+import { useTeacherRole } from '../../composables/useTeacherRole.js'
+import { STATUS_COLORS } from '../../utils/studentProgressData.js'
+import ObservationPopupManager from '../ObservationPopupManager.vue'
 
 const props = defineProps({
   assignmentId: { type: String, required: true }
@@ -83,10 +115,133 @@ const props = defineProps({
 defineEmits(['close'])
 
 const assignments = useAssignments()
+const teacherRole = useTeacherRole()
 const loading = ref(true)
 const error = ref(null)
+const popupManager = ref(null)
 
 const assignment = computed(() => assignments.currentAssignment.value)
+const boards = computed(() => assignment.value?.boards || [])
+const cells = computed(() => assignment.value?.cells || [])
+
+// Decide whether to qualify each board with its lesson prefix. If
+// every board in the exercise is from the same lesson, just show the
+// deal_number. If lessons are mixed, prepend a 2-letter abbreviation
+// so the teacher can tell them apart at a glance.
+const isMixedLesson = computed(() => {
+  const subfolders = new Set(boards.value.map(b => b.deal_subfolder))
+  return subfolders.size > 1
+})
+
+function boardKey(b) {
+  return `${b.deal_subfolder}:${b.deal_number}`
+}
+
+function boardLabel(b, i) {
+  if (!isMixedLesson.value) return String(i + 1)
+  const prefix = (b.deal_subfolder || '?').slice(0, 1).toUpperCase()
+  return `${prefix}${b.deal_number}`
+}
+
+function boardTooltip(b) {
+  return `${b.deal_subfolder} #${b.deal_number}`
+}
+
+// Rows: one per student, with per-board cells indexed by boardKey.
+const rows = computed(() => {
+  const progress = assignment.value?.student_progress || []
+  const byStudent = new Map()
+  for (const c of cells.value) {
+    if (!byStudent.has(c.student_id)) byStudent.set(c.student_id, {})
+    byStudent.get(c.student_id)[boardKey(c)] = c
+  }
+
+  return progress.map(s => {
+    const byBoard = byStudent.get(s.student_id) || {}
+    let cleanCount = 0
+    let correctCount = 0
+    let attemptedCount = 0
+    for (const k in byBoard) {
+      const cell = byBoard[k]
+      attemptedCount++
+      if (cell.status === 'clean_correct') cleanCount++
+      if (cell.correct) correctCount++
+    }
+    return {
+      student: s,
+      byBoard,
+      cleanCount,
+      correctCount,
+      attemptedCount,
+    }
+  })
+})
+
+// Per-board pass rate footer (issue #7 difficulty hint).
+function boardStats(b) {
+  const key = boardKey(b)
+  let attempted = 0
+  let clean = 0
+  for (const c of cells.value) {
+    if (boardKey(c) !== key) continue
+    attempted++
+    if (c.status === 'clean_correct') clean++
+  }
+  return { attempted, clean }
+}
+
+function boardPassTooltip(b) {
+  const s = boardStats(b)
+  if (s.attempted === 0) return `${boardTooltip(b)}: not attempted by anyone`
+  return `${boardTooltip(b)}: ${s.clean}/${s.attempted} clean_correct`
+}
+
+function passClass({ clean, attempted }) {
+  if (attempted === 0) return ''
+  const pct = clean / attempted
+  if (pct >= 0.75) return 'pass-high'
+  if (pct >= 0.50) return 'pass-mid'
+  return 'pass-low'
+}
+
+// Status → color, taking the §5.4 drilldown shortcut (close_correct
+// and corrected both render orange). STATUS_COLORS already encodes
+// this convention; this wrapper just defaults unknowns to grey.
+function cellColor(status) {
+  return STATUS_COLORS[status] || STATUS_COLORS.not_attempted
+}
+
+function cellGlyph(status) {
+  switch (status) {
+    case 'clean_correct': return '✓'
+    case 'corrected':     return '~'
+    case 'close_correct': return '≈'
+    case 'failed':        return '✗'
+    default:              return ''
+  }
+}
+
+function cellTooltip(student, board, cell) {
+  const status = cell.status || 'unknown'
+  const ts = formatTimestamp(cell.timestamp)
+  return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status} · ${ts}`
+}
+
+async function openCell(student, cell, event) {
+  if (!popupManager.value) return
+  const rawTs = new Date(cell.timestamp).getTime()
+  const decrypted = await teacherRole.findAndDecryptObservation(
+    student.student_id,
+    rawTs,
+    cell.deal_number,
+    cell.correct,
+  )
+  if (decrypted) {
+    popupManager.value.openObservation(decrypted, event)
+  } else {
+    console.warn('Observation decryption failed — teacher private key may be missing')
+  }
+}
 
 const summary = computed(() => {
   const progress = assignment.value?.student_progress
@@ -112,27 +267,17 @@ function formatDate(dateStr) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function progressPct(student) {
-  if (!student.total_boards) return '0%'
-  return Math.round((student.attempted_boards / student.total_boards) * 100) + '%'
+function formatTimestamp(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function progressClass(student) {
-  if (student.attempted_boards >= student.total_boards) return 'complete'
-  if (student.attempted_boards > 0) return 'partial'
-  return ''
-}
-
-function accuracyPct(student) {
-  if (student.attempted_boards === 0) return '\u2014'
-  return Math.round((student.correct_boards / student.attempted_boards) * 100) + '%'
-}
-
-function accuracyClass(student) {
-  if (student.attempted_boards === 0) return ''
-  const pct = (student.correct_boards / student.attempted_boards) * 100
-  if (pct >= 80) return 'accuracy-high'
-  if (pct >= 50) return 'accuracy-mid'
+function accuracyClass(row) {
+  if (row.attemptedCount === 0) return ''
+  const pct = row.correctCount / row.attemptedCount
+  if (pct >= 0.80) return 'accuracy-high'
+  if (pct >= 0.50) return 'accuracy-mid'
   return 'accuracy-low'
 }
 
@@ -154,29 +299,31 @@ onMounted(async () => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 2000;
-  padding: 20px;
+  padding: 40px 20px;
+  overflow-y: auto;
 }
 
 .modal-content {
   background: white;
   border-radius: var(--radius-card, 10px);
-  max-width: 600px;
+  max-width: 1100px;
   width: 100%;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
 }
 
 .modal-body {
-  padding: 32px;
+  padding: 28px 32px;
 }
 
 .modal-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
+  gap: 16px;
 }
 
 .modal-header h2 {
@@ -186,10 +333,22 @@ onMounted(async () => {
   margin: 0;
 }
 
+.assignment-meta {
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.meta-item {
+  white-space: nowrap;
+}
+
 .close-btn {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 26px;
   color: var(--text-muted, #9ca3af);
   cursor: pointer;
   padding: 0 4px;
@@ -200,127 +359,180 @@ onMounted(async () => {
   color: var(--text-primary, #1a1a1a);
 }
 
-.assignment-meta {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  font-size: 14px;
-  color: var(--text-secondary, #6b7280);
-}
-
-.meta-item {
-  white-space: nowrap;
-}
-
-/* Progress table */
-.progress-table-wrapper {
+/* Grid */
+.grid-wrapper {
   overflow-x: auto;
+  border: 1px solid var(--card-border, #e0ddd7);
+  border-radius: 6px;
 }
 
-.progress-table {
+.grid-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.progress-table th {
-  text-align: left;
+.grid-table thead th,
+.grid-table tfoot td {
+  background: #fafafa;
   font-weight: 500;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted, #9ca3af);
-  padding: 0 12px 8px 0;
+  padding: 8px 6px;
   border-bottom: 1px solid var(--card-border, #e0ddd7);
 }
 
-.progress-table td {
-  padding: 10px 12px 10px 0;
+.grid-table tfoot td {
+  border-bottom: none;
+  border-top: 1px solid var(--card-border, #e0ddd7);
+}
+
+.grid-table tbody td {
+  padding: 6px;
   border-bottom: 1px solid #f3f4f6;
   color: var(--text-primary, #1a1a1a);
+  vertical-align: middle;
+}
+
+.grid-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .col-name {
+  text-align: left;
+  white-space: nowrap;
+  padding-left: 12px !important;
   min-width: 140px;
 }
 
-.col-progress {
-  min-width: 150px;
+.col-board {
+  text-align: center;
+  width: 36px;
+  min-width: 36px;
 }
 
-.col-correct,
-.col-accuracy {
+.col-score {
+  text-align: right;
+  padding-right: 12px !important;
   white-space: nowrap;
-  text-align: center;
+  min-width: 90px;
 }
 
-.progress-table th.col-correct,
-.progress-table th.col-accuracy {
-  text-align: center;
+/* Cells */
+.cell {
+  padding: 4px !important;
 }
 
-/* Progress bar within table cell */
-.progress-cell {
-  display: flex;
+.cell-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  transition: transform 0.12s, box-shadow 0.12s;
 }
 
-.progress-bar-track {
-  flex: 1;
-  height: 8px;
-  background: #f3f4f6;
-  border-radius: 4px;
-  overflow: hidden;
+.cell-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
-.progress-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  background: #d1d5db;
-  transition: width 0.3s ease;
-}
-
-.progress-bar-fill.partial {
-  background: #fbbf24;
-}
-
-.progress-bar-fill.complete {
-  background: var(--green-mid, #40916c);
-}
-
-.progress-label {
-  font-size: 12px;
+.cell-empty {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
   color: var(--text-muted, #9ca3af);
-  white-space: nowrap;
-  min-width: 30px;
+  font-size: 18px;
+  user-select: none;
 }
 
-/* Accuracy colors */
-.accuracy-high {
-  color: var(--green-mid, #40916c);
+/* Per-row score column */
+.score-text {
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
-.accuracy-mid {
-  color: #d97706;
+.accuracy-text {
+  font-size: 11px;
+  margin-left: 6px;
   font-weight: 500;
 }
 
-.accuracy-low {
-  color: var(--red, #ef4444);
+.accuracy-high { color: var(--green-mid, #40916c); }
+.accuracy-mid { color: #d97706; }
+.accuracy-low { color: var(--red, #ef4444); }
+
+/* Pass rate footer */
+.pass-row td {
+  font-variant-numeric: tabular-nums;
+}
+
+.pass-label {
+  text-align: left;
+  padding-left: 12px !important;
+}
+
+.pass-cell {
+  text-align: center;
+  font-size: 11px !important;
   font-weight: 500;
 }
+
+.pass-high { color: var(--green-mid, #40916c); }
+.pass-mid  { color: #d97706; }
+.pass-low  { color: var(--red, #ef4444); }
+.pass-empty { color: var(--text-muted, #d1d5db); }
 
 /* Summary */
 .summary-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--card-border, #e0ddd7);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary, #6b7280);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.legend-empty {
+  background: transparent;
+  text-align: center;
+  color: var(--text-muted, #9ca3af);
+  line-height: 10px;
+  font-size: 12px;
 }
 
 /* States */
@@ -339,9 +551,7 @@ onMounted(async () => {
   margin: 0 auto 12px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .empty-state {
   text-align: center;
