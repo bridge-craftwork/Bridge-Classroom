@@ -165,6 +165,8 @@ async fn fetch_assignments_for_exercises(
         .take(exercise_ids.len())
         .collect::<Vec<_>>()
         .join(",");
+    // `users` stores names as (first_name, last_name) — no `name`
+    // column. Concatenate for display.
     let sql = format!(
         r#"
         SELECT
@@ -174,7 +176,7 @@ async fn fetch_assignments_for_exercises(
             c.name         AS classroom_name,
             a.student_id   AS student_id,
             a.assigned_by  AS assigned_by,
-            u.name         AS assigned_by_name,
+            TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS assigned_by_name,
             a.assigned_at  AS assigned_at,
             a.due_at       AS due_at
         FROM assignments a
