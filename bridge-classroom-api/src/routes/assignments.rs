@@ -385,12 +385,10 @@ async fn list_classroom_assignments(
 /// Compute progress for a single student on an exercise.
 /// Returns (total_boards, attempted_boards, correct_boards).
 ///
-/// Issue #15: filters by the explicit `observations.assignment_id`
-/// link rather than the legacy time-window fuzzy match. The startup
-/// backfill in `admin::backfill_observation_context` populates
-/// `assignment_id` on historical rows using the same fuzzy criteria
-/// the old query encoded, so existing displays read the same numbers
-/// after migration.
+/// Filters by the explicit `observations.assignment_id` link
+/// (issue #15). Historical rows were migrated to populate this column
+/// via a one-shot startup backfill that has since been retired; new
+/// inserts set it directly from the assignment-mode practice flow.
 async fn compute_student_progress(
     state: &AppState,
     assignment_id: &str,

@@ -49,20 +49,6 @@ async fn main() -> anyhow::Result<()> {
     let db = db::init_db(&config.database_url).await?;
     tracing::info!("Database initialized");
 
-    // Observation context backfill (issue #15, TEMPORARY). One-shot
-    // pass that links pre-rollout observations to their owning
-    // assignment via the same fuzzy time-window match the GUI has been
-    // using. No decryption involved — investigation showed the
-    // encrypted blob never actually carried `assignment.id`. Idempotent
-    // via the `assignment_id IS NULL` guard inside the function;
-    // remove this hook (and `routes::admin::backfill_observation_context`,
-    // and the `observations.context_resolved_at` column) once prod
-    // counts are verified.
-    match routes::backfill_observation_context(&db).await {
-        Ok(stats) => tracing::info!("Context backfill stats: {:?}", stats),
-        Err(e) => tracing::error!("Context backfill failed (continuing anyway): {}", e),
-    }
-
     // Build CORS layer
     let cors = build_cors_layer(&config);
 

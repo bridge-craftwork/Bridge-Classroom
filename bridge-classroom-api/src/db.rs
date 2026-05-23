@@ -676,15 +676,6 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     add_column_if_missing(pool, "observations", "assignment_id", "TEXT").await?;
     add_column_if_missing(pool, "observations", "jungle", "INTEGER NOT NULL DEFAULT 0").await?;
 
-    // Stamp set by the startup backfill once a row's context fields have
-    // been resolved from its encrypted blob (issue #15 / §11.5). Null
-    // means "never visited"; non-null means "checked, either filled in
-    // or confirmed there was no assignment in the blob." Used as the
-    // idempotency gate so every startup re-runs the backfill cheaply
-    // and only touches new rows. Safe to drop once the backfill is
-    // retired.
-    add_column_if_missing(pool, "observations", "context_resolved_at", "TEXT").await?;
-
     // ---- New board_status columns (per CORRECTNESS_AND_MASTERY.md §6, §7) ----
     // The old `achievement` column is intentionally left in place; the
     // new model replaces it with the (max_stars, wild_achievement) pair,
