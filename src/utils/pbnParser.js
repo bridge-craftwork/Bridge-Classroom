@@ -16,12 +16,17 @@ export function parsePbn(pbnContent) {
   let currentCommentary = []
   let inCommentary = false
   let commentaryBuffer = ''
+  let fileBridgeContext = ''
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
-    // Skip header lines (start with %)
-    if (line.startsWith('%')) continue
+    // Capture file-level %bridge-context: line, then skip all % header lines
+    if (line.startsWith('%')) {
+      const ctxMatch = line.match(/^%\s*bridge-context\s*:\s*(.+?)\s*$/i)
+      if (ctxMatch) fileBridgeContext = ctxMatch[1]
+      continue
+    }
 
     // Handle commentary blocks {...}
     if (inCommentary) {
@@ -74,6 +79,7 @@ export function parsePbn(pbnContent) {
         // Start new deal
         currentDeal = createEmptyDeal()
         currentDeal.boardNumber = parseInt(tagValue, 10)
+        currentDeal.bridgeContext = fileBridgeContext
         currentCommentary = []
       } else if (currentDeal) {
         switch (tagName) {
@@ -375,7 +381,8 @@ function createEmptyDeal() {
     event: '',            // Event name (e.g., "Bridge Lesson - Stayman")
     skillPath: null,      // Skill path (e.g., "bidding_conventions/stayman")
     category: null,       // Category (e.g., "Bidding Conventions")
-    difficulty: null      // Difficulty level (beginner, intermediate, advanced, mixed)
+    difficulty: null,     // Difficulty level (beginner, intermediate, advanced, mixed)
+    bridgeContext: ''     // File-level %bridge-context: convention/carding summary
   }
 }
 

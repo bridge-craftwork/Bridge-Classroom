@@ -40,6 +40,11 @@
       </div>
     </div>
 
+    <div v-if="bridgeContext" class="bridge-context">
+      <span class="bridge-context-icon" aria-hidden="true">ⓘ</span>
+      <span class="bridge-context-text">{{ bridgeContext }}</span>
+    </div>
+
     <div v-if="title" class="title">{{ title }}</div>
   </div>
 </template>
@@ -92,6 +97,10 @@ const props = defineProps({
   dealBoardNumbers: {
     type: Array,
     default: () => []
+  },
+  bridgeContext: {
+    type: String,
+    default: ''
   }
 })
 
@@ -267,6 +276,32 @@ const openingLeadHtml = computed(() => {
 
 .lead-card :deep(.black) {
   color: #000;
+}
+
+.bridge-context {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #0d3a66;
+}
+
+.bridge-context-icon {
+  color: #1976d2;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.bridge-context-text {
+  flex: 1;
+  word-wrap: break-word;
 }
 
 .title {

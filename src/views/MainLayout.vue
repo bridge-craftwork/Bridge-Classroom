@@ -102,6 +102,7 @@
               :totalDeals="deals.length"
               :currentIndex="currentDealIndex"
               :dealBoardNumbers="deals.map(d => d.boardNumber)"
+              :bridgeContext="currentDeal?.bridgeContext || ''"
               @goto="gotoDeal"
             />
 
