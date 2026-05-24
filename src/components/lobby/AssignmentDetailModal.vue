@@ -88,6 +88,13 @@
             <p>No students assigned yet.</p>
           </div>
 
+          <!-- Cell-click error banner (dismissed when clicking a
+               different cell or when one succeeds) -->
+          <div v-if="cellError" class="cell-error-banner" role="alert">
+            {{ cellError }}
+            <button class="cell-error-close" @click="cellError = null" aria-label="Dismiss">&times;</button>
+          </div>
+
           <!-- Summary -->
           <div v-if="summary" class="summary-row">
             <span>{{ summary.completed }}/{{ summary.total }} students completed</span>
@@ -127,6 +134,9 @@ const teacherRole = useTeacherRole()
 const loading = ref(true)
 const error = ref(null)
 const popupManager = ref(null)
+// Transient error from openCell so failed decryption is visible to
+// the teacher instead of silently console.warn'd.
+const cellError = ref(null)
 
 const assignment = computed(() => assignments.currentAssignment.value)
 const boards = computed(() => assignment.value?.boards || [])
@@ -237,6 +247,21 @@ function cellTooltip(student, board, cell) {
 
 async function openCell(student, cell, event) {
   if (!popupManager.value) return
+  cellError.value = null
+  // Capture the click position upfront — `await` below means by the
+  // time openObservation runs the event has been recycled.
+  const clickPos = event
+    ? { clientX: event.clientX, clientY: event.clientY }
+    : null
+
+  // findAndDecryptObservation reads from a per-student observation
+  // cache populated by fetchStudentObservations(). In the
+  // StudentProgressPanel context the parent loads those observations
+  // eagerly; in the AssignmentDetailModal we don't, so do it lazily
+  // on first click for this student. The composable caches by user_id
+  // for 5 minutes so repeated clicks are cheap.
+  await teacherRole.fetchStudentObservations(student.student_id)
+
   const rawTs = new Date(cell.timestamp).getTime()
   const decrypted = await teacherRole.findAndDecryptObservation(
     student.student_id,
@@ -245,9 +270,13 @@ async function openCell(student, cell, event) {
     cell.correct,
   )
   if (decrypted) {
-    popupManager.value.openObservation(decrypted, event)
+    popupManager.value.openObservation(decrypted, clickPos)
   } else {
-    console.warn('Observation decryption failed — teacher private key may be missing')
+    // Most common cause: the student hasn't granted observation
+    // viewing to this teacher (no decryption key path). Surface it
+    // so the click doesn't appear to do nothing.
+    cellError.value = `Could not load this observation. ${student.first_name} may not have granted viewing access yet.`
+    console.warn('Observation decryption failed — fetched observations did not include the cell, or no decryption grant')
   }
 }
 
@@ -453,6 +482,29 @@ onMounted(async () => {
 
 .duration-empty {
   color: var(--text-muted, #d1d5db);
+}
+
+.cell-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.cell-error-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
 }
 
 /* Cells */
