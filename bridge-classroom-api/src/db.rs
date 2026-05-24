@@ -676,6 +676,13 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     add_column_if_missing(pool, "observations", "assignment_id", "TEXT").await?;
     add_column_if_missing(pool, "observations", "jungle", "INTEGER NOT NULL DEFAULT 0").await?;
 
+    // Per-play total time spent on the board, in milliseconds (issue #7).
+    // Sum of prompts[].time_ms for board-level observations, falling
+    // back to result.time_taken_ms for prompt-level. Populated by the
+    // frontend on insert; backfilled once at startup from the encrypted
+    // blob for pre-existing rows.
+    add_column_if_missing(pool, "observations", "time_taken_ms", "INTEGER").await?;
+
     // ---- New board_status columns (per CORRECTNESS_AND_MASTERY.md §6, §7) ----
     // The old `achievement` column is intentionally left in place; the
     // new model replaces it with the (max_stars, wild_achievement) pair,

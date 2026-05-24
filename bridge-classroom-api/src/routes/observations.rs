@@ -84,9 +84,10 @@ pub async fn submit_observations(
             INSERT INTO observations (
                 id, user_id, timestamp, skill_path, correct, classroom,
                 deal_subfolder, deal_number, encrypted_data, iv, created_at,
-                board_result, wilderness, exercise_id, assignment_id, jungle
+                board_result, wilderness, exercise_id, assignment_id, jungle,
+                time_taken_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 encrypted_data = excluded.encrypted_data,
                 iv             = excluded.iv,
@@ -96,7 +97,8 @@ pub async fn submit_observations(
                 wilderness     = excluded.wilderness,
                 exercise_id    = excluded.exercise_id,
                 assignment_id  = excluded.assignment_id,
-                jungle         = excluded.jungle
+                jungle         = excluded.jungle,
+                time_taken_ms  = COALESCE(excluded.time_taken_ms, observations.time_taken_ms)
             "#,
         )
         .bind(&obs.id)
@@ -115,6 +117,7 @@ pub async fn submit_observations(
         .bind(&obs.exercise_id)
         .bind(&obs.assignment_id)
         .bind(obs.jungle)
+        .bind(obs.time_taken_ms)
         .execute(&state.db)
         .await
         {

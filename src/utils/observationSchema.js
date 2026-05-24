@@ -189,8 +189,41 @@ export function extractMetadata(observation, classroom) {
     // decryption.
     exercise_id: observation.exercise_id || null,
     assignment_id: observation.assignment?.id || null,
-    jungle: observation.jungle === true
+    jungle: observation.jungle === true,
+    // Total time the student spent on this board, in ms. Sum of
+    // per-prompt times when we have a prompts[] array (board-level
+    // observations), else the single per-prompt time. Lifted into
+    // the clear so the teacher's assignment-duration analytics
+    // doesn't need to decrypt the blob (issue #7).
+    time_taken_ms: computeTotalTimeMs(observation)
   }
+}
+
+/**
+ * Compute total board time in ms from an observation. Board-level
+ * observations carry per-prompt times in `prompts[]`; prompt-level
+ * observations have a single `result.time_taken_ms`. The fallback
+ * returns null when neither is populated rather than 0, so the
+ * backend can distinguish "we don't know" from "they took zero
+ * milliseconds."
+ */
+function computeTotalTimeMs(observation) {
+  const prompts = Array.isArray(observation.prompts) ? observation.prompts : []
+  if (prompts.length > 0) {
+    let total = 0
+    let any = false
+    for (const p of prompts) {
+      const t = Number(p?.time_ms)
+      if (Number.isFinite(t) && t >= 0) {
+        total += t
+        any = true
+      }
+    }
+    if (any) return total
+  }
+  const single = Number(observation?.result?.time_taken_ms)
+  if (Number.isFinite(single) && single >= 0) return single
+  return null
 }
 
 /**

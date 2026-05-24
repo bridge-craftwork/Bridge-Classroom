@@ -89,6 +89,10 @@ pub struct StudentAssignmentProgress {
     pub attempted_boards: i64,
     pub correct_boards: i64,
     pub total_boards: i64,
+    /// Total active time this student has spent on this assignment,
+    /// in seconds. Sum of `time_taken_ms` across their observations,
+    /// scaled to seconds. Issue #7.
+    pub active_duration_sec: i64,
 }
 
 /// One column header in the assignment grid view (issue #7).

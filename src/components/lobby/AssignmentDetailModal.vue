@@ -38,6 +38,7 @@
                     {{ boardLabel(b, i) }}
                   </th>
                   <th class="col-score">Score</th>
+                  <th class="col-duration" title="Active time on this assignment (sum of per-board time spent)">Time</th>
                 </tr>
               </thead>
               <tbody>
@@ -60,6 +61,12 @@
                     <span class="score-text">{{ row.correctCount }}/{{ row.attemptedCount }}</span>
                     <span v-if="row.attemptedCount > 0" class="accuracy-text" :class="accuracyClass(row)">{{ Math.round(row.correctCount / row.attemptedCount * 100) }}%</span>
                   </td>
+                  <td class="col-duration">
+                    <span v-if="row.student.active_duration_sec > 0" class="duration-text">
+                      {{ formatDuration(row.student.active_duration_sec) }}
+                    </span>
+                    <span v-else class="duration-empty">—</span>
+                  </td>
                 </tr>
               </tbody>
               <tfoot>
@@ -70,6 +77,7 @@
                     <span v-else class="pass-empty">—</span>
                   </td>
                   <td class="col-score"></td>
+                  <td class="col-duration"></td>
                 </tr>
               </tfoot>
             </table>
@@ -273,6 +281,16 @@ function formatTimestamp(ts) {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function formatDuration(sec) {
+  if (sec == null || sec <= 0) return '—'
+  if (sec < 60) return `${sec}s`
+  const mins = Math.round(sec / 60)
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins ? `${hours}h${remMins}m` : `${hours}h`
+}
+
 function accuracyClass(row) {
   if (row.attemptedCount === 0) return ''
   const pct = row.correctCount / row.attemptedCount
@@ -418,6 +436,23 @@ onMounted(async () => {
   padding-right: 12px !important;
   white-space: nowrap;
   min-width: 90px;
+}
+
+.col-duration {
+  text-align: right;
+  padding-right: 12px !important;
+  white-space: nowrap;
+  min-width: 50px;
+}
+
+.duration-text {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.duration-empty {
+  color: var(--text-muted, #d1d5db);
 }
 
 /* Cells */

@@ -26,6 +26,9 @@ pub struct Observation {
     pub exercise_id: Option<String>,
     pub assignment_id: Option<String>,
     pub jungle: bool,
+    /// Total time spent on the board, ms. Lifted from the encrypted
+    /// blob so the analytics path doesn't need decryption (issue #7).
+    pub time_taken_ms: Option<i64>,
 }
 
 /// Metadata-only observation (for dashboard queries)
@@ -86,6 +89,13 @@ pub struct ObservationMetadataInput {
     pub assignment_id: Option<String>,
     #[serde(default)]
     pub jungle: bool,
+    /// Total time the student spent on this board, in ms. Sum of
+    /// per-prompt times computed by the frontend. None for clients
+    /// that haven't been updated; the historical-data startup
+    /// backfill populates the column from the encrypted blob.
+    /// Issue #7.
+    #[serde(default)]
+    pub time_taken_ms: Option<i64>,
 }
 
 /// Request to submit observations
@@ -172,6 +182,7 @@ impl Observation {
             exercise_id: enc.metadata.exercise_id,
             assignment_id: enc.metadata.assignment_id,
             jungle: enc.metadata.jungle,
+            time_taken_ms: enc.metadata.time_taken_ms,
         }
     }
 }

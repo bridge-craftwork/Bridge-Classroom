@@ -448,13 +448,6 @@ async fn list_classroom_assignments(
     }))
 }
 
-/// Idle-gap cutoff for active-duration analytics. Gaps larger than
-/// this between two consecutive observation submissions are treated
-/// as "student stepped away" and excluded from the active duration.
-/// Five minutes — long enough to cover an unusually slow board
-/// without including coffee breaks. Issue #7 phase 4.
-const ACTIVE_GAP_CUTOFF_SECS: f64 = 300.0;
-
 #[derive(Default)]
 struct AssignmentStats {
     student_name: Option<String>,
@@ -471,9 +464,9 @@ struct LatestObsRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct UserTimestampRow {
+struct UserDurationRow {
     user_id: String,
-    timestamp: String,
+    total_time_ms: Option<i64>,
 }
 
 /// Compute per-assignment rollup stats: participation, per-student
@@ -558,15 +551,17 @@ async fn compute_assignment_stats(
         .collect();
     stats.clean_rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Active duration per student: sum of consecutive-observation
-    // gaps within ACTIVE_GAP_CUTOFF_SECS. Computed in Rust because
-    // older SQLite builds may not have window functions.
-    let ts_rows: Vec<UserTimestampRow> = sqlx::query_as(
+    // Active duration per student: sum of per-play `time_taken_ms`
+    // populated from the encrypted blob's prompts[].time_ms (the
+    // student's actual time on each board). Inter-board idle is
+    // inherently excluded — we never include it in the first place.
+    // Users with all-null time values get 0 in the result.
+    let duration_rows: Vec<UserDurationRow> = sqlx::query_as(
         r#"
-        SELECT user_id, timestamp
+        SELECT user_id, SUM(time_taken_ms) AS total_time_ms
         FROM observations
         WHERE assignment_id = ?
-        ORDER BY user_id, timestamp
+        GROUP BY user_id
         "#,
     )
     .bind(assignment_id)
@@ -574,29 +569,9 @@ async fn compute_assignment_stats(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let mut current_user: Option<String> = None;
-    let mut prev_ts: Option<chrono::DateTime<chrono::Utc>> = None;
-    let mut per_user_active: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
-    for row in &ts_rows {
-        let ts = row.timestamp.parse::<chrono::DateTime<chrono::Utc>>().ok();
-        if current_user.as_deref() != Some(row.user_id.as_str()) {
-            current_user = Some(row.user_id.clone());
-            prev_ts = ts;
-            // Ensure the user appears in the map even if only one play.
-            per_user_active.entry(row.user_id.clone()).or_insert(0.0);
-            continue;
-        }
-        if let (Some(p), Some(t)) = (prev_ts, ts) {
-            let gap = (t - p).num_milliseconds() as f64 / 1000.0;
-            if gap > 0.0 && gap < ACTIVE_GAP_CUTOFF_SECS {
-                *per_user_active.entry(row.user_id.clone()).or_insert(0.0) += gap;
-            }
-        }
-        prev_ts = ts;
-    }
-    stats.active_durations_sec = per_user_active
-        .values()
-        .map(|s| s.round() as i64)
+    stats.active_durations_sec = duration_rows
+        .iter()
+        .map(|r| r.total_time_ms.unwrap_or(0) / 1000)
         .collect();
     stats.active_durations_sec.sort();
 
@@ -723,6 +698,25 @@ pub async fn get_assignment(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+        // One query for per-student total time on this assignment.
+        // Avoids N+1 across classroom members.
+        let duration_rows: Vec<UserDurationRow> = sqlx::query_as(
+            r#"
+            SELECT user_id, SUM(time_taken_ms) AS total_time_ms
+            FROM observations
+            WHERE assignment_id = ?
+            GROUP BY user_id
+            "#,
+        )
+        .bind(&row.id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let duration_by_user: std::collections::HashMap<String, i64> = duration_rows
+            .into_iter()
+            .map(|r| (r.user_id, r.total_time_ms.unwrap_or(0) / 1000))
+            .collect();
+
         for member in members {
             let progress = compute_student_progress(
                 &state,
@@ -732,6 +726,11 @@ pub async fn get_assignment(
             )
             .await?;
 
+            let active_duration_sec = duration_by_user
+                .get(&member.student_id)
+                .copied()
+                .unwrap_or(0);
+
             student_progress.push(StudentAssignmentProgress {
                 student_id: member.student_id,
                 first_name: member.first_name,
@@ -739,6 +738,7 @@ pub async fn get_assignment(
                 attempted_boards: progress.1,
                 correct_boards: progress.2,
                 total_boards: progress.0,
+                active_duration_sec,
             });
         }
     } else if let Some(ref sid) = row.student_id {
@@ -754,6 +754,15 @@ pub async fn get_assignment(
         if let Some(s) = student {
             let progress =
                 compute_student_progress(&state, &row.id, &row.exercise_id, sid).await?;
+            let total_ms: Option<i64> = sqlx::query_scalar(
+                "SELECT SUM(time_taken_ms) FROM observations WHERE assignment_id = ? AND user_id = ?",
+            )
+            .bind(&row.id)
+            .bind(sid)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let active_duration_sec = total_ms.unwrap_or(0) / 1000;
             student_progress.push(StudentAssignmentProgress {
                 student_id: s.student_id,
                 first_name: s.first_name,
@@ -761,6 +770,7 @@ pub async fn get_assignment(
                 attempted_boards: progress.1,
                 correct_boards: progress.2,
                 total_boards: progress.0,
+                active_duration_sec,
             });
         }
     }
