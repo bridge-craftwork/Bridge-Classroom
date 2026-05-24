@@ -36,6 +36,11 @@
                   <th class="col-name">Student</th>
                   <th v-for="(b, i) in boards" :key="boardKey(b)" class="col-board" :title="boardTooltip(b)">
                     {{ boardLabel(b, i) }}
+                    <span
+                      v-if="isMixedLesson"
+                      class="lesson-swatch"
+                      :style="{ backgroundColor: lessonColor(b) }"
+                    ></span>
                   </th>
                   <th class="col-score">Score</th>
                   <th class="col-duration" title="Active time on this assignment (sum of per-board time spent)">Time</th>
@@ -93,6 +98,18 @@
           <div v-if="cellError" class="cell-error-banner" role="alert">
             {{ cellError }}
             <button class="cell-error-close" @click="cellError = null" aria-label="Dismiss">&times;</button>
+          </div>
+
+          <!-- Lesson legend for mixed-lesson exercises. Decodes the
+               colored swatches under each column header. -->
+          <div v-if="lessonLegend.length" class="lesson-legend">
+            <span
+              v-for="entry in lessonLegend" :key="entry.subfolder"
+              class="lesson-legend-item"
+            >
+              <span class="lesson-swatch lesson-swatch-legend" :style="{ backgroundColor: entry.color }"></span>
+              {{ entry.subfolder }}
+            </span>
           </div>
 
           <!-- Summary -->
@@ -165,6 +182,49 @@ function boardLabel(b, i) {
 function boardTooltip(b) {
   return `${b.deal_subfolder} #${b.deal_number}`
 }
+
+// Color-code board columns by their deal_subfolder so a teacher can
+// tell which boards came from which lesson at a glance — useful for
+// mixed-lesson exercises where the 1-letter prefix can collide (e.g.
+// "T5" vs "24" when one subfolder starts with a digit). One distinct
+// hue per subfolder, picked from a fixed palette that avoids the
+// status colors (green/orange/red/grey) used by the cells.
+const LESSON_PALETTE = [
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#06b6d4', // cyan
+  '#d97706', // amber
+  '#db2777', // pink
+  '#65a30d', // lime
+  '#0891b2', // teal
+  '#9333ea', // purple
+]
+
+const lessonColors = computed(() => {
+  const map = new Map()
+  let idx = 0
+  for (const b of boards.value) {
+    if (!map.has(b.deal_subfolder)) {
+      map.set(b.deal_subfolder, LESSON_PALETTE[idx % LESSON_PALETTE.length])
+      idx++
+    }
+  }
+  return map
+})
+
+function lessonColor(b) {
+  return lessonColors.value.get(b.deal_subfolder) || '#9ca3af'
+}
+
+// Legend pairs (subfolder, color) for the bottom strip. Only render
+// when the exercise mixes lessons.
+const lessonLegend = computed(() => {
+  if (!isMixedLesson.value) return []
+  return Array.from(lessonColors.value.entries()).map(([subfolder, color]) => ({
+    subfolder,
+    color,
+  }))
+})
 
 // Rows: one per student, with per-board cells indexed by boardKey.
 const rows = computed(() => {
@@ -450,6 +510,38 @@ onMounted(async () => {
   text-align: center;
   width: 36px;
   min-width: 36px;
+}
+
+/* Lesson swatch under each board column header (mixed-lesson only).
+   Sits flush under the label so the column "owns" its color. */
+.grid-table thead .lesson-swatch {
+  display: block;
+  width: 70%;
+  height: 3px;
+  margin: 3px auto 0;
+  border-radius: 1.5px;
+}
+
+.lesson-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.lesson-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lesson-swatch-legend {
+  display: inline-block;
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
 }
 
 .col-score {

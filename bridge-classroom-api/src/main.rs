@@ -49,22 +49,6 @@ async fn main() -> anyhow::Result<()> {
     let db = db::init_db(&config.database_url).await?;
     tracing::info!("Database initialized");
 
-    // time_taken_ms backfill (issue #7, TEMPORARY). One-shot pass that
-    // decrypts pre-rollout observations and writes the per-board total
-    // time from the blob's prompts[].time_ms (or result.time_taken_ms)
-    // into the clear-text column. Idempotent via `time_taken_ms IS
-    // NULL`; remove the hook + `routes::admin::backfill_time_taken_ms`
-    // once prod numbers are verified. Skipped silently when
-    // RECOVERY_SECRET isn't configured.
-    if let Some(secret) = config.recovery_secret.as_deref() {
-        match routes::backfill_time_taken_ms(&db, secret).await {
-            Ok(stats) => tracing::info!("time_taken_ms backfill stats: {:?}", stats),
-            Err(e) => tracing::error!("time_taken_ms backfill failed (continuing anyway): {}", e),
-        }
-    } else {
-        tracing::info!("RECOVERY_SECRET not configured; skipping time_taken_ms backfill");
-    }
-
     // Build CORS layer
     let cors = build_cors_layer(&config);
 
