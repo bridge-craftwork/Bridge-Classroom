@@ -23,16 +23,28 @@
         class="assignment-row"
         @click="selectedAssignmentId = a.id"
       >
-        <div class="assignment-main">
-          <span class="assignment-name">{{ a.exercise_name }}</span>
-          <span v-if="a.classroom_name" class="assignment-classroom">{{ a.classroom_name }}</span>
-        </div>
-        <div class="assignment-meta">
-          <span class="assignment-boards">{{ a.total_boards }} {{ a.total_boards === 1 ? 'board' : 'boards' }}</span>
-          <span v-if="a.due_at" class="assignment-due" :class="{ overdue: isOverdue(a) }">
-            Due {{ formatDate(a.due_at) }}
-          </span>
-          <span v-else class="assignment-due no-due">No due date</span>
+        <div class="assignment-body">
+          <div class="assignment-top">
+            <div class="assignment-main">
+              <span class="assignment-name">{{ a.exercise_name }}</span>
+              <!--
+                Individual assignments don't have a classroom_name; the
+                backend supplies student_name so the row shows
+                "Terry Lee" instead of an empty subtitle (issue #7).
+              -->
+              <span v-if="assignmentSubtitle(a)" class="assignment-subtitle">
+                {{ assignmentSubtitle(a) }}
+              </span>
+            </div>
+            <div class="assignment-meta">
+              <span class="assignment-boards">{{ a.total_boards }} {{ a.total_boards === 1 ? 'board' : 'boards' }}</span>
+              <span v-if="a.due_at" class="assignment-due" :class="{ overdue: isOverdue(a) }">
+                Due {{ formatDate(a.due_at) }}
+              </span>
+              <span v-else class="assignment-due no-due">No due date</span>
+            </div>
+          </div>
+          <AssignmentStatChips :assignment="a" />
         </div>
         <span class="view-arrow">&#x203A;</span>
       </div>
@@ -58,6 +70,7 @@ import { useUserStore } from '../../../composables/useUserStore.js'
 import { useAssignments } from '../../../composables/useAssignments.js'
 import AssignmentCreateModal from '../AssignmentCreateModal.vue'
 import AssignmentDetailModal from '../AssignmentDetailModal.vue'
+import AssignmentStatChips from '../AssignmentStatChips.vue'
 
 const userStore = useUserStore()
 const assignmentStore = useAssignments()
@@ -67,6 +80,14 @@ const selectedAssignmentId = ref(null)
 
 const assignments = computed(() => assignmentStore.teacherAssignments.value)
 const loading = computed(() => assignmentStore.loading.value)
+
+// Classroom assignments show the classroom name; individual assignments
+// show the targeted student's name (the backend denormalizes it onto
+// the row). Per the screenshot in issue #7, an empty subtitle line on
+// individual assignments is a regression worth fixing.
+function assignmentSubtitle(a) {
+  return a.classroom_name || a.student_name || ''
+}
 
 function isOverdue(a) {
   if (!a.due_at) return false
@@ -173,7 +194,7 @@ onMounted(loadAssignments)
 
 .assignment-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
@@ -189,6 +210,19 @@ onMounted(loadAssignments)
   border-color: var(--green-mid, #40916c);
 }
 
+.assignment-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.assignment-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 16px;
+}
+
 .assignment-main {
   display: flex;
   flex-direction: column;
@@ -201,7 +235,7 @@ onMounted(loadAssignments)
   color: var(--text-primary, #1a1a1a);
 }
 
-.assignment-classroom {
+.assignment-subtitle {
   font-size: 13px;
   color: var(--text-secondary, #6b7280);
 }

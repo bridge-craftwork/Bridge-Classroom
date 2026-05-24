@@ -33,7 +33,14 @@ pub struct AssignmentQuery {
     pub assigned_by: Option<String>,
 }
 
-/// Assignment info with computed progress (for listings)
+/// Assignment info with computed progress (for listings).
+///
+/// Issue #7 phase 4 (time/participation analytics): the listing rolls
+/// up per-student stats so the AssignmentsTab can render box-and-whisker
+/// charts for clean-rate and active-duration distributions plus a
+/// participation bar. The arrays are intentionally raw (one entry per
+/// attempted student); the frontend computes quartiles/median for the
+/// boxplots. Active duration excludes idle gaps > 5 min between plays.
 #[derive(Debug, Serialize)]
 pub struct AssignmentInfo {
     pub id: String,
@@ -45,6 +52,12 @@ pub struct AssignmentInfo {
     pub classroom_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub student_id: Option<String>,
+    /// Denormalized student display name for individual assignments
+    /// (`student_id IS NOT NULL`). Lets the lobby show "Terry Lee"
+    /// where it would otherwise show the classroom name. Null for
+    /// classroom assignments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_name: Option<String>,
     pub assigned_by: String,
     pub assigned_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,6 +65,19 @@ pub struct AssignmentInfo {
     pub total_boards: i64,
     pub attempted_boards: i64,
     pub correct_boards: i64,
+    /// Total potential students (classroom membership count, or 1 for
+    /// individual assignments). Denominator for participation_rate.
+    pub student_count: i64,
+    /// Distinct students with at least one observation in this assignment.
+    pub student_count_attempted: i64,
+    /// Per-student clean-correct rate (0.0-1.0) for students who
+    /// attempted, sorted ascending. clean_correct boards ÷ attempted boards.
+    pub clean_rates: Vec<f64>,
+    /// Per-student active duration in seconds for students who
+    /// attempted, sorted ascending. Sum of gaps between consecutive
+    /// observation submissions, excluding gaps > 5 minutes (treated
+    /// as student-away-from-app idle time).
+    pub active_durations_sec: Vec<i64>,
 }
 
 /// Per-student progress within a classroom assignment

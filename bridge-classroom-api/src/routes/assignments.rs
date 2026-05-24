@@ -161,6 +161,35 @@ pub async fn create_assignment(
 
     tracing::info!("Assignment created: {} (exercise: {})", id, exercise_name);
 
+    // A brand-new assignment has no observations yet, so the
+    // analytics fields are all zero / empty. We still resolve
+    // `student_name` for individual assignments so the lobby can
+    // show it immediately.
+    let mut student_name: Option<String> = None;
+    if let Some(sid) = req.student_id.as_deref() {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT first_name, last_name FROM users WHERE id = ?",
+        )
+        .bind(sid)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if let Some((f, l)) = row {
+            student_name = Some(format!("{} {}", f, l).trim().to_string());
+        }
+    }
+    let initial_student_count: i64 = if let Some(cid) = req.classroom_id.as_deref() {
+        sqlx::query_scalar("SELECT COUNT(*) FROM classroom_members WHERE classroom_id = ?")
+            .bind(cid)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else if req.student_id.is_some() {
+        1
+    } else {
+        0
+    };
+
     Ok(Json(CreateAssignmentResponse {
         success: true,
         assignment: AssignmentInfo {
@@ -170,12 +199,17 @@ pub async fn create_assignment(
             classroom_id: req.classroom_id,
             classroom_name,
             student_id: req.student_id,
+            student_name,
             assigned_by: req.assigned_by,
             assigned_at: now,
             due_at: req.due_at,
             total_boards: board_count,
             attempted_boards: 0,
             correct_boards: 0,
+            student_count: initial_student_count,
+            student_count_attempted: 0,
+            clean_rates: Vec::new(),
+            active_durations_sec: Vec::new(),
         },
     }))
 }
@@ -247,6 +281,11 @@ async fn list_student_assignments(
     let mut assignments = Vec::new();
     for row in rows {
         let progress = compute_student_progress(state, &row.id, &row.exercise_id, student_id).await?;
+        let stats = compute_assignment_stats(
+            state, &row.id,
+            row.classroom_id.as_deref(),
+            row.student_id.as_deref(),
+        ).await?;
         assignments.push(AssignmentInfo {
             id: row.id,
             exercise_name: row.exercise_name,
@@ -254,12 +293,17 @@ async fn list_student_assignments(
             classroom_id: row.classroom_id,
             classroom_name: row.classroom_name,
             student_id: row.student_id,
+            student_name: stats.student_name,
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
             total_boards: progress.0,
             attempted_boards: progress.1,
             correct_boards: progress.2,
+            student_count: stats.student_count,
+            student_count_attempted: stats.student_count_attempted,
+            clean_rates: stats.clean_rates,
+            active_durations_sec: stats.active_durations_sec,
         });
     }
 
@@ -304,6 +348,12 @@ async fn list_teacher_assignments(
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+        let stats = compute_assignment_stats(
+            state, &row.id,
+            row.classroom_id.as_deref(),
+            row.student_id.as_deref(),
+        ).await?;
+
         assignments.push(AssignmentInfo {
             id: row.id,
             exercise_name: row.exercise_name,
@@ -311,12 +361,17 @@ async fn list_teacher_assignments(
             classroom_id: row.classroom_id,
             classroom_name: row.classroom_name,
             student_id: row.student_id,
+            student_name: stats.student_name,
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
             total_boards: board_count,
             attempted_boards: 0,
             correct_boards: 0,
+            student_count: stats.student_count,
+            student_count_attempted: stats.student_count_attempted,
+            clean_rates: stats.clean_rates,
+            active_durations_sec: stats.active_durations_sec,
         });
     }
 
@@ -360,6 +415,12 @@ async fn list_classroom_assignments(
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+        let stats = compute_assignment_stats(
+            state, &row.id,
+            row.classroom_id.as_deref(),
+            row.student_id.as_deref(),
+        ).await?;
+
         assignments.push(AssignmentInfo {
             id: row.id,
             exercise_name: row.exercise_name,
@@ -367,12 +428,17 @@ async fn list_classroom_assignments(
             classroom_id: row.classroom_id,
             classroom_name: row.classroom_name,
             student_id: row.student_id,
+            student_name: stats.student_name,
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
             total_boards: board_count,
             attempted_boards: 0,
             correct_boards: 0,
+            student_count: stats.student_count,
+            student_count_attempted: stats.student_count_attempted,
+            clean_rates: stats.clean_rates,
+            active_durations_sec: stats.active_durations_sec,
         });
     }
 
@@ -380,6 +446,161 @@ async fn list_classroom_assignments(
         success: true,
         assignments,
     }))
+}
+
+/// Idle-gap cutoff for active-duration analytics. Gaps larger than
+/// this between two consecutive observation submissions are treated
+/// as "student stepped away" and excluded from the active duration.
+/// Five minutes — long enough to cover an unusually slow board
+/// without including coffee breaks. Issue #7 phase 4.
+const ACTIVE_GAP_CUTOFF_SECS: f64 = 300.0;
+
+#[derive(Default)]
+struct AssignmentStats {
+    student_name: Option<String>,
+    student_count: i64,
+    student_count_attempted: i64,
+    clean_rates: Vec<f64>,
+    active_durations_sec: Vec<i64>,
+}
+
+#[derive(sqlx::FromRow)]
+struct LatestObsRow {
+    user_id: String,
+    status: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct UserTimestampRow {
+    user_id: String,
+    timestamp: String,
+}
+
+/// Compute per-assignment rollup stats: participation, per-student
+/// clean-correct rates, and per-student active durations. Pure
+/// SQL + a small Rust loop for the duration computation (avoiding
+/// SQLite version assumptions about LAG window functions).
+async fn compute_assignment_stats(
+    state: &AppState,
+    assignment_id: &str,
+    classroom_id: Option<&str>,
+    student_id: Option<&str>,
+) -> Result<AssignmentStats, (StatusCode, String)> {
+    let mut stats = AssignmentStats::default();
+
+    // Student name (only meaningful for individual assignments)
+    if let Some(sid) = student_id {
+        let name: Option<(String, String)> = sqlx::query_as(
+            "SELECT first_name, last_name FROM users WHERE id = ?",
+        )
+        .bind(sid)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if let Some((f, l)) = name {
+            stats.student_name = Some(format!("{} {}", f, l).trim().to_string());
+        }
+    }
+
+    // Total potential students
+    stats.student_count = if let Some(cid) = classroom_id {
+        sqlx::query_scalar("SELECT COUNT(*) FROM classroom_members WHERE classroom_id = ?")
+            .bind(cid)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else if student_id.is_some() {
+        1
+    } else {
+        0
+    };
+
+    // Per-student clean rate from latest observation per board.
+    // SQLite groups by (user, board) and selects the most-recent row's
+    // status via a correlated subquery — no window functions required.
+    let latest_rows: Vec<LatestObsRow> = sqlx::query_as(
+        r#"
+        SELECT o.user_id AS user_id, o.status AS status
+        FROM observations o
+        JOIN (
+            SELECT user_id, deal_subfolder, deal_number, MAX(timestamp) AS max_ts
+            FROM observations
+            WHERE assignment_id = ?
+            GROUP BY user_id, deal_subfolder, deal_number
+        ) latest
+          ON latest.user_id        = o.user_id
+         AND latest.deal_subfolder = o.deal_subfolder
+         AND latest.deal_number    = o.deal_number
+         AND latest.max_ts         = o.timestamp
+        WHERE o.assignment_id = ?
+        "#,
+    )
+    .bind(assignment_id)
+    .bind(assignment_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut per_user_attempts: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+    for row in &latest_rows {
+        let entry = per_user_attempts.entry(row.user_id.clone()).or_insert((0, 0));
+        entry.0 += 1; // attempted
+        if row.status.as_deref() == Some("clean_correct") {
+            entry.1 += 1;
+        }
+    }
+
+    stats.student_count_attempted = per_user_attempts.len() as i64;
+    stats.clean_rates = per_user_attempts
+        .values()
+        .filter(|(att, _)| *att > 0)
+        .map(|(att, clean)| (*clean as f64) / (*att as f64))
+        .collect();
+    stats.clean_rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Active duration per student: sum of consecutive-observation
+    // gaps within ACTIVE_GAP_CUTOFF_SECS. Computed in Rust because
+    // older SQLite builds may not have window functions.
+    let ts_rows: Vec<UserTimestampRow> = sqlx::query_as(
+        r#"
+        SELECT user_id, timestamp
+        FROM observations
+        WHERE assignment_id = ?
+        ORDER BY user_id, timestamp
+        "#,
+    )
+    .bind(assignment_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut current_user: Option<String> = None;
+    let mut prev_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+    let mut per_user_active: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    for row in &ts_rows {
+        let ts = row.timestamp.parse::<chrono::DateTime<chrono::Utc>>().ok();
+        if current_user.as_deref() != Some(row.user_id.as_str()) {
+            current_user = Some(row.user_id.clone());
+            prev_ts = ts;
+            // Ensure the user appears in the map even if only one play.
+            per_user_active.entry(row.user_id.clone()).or_insert(0.0);
+            continue;
+        }
+        if let (Some(p), Some(t)) = (prev_ts, ts) {
+            let gap = (t - p).num_milliseconds() as f64 / 1000.0;
+            if gap > 0.0 && gap < ACTIVE_GAP_CUTOFF_SECS {
+                *per_user_active.entry(row.user_id.clone()).or_insert(0.0) += gap;
+            }
+        }
+        prev_ts = ts;
+    }
+    stats.active_durations_sec = per_user_active
+        .values()
+        .map(|s| s.round() as i64)
+        .collect();
+    stats.active_durations_sec.sort();
+
+    Ok(stats)
 }
 
 /// Compute progress for a single student on an exercise.
