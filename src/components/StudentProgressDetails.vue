@@ -73,6 +73,21 @@
           :stroke-dasharray="(i === 0 || i === ticks.length - 1) ? 'none' : '3,4'"
         />
 
+        <!-- Compressed-gap regions — shown when no board in the lesson saw
+             activity for more than GAP_THRESHOLD_DAYS. -->
+        <g v-for="(br, i) in breakRegions" :key="'gap-' + i">
+          <rect
+            :x="br.x1" :y="PAD.t"
+            :width="br.x2 - br.x1" :height="chartH"
+            fill="#f3f4f6"
+          />
+          <path
+            :d="`M ${br.x1 + 6} ${PAD.t + chartH + 2} L ${br.x1 + 14} ${PAD.t - 2} M ${br.x1 + 14} ${PAD.t + chartH + 2} L ${br.x1 + 22} ${PAD.t - 2}`"
+            stroke="#9ca3af" stroke-width="1.5" fill="none"
+          />
+          <title>{{ br.daysSkipped }} day{{ br.daysSkipped === 1 ? '' : 's' }} with no activity in this lesson</title>
+        </g>
+
         <!-- X axis labels -->
         <text
           v-for="(t, i) in ticks" :key="'tick-' + i"
@@ -83,19 +98,42 @@
           {{ t.label }}
         </text>
 
-        <!-- Dots — render in y order so green draws on top -->
-        <circle
-          v-for="(p, i) in sortedDots" :key="'dot-' + i"
-          :cx="p.px" :cy="p.py"
-          :r="DOT_R"
-          :fill="dotColor(p.y)"
-          stroke="#fff" stroke-width="1.5"
-          opacity="0.92"
-          class="obs-dot"
-          @click.stop="emit('dot-click', { rawTs: p.rawTs, dealNum: p.dealNum, correct: p.correct, event: $event })"
+        <!-- Gap-region day-count labels (centered under each break) -->
+        <text
+          v-for="(br, i) in breakRegions" :key="'gap-label-' + i"
+          :x="(br.x1 + br.x2) / 2"
+          :y="PAD.t + chartH + 28"
+          text-anchor="middle" font-size="9"
+          fill="#9ca3af" font-family="monospace"
         >
-          <title>Board {{ p.dealNum }} &middot; {{ p.correct ? 'Correct' : 'Incorrect' }} &middot; {{ formatTime(p.rawTs) }}</title>
-        </circle>
+          &mdash; {{ br.daysSkipped }}d &mdash;
+        </text>
+
+        <!-- Dots — render in y order so green draws on top.
+             Collapsed dots are enlarged and show a count overlay so
+             multi-observation days are obvious without reading the number. -->
+        <g v-for="(p, i) in sortedDots" :key="'dot-' + i">
+          <circle
+            :cx="p.px" :cy="p.py"
+            :r="p.collapsed ? COLLAPSED_R : DOT_R"
+            :fill="dotColor(p.y)"
+            stroke="#fff" :stroke-width="p.collapsed ? 2 : 1.5"
+            opacity="0.92"
+            class="obs-dot"
+            @click.stop="emit('dot-click', { rawTs: p.rawTs, dealNum: p.dealNum, correct: p.correct, event: $event })"
+          >
+            <title v-if="!p.collapsed">Board {{ p.dealNum }} &middot; {{ p.correct ? 'Correct' : 'Incorrect' }} &middot; {{ formatTime(p.rawTs) }}</title>
+            <title v-else>Board {{ p.dealNum }} &middot; {{ p.collapsedCount }} observations on {{ dayKeyLabel(p.collapsedDayKey) }}</title>
+          </circle>
+          <text
+            v-if="p.collapsed"
+            :x="p.px" :y="p.py + 4"
+            text-anchor="middle"
+            font-size="11" font-weight="700"
+            fill="white"
+            pointer-events="none"
+          >{{ p.collapsedCount }}</text>
+        </g>
       </svg>
 
       <!-- Stats + Activity bar chart -->
@@ -169,6 +207,33 @@ const ACTIVITY_BAR_H = 40
 const ONE_HOUR = 3600000
 const DAY = 86400000
 
+// Time-axis behaviour. The chart uses a day-bucket axis so that
+// observations on different calendar days don't get pushed adjacent
+// by spread-within-cluster logic. Long stretches with no activity on
+// any board are compressed to a fixed-width "break" so the meaningful
+// detail isn't crammed into a corner of the chart.
+const GAP_THRESHOLD_DAYS = 14   // gaps > this get compressed to GAP_WIDTH_PX
+const GAP_WIDTH_PX = 28         // visual width of a compressed gap
+const STEP = DOT_R * 2 * (1 - OVERLAP)
+const MIN_STEP = DOT_R * 0.6    // below this within a day-slot, collapse to a count badge
+const COLLAPSED_R = Math.round(DOT_R * 1.7)
+
+function localDayKey(ts) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function daysBetweenDayKeys(k1, k2) {
+  const [y1, m1, d1] = k1.split('-').map(Number)
+  const [y2, m2, d2] = k2.split('-').map(Number)
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / DAY)
+}
+
+function dayKeyLabel(key) {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 const boardNums = computed(() => {
   const attemptedNums = new Set(props.lesson.boardLines.map(bl => bl.dealNum))
   const total = props.lesson.totalBoards ?? Math.max(...attemptedNums)
@@ -219,19 +284,112 @@ function badgeTooltip(dn) {
   return parts.join(' · ')
 }
 
-// Build positioned dots with collision spreading
+// Lesson-wide day-bucket axis. Active local-days across all boards
+// become anchor points on the chart; long stretches with no activity
+// in *any* board collapse into a fixed-width break region.
+const lessonAxis = computed(() => {
+  const lessonRaw = props.rawData.filter(r => r.skill_path === props.lesson.path)
+  if (lessonRaw.length === 0) return null
+
+  const dayKeys = [...new Set(lessonRaw.map(r => localDayKey(new Date(r.timestamp).getTime())))].sort()
+  if (dayKeys.length === 0) return null
+
+  // Group consecutive active days into segments separated by long gaps.
+  const segments = []
+  const breakSpecs = []
+  let curSeg = [dayKeys[0]]
+  for (let i = 1; i < dayKeys.length; i++) {
+    const gap = daysBetweenDayKeys(dayKeys[i - 1], dayKeys[i])
+    if (gap > GAP_THRESHOLD_DAYS) {
+      segments.push({ days: curSeg })
+      breakSpecs.push({ daysSkipped: gap - 1, fromKey: dayKeys[i - 1], toKey: dayKeys[i] })
+      curSeg = []
+    }
+    curSeg.push(dayKeys[i])
+  }
+  segments.push({ days: curSeg })
+
+  const segmentSpans = segments.map(s =>
+    s.days.length === 1 ? 1 : daysBetweenDayKeys(s.days[0], s.days[s.days.length - 1]) + 1
+  )
+  const totalGapWidth = breakSpecs.length * GAP_WIDTH_PX
+  const availableWidth = Math.max(60, CHART_W - totalGapWidth)
+  const totalSpan = segmentSpans.reduce((a, b) => a + b, 0) || 1
+
+  const dayInfo = {}
+  const segmentBounds = []
+  const breakBounds = []
+
+  let cursorX = PAD.l
+  segments.forEach((seg, si) => {
+    const segW = (segmentSpans[si] / totalSpan) * availableWidth
+    const segStart = cursorX
+    const segEnd = cursorX + segW
+    segmentBounds.push({ x1: segStart, x2: segEnd, firstDay: seg.days[0], lastDay: seg.days[seg.days.length - 1] })
+
+    if (seg.days.length === 1) {
+      dayInfo[seg.days[0]] = {
+        x: segStart + segW / 2,
+        halfSlot: Math.max(8, segW / 2 - 2),
+        segIdx: si
+      }
+    } else {
+      const denom = segmentSpans[si] - 1 || 1
+      seg.days.forEach(dk => {
+        const offset = daysBetweenDayKeys(seg.days[0], dk)
+        dayInfo[dk] = { x: segStart + (offset / denom) * segW, segIdx: si }
+      })
+      seg.days.forEach((dk, di) => {
+        const myX = dayInfo[dk].x
+        const prevX = di === 0 ? segStart : dayInfo[seg.days[di - 1]].x
+        const nextX = di === seg.days.length - 1 ? segEnd : dayInfo[seg.days[di + 1]].x
+        dayInfo[dk].halfSlot = Math.max(4, Math.min(myX - prevX, nextX - myX) / 2 - 1)
+      })
+    }
+
+    cursorX = segEnd
+    const br = breakSpecs[si]
+    if (br) {
+      breakBounds.push({
+        x1: cursorX,
+        x2: cursorX + GAP_WIDTH_PX,
+        daysSkipped: br.daysSkipped,
+        fromKey: br.fromKey,
+        toKey: br.toKey
+      })
+      cursorX += GAP_WIDTH_PX
+    }
+  })
+
+  return { dayInfo, segmentBounds, breakBounds }
+})
+
+const breakRegions = computed(() => lessonAxis.value?.breakBounds || [])
+
+// Build positioned dots over the day-bucket axis.
 const positionedDots = computed(() => {
   const lessonRaw = props.rawData.filter(r => r.skill_path === props.lesson.path)
   const nums = boardNums.value
+  const axis = lessonAxis.value
 
   const allPts = lessonRaw.map(r => {
     const ts = new Date(r.timestamp).getTime()
     const dealNum = r.deal_number
     const boardIdx = nums.indexOf(dealNum)
-    return { rawTs: ts, dealNum, boardIdx, correct: r.correct, board_result: r.board_result, y: r.correct ? 1.0 : 0.0 }
+    return {
+      rawTs: ts,
+      dayKey: localDayKey(ts),
+      dealNum,
+      boardIdx,
+      correct: r.correct,
+      board_result: r.board_result,
+      y: r.correct ? 1.0 : 0.0
+    }
   })
 
-  // Refine y values using board_result (preferred) with heuristic fallback
+  if (allPts.length === 0 || !axis) return []
+
+  // Refine y values using board_result (preferred) with heuristic fallback.
   const byDeal = {}
   allPts.forEach(pt => {
     if (!byDeal[pt.dealNum]) byDeal[pt.dealNum] = []
@@ -255,32 +413,71 @@ const positionedDots = computed(() => {
     })
   }
 
-  if (allPts.length === 0) return []
-
-  // X range padded to day boundaries
-  const allX = allPts.map(p => p.rawTs)
-  const xMin = Math.min(...allX)
-  const xMaxRaw = Math.max(...allX)
-  const xMinPadded = Math.floor(xMin / DAY) * DAY
-  const xMax = (Math.floor(xMaxRaw / DAY) + 1) * DAY - 1
-  const xRange = xMax - xMinPadded || 1
-
-  const toX = (p) => PAD.l + (p.rawTs - xMinPadded) / xRange * CHART_W
   const toY = (boardIdx) => PAD.t + boardIdx * BOARD_H + BOARD_H / 2
 
-  const STEP = DOT_R * 2 * (1 - OVERLAP)
+  // Position dots per (board, day): spread inside the day's slot,
+  // or collapse to a single enlarged count-badge dot if too cramped.
+  nums.forEach((dn, boardIdx) => {
+    const boardPts = allPts.filter(p => p.dealNum === dn)
+    if (boardPts.length === 0) return
+    const byDay = {}
+    boardPts.forEach(pt => {
+      if (!byDay[pt.dayKey]) byDay[pt.dayKey] = []
+      byDay[pt.dayKey].push(pt)
+    })
+
+    Object.entries(byDay).forEach(([dk, dayPts]) => {
+      const info = axis.dayInfo[dk]
+      if (!info) return
+      const baseY = toY(boardIdx)
+      dayPts.sort((a, b) => a.rawTs - b.rawTs)
+      dayPts.forEach(pt => { pt.py = baseY })
+
+      if (dayPts.length === 1) {
+        dayPts[0].px = info.x
+        return
+      }
+
+      const maxSlotW = info.halfSlot * 2
+      const desiredW = (dayPts.length - 1) * STEP
+      const minSpread = (dayPts.length - 1) * MIN_STEP
+
+      if (desiredW <= maxSlotW) {
+        const startX = info.x - desiredW / 2
+        dayPts.forEach((pt, i) => { pt.px = startX + i * STEP })
+      } else if (minSpread <= maxSlotW) {
+        const step = maxSlotW / (dayPts.length - 1)
+        const startX = info.x - maxSlotW / 2
+        dayPts.forEach((pt, i) => { pt.px = startX + i * step })
+      } else {
+        // Collapse: render one enlarged badge at the day's anchor; hide the rest.
+        // Use the most-concerning (lowest y) observation's status for color, so
+        // a day containing any failure shows red rather than averaging to green.
+        const worst = dayPts.reduce((a, b) => (a.y <= b.y ? a : b))
+        dayPts.forEach((pt, i) => {
+          if (pt === worst) {
+            pt.px = info.x
+            pt.collapsed = true
+            pt.collapsedCount = dayPts.length
+            pt.collapsedDayKey = dk
+          } else {
+            pt.hidden = true
+          }
+        })
+      }
+    })
+  })
+
+  // Vertical nudge for same-millisecond duplicates (e.g. accidental
+  // double-submit). The day-slot logic doesn't separate these because
+  // they share rawTs; fan them out vertically within the row band.
   const V_STEP = DOT_R * 2 * (1 - OVERLAP)
-
-  const pts = allPts.map(p => ({ ...p, px: toX(p), py: toY(p.boardIdx) }))
-
-  // PASS 1: Vertical nudge for same-time duplicates
   nums.forEach(dn => {
-    const rowPts = pts.filter(p => p.dealNum === dn)
+    const rowPts = allPts.filter(p => p.dealNum === dn && !p.hidden && !p.collapsed)
     const tsGroups = {}
     rowPts.forEach(pt => {
-      const key = pt.rawTs
-      if (!tsGroups[key]) tsGroups[key] = []
-      tsGroups[key].push(pt)
+      if (!tsGroups[pt.rawTs]) tsGroups[pt.rawTs] = []
+      tsGroups[pt.rawTs].push(pt)
     })
     Object.values(tsGroups).forEach(grp => {
       if (grp.length < 2) return
@@ -291,113 +488,85 @@ const positionedDots = computed(() => {
     })
   })
 
-  // PASS 2: Horizontal spread for overlapping clusters
-  nums.forEach(dn => {
-    const rowPts = pts.filter(p => p.dealNum === dn).sort((a, b) => a.px - b.px)
-    const clusters = []
-    let i = 0
-    while (i < rowPts.length) {
-      let j = i
-      while (j + 1 < rowPts.length && rowPts[j + 1].px - rowPts[i].px < STEP) j++
-      clusters.push({ start: i, end: j })
-      i = j + 1
-    }
-    clusters.forEach((cl, clIdx) => {
-      const count = cl.end - cl.start + 1
-      if (count === 1) return
-      const totalW = (count - 1) * STEP
-      let anchorLeft
-      if (clIdx === 0) {
-        anchorLeft = rowPts[cl.start].px
-      } else if (clIdx === clusters.length - 1) {
-        anchorLeft = rowPts[cl.end].px - totalW
-      } else {
-        anchorLeft = (rowPts[cl.start].px + rowPts[cl.end].px) / 2 - totalW / 2
-      }
-      for (let k = 0; k < count; k++) {
-        rowPts[cl.start + k].px = anchorLeft + k * STEP
-      }
-    })
-  })
-
-  return pts
+  return allPts.filter(p => !p.hidden)
 })
 
 const sortedDots = computed(() => {
   return [...positionedDots.value].sort((a, b) => a.y - b.y)
 })
 
-// X-axis ticks
+// X-axis ticks. One label per segment boundary (first/last active day of
+// each continuous span). Segments are separated by gap regions, so the
+// reader can see "Feb 12-24, then gap, then May 25" rather than five
+// evenly-spaced UTC timestamps.
 const ticks = computed(() => {
-  const pts = positionedDots.value
-  if (pts.length === 0) return []
-
-  const allX = pts.map(p => p.rawTs)
-  const xMin = Math.min(...allX)
-  const xMaxRaw = Math.max(...allX)
-  const xMinPadded = Math.floor(xMin / DAY) * DAY
-  const xMax = (Math.floor(xMaxRaw / DAY) + 1) * DAY - 1
-  const xRange = xMax - xMinPadded || 1
-
-  const tickCount = 5
-  return Array.from({ length: tickCount }, (_, i) => {
-    const frac = i / (tickCount - 1)
-    const ts = new Date(xMinPadded + frac * xRange)
-    return {
-      x: PAD.l + frac * CHART_W,
-      label: ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-             ' ' + ts.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+  const axis = lessonAxis.value
+  if (!axis) return []
+  const result = []
+  axis.segmentBounds.forEach(sb => {
+    if (sb.firstDay === sb.lastDay) {
+      result.push({ x: (sb.x1 + sb.x2) / 2, label: dayKeyLabel(sb.firstDay) })
+    } else {
+      result.push({ x: sb.x1, label: dayKeyLabel(sb.firstDay) })
+      result.push({ x: sb.x2, label: dayKeyLabel(sb.lastDay) })
     }
   })
+  return result
 })
 
-// Activity bar chart data
+// Activity bar chart data. Bucketed by local-day to match the dot
+// tooltips (and the lesson axis above).
 const activityData = computed(() => {
   const pts = positionedDots.value
   if (pts.length === 0) return null
 
   const dayBuckets = {}
   pts.forEach(p => {
-    const dayKey = Math.floor(p.rawTs / DAY)
-    dayBuckets[dayKey] = (dayBuckets[dayKey] || 0) + 1
+    const key = p.dayKey || localDayKey(p.rawTs)
+    if (p.collapsed) {
+      dayBuckets[key] = (dayBuckets[key] || 0) + p.collapsedCount
+    } else {
+      dayBuckets[key] = (dayBuckets[key] || 0) + 1
+    }
   })
-  const dayKeys = Object.keys(dayBuckets).map(Number).sort()
+  const dayKeys = Object.keys(dayBuckets).sort()
   if (dayKeys.length === 0) return null
 
-  const firstDay = dayKeys[0]
-  const lastDay = dayKeys[dayKeys.length - 1]
-  const spanDays = lastDay - firstDay + 1
+  const firstKey = dayKeys[0]
+  const lastKey = dayKeys[dayKeys.length - 1]
+  const spanDays = Math.max(1, daysBetweenDayKeys(firstKey, lastKey) + 1)
   const maxCount = Math.max(...Object.values(dayBuckets))
   const barWidth = Math.max(2, (CHART_W / spanDays) - 1)
 
   const bars = dayKeys.map(dk => ({
     dayKey: dk,
-    x: ((dk - firstDay) / spanDays) * CHART_W,
+    x: (daysBetweenDayKeys(firstKey, dk) / spanDays) * CHART_W,
     h: (dayBuckets[dk] / maxCount) * ACTIVITY_BAR_H,
     w: barWidth,
     count: dayBuckets[dk],
-    dateLabel: new Date(dk * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    dateLabel: dayKeyLabel(dk),
   }))
 
   return {
     bars,
     barW: CHART_W,
-    firstLabel: new Date(firstDay * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    lastLabel: new Date(lastDay * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    firstLabel: dayKeyLabel(firstKey),
+    lastLabel: dayKeyLabel(lastKey),
   }
 })
 
 const statsItems = computed(() => {
   const pts = positionedDots.value
-  const dayBuckets = {}
+  const daySet = new Set()
+  let total = 0
   pts.forEach(p => {
-    const dayKey = Math.floor(p.rawTs / DAY)
-    dayBuckets[dayKey] = true
+    daySet.add(p.dayKey || localDayKey(p.rawTs))
+    total += p.collapsed ? p.collapsedCount : 1
   })
   return [
-    { label: 'Days active', value: Object.keys(dayBuckets).length },
+    { label: 'Days active', value: daySet.size },
     { label: 'Boards tried', value: props.lesson.tried },
-    { label: 'Observations', value: pts.length },
+    { label: 'Observations', value: total },
   ]
 })
 
