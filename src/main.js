@@ -15,11 +15,5 @@ import router from './router/index.js'
 import './assets/design-tokens.css'
 
 const app = createApp(App)
-// eslint-disable-next-line no-console
-app.config.errorHandler = (err, instance, info) => { console.error('[embed-debug] vue-error', { info, err: err?.stack || String(err) }) }
-// eslint-disable-next-line no-console
-app.config.warnHandler = (msg, instance, trace) => { console.warn('[embed-debug] vue-warn', { msg, trace }) }
-window.addEventListener('error', (e) => { console.error('[embed-debug] window-error', { msg: e.message, src: e.filename, line: e.lineno, col: e.colno }) })
-window.addEventListener('unhandledrejection', (e) => { console.error('[embed-debug] unhandled-rejection', { reason: e.reason?.stack || String(e.reason) }) })
 app.use(router)
 app.mount('#app')
