@@ -400,6 +400,14 @@ function readEmbeddedParams() {
   }
 }
 const embeddedParams = readEmbeddedParams()
+// eslint-disable-next-line no-console
+console.info('[embed-debug] script-load', {
+  href: typeof window !== 'undefined' ? window.location.href : '(no window)',
+  hash: typeof window !== 'undefined' ? window.location.hash : '(no window)',
+  hashLen: typeof window !== 'undefined' ? (window.location.hash || '').length : 0,
+  searchLen: typeof window !== 'undefined' ? (window.location.search || '').length : 0,
+  embeddedParams: embeddedParams ? { hasPbn: !!embeddedParams.pbn, pbnLen: embeddedParams.pbn?.length, dealer: embeddedParams.dealer, vul: embeddedParams.vul, seat: embeddedParams.seat, cards: embeddedParams.cards } : null,
+})
 const EMBEDDED = !!embeddedParams
 // The compass seat the human is sitting at. Defaults to S for the
 // standalone scenario flow (which has always been South-centric).
@@ -973,6 +981,8 @@ function ddTrickAt(ddtricks, seatIdx, suitIdx) {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
 onMounted(async () => {
+  // eslint-disable-next-line no-console
+  console.info('[embed-debug] onMounted-enter', { EMBEDDED, href: window.location.href })
   // If cardplay is already enabled with BEN selected, warm the model now
   // so the user's first opening lead doesn't eat the cold start.
   maybeWarmBen()
@@ -980,7 +990,11 @@ onMounted(async () => {
   if (EMBEDDED) {
     menuLoading.value = false
     postEmbedded({ type: 'bridge-classroom:ready' })
+    // eslint-disable-next-line no-console
+    console.info('[embed-debug] embedded-branch, calling loadEmbeddedDeal')
     await loadEmbeddedDeal()
+    // eslint-disable-next-line no-console
+    console.info('[embed-debug] loadEmbeddedDeal returned', { dealError: dealError.value, hasCurrentDeal: !!currentDeal.value, currentScenario: currentScenario.value })
     return
   }
   try {
@@ -1001,8 +1015,12 @@ onMounted(async () => {
 })
 
 async function loadEmbeddedDeal() {
+  // eslint-disable-next-line no-console
+  console.info('[embed-debug] loadEmbeddedDeal-enter', { pbn: embeddedParams?.pbn, pbnLen: embeddedParams?.pbn?.length })
   try {
     const hands = parseDealHandsForBridgeTable(embeddedParams.pbn)
+    // eslint-disable-next-line no-console
+    console.info('[embed-debug] parseDealHandsForBridgeTable result', { hasHands: !!hands, seats: hands ? Object.keys(hands) : null })
     if (!hands) throw new Error('Invalid PBN deal string (expected "N:hand hand hand hand")')
     const deal = {
       board: '?',
@@ -1014,8 +1032,14 @@ async function loadEmbeddedDeal() {
     currentScenario.value = '__embedded__'
     currentScenarioLabel.value = 'Replay'
     dealsForScenario.value = [deal]
+    // eslint-disable-next-line no-console
+    console.info('[embed-debug] calling loadDealAt(0)')
     await loadDealAt(0)
+    // eslint-disable-next-line no-console
+    console.info('[embed-debug] loadDealAt(0) returned', { hasCurrentDeal: !!currentDeal.value, dealError: dealError.value, auctionLoading: auctionLoading.value, bidsLen: bids.value?.length })
   } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[embed-debug] loadEmbeddedDeal threw', err)
     dealError.value = 'Could not load embedded deal: ' + err.message
   }
 }
