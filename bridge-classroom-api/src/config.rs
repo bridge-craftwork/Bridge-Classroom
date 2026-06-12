@@ -69,7 +69,7 @@ impl Config {
         let recovery_secret = env::var("RECOVERY_SECRET").ok();
         let resend_api_key = env::var("RESEND_API_KEY").ok();
         let from_email = env::var("FROM_EMAIL")
-            .unwrap_or_else(|_| "Bridge Classroom <noreply@mail.bridge-craftwork.com>".to_string());
+            .unwrap_or_else(|_| "Bridge Classroom <noreply@mail.bridge-classroom.org>".to_string());
 
         Ok(Config {
             database_url,
