@@ -58,7 +58,7 @@
           <ul>
             <li>Use student data for educational purposes only</li>
             <li>Not share student data publicly or with unauthorized parties</li>
-            <li>Respect that students can revoke your access at any time</li>
+            <li>Respect that students can leave your classroom at any time, which stops you from seeing their progress on new assignments</li>
           </ul>
 
           <h4>Your Responsibilities</h4>

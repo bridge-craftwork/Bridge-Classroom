@@ -46,7 +46,7 @@
 
           <div class="sharing-disclosure">
             <strong>What joining means:</strong>
-            <p>Your teacher will be able to see your practice results (which exercises you've completed and your accuracy) for assignments in this classroom. You can leave the classroom or revoke access at any time from your settings.</p>
+            <p>Your teacher will be able to see your practice results (which exercises you've completed and your accuracy) for assignments in this classroom. You can leave the classroom at any time from your settings, which stops your teacher from seeing your progress on new assignments.</p>
           </div>
 
           <div v-if="!teacherViewerId" class="warning-box">
