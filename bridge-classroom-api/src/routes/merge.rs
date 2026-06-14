@@ -471,7 +471,10 @@ pub async fn get_account_handoff(
     .map_err(err500("handoff lookup"))?;
 
     match row {
-        Some((encrypted_payload, iv)) => Ok(Json(HandoffResponse { encrypted_payload, iv })),
+        Some((encrypted_payload, iv)) => {
+            tracing::info!("account-handoff served to device for {}", q.from_user_id);
+            Ok(Json(HandoffResponse { encrypted_payload, iv }))
+        }
         None => Err((StatusCode::NOT_FOUND, "No handoff".to_string())),
     }
 }
@@ -490,10 +493,16 @@ pub async fn consume_account_handoff(
     if !validate_api_key(&headers, &state.config.api_key) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
     }
-    sqlx::query("UPDATE account_handoff SET used = 1 WHERE from_user_id = ?")
+    let result = sqlx::query("UPDATE account_handoff SET used = 1 WHERE from_user_id = ? AND used = 0")
         .bind(&req.from_user_id)
         .execute(&state.db)
         .await
         .map_err(err500("consume handoff"))?;
+    if result.rows_affected() > 0 {
+        tracing::info!(
+            "account-handoff CONSUMED for {} — device switched to the keeper",
+            req.from_user_id
+        );
+    }
     Ok(Json(serde_json::json!({ "success": true })))
 }
