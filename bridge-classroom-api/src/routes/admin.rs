@@ -36,6 +36,10 @@ pub struct AdminStatsResponse {
 #[derive(Debug, Serialize)]
 pub struct AdminStats {
     pub total_users: i64,
+    pub new_users_7d: i64,
+    pub new_users_today: i64,
+    /// Names of users created in the last 7 days, newest first (for tooltip).
+    pub new_users_7d_names: Vec<String>,
     pub active_7d: i64,
     pub observation_count_7d: i64,
     pub active_today: i64,
@@ -131,6 +135,33 @@ pub async fn admin_stats(
         .fetch_one(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // New registrations: users created within the last 7 days, and (separately)
+    // since local midnight. created_at is RFC3339 UTC (+00:00), so a string
+    // comparison against these RFC3339 bounds orders correctly.
+    let new_users_7d: CountRow =
+        sqlx::query_as("SELECT COUNT(*) as count FROM users WHERE created_at >= ?")
+            .bind(&seven_days_ago)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let new_users_today: CountRow =
+        sqlx::query_as("SELECT COUNT(*) as count FROM users WHERE created_at >= ?")
+            .bind(&today_start)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Names of the week's new users (newest first), capped — for the tooltip.
+    let new_users_7d_names: Vec<String> = sqlx::query_scalar(
+        "SELECT trim(first_name || ' ' || last_name) FROM users \
+         WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50",
+    )
+    .bind(&seven_days_ago)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let active_7d: CountRow = sqlx::query_as(
         "SELECT COUNT(DISTINCT user_id) as count FROM observations WHERE timestamp >= ?",
@@ -230,6 +261,9 @@ pub async fn admin_stats(
         success: true,
         stats: AdminStats {
             total_users: total_users.count,
+            new_users_7d: new_users_7d.count,
+            new_users_today: new_users_today.count,
+            new_users_7d_names,
             active_7d: active_7d.count,
             observation_count_7d: obs_count_7d.count,
             active_today: active_today.count,

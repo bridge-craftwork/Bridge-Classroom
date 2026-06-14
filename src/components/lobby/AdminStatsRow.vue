@@ -3,6 +3,7 @@
     <div class="stat-card" style="border-top-color: #2d6a4f">
       <div class="stat-number">{{ stats?.total_users ?? '—' }}</div>
       <div class="stat-label">Total Users</div>
+      <div v-if="newUsersLine" class="stat-sub" :class="{ 'has-names': newUsersTooltip }" :title="newUsersTooltip">{{ newUsersLine }}</div>
     </div>
     <div class="stat-card" style="border-top-color: #1565c0">
       <div class="stat-number">{{ stats?.active_7d ?? '—' }}</div>
@@ -20,8 +21,32 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   stats: { type: Object, default: null }
+})
+
+// Sub-line under Total Users. Shows nothing if no new users this week.
+// Shows "N New Today" only when every new user this week registered today;
+// otherwise "N New this Week".
+const newUsersLine = computed(() => {
+  const week = props.stats?.new_users_7d ?? 0
+  if (week <= 0) return ''
+  const today = props.stats?.new_users_today ?? 0
+  if (today > 0 && today === week) {
+    return `${today} New Today`
+  }
+  return `${week} New this Week`
+})
+
+// Native tooltip listing the new users' names (newest first). The backend
+// returns the week's names; that set also covers the "New Today" case, since
+// that label only shows when every new user this week registered today.
+const newUsersTooltip = computed(() => {
+  const names = props.stats?.new_users_7d_names
+  if (!Array.isArray(names) || names.length === 0) return ''
+  return names.join('\n')
 })
 
 function formatNumber(n) {
@@ -59,6 +84,19 @@ function formatNumber(n) {
   font-size: 13px;
   color: var(--text-secondary, #6b7280);
   font-weight: 500;
+}
+
+.stat-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2d6a4f;
+}
+
+.stat-sub.has-names {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 @media (max-width: 600px) {
