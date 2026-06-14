@@ -271,6 +271,27 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // Account-merge handoff: after an admin merges a duplicate account onto a
+    // keeper, this row lets the merged-away device switch itself to the keeper
+    // on next load. `encrypted_payload` is the keeper identity (incl. keeper's
+    // AES key) wrapped under the MERGED-AWAY account's key, so only that device
+    // can unwrap it. No FK to users — the merged-away user row gets deleted.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS account_handoff (
+            from_user_id      TEXT PRIMARY KEY,
+            encrypted_payload TEXT NOT NULL,
+            iv                TEXT NOT NULL,
+            created_at        TEXT NOT NULL,
+            expires_at        TEXT NOT NULL,
+            used              INTEGER NOT NULL DEFAULT 0
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Add recovery_encrypted_key column to users table if it doesn't exist
     // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
     let has_recovery_column: bool = sqlx::query_scalar(
