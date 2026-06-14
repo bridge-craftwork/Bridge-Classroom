@@ -214,7 +214,7 @@ async fn send_recovery_email(
             <p style="margin: 0 0 8px 0; font-size: 14px; color: #666;">Or enter this code in the app:</p>
             <p style="margin: 0; font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #1a237e; font-family: monospace;">{recovery_code}</p>
         </div>
-        <p><strong>This link and code expire in 1 hour.</strong></p>
+        <p><strong>This link and code expire in 24 hours.</strong></p>
         <div class="footer">
             <p>If you didn't request this, you can safely ignore this email.</p>
             <p>— Bridge Classroom</p>
@@ -303,7 +303,10 @@ pub async fn request_recovery(
     let recovery_code = generate_recovery_code();
     let code_hash = hash_token(&recovery_code);
     let now = chrono::Utc::now();
-    let expires_at = now + chrono::Duration::hours(1);
+    // 24h window — a 1h TTL was tripping up users who didn't click the link
+    // promptly (e.g. clicked 71 min later → "No valid token found" → gave up
+    // or created a duplicate account).
+    let expires_at = now + chrono::Duration::hours(24);
 
     tracing::info!("========== Creating recovery token ==========");
     tracing::info!("Generated token (first 20 chars): {}...", &token.chars().take(20).collect::<String>());
