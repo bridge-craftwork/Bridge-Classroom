@@ -257,40 +257,13 @@ pub async fn recompute_board_history(
 
     for (i, obs) in observations.iter().enumerate() {
         let obs_ts = parse_timestamp(&obs.timestamp);
-        let effective = effective_board_result_v2(obs);
         let wilderness = obs.wilderness.clone()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "Tame".to_string());
         let is_tame = wilderness == "Tame";
 
         // Derive this observation's status (§5).
-        let obs_status: &str = match effective.as_str() {
-            "failed" => {
-                last_error_date = obs_ts;
-                "failed"
-            }
-            "corrected" => {
-                last_error_date = obs_ts;
-                "corrected"
-            }
-            "correct" => {
-                let within_cooldown = match (last_error_date, obs_ts) {
-                    (Some(led), Some(cur)) => (cur - led).num_seconds() < COOLDOWN_SECS,
-                    _ => false,
-                };
-                if within_cooldown { "close_correct" } else { "clean_correct" }
-            }
-            _ => {
-                // Defensive — effective_board_result_v2 normalises null/empty;
-                // shouldn't hit this branch.
-                if obs.correct {
-                    "clean_correct"
-                } else {
-                    last_error_date = obs_ts;
-                    "failed"
-                }
-            }
-        };
+        let obs_status: &str = derive_obs_status_v2(obs, obs_ts, &mut last_error_date);
 
         // Star transitions (§6.2/§6.3). Tame failed/corrected reset the
         // track; any clean_correct (Tame or Wild) can advance it.
@@ -371,6 +344,46 @@ fn effective_board_result_v2(obs: &ObservationFullRow) -> String {
                 "correct".to_string()
             } else {
                 "failed".to_string()
+            }
+        }
+    }
+}
+
+/// Derive one observation's §5 status given the running `last_error_date`,
+/// which this fn updates for failed/corrected observations. Pure §5 — no
+/// star/paw/wilderness side effects. Shared by the board-scoped walk
+/// (`recompute_board_history`) and the assignment-scoped walk
+/// (`recompute_assignment_boards`) so both stay byte-identical.
+fn derive_obs_status_v2(
+    obs: &ObservationFullRow,
+    obs_ts: Option<DateTime<Utc>>,
+    last_error_date: &mut Option<DateTime<Utc>>,
+) -> &'static str {
+    let effective = effective_board_result_v2(obs);
+    match effective.as_str() {
+        "failed" => {
+            *last_error_date = obs_ts;
+            "failed"
+        }
+        "corrected" => {
+            *last_error_date = obs_ts;
+            "corrected"
+        }
+        "correct" => {
+            let within_cooldown = match (*last_error_date, obs_ts) {
+                (Some(led), Some(cur)) => (cur - led).num_seconds() < COOLDOWN_SECS,
+                _ => false,
+            };
+            if within_cooldown { "close_correct" } else { "clean_correct" }
+        }
+        _ => {
+            // Defensive — effective_board_result_v2 normalises null/empty;
+            // shouldn't hit this branch.
+            if obs.correct {
+                "clean_correct"
+            } else {
+                *last_error_date = obs_ts;
+                "failed"
             }
         }
     }
