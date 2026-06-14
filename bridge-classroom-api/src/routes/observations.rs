@@ -13,7 +13,7 @@ use crate::{
     AppState,
 };
 
-use super::board_status::{derive_wilderness, recompute_board_history};
+use super::board_status::{derive_wilderness, recompute_assignment_boards, recompute_board_history};
 use crate::student_summary::recompute_student_summary;
 
 use std::collections::HashSet;
@@ -64,6 +64,8 @@ pub async fn submit_observations(
     // Use HashSet to dedupe across multiple observations in the same batch.
     let mut boards_to_recompute: HashSet<(String, String, i32)> = HashSet::new();
     let mut users_to_refresh: HashSet<String> = HashSet::new();
+    // Assignment-scoped rollups needing recomputation: (user_id, assignment_id).
+    let mut assignments_to_recompute: HashSet<(String, String)> = HashSet::new();
 
     for encrypted_obs in req.observations {
         let obs = Observation::from_encrypted(encrypted_obs);
@@ -131,6 +133,11 @@ pub async fn submit_observations(
                     ));
                     users_to_refresh.insert(obs.user_id.clone());
                 }
+                // Observations tagged with an assignment feed the assignment rollup.
+                if let Some(ref assignment_id) = obs.assignment_id {
+                    assignments_to_recompute
+                        .insert((obs.user_id.clone(), assignment_id.clone()));
+                }
             }
             Err(e) => {
                 tracing::error!("Failed to store observation {}: {}", obs.id, e);
@@ -153,6 +160,16 @@ pub async fn submit_observations(
         }
     }
 
+    // Recompute the assignment-scoped rollup for each affected (user, assignment).
+    for (user_id, assignment_id) in &assignments_to_recompute {
+        if let Err(e) = recompute_assignment_boards(&state.db, user_id, assignment_id).await {
+            tracing::error!(
+                "Failed to recompute assignment_board_status for {}/{}: {}",
+                user_id, assignment_id, e
+            );
+        }
+    }
+
     // Refresh the per-user summary row once for each affected user.
     // student_summary is a cache; this is what keeps it in sync.
     for user_id in &users_to_refresh {
@@ -162,8 +179,8 @@ pub async fn submit_observations(
     }
 
     tracing::info!(
-        "Stored {}/{} observations ({} boards recomputed, {} summaries refreshed)",
-        stored, received, boards_to_recompute.len(), users_to_refresh.len(),
+        "Stored {}/{} observations ({} boards, {} assignments recomputed, {} summaries refreshed)",
+        stored, received, boards_to_recompute.len(), assignments_to_recompute.len(), users_to_refresh.len(),
     );
 
     Ok(Json(SubmitObservationsResponse {

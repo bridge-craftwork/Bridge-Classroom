@@ -658,6 +658,34 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         .await
         .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Assignment-scoped board status (rollup parallel to board_status) ----
+    // One row per (user, assignment, board). Holds the §5 status of the work the
+    // student did INSIDE the assignment (observations tagged with assignment_id),
+    // so the assignment progress bar reads a canonical rollup instead of querying
+    // observations. Status-only — the bar needs just the 4-colour breakdown.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS assignment_board_status (
+            user_id TEXT NOT NULL,
+            assignment_id TEXT NOT NULL,
+            deal_subfolder TEXT NOT NULL,
+            deal_number INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'not_attempted',
+            last_observation_at TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, assignment_id, deal_subfolder, deal_number)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_abs_user_assignment ON assignment_board_status(user_id, assignment_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ===============================================================
     // Correctness & Mastery v2 — see documentation/CORRECTNESS_AND_MASTERY.md
     // (issue #2). Adds clear-text context fields to observations,
@@ -896,7 +924,78 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // additions above. Gated by `schema_meta` so it runs exactly once.
     run_v2_backfill(pool).await?;
 
+    // One-shot backfill for the assignment_board_status rollup. Separate
+    // schema_meta gate so it runs once even on DBs already past v2.
+    run_assignment_status_backfill(pool).await?;
+
     tracing::info!("Database migrations completed successfully");
+    Ok(())
+}
+
+/// One-shot backfill for `assignment_board_status`: projects existing
+/// assignment-tagged observations into the per-(user, assignment, board)
+/// rollup via `recompute_assignment_boards`. Gated by its own `schema_meta`
+/// key so it runs exactly once, independent of the v2 backfill gate.
+async fn run_assignment_status_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
+    let already_done: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM schema_meta WHERE key = 'assignment_board_status_backfill'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+
+    if already_done {
+        tracing::debug!("assignment_board_status_backfill already complete, skipping");
+        return Ok(());
+    }
+
+    tracing::info!("Running assignment_board_status_backfill...");
+    let started = std::time::Instant::now();
+
+    let pairs: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT user_id, assignment_id
+        FROM observations
+        WHERE assignment_id IS NOT NULL
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    tracing::info!("assignment backfill: recomputing {} (user, assignment) pairs", pairs.len());
+
+    let mut failed = 0_usize;
+    for (user_id, assignment_id) in &pairs {
+        if let Err(e) = crate::routes::board_status::recompute_assignment_boards(
+            pool, user_id, assignment_id,
+        )
+        .await
+        {
+            tracing::error!(
+                "assignment backfill: recompute failed for {}/{}: {}",
+                user_id, assignment_id, e
+            );
+            failed += 1;
+        }
+    }
+    if failed > 0 {
+        tracing::warn!("assignment backfill: {} pairs failed", failed);
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(r#"INSERT INTO schema_meta (key, value, completed_at) VALUES (?, ?, ?)"#)
+        .bind("assignment_board_status_backfill")
+        .bind("done")
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    tracing::info!(
+        "assignment_board_status_backfill complete in {:.2}s",
+        started.elapsed().as_secs_f64()
+    );
     Ok(())
 }
 

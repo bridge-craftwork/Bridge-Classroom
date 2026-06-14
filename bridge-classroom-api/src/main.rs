@@ -137,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
         )
         // Board status routes
         .route("/api/board-status", get(routes::get_board_status))
+        .route("/api/assignment-status", get(routes::get_assignment_status))
         .route("/api/student-summaries", get(routes::get_student_summaries))
         .route("/api/lesson-mastery", get(routes::get_lesson_mastery))
         // Teacher dashboard routes

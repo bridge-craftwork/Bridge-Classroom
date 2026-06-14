@@ -101,6 +101,61 @@ pub async fn get_board_status(
 }
 
 // =====================================================================
+// Assignment-scoped board status (rollup parallel to board_status)
+// =====================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct AssignmentStatusQuery {
+    pub user_id: String,
+    pub assignment_id: String,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AssignmentStatusEntry {
+    pub deal_subfolder: String,
+    pub deal_number: i32,
+    pub status: String,
+    pub last_observation_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AssignmentStatusResponse {
+    pub entries: Vec<AssignmentStatusEntry>,
+}
+
+/// GET /api/assignment-status?user_id=X&assignment_id=Y
+///
+/// Returns the per-board §5 status for the work a student did INSIDE one
+/// assignment (observations tagged with that assignment_id). Mirrors
+/// `/api/board-status` but scoped to a single assignment — the canonical
+/// source for the assignment progress bar (no client-side observation query).
+pub async fn get_assignment_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AssignmentStatusQuery>,
+) -> Result<Json<AssignmentStatusResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
+    let entries: Vec<AssignmentStatusEntry> = sqlx::query_as(
+        r#"
+        SELECT deal_subfolder, deal_number, status, last_observation_at
+        FROM assignment_board_status
+        WHERE user_id = ? AND assignment_id = ?
+        ORDER BY deal_subfolder ASC, deal_number ASC
+        "#,
+    )
+    .bind(&query.user_id)
+    .bind(&query.assignment_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(AssignmentStatusResponse { entries }))
+}
+
+// =====================================================================
 // Wilderness derivation
 // =====================================================================
 //
@@ -387,6 +442,121 @@ fn derive_obs_status_v2(
             }
         }
     }
+}
+
+/// Recompute `assignment_board_status` for one (user, assignment).
+///
+/// For each board in the assignment's exercise, walk the user's observations
+/// tagged with this assignment_id in chronological order and derive the §5
+/// status (via `derive_obs_status_v2`), then upsert. Boards with no
+/// assignment-tagged observation get `not_attempted`, so the rollup holds one
+/// row per exercise board and is self-contained (total = row count).
+///
+/// Unlike `recompute_board_history`, this does NOT modify per-observation
+/// columns — the canonical `observations.status` belongs to the board-scoped
+/// walk. This is purely an assignment-scoped projection.
+pub async fn recompute_assignment_boards(
+    pool: &Pool<Sqlite>,
+    user_id: &str,
+    assignment_id: &str,
+) -> Result<(), String> {
+    let exercise_id: Option<String> =
+        sqlx::query_scalar("SELECT exercise_id FROM assignments WHERE id = ?")
+            .bind(assignment_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Assignment lookup failed: {}", e))?;
+
+    let exercise_id = match exercise_id {
+        Some(e) => e,
+        None => return Ok(()), // orphaned assignment_id — nothing to roll up
+    };
+
+    let boards: Vec<(String, i32)> = sqlx::query_as(
+        "SELECT deal_subfolder, deal_number FROM exercise_boards WHERE exercise_id = ?",
+    )
+    .bind(&exercise_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Exercise board fetch failed: {}", e))?;
+
+    for (deal_subfolder, deal_number) in &boards {
+        let observations: Vec<ObservationFullRow> = sqlx::query_as(
+            r#"
+            SELECT id, timestamp, correct, board_result, wilderness
+            FROM observations
+            WHERE user_id = ? AND assignment_id = ?
+              AND deal_subfolder = ? AND deal_number = ?
+            ORDER BY timestamp ASC
+            "#,
+        )
+        .bind(user_id)
+        .bind(assignment_id)
+        .bind(deal_subfolder)
+        .bind(deal_number)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Observation fetch failed: {}", e))?;
+
+        // Walk to the final §5 status. Empty → not_attempted.
+        let mut last_error_date: Option<DateTime<Utc>> = None;
+        let mut final_status: &str = "not_attempted";
+        let mut last_observation_at: Option<String> = None;
+        for obs in &observations {
+            let obs_ts = parse_timestamp(&obs.timestamp);
+            final_status = derive_obs_status_v2(obs, obs_ts, &mut last_error_date);
+            last_observation_at = Some(obs.timestamp.clone());
+        }
+
+        upsert_assignment_board_status(
+            pool,
+            user_id,
+            assignment_id,
+            deal_subfolder,
+            *deal_number,
+            final_status,
+            last_observation_at.as_deref(),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn upsert_assignment_board_status(
+    pool: &Pool<Sqlite>,
+    user_id: &str,
+    assignment_id: &str,
+    deal_subfolder: &str,
+    deal_number: i32,
+    status: &str,
+    last_observation_at: Option<&str>,
+) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        r#"
+        INSERT INTO assignment_board_status (
+            user_id, assignment_id, deal_subfolder, deal_number,
+            status, last_observation_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, assignment_id, deal_subfolder, deal_number) DO UPDATE SET
+            status              = excluded.status,
+            last_observation_at = excluded.last_observation_at,
+            updated_at          = excluded.updated_at
+        "#,
+    )
+    .bind(user_id)
+    .bind(assignment_id)
+    .bind(deal_subfolder)
+    .bind(deal_number)
+    .bind(status)
+    .bind(last_observation_at)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|e| format!("assignment_board_status upsert failed: {}", e))?;
+    Ok(())
 }
 
 /// Returns true if no observation other than the one at `current_index`
