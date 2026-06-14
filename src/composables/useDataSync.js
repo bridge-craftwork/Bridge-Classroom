@@ -385,6 +385,11 @@ function setupSyncTriggers() {
   setInterval(() => {
     if (document.visibilityState === 'visible' && isOnline.value) {
       triggerSync()
+      // Re-sync identity too: picks up role/name changes and, if this account
+      // was merged away, runs the handoff so an already-open tab switches to
+      // the keeper (and reloads) within one cycle instead of needing a manual
+      // refresh.
+      useUserStore().syncRole()
     }
   }, 5 * 60 * 1000)
 }

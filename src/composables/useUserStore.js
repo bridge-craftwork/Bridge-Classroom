@@ -4,7 +4,8 @@ import {
   createKeyBackup,
   validateKeyBackup,
   validateSecretKey,
-  createSharingGrant
+  createSharingGrant,
+  decryptObservation
 } from '../utils/crypto.js'
 import { API_URL } from '@/utils/apiUrl.js'
 
@@ -489,6 +490,82 @@ async function claimRecovery(userId, token, apiUrl) {
  * @param {string} apiUrl - API base URL
  * @returns {Promise<{success: boolean, user?: Object, error?: string}>}
  */
+/**
+ * Write a server-returned user (snake_case, incl. plaintext secret_key) into
+ * localStorage and make it current. Shared by the recovery-claim paths and the
+ * account-merge handoff consumer.
+ */
+function applyRecoveredUser(serverUser) {
+  const u = {
+    id: serverUser.id,
+    firstName: serverUser.first_name,
+    lastName: serverUser.last_name,
+    email: serverUser.email,
+    classrooms: serverUser.classroom ? [serverUser.classroom] : [],
+    dataConsent: true,
+    secretKey: serverUser.secret_key,
+    role: serverUser.role || 'student',
+    viewerPrivateKey: serverUser.viewer_private_key || null,
+    serverRegistered: true,
+    recoveredAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  users.value[u.id] = u
+  currentUserId.value = u.id
+  saveToStorage()
+  return u
+}
+
+/**
+ * After an admin merges this account away, the server stages an account_handoff
+ * row: the keeper's identity (incl. the keeper's AES key) wrapped under THIS
+ * account's key. Fetch it, unwrap with our local key, switch localStorage to the
+ * keeper, and consume the row. Returns true if a swap happened (caller reloads).
+ */
+async function checkAccountHandoff(awayUserId) {
+  const apiKey = import.meta.env.VITE_API_KEY || ''
+  try {
+    const res = await fetch(
+      `${API_URL}/account-handoff?from_user_id=${encodeURIComponent(awayUserId)}`,
+      { headers: { 'x-api-key': apiKey } }
+    )
+    if (!res.ok) return false // 404 = no handoff pending
+
+    const data = await res.json()
+    if (!data.encrypted_payload || !data.iv) return false
+
+    const away = users.value[awayUserId]
+    if (!away?.secretKey) return false
+
+    // Only the device holding the merged-away key can unwrap this.
+    let keeper
+    try {
+      keeper = await decryptObservation(data.encrypted_payload, data.iv, away.secretKey)
+    } catch (e) {
+      console.error('Account-handoff unwrap failed:', e)
+      return false
+    }
+    if (!keeper?.id || !keeper?.secret_key) return false
+
+    applyRecoveredUser(keeper)
+    delete users.value[awayUserId]
+    saveToStorage()
+
+    // Single-use marker (best-effort; the swap already happened locally).
+    fetch(`${API_URL}/account-handoff/consume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ from_user_id: awayUserId })
+    }).catch(() => {})
+
+    return true
+  } catch (e) {
+    console.error('Account-handoff check failed:', e)
+    return false
+  }
+}
+
 async function claimRecoveryByCode(email, code, apiUrl) {
   try {
     const response = await fetch(`${apiUrl}/recovery/claim-code`, {
@@ -508,26 +585,8 @@ async function claimRecoveryByCode(email, code, apiUrl) {
       }
     }
 
-    // Restore user to local storage — same logic as claimRecovery()
-    const recoveredUser = {
-      id: data.user.id,
-      firstName: data.user.first_name,
-      lastName: data.user.last_name,
-      email: data.user.email,
-      classrooms: data.user.classroom ? [data.user.classroom] : [],
-      dataConsent: true,
-      secretKey: data.user.secret_key,
-      role: data.user.role || 'student',
-      viewerPrivateKey: data.user.viewer_private_key || null,
-      serverRegistered: true,
-      recoveredAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-
-    users.value[recoveredUser.id] = recoveredUser
-    currentUserId.value = recoveredUser.id
-    saveToStorage()
+    // Restore user to local storage — shared with the handoff consumer.
+    const recoveredUser = applyRecoveredUser(data.user)
 
     return { success: true, user: recoveredUser }
   } catch (err) {
@@ -554,6 +613,13 @@ async function syncRole() {
     const res = await fetch(`${API_URL}/users/${encodeURIComponent(user.id)}`, {
       headers: { 'x-api-key': apiKey }
     })
+    if (res.status === 404) {
+      // Our account row is gone — most likely it was merged into a keeper.
+      // If a handoff is staged, switch this device to the keeper and reload.
+      const swapped = await checkAccountHandoff(user.id)
+      if (swapped) window.location.reload()
+      return
+    }
     if (!res.ok) return
 
     const data = await res.json()
@@ -702,6 +768,9 @@ export function useUserStore() {
     claimRecoveryByCode,
 
     // Role sync
-    syncRole
+    syncRole,
+
+    // Account merge handoff (admin merged this account into a keeper)
+    checkAccountHandoff
   }
 }
