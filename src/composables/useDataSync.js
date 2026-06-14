@@ -3,6 +3,7 @@ import { useUserStore } from './useUserStore.js'
 import { useObservationStore } from './useObservationStore.js'
 import { useAccomplishments } from './useAccomplishments.js'
 import { useBoardStatus } from './useBoardStatus.js'
+import { useAssignmentStatus } from './useAssignmentStatus.js'
 import { logDiagnostic } from '../utils/diagnostics.js'
 import { API_URL } from '@/utils/apiUrl.js'
 
@@ -232,6 +233,15 @@ async function performSync() {
           try {
             const boardStatus = useBoardStatus()
             boardStatus.invalidateCache(user?.id)
+          } catch (e) {
+            // Non-critical
+          }
+
+          // Same for the assignment-status rollup — the server recomputes it
+          // synchronously on submit, so a fresh fetch reflects the new work.
+          try {
+            const assignmentStatus = useAssignmentStatus()
+            assignmentStatus.invalidateCache(user?.id)
           } catch (e) {
             // Non-critical
           }

@@ -136,8 +136,8 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { useAssignments } from '../../composables/useAssignments.js'
-import { useBoardMastery } from '../../composables/useBoardMastery.js'
+import { useUserStore } from '../../composables/useUserStore.js'
+import { useAssignmentStatus } from '../../composables/useAssignmentStatus.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
 
 const ACTIVE_WINDOW_DAYS = 7
@@ -155,8 +155,8 @@ const props = defineProps({
 
 defineEmits(['select-assignment'])
 
-const assignmentStore = useAssignments()
-const mastery = useBoardMastery()
+const userStore = useUserStore()
+const assignmentStatusApi = useAssignmentStatus()
 const masteryMap = ref({})
 const showAllModal = ref(false)
 
@@ -170,53 +170,46 @@ const activeAssignments = computed(() => {
   })
 })
 
-// Fetch exercise boards and compute mastery for each assignment.
-// Re-runs when the assignment list OR the observation set changes — the
-// latter matters in view-as mode, where the viewed student's observations
-// load asynchronously after the assignments do.
-watch(() => [props.assignments, mastery.getObservations().length], async () => {
-  const assignments = props.assignments
-  if (!assignments || assignments.length === 0) return
+// Load each assignment's per-board mastery from the backend rollup
+// (/api/assignment-status) — the canonical, assignment-scoped source. No
+// client-side observation query. Keyed off effectiveUserId so "view as"
+// shows the viewed student's real colors. Re-runs when the assignment list
+// or the effective user changes, and when the cache is invalidated after a
+// sync (cacheVersion bump).
+watch(
+  () => [props.assignments, userStore.effectiveUserId.value, assignmentStatusApi.cacheVersion.value],
+  async () => {
+    const assignments = props.assignments
+    const userId = userStore.effectiveUserId.value
+    if (!assignments || assignments.length === 0 || !userId) return
 
-  const nextMap = {}
-  for (const a of assignments) {
-    try {
-      const boards = await assignmentStore.fetchExerciseBoards(a.exercise_id)
-      if (!boards || boards.length === 0) continue
+    const nextMap = {}
+    for (const a of assignments) {
+      try {
+        const entries = await assignmentStatusApi.fetchAssignmentStatus(userId, a.id)
+        if (!entries || entries.length === 0) continue // → progressPercent fallback
 
-      // Count only observations made INSIDE this assignment, matching the
-      // server's completion logic (which keys on assignment_id). Free-practice
-      // plays of the same deals carry a null assignment_id and must not count
-      // toward assignment results.
-      const filteredObs = mastery.getObservations().filter(o => o.assignment_id === a.id)
-
-      const bySubfolder = {}
-      for (const b of boards) {
-        if (!bySubfolder[b.deal_subfolder]) bySubfolder[b.deal_subfolder] = []
-        bySubfolder[b.deal_subfolder].push(b.deal_number)
-      }
-
-      // Bucket per CORRECTNESS_AND_MASTERY.md §5. computeBoardMastery
-      // returns live-tile colors; we collapse to the §5.4 drilldown
-      // palette (yellow → orange) for a static summary bar.
-      const buckets = { clean_correct: 0, close_correct: 0, failed: 0, not_attempted: 0 }
-      for (const [subfolder, boardNumbers] of Object.entries(bySubfolder)) {
-        const boardMastery = mastery.computeBoardMastery(filteredObs, subfolder, boardNumbers)
-        for (const b of boardMastery) {
-          if (b.status === 'green') buckets.clean_correct++
-          else if (b.status === 'red') buckets.failed++
-          else if (b.status === 'grey') buckets.not_attempted++
-          else buckets.close_correct++  // yellow + orange both render as "close" here
+        // Collapse the §5 states into the static summary palette: corrected +
+        // close_correct share the orange swatch (§5.4 drilldown rule).
+        const buckets = { clean_correct: 0, close_correct: 0, failed: 0, not_attempted: 0 }
+        for (const e of entries) {
+          switch (e.status) {
+            case 'clean_correct': buckets.clean_correct++; break
+            case 'close_correct':
+            case 'corrected': buckets.close_correct++; break
+            case 'failed': buckets.failed++; break
+            default: buckets.not_attempted++ // not_attempted / unknown
+          }
         }
+        nextMap[a.id] = { ...buckets, total: entries.length }
+      } catch {
+        // Rollup unavailable — leave unset so the progressPercent bar renders.
       }
-
-      nextMap[a.id] = { ...buckets, total: boards.length }
-    } catch {
-      // Mastery data unavailable — fallback to simple progress bar
     }
-  }
-  masteryMap.value = nextMap
-}, { immediate: true })
+    masteryMap.value = nextMap
+  },
+  { immediate: true }
+)
 
 function getMastery(assignment) {
   return masteryMap.value[assignment.id] || null
