@@ -136,6 +136,64 @@
           </div>
           <p v-if="saveSuccess" class="save-feedback success">Name corrected successfully.</p>
           <p v-if="saveError" class="save-feedback error">{{ saveError }}</p>
+
+          <!-- Merge accounts -->
+          <div class="merge-section">
+            <button v-if="!mergeMode" class="merge-btn" @click="openMerge">Merge into another account…</button>
+
+            <div v-else class="merge-panel">
+              <p class="merge-intro">
+                Merge <strong>{{ selectedUser.email }}</strong> with a duplicate account. All
+                data is consolidated onto the account you keep; the other is removed and its
+                device switches over automatically on next load.
+              </p>
+              <div class="search-row">
+                <input
+                  v-model="mergeSearch" type="text" class="search-input"
+                  placeholder="Find the other account by name or email..."
+                  @keydown.enter="searchMergeOther"
+                />
+                <button class="search-btn" @click="searchMergeOther" :disabled="mergeSearching || !mergeSearch.trim()">
+                  {{ mergeSearching ? 'Searching...' : 'Search' }}
+                </button>
+              </div>
+
+              <div v-if="mergeSearchResults.length" class="search-results">
+                <div
+                  v-for="u in mergeSearchResults" :key="u.id"
+                  class="search-result-item" :class="{ selected: mergeOther && mergeOther.id === u.id }"
+                  @click="pickMergeOther(u)"
+                >
+                  <span class="result-name">{{ u.first_name }} {{ u.last_name }}</span>
+                  <span class="result-email">{{ u.email }}</span>
+                </div>
+              </div>
+
+              <div v-if="mergeOther" class="merge-confirm">
+                <p class="merge-keeper-label">Keep which account? (defaults to the older one)</p>
+                <label class="keeper-option">
+                  <input type="radio" :value="selectedUser.id" v-model="keeperId" />
+                  <span><strong>{{ selectedUser.email }}</strong> · created {{ formatDate(selectedUser.created_at) }}</span>
+                </label>
+                <label class="keeper-option">
+                  <input type="radio" :value="mergeOther.id" v-model="keeperId" />
+                  <span><strong>{{ mergeOther.email }}</strong> · created {{ formatDate(mergeOther.created_at) }}</span>
+                </label>
+                <p class="merge-warning">
+                  Removes <strong>{{ awayEmail }}</strong> and moves its data onto
+                  <strong>{{ keeperEmail }}</strong>. This cannot be undone.
+                </p>
+                <button class="merge-confirm-btn" @click="confirmMerge" :disabled="merging || !keeperId">
+                  {{ merging ? 'Merging…' : `Merge — keep ${keeperEmail}` }}
+                </button>
+              </div>
+
+              <button class="merge-cancel" @click="cancelMerge">Cancel</button>
+            </div>
+
+            <p v-if="mergeError" class="save-feedback error">{{ mergeError }}</p>
+            <p v-if="mergeDoneMsg" class="save-feedback success">{{ mergeDoneMsg }}</p>
+          </div>
         </div>
       </div>
 
@@ -177,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAdminDashboard } from '../../composables/useAdminDashboard.js'
 import { useAnnouncement } from '../../composables/useAnnouncement.js'
 import { useUserStore } from '../../composables/useUserStore.js'
@@ -349,6 +407,108 @@ async function handleSaveCorrection() {
     saveError.value = err.message
   } finally {
     saving.value = false
+  }
+}
+
+// ---- Merge accounts ----
+const mergeMode = ref(false)
+const mergeSearch = ref('')
+const mergeSearchResults = ref([])
+const mergeSearching = ref(false)
+const mergeOther = ref(null)
+const keeperId = ref(null)
+const merging = ref(false)
+const mergeError = ref('')
+const mergeDoneMsg = ref('')
+
+const keeperEmail = computed(() => {
+  if (!keeperId.value) return ''
+  return keeperId.value === selectedUser.value?.id ? selectedUser.value.email : (mergeOther.value?.email || '')
+})
+const awayEmail = computed(() => {
+  if (!keeperId.value) return ''
+  return keeperId.value === selectedUser.value?.id ? (mergeOther.value?.email || '') : (selectedUser.value?.email || '')
+})
+
+function openMerge() {
+  mergeMode.value = true
+  mergeSearch.value = ''
+  mergeSearchResults.value = []
+  mergeOther.value = null
+  keeperId.value = null
+  mergeError.value = ''
+  mergeDoneMsg.value = ''
+}
+
+function cancelMerge() {
+  mergeMode.value = false
+}
+
+async function searchMergeOther() {
+  if (!mergeSearch.value.trim()) return
+  mergeSearching.value = true
+  mergeSearchResults.value = []
+  mergeError.value = ''
+  try {
+    const res = await fetch(
+      `${API_URL}/admin/users/search?q=${encodeURIComponent(mergeSearch.value.trim())}`,
+      { headers: { 'x-api-key': API_KEY } }
+    )
+    if (!res.ok) throw new Error(`Search failed: ${res.status}`)
+    const data = await res.json()
+    // Exclude the already-selected account from the "other" list.
+    mergeSearchResults.value = (data.users || []).filter(u => u.id !== selectedUser.value?.id)
+  } catch (err) {
+    mergeError.value = err.message
+  } finally {
+    mergeSearching.value = false
+  }
+}
+
+function pickMergeOther(u) {
+  mergeOther.value = u
+  // Default keeper = the older account (holds the history).
+  const a = selectedUser.value
+  keeperId.value = new Date(a.created_at) <= new Date(u.created_at) ? a.id : u.id
+}
+
+async function confirmMerge() {
+  if (!keeperId.value || !mergeOther.value || !selectedUser.value) return
+  const keeper = keeperId.value
+  const away = keeper === selectedUser.value.id ? mergeOther.value.id : selectedUser.value.id
+  merging.value = true
+  mergeError.value = ''
+  mergeDoneMsg.value = ''
+  try {
+    const res = await fetch(`${API_URL}/admin/merge-accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({ merge_user_id: away, keeper_user_id: keeper })
+    })
+    const data = await res.json()
+    if (!res.ok || !data.success) {
+      mergeError.value = data.error || `Merge failed: ${res.status}`
+    } else {
+      mergeDoneMsg.value =
+        `Merged — ${data.observations_moved} observations moved onto ${data.keeper_email}. ` +
+        `The removed account's device will switch over on its next load.`
+      mergeMode.value = false
+      selectedUser.value = null
+      handleSearchUser() // refresh the list; one account is now gone
+    }
+  } catch (err) {
+    mergeError.value = err.message
+  } finally {
+    merging.value = false
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return '?'
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  } catch {
+    return iso
   }
 }
 
@@ -866,5 +1026,52 @@ onMounted(loadData)
   .edit-row {
     flex-direction: column;
   }
+}
+
+/* Merge accounts */
+.merge-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--card-border, #e0ddd7);
+}
+.merge-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a2c2c;
+  background: #fff;
+  border: 1px solid #e0b4b4;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.merge-btn:hover { background: #fdf2f2; }
+.merge-panel {
+  margin-top: 8px;
+  padding: 14px;
+  background: #faf7f2;
+  border: 1px solid var(--card-border, #e0ddd7);
+  border-radius: 8px;
+}
+.merge-intro { font-size: 13px; color: var(--text-secondary, #6b7280); margin: 0 0 12px 0; }
+.merge-confirm { margin-top: 12px; }
+.merge-keeper-label { font-size: 13px; font-weight: 600; margin: 0 0 8px 0; }
+.keeper-option {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 6px 0; cursor: pointer;
+}
+.merge-warning {
+  font-size: 13px; color: #8a2c2c;
+  background: #fdf2f2; border: 1px solid #f0d0d0; border-radius: 6px;
+  padding: 8px 10px; margin: 10px 0;
+}
+.merge-confirm-btn {
+  padding: 9px 16px; font-size: 13px; font-weight: 700;
+  color: #fff; background: #b23b3b; border: none; border-radius: 6px; cursor: pointer;
+}
+.merge-confirm-btn:disabled { opacity: 0.5; cursor: default; }
+.merge-cancel {
+  display: block; margin-top: 10px;
+  background: none; border: none; color: var(--text-secondary, #6b7280);
+  font-size: 13px; cursor: pointer; text-decoration: underline;
 }
 </style>
