@@ -499,6 +499,7 @@ function toggleClassroom(classroomId) {
             <div class="recovery-info">
               <p>{{ recoveryMessage }}</p>
               <p class="recovery-note">Click the link in the email, or enter the 6-digit code below.</p>
+              <p class="recovery-note spam-note">Don't see it? It can take a minute to arrive — be sure to check your spam or junk folder.</p>
             </div>
             <div class="code-entry">
               <label for="recoveryCode">Recovery Code</label>
@@ -831,6 +832,7 @@ function toggleClassroom(classroomId) {
 .recovery-info p { margin: 0 0 8px 0; font-size: 14px; }
 .recovery-info p:last-child { margin-bottom: 0; }
 .recovery-note { font-size: 13px; font-style: italic; }
+.spam-note { color: var(--text-secondary, #6b7280); }
 
 .code-entry {
   display: flex;
