@@ -127,12 +127,12 @@ const COLLECTIONS = [
     baseUrl: 'https://raw.githubusercontent.com/Rick-Wilson/Baker-Bridge/main/Package'
   },
   {
-    id: 'andrew-rowberg',
-    name: 'Rowberg Collection',
-    description: 'Precision with transfer positive responses to strong 1♣ opening bids',
-    icon: '♣',
-    tocUrl: 'https://raw.githubusercontent.com/Rick-Wilson/Bridge-Lessons-by-Andrew-Rowberg/main/Lock-Step%20Lessons/toc.json',
-    baseUrl: 'https://raw.githubusercontent.com/Rick-Wilson/Bridge-Lessons-by-Andrew-Rowberg/main/Lock-Step%20Lessons'
+    id: 'pbs-coaching',
+    name: 'David Bailey Scenarios',
+    description: 'Bidding and play-of-the-hand lessons',
+    icon: '♦',
+    tocUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-curated/toc.json',
+    baseUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-curated'
   }
 ]
 
