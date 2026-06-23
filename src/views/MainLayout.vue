@@ -384,21 +384,39 @@ function scrollToCurrentElement(container, selector = '.current') {
   }
 }
 
-// Auto-scroll commentary when step changes
-watch(() => practice.currentStepIndex.value, () => {
+// Cap the coaching text so the bidding controls stay on screen. The scrollable
+// text area fills the gap between its top and (window bottom − controls height);
+// as coaching grows, older text scrolls out the top instead of pushing the bid
+// box below the window.
+function fitCommentaryHeight() {
+  const el = commentaryContainer.value
+  if (!el) return
+  const top = el.getBoundingClientRect().top
+  const controls = el.parentElement?.querySelector('.commentary-controls')
+  const controlsH = controls ? controls.offsetHeight : 0
+  const avail = window.innerHeight - top - controlsH - 20
+  el.style.maxHeight = Math.max(120, avail) + 'px'
+}
+
+// Re-fit, then scroll the current step to the top (older text slides out the top).
+function refreshCommentary() {
   nextTick(() => {
+    fitCommentaryHeight()
     scrollToCurrentElement(commentaryContainer.value, '.narrative-text.current')
   })
-})
+}
 
-// Auto-scroll commentary when deal completes
-watch(() => practice.isComplete.value, (isComplete) => {
-  if (isComplete) {
-    nextTick(() => {
-      scrollToCurrentElement(commentaryContainer.value, '.narrative-text.current')
-    })
-  }
+// Recompute on step change, bid prompt toggling, completion, and deal change.
+watch(() => practice.currentStepIndex.value, refreshCommentary)
+watch(() => practice.hasBidPrompt.value, refreshCommentary)
+watch(() => practice.isComplete.value, refreshCommentary)
+watch(() => practice.currentDeal.value, refreshCommentary)
+
+onMounted(() => {
+  refreshCommentary()
+  window.addEventListener('resize', fitCommentaryHeight)
 })
+onUnmounted(() => window.removeEventListener('resize', fitCommentaryHeight))
 
 
 // User state
@@ -1618,6 +1636,11 @@ body {
   display: flex;
   gap: 12px;
   justify-content: center;
+}
+
+.commentary-text-container {
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .commentary-controls {
