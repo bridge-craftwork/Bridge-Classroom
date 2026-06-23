@@ -168,38 +168,45 @@
 
               <!-- Controls based on current step type -->
               <div class="commentary-controls">
-                <!-- Bidding box for bid steps -->
-                <div v-if="practice.hasBidPrompt.value" class="bidding-box-wrapper">
-                  <BiddingBox
-                    :lastBid="practice.lastContractBid.value"
-                    :canDouble="practice.canDouble.value"
-                    :canRedouble="practice.canRedouble.value"
-                    @bid="onBid"
-                  />
+                <div class="controls-main">
+                  <!-- Bidding box for bid steps -->
+                  <div v-if="practice.hasBidPrompt.value" class="bidding-box-wrapper">
+                    <BiddingBox
+                      :lastBid="practice.lastContractBid.value"
+                      :canDouble="practice.canDouble.value"
+                      :canRedouble="practice.canRedouble.value"
+                      @bid="onBid"
+                    />
+                  </div>
+                  <!-- Card choice prompt -->
+                  <div v-else-if="practice.hasCardChoice.value" class="card-choice-prompt">
+                    Click on the card you would choose
+                  </div>
+                  <!-- Back button (left of Next) -->
+                  <button
+                    v-if="practice.canGoBack.value"
+                    class="instruction-btn secondary"
+                    @click="onStepBack"
+                  >
+                    ← Back
+                  </button>
+                  <!-- Next/Rotate button for non-bid, non-card-choice steps (including bid explanation dismissal) -->
+                  <button
+                    v-if="!practice.isComplete.value && (practice.bidAnswered.value || (!practice.hasBidPrompt.value && !practice.hasCardChoice.value && practice.currentStep.value && practice.currentStep.value.type !== 'end'))"
+                    class="instruction-btn primary"
+                    @click="practice.advance()"
+                  >
+                    {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
+                  </button>
+                  <!-- Next Deal button when complete -->
+                  <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">
+                    Next Deal →
+                  </button>
                 </div>
-                <!-- Card choice prompt -->
-                <div v-else-if="practice.hasCardChoice.value" class="card-choice-prompt">
-                  Click on the card you would choose
-                </div>
-                <!-- Back button (left of Next) -->
-                <button
-                  v-if="practice.canGoBack.value"
-                  class="instruction-btn secondary"
-                  @click="onStepBack"
-                >
-                  ← Back
-                </button>
-                <!-- Next/Rotate button for non-bid, non-card-choice steps (including bid explanation dismissal) -->
-                <button
-                  v-if="!practice.isComplete.value && (practice.bidAnswered.value || (!practice.hasBidPrompt.value && !practice.hasCardChoice.value && practice.currentStep.value && practice.currentStep.value.type !== 'end'))"
-                  class="instruction-btn primary"
-                  @click="practice.advance()"
-                >
-                  {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
-                </button>
-                <!-- Next Deal button when complete -->
-                <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">
-                  Next Deal →
+                <!-- Report a Problem — kept beside the bidding controls so long
+                     coaching text can't push it off-screen -->
+                <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">
+                  ⚑ Report a Problem
                 </button>
               </div>
             </div>
@@ -214,8 +221,8 @@
               </button>
             </div>
 
-            <!-- Report a Problem — flags the current board in one step -->
-            <div class="report-problem-row">
+            <!-- Report a Problem fallback for display-only boards (no controls row) -->
+            <div v-if="!practice.hasSteps.value" class="report-problem-row">
               <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">
                 ⚑ Report a Problem
               </button>
@@ -1616,9 +1623,19 @@ body {
 .commentary-controls {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+/* Left zone: bidding box / Back / Next, takes the remaining width. */
+.controls-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-top: 10px;
 }
 
 .commentary-controls .bidding-box-wrapper,
@@ -1672,7 +1689,9 @@ body {
 }
 
 .report-problem-btn {
-  padding: 9px 18px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 9px 16px;
   font-size: 15px;
   font-weight: 600;
   color: #888;
