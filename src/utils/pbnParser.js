@@ -206,11 +206,24 @@ function parseUnifiedSteps(commentaryParts) {
       const promptStep = parseStepContent(promptText, 'bid')
       const explStep = parseStepContent(explanationText, 'bid')
 
+      // Coaching feedback fade: the generator wraps the student's OWN justification
+      // in ⟦ ⟧; any text OUTSIDE the brackets is partner/opponent context that must
+      // always show. On a correct call the engine shows a brief affirmation + that
+      // follow; on a wrong call it shows the whole thing. Un-bracketed (legacy)
+      // content leaves fadeFollow null and the explanation always shows.
+      let explFull = explStep.text
+      let fadeFollow = null
+      if (explFull.indexOf('⟦') !== -1) {
+        fadeFollow = explFull.replace(/⟦[^⟧]*⟧/g, ' ').replace(/\s+/g, ' ').trim()
+        explFull = explFull.replace(/[⟦⟧]/g, '').replace(/\s+/g, ' ').trim()
+      }
+
       steps.push({
         ...promptStep,
         type: 'bid',
         bid: cleanBid,
-        explanationText: explStep.text,
+        explanationText: explFull,
+        fadeFollow,
         showSeatsAfter: explStep.showSeats,
       })
 
