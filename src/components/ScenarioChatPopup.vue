@@ -16,7 +16,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -53,9 +53,12 @@ const html = computed(() =>
 // Position centered-ish on open; wire Esc.
 watch(() => props.visible, (open) => {
   if (open) {
-    // Open near the left edge so it doesn't cover the deal/bidding area.
-    const w = popoverEl.value?.offsetWidth || 720
-    pos.value = clamp(16, 80, w, popoverEl.value?.offsetHeight || 440)
+    // Open near the left edge, sized to fit the text. Measure after render
+    // (nextTick) so a tall popup is clamped to stay on-screen.
+    nextTick(() => {
+      const el = popoverEl.value
+      pos.value = clamp(16, 80, el?.offsetWidth || 720, el?.offsetHeight || 440)
+    })
     window.addEventListener('keydown', onKeydown)
   } else {
     cleanup()
@@ -110,11 +113,10 @@ onUnmounted(cleanup)
   position: fixed;
   z-index: 2100;
   width: 720px;
-  height: 440px;
+  height: auto;          /* fit the text */
   min-width: 320px;
-  min-height: 180px;
   max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
+  max-height: calc(100vh - 32px);
   background: #fff;
   border: 1px solid var(--card-border, #ddd);
   border-radius: 8px;
