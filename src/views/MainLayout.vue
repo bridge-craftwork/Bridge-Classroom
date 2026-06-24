@@ -155,15 +155,24 @@
                 <template v-for="(step, idx) in practice.steps.value.slice(0, practice.currentStepIndex.value)" :key="'prev-' + idx">
                   <template v-if="idx >= practice.commentaryStartIndex.value">
                     <span class="narrative-text previous" v-html="colorizeSuits(flowText(step.text))"></span>
-                    <span v-if="step.type === 'bid' && step.explanationText"
+                    <span v-if="step.type === 'bid' && step.explanationText && (wasStepWrong(idx) || step.fadeFollow == null)"
                       :class="['narrative-text', idx === practice.currentStepIndex.value - 1 && practice.isBidStep.value && !practice.bidAnswered.value ? 'current' : 'previous']"
                       v-html="colorizeSuits(flowText(step.explanationText))"></span>
+                    <span v-else-if="step.type === 'bid' && !wasStepWrong(idx)"
+                      class="narrative-text previous affirmation">{{ affirmationFor(idx) }}</span>
+                    <span v-if="step.type === 'bid' && !wasStepWrong(idx) && step.fadeFollow"
+                      class="narrative-text previous"
+                      v-html="colorizeSuits(flowText(step.fadeFollow))"></span>
                   </template>
                 </template>
                 <!-- Current step text (black) -->
                 <span v-if="practice.currentStep.value" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.text))"></span>
-                <!-- Bid explanation shown after bid is answered -->
-                <span v-if="practice.bidAnswered.value && practice.currentStep.value?.explanationText" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.explanationText))"></span>
+                <!-- After a bid: full explanation when wrong (the teaching); brief affirmation when correct. -->
+                <span v-if="practice.bidAnswered.value && practice.currentStep.value?.type === 'bid' && practice.currentStep.value?.explanationText && (practice.auctionState.wrongBid || practice.currentStep.value?.fadeFollow == null)" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.explanationText))"></span>
+                <span v-else-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && practice.currentStep.value?.type === 'bid'" class="narrative-text current affirmation">{{ affirmationFor(practice.currentStepIndex.value) }}</span>
+                <span v-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && practice.currentStep.value?.fadeFollow" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.fadeFollow))"></span>
+                <!-- Board-level cheer when the whole auction was bid correctly. -->
+                <span v-if="boardCelebration" class="narrative-text current celebration">{{ boardCelebration }}</span>
               </div>
 
               <!-- Controls based on current step type -->
@@ -338,6 +347,48 @@ const assignmentsApi = useAssignments()
 
 // Unified practice state - tag-driven, no modes
 const practice = useDealPractice()
+
+// --- Coaching feedback fade (branch: coaching-feedback-fade) ----------------
+// In the bidding scrollback we distinguish three cases:
+//   • partner's calls          → always explained (the student needs them)
+//   • the student's WRONG call → the full explanation (the teaching)
+//   • the student's RIGHT call → a brief, varied, gender-neutral affirmation
+// Judgement boards ([ACCEPT]) are a later slice.
+const AFFIRMATIONS = [
+  'Correct.',
+  'Nicely done.',
+  "That's it.",
+  'Exactly right.',
+  'Spot on.',
+  'Well judged.',
+  'Right on the money.',
+  'Good — that is the call.',
+]
+
+// A stable affirmation for a given step so it varies through a board without
+// flickering on re-render.
+function affirmationFor(idx) {
+  const i = ((idx % AFFIRMATIONS.length) + AFFIRMATIONS.length) % AFFIRMATIONS.length
+  return AFFIRMATIONS[i]
+}
+
+// Did the student answer this bid step wrong? (wrong → show its explanation)
+function wasStepWrong(idx) {
+  return !!practice.boardState.wrongStepIndices[idx]
+}
+
+// Was this bid step the student's own call (vs partner's auto-played call)?
+function isStudentBidStep(idx) {
+  return !!practice.boardState.studentBidStepIndices[idx]
+}
+
+// Board-level cheer when EVERY call on the board was right (shown at completion).
+const CELEBRATIONS = ['Bravo!', 'Perfect!', 'Beautifully bid!', 'Flawless — every call!', 'Nailed the whole auction!']
+const boardCelebration = computed(() => {
+  if (!practice.isComplete.value || practice.boardState.boardHadWrong) return ''
+  return CELEBRATIONS[practice.steps.value.length % CELEBRATIONS.length]
+})
+// ---------------------------------------------------------------------------
 
 // UI state
 const showSettings = ref(false)
@@ -1574,6 +1625,20 @@ body {
 
 .narrative-text.current {
   color: #333;
+}
+
+/* Brief affirmation shown on a correct bid (coaching-feedback-fade). */
+.narrative-text.affirmation {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+/* Board-level cheer when every call was correct (coaching-feedback-fade). */
+.narrative-text.celebration {
+  color: #2e7d32;
+  font-weight: 700;
+  font-size: 1.25em;
+  margin-top: 4px;
 }
 
 .bidding-box-wrapper {

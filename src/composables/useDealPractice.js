@@ -44,6 +44,7 @@ export function useDealPractice() {
     correctCount: 0,
     wrongCount: 0,
     wrongStepIndices: {},  // tracks which step indices had wrong answers (for back-up-fix)
+    studentBidStepIndices: {},  // step indices the student bid (vs partner's auto-played calls)
     promptHistory: [],     // accumulates per-prompt details for the observation
     observationId: null    // stable UUID for upsert — generated per board attempt
   })
@@ -492,6 +493,10 @@ export function useDealPractice() {
     const isCorrect = normalizeBid(bid) === normalizeBid(expectedBid)
     const stepIdx = currentStepIndex.value
 
+    // This step is the student's own bid (vs partner's auto-played calls) —
+    // drives the feedback fade in the scrollback.
+    boardState.studentBidStepIndices[stepIdx] = true
+
     // Track wrong steps
     if (!isCorrect) {
       boardState.wrongStepIndices[stepIdx] = true
@@ -835,6 +840,7 @@ export function useDealPractice() {
     // Reset board scoring
     boardState.boardHadWrong = false
     boardState.wrongStepIndices = {}
+    boardState.studentBidStepIndices = {}
     boardState.promptHistory = []
     boardState.observationId = crypto.randomUUID()
 
