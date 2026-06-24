@@ -53,8 +53,8 @@ const html = computed(() =>
 // Position centered-ish on open; wire Esc.
 watch(() => props.visible, (open) => {
   if (open) {
-    const w = popoverEl.value?.offsetWidth || 440
-    pos.value = clamp((window.innerWidth - w) / 2, 90, w, popoverEl.value?.offsetHeight || 300)
+    const w = popoverEl.value?.offsetWidth || 720
+    pos.value = clamp((window.innerWidth - w) / 2, 80, w, popoverEl.value?.offsetHeight || 440)
     window.addEventListener('keydown', onKeydown)
   } else {
     cleanup()
@@ -84,8 +84,8 @@ function onDrag(e) {
   pos.value = clamp(
     drag.left + (e.clientX - drag.mx),
     drag.top + (e.clientY - drag.my),
-    el?.offsetWidth || 440,
-    el?.offsetHeight || 300
+    el?.offsetWidth || 720,
+    el?.offsetHeight || 440
   )
 }
 function endDrag() {
@@ -108,9 +108,9 @@ onUnmounted(cleanup)
 .sc-popup {
   position: fixed;
   z-index: 2100;
-  width: 440px;
-  height: 400px;
-  min-width: 300px;
+  width: 720px;
+  height: 440px;
+  min-width: 320px;
   min-height: 180px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
@@ -138,7 +138,7 @@ onUnmounted(cleanup)
 
 .sc-title {
   margin: 0;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 700;
   color: #fff;
 }
@@ -157,9 +157,9 @@ onUnmounted(cleanup)
 
 .sc-body {
   flex: 1 1 auto;
-  padding: 14px 16px;
-  font-size: 15px;
-  line-height: 1.5;
+  padding: 16px 18px;
+  font-size: 18px;
+  line-height: 1.55;
   color: #222;
   white-space: pre-wrap;
   overflow: auto;
@@ -167,7 +167,7 @@ onUnmounted(cleanup)
 
 .sc-body :deep(.sc-heading) {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 20px;
   margin-bottom: 8px;
   color: #1b4332;
 }
