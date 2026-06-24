@@ -103,7 +103,7 @@
               </label>
               <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="auctionLoading || selectedScenarios.size === 0">Next deal &rarr;</button>
               <button class="bp-btn" @click="resetAuction" :disabled="auctionLoading">Restart this deal</button>
-              <button v-if="!EMBEDDED && scenarioChat" class="bp-btn" @click="showScenarioChat = true" title="Show the scenario description">&#8505; Scenario info</button>
+              <button v-if="!EMBEDDED && scenarioChat" class="bp-btn" @click="showScenarioChat = true" title="Show the scenario description">&#8505; Description</button>
             </div>
           </div>
 
