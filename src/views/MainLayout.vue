@@ -159,7 +159,8 @@
                       :class="['narrative-text', idx === practice.currentStepIndex.value - 1 && practice.isBidStep.value && !practice.bidAnswered.value ? 'current' : 'previous']"
                       v-html="colorizeSuits(flowText(step.explanationText))"></span>
                     <span v-else-if="step.type === 'bid' && !wasStepWrong(idx)"
-                      class="narrative-text previous affirmation">{{ affirmationFor(idx) }}</span>
+                      class="narrative-text previous affirmation"
+                      v-html="bidLabel(step.bid) + ' — ' + affirmationFor(idx)"></span>
                     <span v-if="step.type === 'bid' && !wasStepWrong(idx) && step.fadeFollow"
                       class="narrative-text previous"
                       v-html="colorizeSuits(flowText(step.fadeFollow))"></span>
@@ -169,7 +170,7 @@
                 <span v-if="practice.currentStep.value" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.text))"></span>
                 <!-- After a bid: full explanation when wrong (the teaching); brief affirmation when correct. -->
                 <span v-if="practice.bidAnswered.value && practice.currentStep.value?.type === 'bid' && practice.currentStep.value?.explanationText && (practice.auctionState.wrongBid || practice.currentStep.value?.fadeFollow == null)" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.explanationText))"></span>
-                <span v-else-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && practice.currentStep.value?.type === 'bid'" class="narrative-text current affirmation">{{ affirmationFor(practice.currentStepIndex.value) }}</span>
+                <span v-else-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && practice.currentStep.value?.type === 'bid'" class="narrative-text current affirmation" v-html="bidLabel(practice.currentStep.value.bid) + ' — ' + affirmationFor(practice.currentStepIndex.value)"></span>
                 <span v-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && practice.currentStep.value?.fadeFollow" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.fadeFollow))"></span>
                 <!-- Board-level cheer when the whole auction was bid correctly. -->
                 <span v-if="boardCelebration" class="narrative-text current celebration">{{ boardCelebration }}</span>
@@ -297,7 +298,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { parsePbn, getDealTitle } from '../utils/pbnParser.js'
-import { stripControlDirectives, colorizeSuits, flowText } from '../utils/cardFormatting.js'
+import { stripControlDirectives, colorizeSuits, flowText, formatBid } from '../utils/cardFormatting.js'
 import { useDealPractice } from '../composables/useDealPractice.js'
 import { useAppConfig } from '../composables/useAppConfig.js'
 import { useUserStore } from '../composables/useUserStore.js'
@@ -370,6 +371,11 @@ const AFFIRMATIONS = [
 function affirmationFor(idx) {
   const i = ((idx % AFFIRMATIONS.length) + AFFIRMATIONS.length) % AFFIRMATIONS.length
   return AFFIRMATIONS[i]
+}
+
+// The call itself, with a colored suit symbol, to prefix the nod: "1♥ — Correct."
+function bidLabel(bid) {
+  return bid ? formatBid(bid).html : ''
 }
 
 // Did the student answer this bid step wrong? (wrong → show its explanation)
