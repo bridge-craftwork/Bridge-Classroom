@@ -92,6 +92,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/observations/metadata",
             get(routes::get_observations_metadata),
         )
+        // Report-a-Problem route (files a classroom-feedback GitHub issue)
+        .route("/api/report", post(routes::create_report))
         // Recovery routes
         .route("/api/recovery/request", post(routes::request_recovery))
         .route("/api/recovery/claim", post(routes::claim_recovery))

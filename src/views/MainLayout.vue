@@ -168,38 +168,45 @@
 
               <!-- Controls based on current step type -->
               <div class="commentary-controls">
-                <!-- Bidding box for bid steps -->
-                <div v-if="practice.hasBidPrompt.value" class="bidding-box-wrapper">
-                  <BiddingBox
-                    :lastBid="practice.lastContractBid.value"
-                    :canDouble="practice.canDouble.value"
-                    :canRedouble="practice.canRedouble.value"
-                    @bid="onBid"
-                  />
+                <div class="controls-main">
+                  <!-- Bidding box for bid steps -->
+                  <div v-if="practice.hasBidPrompt.value" class="bidding-box-wrapper">
+                    <BiddingBox
+                      :lastBid="practice.lastContractBid.value"
+                      :canDouble="practice.canDouble.value"
+                      :canRedouble="practice.canRedouble.value"
+                      @bid="onBid"
+                    />
+                  </div>
+                  <!-- Card choice prompt -->
+                  <div v-else-if="practice.hasCardChoice.value" class="card-choice-prompt">
+                    Click on the card you would choose
+                  </div>
+                  <!-- Back button (left of Next) -->
+                  <button
+                    v-if="practice.canGoBack.value"
+                    class="instruction-btn secondary"
+                    @click="onStepBack"
+                  >
+                    ← Back
+                  </button>
+                  <!-- Next/Rotate button for non-bid, non-card-choice steps (including bid explanation dismissal) -->
+                  <button
+                    v-if="!practice.isComplete.value && (practice.bidAnswered.value || (!practice.hasBidPrompt.value && !practice.hasCardChoice.value && practice.currentStep.value && practice.currentStep.value.type !== 'end'))"
+                    class="instruction-btn primary"
+                    @click="practice.advance()"
+                  >
+                    {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
+                  </button>
+                  <!-- Next Deal button when complete -->
+                  <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">
+                    Next Deal →
+                  </button>
                 </div>
-                <!-- Card choice prompt -->
-                <div v-else-if="practice.hasCardChoice.value" class="card-choice-prompt">
-                  Click on the card you would choose
-                </div>
-                <!-- Back button (left of Next) -->
-                <button
-                  v-if="practice.canGoBack.value"
-                  class="instruction-btn secondary"
-                  @click="onStepBack"
-                >
-                  ← Back
-                </button>
-                <!-- Next/Rotate button for non-bid, non-card-choice steps (including bid explanation dismissal) -->
-                <button
-                  v-if="!practice.isComplete.value && (practice.bidAnswered.value || (!practice.hasBidPrompt.value && !practice.hasCardChoice.value && practice.currentStep.value && practice.currentStep.value.type !== 'end'))"
-                  class="instruction-btn primary"
-                  @click="practice.advance()"
-                >
-                  {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
-                </button>
-                <!-- Next Deal button when complete -->
-                <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">
-                  Next Deal →
+                <!-- Report a Problem — kept beside the bidding controls so long
+                     coaching text can't push it off-screen -->
+                <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">
+                  ⚑ Report a Problem
                 </button>
               </div>
             </div>
@@ -211,6 +218,13 @@
             <div v-if="!practice.hasSteps.value && practice.isComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
               <button class="next-deal-btn" @click="nextDeal">
                 Next Deal →
+              </button>
+            </div>
+
+            <!-- Report a Problem fallback for display-only boards (no controls row) -->
+            <div v-if="!practice.hasSteps.value" class="report-problem-row">
+              <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">
+                ⚑ Report a Problem
               </button>
             </div>
 
@@ -257,6 +271,14 @@
       @activated="handleTeacherActivated"
     />
 
+    <!-- Report a Problem popup (draggable, opens below the button) -->
+    <ReportProblemModal
+      :visible="showReport"
+      :context="reportContext"
+      :anchor="reportAnchor"
+      @close="showReport = false"
+    />
+
     <!-- Page Footer -->
     <PageFooter />
   </div>
@@ -299,6 +321,7 @@ import BoardMasteryStrip from '../components/BoardMasteryStrip.vue'
 import IntroPdfViewer from '../components/IntroPdfViewer.vue'
 import LobbyView from './LobbyView.vue'
 import BecomeTeacherModal from '../components/BecomeTeacherModal.vue'
+import ReportProblemModal from '../components/ReportProblemModal.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
 
 // Router
@@ -330,6 +353,13 @@ const currentCollection = ref(null)
 const currentLesson = ref(null)  // { id, name, category }
 const showBecomeTeacher = ref(false)
 
+// Report-a-Problem modal. reportContext is a snapshot of the lesson/board state
+// captured at the moment the learner clicks the button (so it doesn't drift if
+// the auction advances behind the modal).
+const showReport = ref(false)
+const reportContext = ref({})
+const reportAnchor = ref(null)  // the button's rect, so the popup opens just below it
+
 // Local mastery override: force board circle statuses during/after play
 // { [boardNumber]: 'red'|'yellow'|'green' }
 const forceBoardStatus = ref({})
@@ -354,21 +384,39 @@ function scrollToCurrentElement(container, selector = '.current') {
   }
 }
 
-// Auto-scroll commentary when step changes
-watch(() => practice.currentStepIndex.value, () => {
+// Cap the coaching text so the bidding controls stay on screen. The scrollable
+// text area fills the gap between its top and (window bottom − controls height);
+// as coaching grows, older text scrolls out the top instead of pushing the bid
+// box below the window.
+function fitCommentaryHeight() {
+  const el = commentaryContainer.value
+  if (!el) return
+  const top = el.getBoundingClientRect().top
+  const controls = el.parentElement?.querySelector('.commentary-controls')
+  const controlsH = controls ? controls.offsetHeight : 0
+  const avail = window.innerHeight - top - controlsH - 20
+  el.style.maxHeight = Math.max(120, avail) + 'px'
+}
+
+// Re-fit, then scroll the current step to the top (older text slides out the top).
+function refreshCommentary() {
   nextTick(() => {
+    fitCommentaryHeight()
     scrollToCurrentElement(commentaryContainer.value, '.narrative-text.current')
   })
-})
+}
 
-// Auto-scroll commentary when deal completes
-watch(() => practice.isComplete.value, (isComplete) => {
-  if (isComplete) {
-    nextTick(() => {
-      scrollToCurrentElement(commentaryContainer.value, '.narrative-text.current')
-    })
-  }
+// Recompute on step change, bid prompt toggling, completion, and deal change.
+watch(() => practice.currentStepIndex.value, refreshCommentary)
+watch(() => practice.hasBidPrompt.value, refreshCommentary)
+watch(() => practice.isComplete.value, refreshCommentary)
+watch(() => practice.currentDeal.value, refreshCommentary)
+
+onMounted(() => {
+  refreshCommentary()
+  window.addEventListener('resize', fitCommentaryHeight)
 })
+onUnmounted(() => window.removeEventListener('resize', fitCommentaryHeight))
 
 
 // User state
@@ -969,6 +1017,59 @@ function getCollection(collectionId) {
   return appConfig.COLLECTIONS.find(c => c.id === collectionId)
 }
 
+// Reconstruct an "N:..." PBN string from parsed hands as a fallback when the
+// deal didn't carry its raw [Deal] string (older parses). N E S W order.
+function reconstructPbn(hands) {
+  if (!hands) return null
+  const parts = ['N', 'E', 'S', 'W'].map(seat => {
+    const h = hands[seat]
+    if (!h) return '...'
+    return [h.spades, h.hearts, h.diamonds, h.clubs].map(a => (a || []).join('')).join('.')
+  })
+  return 'N:' + parts.join(' ')
+}
+
+// Snapshot everything the report needs, then open the modal. The app already
+// has all of this while rendering the board.
+function openReport(e) {
+  const deal = currentDeal.value
+  if (!deal) return
+  // Remember where the button is so the popup opens just below it.
+  const btn = e?.currentTarget
+  if (btn?.getBoundingClientRect) {
+    const r = btn.getBoundingClientRect()
+    reportAnchor.value = { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
+  }
+  const collection = getCollection(currentCollection.value)
+  const lessonId = currentLesson.value?.id || ''
+  const filename = lessonId.includes('/') ? lessonId.split('/').pop() : lessonId
+  const sourceUrl = collection && filename ? `${collection.baseUrl}/${filename}.pbn` : null
+  const role = userStore.currentUser.value?.role
+  const reporterTier = (role === 'teacher' || role === 'admin') ? 'reviewer' : 'learner'
+
+  reportContext.value = {
+    collection: currentCollection.value || null,
+    lesson_id: lessonId || null,
+    lesson_name: currentLesson.value?.name || null,
+    scenario: deal.event || lessonId || null,
+    deal_pbn: deal.dealString || reconstructPbn(deal.hands),
+    display_number: deal.displayNumber || (currentDealIndex.value + 1),
+    board_tag: deal.boardNumber != null ? String(deal.boardNumber) : null,
+    original_board: deal.originalBoard || null,
+    student_seat: practice.studentSeat.value || deal.studentSeat || null,
+    auction: [...practice.auctionState.displayedBids],
+    contract: deal.contract || null,
+    step_index: practice.currentStepIndex.value,
+    prompt: practice.currentStep.value?.text || null,
+    reporter_tier: reporterTier,
+    source_url: sourceUrl,
+    source_commit: null,
+    app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null,
+    app_commit: typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : null
+  }
+  showReport.value = true
+}
+
 /**
  * Auto-load lesson from URL parameters
  * Fetches TOC, finds lesson, loads PBN file
@@ -1537,12 +1638,27 @@ body {
   justify-content: center;
 }
 
+.commentary-text-container {
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .commentary-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+/* Left zone: bidding box / Back / Next, takes the remaining width. */
+.controls-main {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-top: 10px;
 }
 
 .commentary-controls .bidding-box-wrapper,
@@ -1585,6 +1701,33 @@ body {
   padding: 10px 20px;
   background: #e3f2fd;
   border-radius: 4px;
+}
+
+/* Report a Problem button — unobtrusive, sits below the lesson controls */
+.report-problem-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.report-problem-btn {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 9px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #888;
+  background: none;
+  border: none;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.report-problem-btn:hover {
+  background: #fdecea;
+  color: #c62828;
 }
 
 /* Display mode styles */

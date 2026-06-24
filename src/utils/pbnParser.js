@@ -99,7 +99,13 @@ export function parsePbn(pbnContent) {
             currentDeal.studentSeat = tagValue
             break
           case 'Deal':
+            // Keep the raw PBN string too — it's the stable key for a board
+            // (board numbers drift on re-curation), used by the Report button.
+            currentDeal.dealString = tagValue
             currentDeal.hands = parseDealString(tagValue)
+            break
+          case 'OriginalBoard':
+            currentDeal.originalBoard = tagValue
             break
           case 'Auction':
             currentDeal.auctionDealer = tagValue
@@ -364,12 +370,14 @@ function parseStepContent(text, action) {
 function createEmptyDeal() {
   return {
     boardNumber: 0,
+    originalBoard: null,  // [OriginalBoard] tag — bba/ source board (drifts on re-curation)
     dealer: 'N',
     vulnerable: 'None',
     contract: '',
     declarer: '',
     studentSeat: 'S',
     hands: { N: null, E: null, S: null, W: null },
+    dealString: '',       // raw [Deal] PBN string — stable key for the Report button
     auction: [],
     auctionDealer: '',
     result: '',

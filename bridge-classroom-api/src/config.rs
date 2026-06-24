@@ -32,6 +32,14 @@ pub struct Config {
 
     /// From email address for recovery emails
     pub from_email: String,
+
+    /// GitHub token used to file "Report a Problem" issues (optional).
+    /// Scoped to Issues:write on the content repo only. When unset, the
+    /// report endpoint degrades gracefully (503) so the UI can say so.
+    pub github_issues_token: Option<String>,
+
+    /// owner/repo that classroom-feedback issues are filed into.
+    pub github_issues_repo: String,
 }
 
 impl Config {
@@ -71,6 +79,13 @@ impl Config {
         let from_email = env::var("FROM_EMAIL")
             .unwrap_or_else(|_| "Bridge Classroom <noreply@mail.bridge-classroom.org>".to_string());
 
+        // Treat an empty GITHUB_ISSUES_TOKEN the same as unset.
+        let github_issues_token = env::var("GITHUB_ISSUES_TOKEN")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        let github_issues_repo = env::var("GITHUB_ISSUES_REPO")
+            .unwrap_or_else(|_| "ADavidBailey/Practice-Bidding-Scenarios".to_string());
+
         Ok(Config {
             database_url,
             api_key,
@@ -82,6 +97,8 @@ impl Config {
             recovery_secret,
             resend_api_key,
             from_email,
+            github_issues_token,
+            github_issues_repo,
         })
     }
 
