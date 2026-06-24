@@ -22,7 +22,9 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   title: { type: String, default: 'Scenario' },
   // Raw @chat block text from the .btn file.
-  text: { type: String, default: '' }
+  text: { type: String, default: '' },
+  // Which edge to open against: 'left' (default) or 'right'.
+  side: { type: String, default: 'left' }
 })
 const emit = defineEmits(['close'])
 
@@ -57,7 +59,9 @@ watch(() => props.visible, (open) => {
     // (nextTick) so a tall popup is clamped to stay on-screen.
     nextTick(() => {
       const el = popoverEl.value
-      pos.value = clamp(16, 80, el?.offsetWidth || 720, el?.offsetHeight || 440)
+      const w = el?.offsetWidth || 720
+      const left = props.side === 'right' ? window.innerWidth - w - 16 : 16
+      pos.value = clamp(left, 80, w, el?.offsetHeight || 440)
     })
     window.addEventListener('keydown', onKeydown)
   } else {

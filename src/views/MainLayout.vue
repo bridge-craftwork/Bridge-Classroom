@@ -6,7 +6,7 @@
   />
 
   <!-- Main App (shown when user is authenticated) -->
-  <div v-else class="app" @click.capture="dismissWelcome">
+  <div v-else class="app" :class="{ 'left-aligned': deals.length }" @click.capture="dismissWelcome">
     <!-- View-as banner — shown when admin is rendering the app as another user -->
     <div v-if="isViewingAs" class="view-as-banner">
       <span class="view-as-text">
@@ -260,11 +260,13 @@
       @activated="handleTeacherActivated"
     />
 
-    <!-- Scenario chat — sizable, draggable popup of the .btn @chat -->
+    <!-- Scenario chat — sizable, draggable popup of the .btn @chat. Opens on the
+         right, in the space freed by left-aligning the table during practice. -->
     <ScenarioChatPopup
       :visible="showScenarioChat && !!scenarioChat"
       :title="scenarioChat?.title || ''"
       :text="scenarioChat?.text || ''"
+      side="right"
       @close="showScenarioChat = false"
     />
 
@@ -1146,6 +1148,13 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* During practice, left-align the table so all the wide-screen white space
+   gathers on the right — a clean home for the scenario-description popup. */
+.app.left-aligned {
+  margin-left: 24px;
+  margin-right: auto;
 }
 
 .view-as-banner {
