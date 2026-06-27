@@ -45,6 +45,25 @@ const autoplayUserSingletons = ref(false)
 // count the claim awarded; defenders get the rest of the remaining tricks.
 const claim = ref(null)  // { declarerTricks, atTrick }
 
+// ── Coaching mode (defensive / declarer full play-out with grading) ──────
+// When dealCtx.coachLine is set, the deal is a scripted lesson: every seat's
+// card is known in advance (the full chronological line). Non-user seats play
+// straight from the line instead of asking a bot, and a user seat's click is
+// graded against the line — a wrong card is REVERTED (never recorded) and the
+// correct card surfaced so the UI can flash-and-correct, the same revert model
+// the [choose-card] defense prompt uses, but for every trick of the hand.
+const lastCoachMiss = ref(null)  // { seat, played:{suit,rank}, expected:{suit,rank} } | null
+// The card the student is expected to play right now (null when not a user turn
+// or no coach line). Lets the UI highlight the correct card / auto-correct.
+const coachExpected = computed(() => {
+  if (!isActive.value || playComplete.value) return null
+  const ctx = dealCtx.value
+  if (!ctx.coachLine) return null
+  const cur = currentPlayer.value
+  if (!cur || !ctx.userSeats.includes(cur)) return null
+  return ctx.coachLine[played.value.length] || null  // { seat, suit, rank }
+})
+
 // ── Derived ────────────────────────────────────────────────────────────
 
 const isActive = computed(() => dealCtx.value !== null)
@@ -125,6 +144,7 @@ const legalCardsForCurrent = computed(() => {
 // pacing: { betweenPlays: ms, betweenTricks: ms } — UI delay knobs.
 export function startPlay({
   hands, dealer, vulnerable, bids, contract, declarer, bot, userSeats, pacing,
+  coachLine,
 }) {
   if (!hands || !contract || !declarer || !bot) {
     throw new Error('startPlay: hands, contract, declarer, and bot are required')
@@ -146,6 +166,8 @@ export function startPlay({
     userSeats: userSeats || [],
     bot,
     pacing: { betweenPlays: 300, betweenTricks: 1000, ...(pacing || {}) },
+    // Optional scripted line for coaching mode: chronological [{seat,suit,rank}].
+    coachLine: coachLine || null,
   }
 
   currentTrick.leader = openingLeader
@@ -159,6 +181,7 @@ export function startPlay({
   lastFinishedTrick.value = null
   botLatencies.value = []
   claim.value = null
+  lastCoachMiss.value = null
 
   // Kick off bot driver if the opening leader is a bot.
   return advanceBotsIfTheirTurn()
@@ -238,6 +261,7 @@ export function reset() {
   lastFinishedTrick.value = null
   botLatencies.value = []
   claim.value = null
+  lastCoachMiss.value = null
 }
 
 // Handle a user click on one of their seats. Returns { ok, reason }.
@@ -252,6 +276,21 @@ export async function onUserCard(suit, rank) {
   const remaining = computeRemaining(dealCtx.value.hands, played.value)
   if (!isLegalPlay({ suit, rank }, remaining[cur], currentTrick.plays)) {
     return { ok: false, reason: 'illegal play (must follow suit if able)' }
+  }
+  // Coaching mode: grade the click against the scripted line. A wrong card is
+  // REVERTED — it never reaches the table — and the expected card is surfaced
+  // so the UI can flash the mistake and show the correction before the student
+  // retries. (Set autoCorrect:true to substitute the right card automatically.)
+  const coachLine = dealCtx.value.coachLine
+  if (coachLine) {
+    const expected = coachLine[played.value.length]
+    const isMiss = !expected || expected.seat !== cur
+      || expected.suit !== suit || expected.rank !== rank
+    if (isMiss) {
+      lastCoachMiss.value = { seat: cur, played: { suit, rank }, expected: expected || null }
+      return { ok: false, reason: 'incorrect', expected: expected || null }
+    }
+    lastCoachMiss.value = null
   }
   await recordPlay({ seat: cur, suit, rank })
   await advanceBotsIfTheirTurn()
@@ -272,6 +311,19 @@ async function advanceBotsIfTheirTurn() {
     const cur = currentPlayer.value
     if (!cur) return
     const isUser = dealCtx.value.userSeats.includes(cur)
+
+    // Coaching mode: non-user seats play straight from the scripted line — no
+    // bot call, fully deterministic. (User seats fall through to wait for a
+    // graded click.)
+    const coachLine = dealCtx.value.coachLine
+    if (coachLine && !isUser) {
+      const next = coachLine[played.value.length]
+      if (!next || next.seat !== cur) return  // line exhausted or out of sync
+      await recordPlay({ seat: cur, suit: next.suit, rank: next.rank })
+      await sleep(dealCtx.value.pacing.betweenPlays)
+      continue
+    }
+    if (coachLine && isUser) return  // wait for the student's graded click
 
     // Forced-play short-circuit: when there's exactly one legal card, no
     // decision is involved. Skip the bot entirely (saves ~1s per call).
@@ -416,7 +468,9 @@ export function useCardPlay() {
     botLatencies,
     autoplayUserSingletons,
     claim,
+    lastCoachMiss,
     // derived
+    coachExpected,
     playComplete,
     currentPlayer,
     playedBySeat,
