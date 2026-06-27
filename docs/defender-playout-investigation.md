@@ -151,12 +151,37 @@ scripted line. ✅
 ✓ useCardPlay.test.js (14 tests)             # unchanged behavior
 ```
 
-> Note on terminology: the prototype implements "revert" as *reject the wrong
-> click so it never reaches the table* (the clean equivalent of put-it-back).
-> If the desired UX is literally "show the wrong card for a beat, then swap in
-> the correct one and continue," add an `autoCorrect` option that, on a miss,
-> records `expected` instead of returning an error. The hook point is the same
-> `onUserCard` branch.
+### Chosen UX: swap-and-explain (with a note)
+
+Decision (David): on a wrong card, the wrong card flashes, slides back, the
+**correct card is substituted, play continues, and a short note explains why**.
+The note shows on correct plays too, as a confirmation.
+
+This is now the engine **default** (`coachAutoCorrect: true`):
+
+- Each `coachLine` entry may carry a `note` string.
+- A wrong click sets `lastCoachMiss`, records the **correct** card (substitution),
+  sets `coachNote = { corrected:true, card, wrong, text }`, and returns
+  `{ ok:true, corrected:true, expected, note }`. The UI flashes `wrong`, then
+  shows `card` + `text`.
+- A correct click sets `coachNote = { corrected:false, card, text }` so the same
+  explanation panel shows a confirmation.
+- `coachAutoCorrect: false` keeps the stricter "reject until the student finds
+  it" model (still available, same hook).
+
+Covered by a second test (`SWAP-AND-EXPLAIN (default)`): a wrong card is
+swapped for the correct one, the note (`"…keeps communication…"`) is surfaced,
+and South still ends up having played exactly the scripted line. 16/16 tests
+pass.
+
+### Sample authoring file
+
+`docs/sample-defender-playout.pbn` — a machine-verified-legal sample showing a
+**proposed** `[PlayOut "<leader>"]` tag: one line per trick, four cards in play
+order, the student's graded card marked `*` with its `{note}`. The parser would
+turn this into the engine's `coachLine`. This is the piece closest to the
+dealer-style notation work and is the natural place to start the authoring
+design.
 
 ---
 

@@ -1,0 +1,52 @@
+% SAMPLE — proposed authoring format for a FULL defensive play-out lesson.
+% Student defends the whole hand as SOUTH; declarer is WEST (North leads).
+% The 52-card line below is machine-verified legal against the app's own
+% cardplay rules (src/utils/cardplayRules.js). The HCP layout is illustrative —
+% the point of this file is the NOTATION, not the bidding.
+%
+% PROPOSED NEW TAG: [PlayOut "<leader>"] introduces a scripted full play-out.
+% One line per trick, four cards in play order (leader first), each as
+% <seat>:<card>. The student's graded card is marked with a leading * and may
+% carry a coaching note in {curly braces}. The parser turns this into the
+% engine's coachLine: [{seat,suit,rank,note?}, ...]. Default behavior is
+% swap-and-explain — a wrong click is replaced by the starred card and the note
+% is shown.
+%
+% bridge-context: defense/full-hand-defense
+
+[Event "Baker Bridge - Defensive Play"]
+[Board "1"]
+[Dealer "W"]
+[Vulnerable "None"]
+[Deal "N:K94.J98.KT73.962 E:J65.7654.982.T83 S:T832.T32.J64.754 W:AQ7.AKQ.AQ5.AKQJ"]
+[Declarer "W"]
+[Contract "3NT"]
+[Student "S"]
+[Category "Defense"]
+[Difficulty "intermediate"]
+[SkillPath "defense/full_hand_defense"]
+[Result ""]
+{Baker Defensive Play 1}
+{[show S]
+West opened a strong notrump and was raised to 3NT. You are South, on defense.
+North leads the \C2. Defend the whole hand — play each of South's cards. If you
+slip, the right card is shown with a note, and play continues.
+
+Click NEXT to begin. [NEXT]
+[show NESW]}
+
+% --- Scripted play-out (leader first each trick; *=student's graded card) ---
+[PlayOut "N"]
+N:C2  E:C3  *S:C4 {Play low and keep the \C7 — it will sit over dummy's eight later.}  W:CJ
+W:D5  N:D3  E:D2  *S:D4 {Nothing to gain by rising; follow low.}
+W:S7  N:S4  E:S5  *S:S2 {Low — you can't profitably win this trick.}
+W:SQ  N:S9  E:S6  *S:S3 {Still low; save your length for later.}
+W:HQ  N:H8  E:H4  *S:H2 {Follow low; declarer is cashing winners.}
+W:DQ  N:D7  E:D8  *S:D6 {Low again — keep the \DJ guarded.}
+W:CQ  N:C6  E:C8  *S:C5 {Follow low; the \C7 is still your card to keep.}
+W:HK  N:H9  E:H5  *S:H3 {Low; hold the \HT.}
+W:CK  N:C9  E:CT  *S:C7 {Now part with the \C7 — its work is done.}
+W:SA  N:SK  E:SJ  *S:S8 {Follow low; your \ST is the master spade now.}
+W:HA  N:HJ  E:H6  *S:HT {Forced — your last heart.}
+W:DA  N:DT  E:D9  *S:DJ {Forced — your last diamond.}
+W:CA  N:DK  E:H7  *S:ST {Take the last trick with your established \ST.}

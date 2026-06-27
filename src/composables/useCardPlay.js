@@ -49,10 +49,18 @@ const claim = ref(null)  // { declarerTricks, atTrick }
 // When dealCtx.coachLine is set, the deal is a scripted lesson: every seat's
 // card is known in advance (the full chronological line). Non-user seats play
 // straight from the line instead of asking a bot, and a user seat's click is
-// graded against the line — a wrong card is REVERTED (never recorded) and the
-// correct card surfaced so the UI can flash-and-correct, the same revert model
-// the [choose-card] defense prompt uses, but for every trick of the hand.
+// graded against the line. Each line entry may carry a `note` — coaching prose
+// shown when that card is played.
+//
+// Default UX is "swap-and-explain" (coachAutoCorrect, set by startPlay): a wrong
+// card is briefly registered as a miss, then the CORRECT card is substituted and
+// play continues, with the note shown to explain it. A correct card shows its
+// note too (a confirmation). Set coachAutoCorrect:false for the stricter
+// "reject the wrong click until the student finds the right card" model.
 const lastCoachMiss = ref(null)  // { seat, played:{suit,rank}, expected:{suit,rank} } | null
+// The coaching note to display for the most recent graded play.
+// { corrected:boolean, card:{suit,rank}, wrong:{suit,rank}|null, text:string } | null
+const coachNote = ref(null)
 // The card the student is expected to play right now (null when not a user turn
 // or no coach line). Lets the UI highlight the correct card / auto-correct.
 const coachExpected = computed(() => {
@@ -144,7 +152,7 @@ const legalCardsForCurrent = computed(() => {
 // pacing: { betweenPlays: ms, betweenTricks: ms } — UI delay knobs.
 export function startPlay({
   hands, dealer, vulnerable, bids, contract, declarer, bot, userSeats, pacing,
-  coachLine,
+  coachLine, coachAutoCorrect = true,
 }) {
   if (!hands || !contract || !declarer || !bot) {
     throw new Error('startPlay: hands, contract, declarer, and bot are required')
@@ -166,8 +174,10 @@ export function startPlay({
     userSeats: userSeats || [],
     bot,
     pacing: { betweenPlays: 300, betweenTricks: 1000, ...(pacing || {}) },
-    // Optional scripted line for coaching mode: chronological [{seat,suit,rank}].
+    // Optional scripted line for coaching mode: chronological
+    // [{seat,suit,rank,note?}].
     coachLine: coachLine || null,
+    coachAutoCorrect,
   }
 
   currentTrick.leader = openingLeader
@@ -182,6 +192,7 @@ export function startPlay({
   botLatencies.value = []
   claim.value = null
   lastCoachMiss.value = null
+  coachNote.value = null
 
   // Kick off bot driver if the opening leader is a bot.
   return advanceBotsIfTheirTurn()
@@ -262,6 +273,7 @@ export function reset() {
   botLatencies.value = []
   claim.value = null
   lastCoachMiss.value = null
+  coachNote.value = null
 }
 
 // Handle a user click on one of their seats. Returns { ok, reason }.
@@ -277,10 +289,7 @@ export async function onUserCard(suit, rank) {
   if (!isLegalPlay({ suit, rank }, remaining[cur], currentTrick.plays)) {
     return { ok: false, reason: 'illegal play (must follow suit if able)' }
   }
-  // Coaching mode: grade the click against the scripted line. A wrong card is
-  // REVERTED — it never reaches the table — and the expected card is surfaced
-  // so the UI can flash the mistake and show the correction before the student
-  // retries. (Set autoCorrect:true to substitute the right card automatically.)
+  // Coaching mode: grade the click against the scripted line.
   const coachLine = dealCtx.value.coachLine
   if (coachLine) {
     const expected = coachLine[played.value.length]
@@ -288,13 +297,35 @@ export async function onUserCard(suit, rank) {
       || expected.suit !== suit || expected.rank !== rank
     if (isMiss) {
       lastCoachMiss.value = { seat: cur, played: { suit, rank }, expected: expected || null }
+      if (dealCtx.value.coachAutoCorrect && expected) {
+        // Swap-and-explain: the wrong card is recorded as a miss, then the
+        // correct card is substituted and play continues, with the note shown.
+        coachNote.value = {
+          corrected: true,
+          card: { suit: expected.suit, rank: expected.rank },
+          wrong: { suit, rank },
+          text: expected.note || '',
+        }
+        await recordPlay({ seat: cur, suit: expected.suit, rank: expected.rank })
+        await advanceBotsIfTheirTurn()
+        return { ok: true, corrected: true, expected, note: expected.note || '' }
+      }
+      // Strict model: reject the click; the UI surfaces the correction and the
+      // student tries again.
       return { ok: false, reason: 'incorrect', expected: expected || null }
     }
     lastCoachMiss.value = null
+    // Correct card — show its note as a confirmation.
+    coachNote.value = {
+      corrected: false,
+      card: { suit, rank },
+      wrong: null,
+      text: expected.note || '',
+    }
   }
   await recordPlay({ seat: cur, suit, rank })
   await advanceBotsIfTheirTurn()
-  return { ok: true }
+  return { ok: true, corrected: false, note: coachLine ? coachNote.value.text : '' }
 }
 
 // ── Internal: bot driver ───────────────────────────────────────────────
@@ -469,6 +500,7 @@ export function useCardPlay() {
     autoplayUserSingletons,
     claim,
     lastCoachMiss,
+    coachNote,
     // derived
     coachExpected,
     playComplete,

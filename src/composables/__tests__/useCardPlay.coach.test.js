@@ -63,7 +63,10 @@ function buildLine(hands, suitCode) {
       let lowIdx = 0
       for (let j = 1; j < arr.length; j++) if (RANKVAL.indexOf(arr[j]) < RANKVAL.indexOf(arr[lowIdx])) lowIdx = j
       const rank = arr.splice(lowIdx,1)[0]
-      line.push({ seat, suit: suitCode[s], rank })
+      const entry = { seat, suit: suitCode[s], rank }
+      // Attach a coaching note to each of South's (the student's) cards.
+      if (seat === 'S') entry.note = `Play the ${suitCode[s]}${rank} — keeps communication with partner.`
+      line.push(entry)
       // track winner only among cards of the led suit
       if (s === suit) {
         const rv = RANKVAL.indexOf(rank)
@@ -80,7 +83,7 @@ describe('useCardPlay — coaching mode (defender full play-out, revert+correct)
   let cp
   beforeEach(() => { cp = useCardPlay(); cp.reset() })
 
-  it('South defends vs declarer East; wrong card is reverted, correct enforced; full 13 tricks', async () => {
+  it('STRICT mode: South defends vs declarer East; wrong card reverted, correct enforced; full 13 tricks', async () => {
     const { hands, suitCode } = buildDeal()
     const line = buildLine(hands, suitCode)
     expect(line).toHaveLength(52)
@@ -93,6 +96,7 @@ describe('useCardPlay — coaching mode (defender full play-out, revert+correct)
       bot: RandomLegalBot,      // never consulted in coach mode
       userSeats: ['S'],
       coachLine: line,
+      coachAutoCorrect: false,  // reject wrong clicks; student must find the card
       pacing: { betweenPlays: 0, betweenTricks: 0 },
     })
 
@@ -132,6 +136,63 @@ describe('useCardPlay — coaching mode (defender full play-out, revert+correct)
     expect(southPlays).toHaveLength(13)
     const southLine = line.filter(p => p.seat === 'S')
     expect(southPlays).toEqual(southLine.map(p => ({ seat:'S', suit:p.suit, rank:p.rank })))
+  })
+
+  it('SWAP-AND-EXPLAIN (default): a wrong card is corrected with its note; play continues', async () => {
+    const { hands, suitCode } = buildDeal()
+    const line = buildLine(hands, suitCode)
+
+    await cp.startPlay({
+      hands,
+      dealer: 'N',
+      contract: '3NT',
+      declarer: 'E',
+      bot: RandomLegalBot,
+      userSeats: ['S'],
+      coachLine: line,            // coachAutoCorrect defaults to true
+      pacing: { betweenPlays: 0, betweenTricks: 0 },
+    })
+
+    let guard = 0, sawCorrection = false, sawConfirmation = false
+    while (!cp.playComplete.value && guard++ < 60) {
+      expect(cp.currentPlayer.value).toBe('S')
+      const want = cp.coachExpected.value
+      const wrong = pickWrongLegal(cp, want)
+
+      if (wrong) {
+        // Click a WRONG card → engine substitutes the correct one and continues,
+        // surfacing the note that explains the right play.
+        const before = cp.played.value.length
+        const res = await cp.onUserCard(wrong.suit, wrong.rank)
+        expect(res.ok).toBe(true)
+        expect(res.corrected).toBe(true)
+        expect(res.expected).toMatchObject({ seat:'S', suit:want.suit, rank:want.rank })
+        expect(res.note).toContain('keeps communication')        // the coaching text
+        // The CORRECT card was recorded, not the wrong one.
+        const southCard = cp.played.value[before]
+        expect(southCard).toMatchObject({ seat:'S', suit:want.suit, rank:want.rank })
+        expect(cp.coachNote.value).toMatchObject({
+          corrected: true,
+          wrong: { suit: wrong.suit, rank: wrong.rank },
+          card: { suit: want.suit, rank: want.rank },
+        })
+        sawCorrection = true
+      } else {
+        // Forced card → clicking it is correct; the confirmation note still shows.
+        const res = await cp.onUserCard(want.suit, want.rank)
+        expect(res.ok).toBe(true)
+        expect(cp.coachNote.value.corrected).toBe(false)
+        sawConfirmation = true
+      }
+    }
+
+    expect(cp.playComplete.value).toBe(true)
+    expect(cp.completedTricks.value).toHaveLength(13)
+    expect(sawCorrection).toBe(true)       // at least one wrong card got swapped+explained
+    expect(sawConfirmation).toBe(true)     // at least one forced card confirmed
+    // South still ends up having played exactly the scripted line.
+    const southPlays = cp.played.value.filter(p => p.seat === 'S')
+    expect(southPlays).toEqual(line.filter(p => p.seat === 'S').map(p => ({ seat:'S', suit:p.suit, rank:p.rank })))
   })
 })
 
