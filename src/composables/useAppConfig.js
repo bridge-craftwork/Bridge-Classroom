@@ -132,7 +132,13 @@ const COLLECTIONS = [
     description: 'Bidding and play-of-the-hand lessons',
     icon: '♦',
     tocUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated/toc.json',
-    baseUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated'
+    baseUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated',
+    // Show the "Report a Problem" button only for this collection. A report is
+    // about THIS collection's content and files a classroom-feedback issue in the
+    // content repo behind VITE_REPORT_URL. A collection owner who wants the button
+    // opts in by setting report:true and pointing the report endpoint at their own
+    // repo; otherwise it stays off (e.g. Baker Bridge, which is Rick's content).
+    report: true
   }
 ]
 

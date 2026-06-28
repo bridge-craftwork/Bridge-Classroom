@@ -217,8 +217,8 @@
                   </button>
                 </div>
                 <!-- Report a Problem — kept beside the bidding controls so long
-                     coaching text can't push it off-screen -->
-                <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">
+                     coaching text can't push it off-screen. Opt-in per collection. -->
+                <button v-if="reportEnabled" class="report-problem-btn" @click="openReport" title="Report a problem with this board">
                   ⚑ Report a Problem
                 </button>
               </div>
@@ -235,7 +235,7 @@
             </div>
 
             <!-- Report a Problem fallback for display-only boards (no controls row) -->
-            <div v-if="!practice.hasSteps.value" class="report-problem-row">
+            <div v-if="!practice.hasSteps.value && reportEnabled" class="report-problem-row">
               <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">
                 ⚑ Report a Problem
               </button>
@@ -1092,6 +1092,11 @@ async function handleSelectAssignment(assignment) {
 function getCollection(collectionId) {
   return appConfig.COLLECTIONS.find(c => c.id === collectionId)
 }
+
+// "Report a Problem" is opt-in per collection (useAppConfig: report:true). It
+// shows only for a collection that owns its content and report endpoint — so a
+// report files an issue in the right repo. Off for Baker Bridge (Rick's content).
+const reportEnabled = computed(() => getCollection(currentCollection.value)?.report === true)
 
 // Reconstruct an "N:..." PBN string from parsed hands as a fallback when the
 // deal didn't carry its raw [Deal] string (older parses). N E S W order.
