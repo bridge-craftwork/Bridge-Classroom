@@ -286,5 +286,45 @@ Pass
       expect(prompts[0].text).toContain('♠')
       expect(prompts[0].explanationText).toContain('♠')
     })
+
+    it('extracts [ACCEPT] calls from the explanation and strips the marker', () => {
+      const commentary = [
+        'Title\n\nClose choice [BID 3N] Either game is sound. [ACCEPT 4S]'
+      ]
+      const prompts = parsePrompts(commentary)
+
+      expect(prompts[0].acceptedBids).toEqual(['4S'])
+      // Marker must not leak into displayed text
+      expect(prompts[0].explanationText).not.toContain('ACCEPT')
+      expect(prompts[0].explanationText).not.toContain('[')
+    })
+
+    it('accepts multiple calls in one [ACCEPT] tag', () => {
+      const commentary = [
+        'Title\n\nMiddling hand [BID 2N] A raise or a sign-off both work. [ACCEPT 3N Pass]'
+      ]
+      const prompts = parsePrompts(commentary)
+
+      expect(prompts[0].acceptedBids).toEqual(['3N', 'Pass'])
+    })
+
+    it('extracts [ACCEPT] from the prompt side of the bid too', () => {
+      const commentary = [
+        'Title\n\nClose call [ACCEPT 4S] [BID 3N] Either game is sound.'
+      ]
+      const prompts = parsePrompts(commentary)
+
+      expect(prompts[0].acceptedBids).toEqual(['4S'])
+      expect(prompts[0].text).not.toContain('ACCEPT')
+    })
+
+    it('leaves acceptedBids empty for bids without [ACCEPT] (non-disruption)', () => {
+      const commentary = [
+        'Title\n\nOnly one call [BID 1\\H] Standard opening.'
+      ]
+      const prompts = parsePrompts(commentary)
+
+      expect(prompts[0].acceptedBids).toEqual([])
+    })
   })
 })

@@ -490,7 +490,12 @@ export function useDealPractice() {
     if (!isBidStep.value) return false
 
     const expectedBid = currentDeal.value.auction[auctionState.currentBidIndex]
-    const isCorrect = normalizeBid(bid) === normalizeBid(expectedBid)
+    // Judgment boards may mark extra defensible calls via [ACCEPT ...]; accept
+    // those alongside the recorded call. The auction still advances on the
+    // recorded call (expectedBid) — acceptedBids only affects scoring.
+    const acceptedBids = currentStep.value?.acceptedBids || []
+    const isCorrect = normalizeBid(bid) === normalizeBid(expectedBid) ||
+      acceptedBids.some(a => normalizeBid(a) === normalizeBid(bid))
     const stepIdx = currentStepIndex.value
 
     // This step is the student's own bid (vs partner's auto-played calls) —

@@ -218,6 +218,12 @@ function parseUnifiedSteps(commentaryParts) {
         explFull = explFull.replace(/[⟦⟧]/g, '').replace(/\s+/g, ' ').trim()
       }
 
+      // [ACCEPT] may sit in the prompt or the explanation chunk — merge both.
+      const acceptedBids = [...new Set([
+        ...(promptStep.acceptedBids || []),
+        ...(explStep.acceptedBids || []),
+      ])]
+
       steps.push({
         ...promptStep,
         type: 'bid',
@@ -225,6 +231,7 @@ function parseUnifiedSteps(commentaryParts) {
         explanationText: explFull,
         fadeFollow,
         showSeatsAfter: explStep.showSeats,
+        acceptedBids,
       })
 
     } else if (nextMatch || rotateMatch) {
@@ -332,6 +339,20 @@ function parseStepContent(text, action) {
   // Check for [clear-commentary] - clear previous commentary display
   const clearCommentary = /\[clear-commentary\]/i.test(text)
 
+  // Extract [ACCEPT call ...] tags - extra call(s) the bid quiz scores as correct
+  // alongside the recorded one (judgment boards with >1 defensible call). One tag
+  // may list several space-separated calls, e.g. [ACCEPT 4S Pass]; multiple tags
+  // accumulate. Stored as raw PBN tokens; makeBid normalizes at compare time.
+  const acceptedBids = []
+  const acceptPattern = /\[ACCEPT\s+([^\]]+)\]/gi
+  let acceptMatch
+  while ((acceptMatch = acceptPattern.exec(text)) !== null) {
+    for (const tok of acceptMatch[1].split(/\s+/)) {
+      const call = tok.replace(/!/g, '').trim()
+      if (call) acceptedBids.push(call)
+    }
+  }
+
   // Extract [showcards ...] tags - shows specific cards from hidden hands
   let showcards = null
   const showcardsMatch = text.match(/\[showcards\s+([^\]]+)\]/i)
@@ -358,6 +379,7 @@ function parseStepContent(text, action) {
     .replace(/\[SHOW_LEAD\]/gi, '')
     .replace(/\[showcards\s+[^\]]*\]/gi, '')
     .replace(/\[choose-card\s+[^\]]*\]/gi, '')
+    .replace(/\[ACCEPT\s+[^\]]*\]/gi, '')
     .replace(/\[clear-commentary\]/gi, '')
     // Strip deal title lines (e.g., "Stayman 1", "Entries 2") - matches "Word(s) Number" at start of line
     .replace(/^[A-Z][a-zA-Z-]*(?:\s+[A-Z][a-zA-Z-]*)?\s+\d+\s*$/gim, '')
@@ -373,7 +395,8 @@ function parseStepContent(text, action) {
     showLead,     // true if [SHOW_LEAD] tag present
     clearCommentary, // true if [clear-commentary] tag present - clear previous text
     showcards,    // null = no change, object = { seat: [cards] } to show
-    chooseCard    // null = no card choice, object = { card } or { cards, anyOf: true }
+    chooseCard,   // null = no card choice, object = { card } or { cards, anyOf: true }
+    acceptedBids  // array of extra calls scored correct alongside the recorded one
   }
 }
 
