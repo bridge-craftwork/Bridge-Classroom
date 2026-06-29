@@ -402,11 +402,15 @@ function isStudentBidStep(idx) {
   return !!practice.boardState.studentBidStepIndices[idx]
 }
 
-// Board-level cheer when EVERY call on the board was right (shown at completion).
+// Board-level cheer when EVERY call/card on the board was right (shown at completion).
 const CELEBRATIONS = ['Bravo!', 'Perfect!', 'Beautifully bid!', 'Flawless — every call!', 'Nailed the whole auction!']
+// Card-play / opening-lead lessons get play-appropriate wording, not "bid"
+// (B6: a lead lesson was cheering "Beautifully bid!").
+const CELEBRATIONS_PLAY = ['Bravo!', 'Perfect!', 'Beautifully played!', 'Flawless — every card!', 'Nailed it!']
 const boardCelebration = computed(() => {
   if (!practice.isComplete.value || practice.boardState.boardHadWrong) return ''
-  return CELEBRATIONS[practice.steps.value.length % CELEBRATIONS.length]
+  const set = practice.hasBidSteps.value ? CELEBRATIONS : CELEBRATIONS_PLAY
+  return set[practice.steps.value.length % set.length]
 })
 // ---------------------------------------------------------------------------
 
