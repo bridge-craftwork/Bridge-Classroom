@@ -359,13 +359,16 @@ function parseStepContent(text, action) {
   if (showcardsMatch) {
     const showcardsValue = showcardsMatch[1].trim()
     showcards = {}
-    // Parse format like "E:S7,S:S5" or "E:S7,H3,S:S5"
-    const seatPattern = /([NESW]):([^,\s]+(?:,[^,\s]+)*)/gi
-    let match
-    while ((match = seatPattern.exec(showcardsValue)) !== null) {
-      const seat = match[1].toUpperCase()
-      const cards = match[2].split(',').map(c => c.trim().toUpperCase())
-      showcards[seat] = cards
+    // Parse format like "E:S7,S:S5" or "E:S7,H3,S:S5" (multiple cards per seat).
+    // Split on a comma that precedes a seat token so a second seat isn't swallowed
+    // as another card of the first — e.g. "N:C4,E:CT" must give two seats, not
+    // { N: ['C4','E:CT'] }. (Spaced "N:C4, E:CT" parses the same.)
+    for (const part of showcardsValue.split(/,(?=\s*[NESW]:)/)) {
+      const i = part.indexOf(':')
+      if (i < 0) continue
+      const seat = part.slice(0, i).trim().toUpperCase()
+      const cards = part.slice(i + 1).split(',').map(c => c.trim().toUpperCase())
+      if (seat) showcards[seat] = cards
     }
     if (Object.keys(showcards).length === 0) showcards = null
   }

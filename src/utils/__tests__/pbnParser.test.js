@@ -358,5 +358,28 @@ Pass
       // Marker is stripped from what the student reads.
       expect(byBid['5D'].text + byBid['5D'].explanationText).not.toContain('ACCEPT')
     })
+
+    it('parses [showcards] naming two seats without swallowing the second', () => {
+      // Regression: the old regex swallowed ",E:CT" as a second card of North,
+      // dropping East entirely. (#140-era classroom-feedback fix.)
+      const two = parsePrompts(['T\n\nlook [showcards N:C4,E:CT] [BID 1\\S] x'])
+      expect(two[0].showcards).toEqual({ N: ['C4'], E: ['CT'] })
+
+      // documented E:S7,S:S5 form
+      const es = parsePrompts(['T\n\nlook [showcards E:S7,S:S5] [BID 1\\S] x'])
+      expect(es[0].showcards).toEqual({ E: ['S7'], S: ['S5'] })
+
+      // multiple cards for one seat, then another seat
+      const multi = parsePrompts(['T\n\nlook [showcards E:S7,H3,S:S5] [BID 1\\S] x'])
+      expect(multi[0].showcards).toEqual({ E: ['S7', 'H3'], S: ['S5'] })
+
+      // single seat, two cards (no second seat)
+      const one = parsePrompts(['T\n\nlook [showcards N:C4,C7] [BID 1\\S] x'])
+      expect(one[0].showcards).toEqual({ N: ['C4', 'C7'] })
+
+      // spaced variant parses the same as the unspaced two-seat form
+      const spaced = parsePrompts(['T\n\nlook [showcards N:C4, E:CT] [BID 1\\S] x'])
+      expect(spaced[0].showcards).toEqual({ N: ['C4'], E: ['CT'] })
+    })
   })
 })

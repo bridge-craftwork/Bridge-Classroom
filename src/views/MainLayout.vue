@@ -14,7 +14,7 @@
       </span>
       <button class="stop-viewing-btn" @click="handleStopViewing">Stop viewing</button>
     </div>
-    <header class="app-header">
+    <header class="app-header" :class="{ 'has-greeting': showWelcome }">
       <h1><a href="/" style="color:inherit;text-decoration:none">{{ deals.length ? dealTitle : appTitle }}</a></h1>
       <span v-if="showWelcome" class="welcome-greeting">Welcome back, {{ firstName }}</span>
       <div class="header-right">
@@ -1360,6 +1360,18 @@ body {
   font-family: var(--font-heading, 'Source Serif 4', serif);
   font-size: 24px;
   color: var(--green-dark, #333);
+  /* Truncate a long title instead of letting it run into the centered greeting
+     or the right-hand controls. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* When the centered "Welcome back" greeting is shown, keep the title left of it
+   (the greeting is absolutely centered at 50%). */
+.app-header.has-greeting h1 {
+  max-width: calc(50% - 120px);
 }
 
 .header-right {
@@ -1941,6 +1953,12 @@ body {
 
   .app-header h1 {
     font-size: 20px;
+  }
+
+  /* Stacked layout — the greeting sits on its own row, so the title can use the
+     full width again. */
+  .app-header.has-greeting h1 {
+    max-width: none;
   }
 }
 </style>
