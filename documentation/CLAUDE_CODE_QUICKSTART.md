@@ -6,7 +6,7 @@ You are implementing a bridge teaching platform that tracks student progress. Th
 
 ## Existing Codebase
 
-**Repository:** https://github.com/Rick-Wilson/Bridge-Offline-Practice
+**Repository:** https://github.com/bridge-craftwork/Bridge-Offline-Practice
 
 **Current Structure:**
 ```
@@ -200,7 +200,7 @@ For full details, see:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/Rick-Wilson/Bridge-Offline-Practice.git
+git clone https://github.com/bridge-craftwork/Bridge-Offline-Practice.git
 cd Bridge-Offline-Practice
 npm install
 ```

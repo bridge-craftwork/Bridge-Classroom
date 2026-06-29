@@ -57,7 +57,7 @@ This folder contains the complete specification and implementation plan for the 
 
 ## Existing Code
 
-**Repository:** https://github.com/Rick-Wilson/Bridge-Offline-Practice
+**Repository:** https://github.com/bridge-craftwork/Bridge-Offline-Practice
 
 The Vue app already has:
 - Bridge table UI with all four hands

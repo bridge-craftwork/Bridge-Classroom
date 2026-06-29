@@ -123,8 +123,8 @@ const COLLECTIONS = [
     name: 'Baker Bridge',
     description: 'Classic bridge lessons covering bidding conventions and play',
     icon: '♠',
-    tocUrl: 'https://raw.githubusercontent.com/Rick-Wilson/Baker-Bridge/main/Package/toc.json',
-    baseUrl: 'https://raw.githubusercontent.com/Rick-Wilson/Baker-Bridge/main/Package'
+    tocUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/toc.json',
+    baseUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package'
   },
   {
     id: 'pbs-coaching',

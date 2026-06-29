@@ -3,7 +3,7 @@
     <span class="footer-brand">Bridge Classroom &middot; Free educational tool &middot; Provided as-is</span>
     <nav class="footer-links">
       <a href="https://discord.gg/GqyyU3sVS4" target="_blank" rel="noopener">Discord</a>
-      <a href="https://github.com/Rick-Wilson/Bridge-Classroom" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bridge-craftwork/Bridge-Classroom" target="_blank" rel="noopener">GitHub</a>
     </nav>
   </footer>
 </template>

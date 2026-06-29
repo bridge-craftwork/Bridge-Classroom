@@ -52,7 +52,7 @@ git push origin main
 ```
 
 4. **Automatic deployment**: GitHub Actions builds and deploys to GitHub Pages
-5. **Check deployment**: https://github.com/Rick-Wilson/Bridge-Classroom/actions
+5. **Check deployment**: https://github.com/bridge-craftwork/Bridge-Classroom/actions
 
 Changes are live at https://practice.harmonicsystems.com within ~2 minutes of push.
 
@@ -60,7 +60,7 @@ Changes are live at https://practice.harmonicsystems.com within ~2 minutes of pu
 
 PBN lesson files are fetched from the Baker-Bridge repo:
 ```
-https://raw.githubusercontent.com/Rick-Wilson/Baker-Bridge/main/Package/{lesson}.pbn
+https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/{lesson}.pbn
 ```
 
 To add new lessons:
@@ -315,7 +315,7 @@ ingress:
 
 ### Frontend not updating after push
 
-1. Check GitHub Actions: https://github.com/Rick-Wilson/Bridge-Classroom/actions
+1. Check GitHub Actions: https://github.com/bridge-craftwork/Bridge-Classroom/actions
 2. Clear browser cache (Cmd+Shift+R)
 3. Check for build errors in workflow logs
 
@@ -483,7 +483,7 @@ Converts CSV data to PBN format with control directives:
 
 The frontend fetches PBN files from:
 ```
-https://raw.githubusercontent.com/Rick-Wilson/Baker-Bridge/main/Package/{lesson}.pbn
+https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/{lesson}.pbn
 ```
 
 Lesson names are the subfolder names from the original HTML structure (e.g., "Declarer", "Squeeze", "OLead").

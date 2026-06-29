@@ -4,7 +4,7 @@
 
 This document outlines the staged implementation plan for the Bridge Classroom project. Each stage builds on the previous one and delivers incremental value.
 
-**Existing Codebase:** https://github.com/Rick-Wilson/Bridge-Offline-Practice
+**Existing Codebase:** https://github.com/bridge-craftwork/Bridge-Offline-Practice
 - Vue 3 + Vite
 - Components: BridgeTable, HandDisplay, BiddingBox, AuctionTable, DealNavigator, FeedbackPanel, DealInfo
 - Composables: useBiddingPractice.js (335 lines)
