@@ -7,6 +7,12 @@
   - Repo was transferred from the personal `Rick-Wilson` account into the
     `bridge-craftwork` org on 2026-06-29 (all bridge repos were consolidated
     there). Old `Rick-Wilson/Bridge-Classroom` URLs still redirect.
+- **Collaborators work directly in this org repo — no forks.** David (`ADavidBailey`)
+  is an org **admin** with direct push; `main` has no branch protection. He
+  retired his `ADavidBailey/Bridge-Classroom` fork on 2026-06-30 (it only ever
+  drifted behind and caused "I only have pull access" confusion — a fork buys
+  nothing here since no dev/staging deploy builds off it). Branch → test locally
+  → push branch → PR/merge to `main` keeps both sides in sync.
 
 ## Project Context
 
@@ -71,7 +77,17 @@ If something needs to be shown or hidden, the PBN says so explicitly. The app do
 - **API logs**: `~/Library/Logs/bridge-classroom-api.log`
 - **Tunnel logs**: `~/Library/Logs/cloudflared-tunnel.log`
 - **Service management**: `launchctl list | grep -E "bridge|cloudflare"`
-- **Restart backend**: `launchctl kickstart -k gui/$(id -u)/com.bridgeclassroom.api`
+- **Restart backend** (code-only changes): `launchctl kickstart -k gui/$(id -u)/com.bridgeclassroom.api`
+  - ⚠️ **`kickstart -k` reuses the *cached* plist** — it restarts the process but does **not** re-read `EnvironmentVariables` from disk, and dotenvy's `.env` load does **not** apply under launchd. So after changing any secret/env var (in the plist *or* `.env`), a `kickstart` will silently keep the old/empty value. To pick up env changes you must fully reload the job:
+    ```sh
+    launchctl bootout   gui/$(id -u)/com.bridgeclassroom.api
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bridgeclassroom.api.plist
+    ```
+  - The plist's `EnvironmentVariables` dict is the **canonical** source of every live secret (API_KEY, RECOVERY_SECRET, RESEND_API_KEY, GITHUB_ISSUES_TOKEN, …). `.env` is for `cargo run` dev only and is **not** reliably read by the launchd-run binary. Keep the two in sync, but treat the plist as authoritative.
+- **Report a Problem endpoint** (`POST /api/report`, issue #30): a learner's "Report a Problem" button (coached lessons) POSTs here; the Rust route ([reports.rs](bridge-classroom-api/src/routes/reports.rs)) files a `classroom-feedback` GitHub issue in the **content repo**.
+  - Auth/config: `GITHUB_ISSUES_TOKEN` (fine-grained PAT, Issues:read+write, scoped to the content repo) + `GITHUB_ISSUES_REPO` (defaults to `ADavidBailey/Practice-Bidding-Scenarios`). The token is **David's** PAT, set up with **no expiration** (so no rotation reminder needed). If it's ever revoked/regenerated, the endpoint returns **503** and the button shows "reporting isn't set up yet" (graceful, not broken) until a fresh token is set and the job is reloaded.
+  - Frontend path: `${API_URL}/report` → resolves to `/api/report` (`API_URL` already includes `/api`). 503→`not_configured` message handled in [useReportProblem.js](src/composables/useReportProblem.js).
+  - **Future — Baker-Bridge lessons:** when the same Report-a-Problem capability is extended to Baker-Bridge content, those reports should file into the **Baker-Bridge repo**, which needs its **own** fine-grained PAT (Issues:read+write, scoped to that repo). Likely means the endpoint must route by collection to one of several `GITHUB_ISSUES_REPO`/token pairs rather than a single repo. Not built yet.
 - **Build & deploy frontend**: just `git push origin main`. Both domains
   rebuild themselves from source. Do **not** run
   `npx vite build && cp -r dist/* docs/` — that legacy flow is what
