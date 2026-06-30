@@ -38,7 +38,7 @@ const props = defineProps({
 
 defineEmits(['close'])
 
-const pos = reactive({ x: 80, y: 80 })
+const pos = reactive({ x: 8, y: 80 })
 const size = reactive({ w: 550, h: 700 })
 const interacting = ref(false)
 const dragOffset = reactive({ x: 0, y: 0 })
