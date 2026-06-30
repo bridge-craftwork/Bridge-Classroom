@@ -28,7 +28,7 @@
           Accomplishments
         </button>
         <button v-if="deals.length && scenarioChat" class="scenario-info-btn" @click="showScenarioChat = true" title="Show this scenario's description">
-          &#8505; Description
+          Description
         </button>
         <button v-if="deals.length && currentCollection" class="lessons-btn" @click="returnToLessons" :title="'Back to ' + getCollection(currentCollection)?.name">
           {{ getCollection(currentCollection)?.name }}
