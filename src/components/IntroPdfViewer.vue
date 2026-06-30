@@ -159,9 +159,14 @@ function startResize(e) {
   document.addEventListener('pointerup', stopInteraction)
 }
 
+// Text size tracks the box WIDTH (the page fills the width). To make dragging the
+// box TALLER also enlarge the text, widen the box in step with its height: width
+// is floored by height/ASPECT, so a taller box is at least proportionally wider
+// and the bigger width drives bigger text — with no clipping or sideways scroll.
+const ASPECT = (700 - TITLEBAR) / 550 // default body-height : width
 function onResize(e) {
-  size.w = Math.max(320, dragOffset.startW + (e.clientX - dragOffset.x))
   size.h = Math.max(300, dragOffset.startH + (e.clientY - dragOffset.y))
+  size.w = Math.max(320, dragOffset.startW + (e.clientX - dragOffset.x), (size.h - TITLEBAR) / ASPECT)
 }
 
 function stopInteraction() {
