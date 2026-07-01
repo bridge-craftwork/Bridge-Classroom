@@ -26,11 +26,19 @@
 ## Components
 
 ### 1. Frontend (Vue.js App)
-- **URL**: https://bridge-classroom.com
-- **Hosting**: GitHub Pages
+- **URLs**: https://bridge-classroom.com (GitHub Pages) and
+  https://bridge-classroom.org (Cloudflare Worker — the Norton-block fallback,
+  see [dot-com-vs-dot-org.md](../dot-com-vs-dot-org.md))
 - **Repo**: bridge-craftwork/Bridge-Classroom
-- **Build**: Vite (`npm run build`)
-- **Deploy**: GitHub Actions (`.github/workflows/deploy.yml`)
+- **Build**: Vite (`npm run build && bash scripts/build-site.sh`)
+- **Deploy**: **both** domains deploy from the single GitHub Actions workflow
+  [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) on push to
+  `main` — the `build`/`deploy` jobs publish `.com` to Pages, the
+  `deploy-worker` job runs `wrangler deploy` for the `.org` Worker. This
+  replaced Cloudflare's own Git build integration (which had no latest-wins
+  concurrency and once let `.org` drift behind `.com`); the Cloudflare dashboard
+  Git auto-build is intentionally **disabled**. Needs repo secrets
+  `CLOUDFLARE_API_TOKEN` (Workers Scripts: Read+Write) and `CLOUDFLARE_ACCOUNT_ID`.
 
 ### 2. Backend API (Rust)
 - **URL**: https://api.bridge-classroom.com
