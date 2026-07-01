@@ -111,10 +111,15 @@ jobs:
         if: env.CF_API_TOKEN != ''
         run: bash scripts/build-site.sh
 
+      # Deploy with the project's pinned wrangler (devDependency, ^4). Using
+      # `npx wrangler` directly rather than cloudflare/wrangler-action avoids the
+      # action's fallback to its stale default wrangler (3.90.0), which predates
+      # Workers Static Assets and fails an assets-only config (no `main`
+      # entry-point) with "Missing entry-point". wrangler reads the token +
+      # account id from these env vars.
       - name: Deploy Worker (.org)
         if: env.CF_API_TOKEN != ''
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
