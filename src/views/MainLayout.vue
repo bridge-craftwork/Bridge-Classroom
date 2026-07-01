@@ -659,7 +659,6 @@ async function handleSwitchUser() {
   // session (e.g. forceBoardStatus mastery-circle colors briefly showing the
   // previous user's play on the same lesson).
   forceBoardStatus.value = {}
-  scenarioChat.value = null
   introUrl.value = null
   showIntroPdf.value = false
   reportContext.value = {}
