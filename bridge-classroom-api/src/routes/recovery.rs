@@ -25,6 +25,58 @@ const CODE_RATE_LIMIT_SECS: u64 = 900; // 15 minutes
 static CODE_RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, (Instant, u32)>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// §S4: throttle recovery-email SENDS so a registered address can't be bombed
+/// (paid Resend quota / annoyance) and bulk enumeration is slowed. Kept
+/// deliberately lenient so a real user requesting recovery — or the
+/// registration flow's "is this email already registered?" check, which hits
+/// the same endpoint — never trips it. Per-email and per-client-IP.
+const REQUEST_MAX_PER_EMAIL: u32 = 3;
+const REQUEST_EMAIL_WINDOW_SECS: u64 = 900; // 15 minutes
+const REQUEST_MAX_PER_IP: u32 = 10;
+const REQUEST_IP_WINDOW_SECS: u64 = 3600; // 1 hour
+
+static REQUEST_EMAIL_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, (Instant, u32)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+static REQUEST_IP_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, (Instant, u32)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Record one hit for `key` and report whether it's within `max` per
+/// `window_secs`. Expired windows are dropped. Tolerates a poisoned mutex
+/// instead of panicking (§C12).
+fn rate_limit_allow(
+    limiter: &Mutex<HashMap<String, (Instant, u32)>>,
+    key: &str,
+    max: u32,
+    window_secs: u64,
+) -> bool {
+    let now = Instant::now();
+    let mut map = match limiter.lock() {
+        Ok(m) => m,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    map.retain(|_, (start, _)| now.duration_since(*start).as_secs() < window_secs);
+    let entry = map.entry(key.to_string()).or_insert((now, 0));
+    if entry.1 >= max {
+        return false;
+    }
+    entry.1 += 1;
+    true
+}
+
+/// Best-effort client IP. The API sits behind the Cloudflare Tunnel, so the
+/// socket peer is always localhost — the real caller is in `CF-Connecting-IP`
+/// (or the first `X-Forwarded-For` hop). Falls back to a constant so a missing
+/// header degrades to per-email-only limiting rather than bypassing it.
+fn client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("cf-connecting-ip")
+        .or_else(|| headers.get("x-forwarded-for"))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 /// Request to initiate account recovery
 #[derive(Debug, Deserialize)]
 pub struct RecoveryRequest {
@@ -293,6 +345,24 @@ pub async fn request_recovery(
         return Ok(Json(RecoveryRequestResponse {
             success: false,
             message: "This account was created before recovery was available. Please contact your teacher.".to_string(),
+            user_id: None,
+        }));
+    }
+
+    // §S4: throttle here — only once we know a recovery email will actually be
+    // sent. Counting only real sends (not "no account" / new-email registration
+    // checks) means the abuse case (bombing a registered address) is capped
+    // while a teacher onboarding many new students from one IP is never blocked.
+    // Per-email stops hammering one address; per-IP stops one host bombing many.
+    let email_key = req.email.trim().to_lowercase();
+    let ip = client_ip(&headers);
+    if !rate_limit_allow(&REQUEST_EMAIL_LIMITER, &email_key, REQUEST_MAX_PER_EMAIL, REQUEST_EMAIL_WINDOW_SECS)
+        || !rate_limit_allow(&REQUEST_IP_LIMITER, &ip, REQUEST_MAX_PER_IP, REQUEST_IP_WINDOW_SECS)
+    {
+        tracing::warn!("Recovery request throttled (email={}, ip={})", email_key, ip);
+        return Ok(Json(RecoveryRequestResponse {
+            success: false,
+            message: "You've requested account recovery several times recently. Please check your email (including spam) or wait a few minutes before trying again.".to_string(),
             user_id: None,
         }));
     }
