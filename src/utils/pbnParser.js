@@ -591,6 +591,7 @@ function replaceSuitSymbols(text) {
     .replace(/\\H/g, '♥')
     .replace(/\\D/g, '♦')
     .replace(/\\C/g, '♣')
+    .replace(/\\N/g, 'NT')
     .replace(/\\s/g, '♠')
     .replace(/\\h/g, '♥')
     .replace(/\\d/g, '♦')
