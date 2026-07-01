@@ -3,6 +3,17 @@ name: Deploy site (.com Pages + .org Worker)
 on:
   push:
     branches: [main]
+    # Skip deploys for pushes that touch ONLY non-build files. A push that also
+    # changes any build input still deploys (paths-ignore skips only when EVERY
+    # changed file matches). Do NOT add build inputs here — notably `docs/**` is
+    # the static landing pages that build-site.sh copies into dist/ (published),
+    # unlike `documentation/**` which is not. `workflow_dispatch` below stays as
+    # a manual deploy trigger.
+    paths-ignore:
+      - '**/*.md'
+      - 'documentation/**'
+      - 'mockups/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
