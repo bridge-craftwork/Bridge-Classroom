@@ -21,31 +21,50 @@
 
       <div class="browser-content">
         <div
-          v-for="category in toc.categories"
-          :key="category.id"
-          class="category-section"
+          v-for="grp in displayGroups"
+          :key="grp.key"
+          class="group-section"
         >
           <button
-            class="category-header"
-            :class="{ expanded: expandedCategories.includes(category.id) }"
-            @click="toggleCategory(category.id)"
+            v-if="grp.group"
+            class="group-header"
+            :class="{ expanded: expandedGroups.includes(grp.group) }"
+            @click="toggleGroup(grp.group)"
           >
-            <span class="expand-icon">{{ expandedCategories.includes(category.id) ? '▼' : '▶' }}</span>
-            <span class="category-name">{{ category.name }}</span>
-            <span class="category-count">{{ category.lessons.length }} lessons</span>
+            <span class="expand-icon">{{ expandedGroups.includes(grp.group) ? '▼' : '▶' }}</span>
+            <span class="group-name">{{ grp.group }}</span>
+            <span class="category-count">{{ grp.categories.length }} sections</span>
           </button>
 
-          <div v-if="expandedCategories.includes(category.id)" class="lesson-list">
-            <button
-              v-for="lesson in category.lessons"
-              :key="lesson.id"
-              class="lesson-item"
-              :class="{ loading: loadingLesson === lesson.id }"
-              @click="selectLesson(lesson, category)"
+          <div v-show="!grp.group || expandedGroups.includes(grp.group)" class="group-body">
+            <div
+              v-for="category in grp.categories"
+              :key="category.id"
+              class="category-section"
             >
-              <span class="lesson-name">{{ lesson.name }}</span>
-              <span class="lesson-description">{{ lesson.description }}</span>
-            </button>
+              <button
+                class="category-header"
+                :class="{ expanded: expandedCategories.includes(category.id) }"
+                @click="toggleCategory(category.id)"
+              >
+                <span class="expand-icon">{{ expandedCategories.includes(category.id) ? '▼' : '▶' }}</span>
+                <span class="category-name">{{ category.name }}</span>
+                <span class="category-count">{{ category.lessons.length }} lessons</span>
+              </button>
+
+              <div v-if="expandedCategories.includes(category.id)" class="lesson-list">
+                <button
+                  v-for="lesson in category.lessons"
+                  :key="lesson.id"
+                  class="lesson-item"
+                  :class="{ loading: loadingLesson === lesson.id }"
+                  @click="selectLesson(lesson, category)"
+                >
+                  <span class="lesson-name">{{ lesson.name }}</span>
+                  <span class="lesson-description">{{ lesson.description }}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -60,31 +79,50 @@
   <div v-else-if="visible && inline && toc" class="lesson-browser-inline">
     <div class="browser-content-inline">
       <div
-        v-for="category in toc.categories"
-        :key="category.id"
-        class="category-section"
+        v-for="grp in displayGroups"
+        :key="grp.key"
+        class="group-section"
       >
         <button
-          class="category-header"
-          :class="{ expanded: expandedCategories.includes(category.id) }"
-          @click="toggleCategory(category.id)"
+          v-if="grp.group"
+          class="group-header"
+          :class="{ expanded: expandedGroups.includes(grp.group) }"
+          @click="toggleGroup(grp.group)"
         >
-          <span class="expand-icon">{{ expandedCategories.includes(category.id) ? '▼' : '▶' }}</span>
-          <span class="category-name">{{ category.name }}</span>
-          <span class="category-count">{{ category.lessons.length }} lessons</span>
+          <span class="expand-icon">{{ expandedGroups.includes(grp.group) ? '▼' : '▶' }}</span>
+          <span class="group-name">{{ grp.group }}</span>
+          <span class="category-count">{{ grp.categories.length }} sections</span>
         </button>
 
-        <div v-if="expandedCategories.includes(category.id)" class="lesson-list">
-          <button
-            v-for="lesson in category.lessons"
-            :key="lesson.id"
-            class="lesson-item"
-            :class="{ loading: loadingLesson === lesson.id }"
-            @click="selectLesson(lesson, category)"
+        <div v-show="!grp.group || expandedGroups.includes(grp.group)" class="group-body">
+          <div
+            v-for="category in grp.categories"
+            :key="category.id"
+            class="category-section"
           >
-            <span class="lesson-name">{{ lesson.name }}</span>
-            <span class="lesson-description">{{ lesson.description }}</span>
-          </button>
+            <button
+              class="category-header"
+              :class="{ expanded: expandedCategories.includes(category.id) }"
+              @click="toggleCategory(category.id)"
+            >
+              <span class="expand-icon">{{ expandedCategories.includes(category.id) ? '▼' : '▶' }}</span>
+              <span class="category-name">{{ category.name }}</span>
+              <span class="category-count">{{ category.lessons.length }} lessons</span>
+            </button>
+
+            <div v-if="expandedCategories.includes(category.id)" class="lesson-list">
+              <button
+                v-for="lesson in category.lessons"
+                :key="lesson.id"
+                class="lesson-item"
+                :class="{ loading: loadingLesson === lesson.id }"
+                @click="selectLesson(lesson, category)"
+              >
+                <span class="lesson-name">{{ lesson.name }}</span>
+                <span class="lesson-description">{{ lesson.description }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -96,7 +134,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 
 const props = defineProps({
   visible: {
@@ -123,8 +161,35 @@ const loading = ref(false)
 
 // UI state
 const expandedCategories = ref([])
+const expandedGroups = ref([])
 const loadingLesson = ref(null)
 const error = ref(null)
+
+// Group categories by their optional `group` field (e.g. Bid / Play / Defend),
+// preserving toc order. Categories with no group fall into a single ungrouped
+// bucket that renders flat (backward-compatible with group-less collections).
+const displayGroups = computed(() => {
+  const cats = toc.value?.categories || []
+  const order = []
+  const byKey = new Map()
+  for (const c of cats) {
+    const g = c.group || null
+    const key = g || '__ungrouped__'
+    if (!byKey.has(key)) {
+      const entry = { group: g, key, categories: [] }
+      byKey.set(key, entry)
+      order.push(entry)
+    }
+    byKey.get(key).categories.push(c)
+  }
+  return order
+})
+
+function toggleGroup(group) {
+  const idx = expandedGroups.value.indexOf(group)
+  if (idx >= 0) expandedGroups.value.splice(idx, 1)
+  else expandedGroups.value.push(group)
+}
 
 // Fetch TOC when component becomes visible or collection changes
 watch(
@@ -338,6 +403,47 @@ async function selectLesson(lesson, category) {
 }
 
 /* Shared styles for both modes */
+/* Bid / Play / Defend top-level groups */
+.group-section {
+  border-bottom: 1px solid #e6e6e6;
+}
+
+.group-section:last-child {
+  border-bottom: none;
+}
+
+.group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 20px;
+  background: #eef2ff;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.group-header:hover,
+.group-header.expanded {
+  background: #e2e8ff;
+}
+
+.group-name {
+  flex: 1;
+  font-weight: 700;
+  color: #2a2a3a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+
+/* Indent the category rows nested under a group */
+.group-body .category-header {
+  padding-left: 32px;
+}
+
 .category-section {
   border-bottom: 1px solid #f0f0f0;
 }
