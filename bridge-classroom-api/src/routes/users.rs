@@ -23,8 +23,13 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
 /// Register a new user
 pub async fn create_user(
     State(state): State<AppState>,
+    headers: HeaderMap,
     body: String,
 ) -> Result<Json<CreateUserResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
     // Manually deserialize with logging for debugging
     let req: CreateUserRequest = match serde_json::from_str(&body) {
         Ok(r) => r,
@@ -107,17 +112,30 @@ pub async fn create_user(
         let name_protected = existing.name_corrected_at.is_some();
         let now = chrono::Utc::now().to_rfc3339();
 
+        // SECURITY (§S1): never let this endpoint repoint an existing account's
+        // email. Doing so was a full account-takeover primitive — an attacker
+        // who knew a victim's user_id could set the login email to their own
+        // and then pull the victim's recovery key via the recovery flow. Legit
+        // profile sync always sends the account's own email, so preserving the
+        // stored value is transparent; a genuine email change must go through an
+        // authenticated path, not this anonymous-by-design upsert.
+        if !req.email.eq_ignore_ascii_case(&existing.email) {
+            tracing::warn!(
+                "create_user: ignoring email change for existing user {} ({} -> {})",
+                req.user_id, existing.email, req.email
+            );
+        }
+
         if name_protected {
             // Skip first_name/last_name — admin correction takes precedence
             if let Some(ref encrypted_key) = recovery_encrypted_key {
                 sqlx::query(
                     r#"
                     UPDATE users
-                    SET email = ?, classroom = ?, data_consent = ?, updated_at = ?, recovery_encrypted_key = ?
+                    SET classroom = ?, data_consent = ?, updated_at = ?, recovery_encrypted_key = ?
                     WHERE id = ?
                     "#,
                 )
-                .bind(&req.email)
                 .bind(&req.classroom)
                 .bind(req.data_consent.unwrap_or(true))
                 .bind(&now)
@@ -133,11 +151,10 @@ pub async fn create_user(
                 sqlx::query(
                     r#"
                     UPDATE users
-                    SET email = ?, classroom = ?, data_consent = ?, updated_at = ?
+                    SET classroom = ?, data_consent = ?, updated_at = ?
                     WHERE id = ?
                     "#,
                 )
-                .bind(&req.email)
                 .bind(&req.classroom)
                 .bind(req.data_consent.unwrap_or(true))
                 .bind(&now)
@@ -155,14 +172,13 @@ pub async fn create_user(
                 sqlx::query(
                     r#"
                     UPDATE users
-                    SET first_name = ?, last_name = ?, email = ?, classroom = ?,
+                    SET first_name = ?, last_name = ?, classroom = ?,
                         data_consent = ?, updated_at = ?, recovery_encrypted_key = ?
                     WHERE id = ?
                     "#,
                 )
                 .bind(&req.first_name)
                 .bind(&req.last_name)
-                .bind(&req.email)
                 .bind(&req.classroom)
                 .bind(req.data_consent.unwrap_or(true))
                 .bind(&now)
@@ -178,14 +194,13 @@ pub async fn create_user(
                 sqlx::query(
                     r#"
                     UPDATE users
-                    SET first_name = ?, last_name = ?, email = ?, classroom = ?,
+                    SET first_name = ?, last_name = ?, classroom = ?,
                         data_consent = ?, updated_at = ?
                     WHERE id = ?
                     "#,
                 )
                 .bind(&req.first_name)
                 .bind(&req.last_name)
-                .bind(&req.email)
                 .bind(&req.classroom)
                 .bind(req.data_consent.unwrap_or(true))
                 .bind(&now)

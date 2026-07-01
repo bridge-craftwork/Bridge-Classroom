@@ -26,6 +26,13 @@ const DEBOUNCE_MS = 5000
 // Debounce timer
 let syncDebounceTimer = null
 
+// Guards (§C1, §C6): install the global sync triggers exactly once for the app's
+// lifetime — they were previously re-added on every login/Switch User, stacking
+// listeners and 5-minute intervals without bound. And serialize performSync so
+// overlapping triggers (online event + debounce + interval) don't double-run.
+let triggersInstalled = false
+let syncInProgress = false
+
 /**
  * Calculate exponential backoff delay
  * @param {number} attempt - Current retry attempt (0-indexed)
@@ -67,7 +74,8 @@ async function registerUserWithServer(user) {
     const response = await fetch(`${API_URL}/users`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY
       },
       body: JSON.stringify(payload)
     })
@@ -162,6 +170,13 @@ async function performSync() {
     return { success: false, offline: true }
   }
 
+  // §C6: don't run two syncs concurrently. Overlapping triggers would otherwise
+  // double-POST the same batch and race on the pending-queue removal.
+  if (syncInProgress) {
+    return { success: true, skipped: true }
+  }
+  syncInProgress = true
+
   syncState.value = 'syncing'
   lastError.value = null
 
@@ -172,7 +187,11 @@ async function performSync() {
   }
 
   try {
-    const user = userStore.currentUser.value
+    // §C5: always sync/register the REAL signed-in user, never an admin
+    // "View as user" shadow (which has no secretKey/serverRegistered and would
+    // otherwise register the viewed student's id with an empty key and stall the
+    // admin's own queue).
+    const user = userStore.realUser.value
 
     // 1. Register user if not already registered
     if (user && !user.serverRegistered) {
@@ -210,7 +229,14 @@ async function performSync() {
       const pending = observationStore.getPendingObservations()
       if (pending.length > 0) {
         const syncResult = await syncObservationsToServer(pending)
-        if (syncResult.success && syncResult.synced > 0) {
+        // §C6: only prune the pending queue on a CLEAN full success. The server
+        // returns a `stored` count (not the set of stored ids), so on a partial
+        // failure a positional `slice(0, stored)` could delete the observations
+        // that actually FAILED and keep ones that succeeded. When any error is
+        // reported, keep everything queued — succeeded rows re-upsert harmlessly
+        // (server is ON CONFLICT(id)) and failed rows get retried.
+        const cleanSuccess = syncResult.success && (syncResult.errors?.length ?? 0) === 0
+        if (cleanSuccess && syncResult.synced > 0) {
           // Remove synced observations
           const syncedIds = pending
             .filter(obs => obs.encrypted)
@@ -274,6 +300,8 @@ async function performSync() {
     syncState.value = 'error'
     result.success = false
     return result
+  } finally {
+    syncInProgress = false
   }
 }
 
@@ -331,7 +359,8 @@ function syncBeforeUnload() {
   const userStore = useUserStore()
   const observationStore = useObservationStore()
 
-  const user = userStore.currentUser?.value
+  // §C5: flush the real user's queue, not an admin view-as shadow.
+  const user = userStore.realUser?.value
   if (!user?.dataConsent) return
 
   const pending = observationStore.getPendingObservations()
@@ -357,6 +386,12 @@ function syncBeforeUnload() {
  * Setup event listeners for sync triggers
  */
 function setupSyncTriggers() {
+  // §C1: install exactly once. initialize() runs on mount AND on every
+  // handleUserReady (login / Switch User); without this guard each switch added
+  // another full set of listeners + a new 5-minute interval, unbounded.
+  if (triggersInstalled) return
+  triggersInstalled = true
+
   // Online/offline detection
   window.addEventListener('online', () => {
     isOnline.value = true

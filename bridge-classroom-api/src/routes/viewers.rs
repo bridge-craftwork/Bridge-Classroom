@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
@@ -11,6 +11,15 @@ use crate::models::{
 use crate::routes::recovery::encrypt_for_recovery;
 use crate::AppState;
 
+/// Validate API key from request headers
+fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
+    headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|k| k == expected_key)
+        .unwrap_or(false)
+}
+
 /// Query parameters for viewer lookup
 #[derive(Debug, Deserialize)]
 pub struct ViewerQuery {
@@ -20,8 +29,13 @@ pub struct ViewerQuery {
 /// Create a new viewer (teacher, partner, admin)
 pub async fn create_viewer(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateViewerRequest>,
 ) -> Result<Json<CreateViewerResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
     let viewer = Viewer::from_request(&req);
 
     // Encrypt private key with RECOVERY_SECRET if provided

@@ -1,5 +1,8 @@
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::{Pool, Sqlite};
 use std::path::Path;
+use std::str::FromStr;
+use std::time::Duration;
 
 /// Initialize the database connection pool and run migrations
 pub async fn init_db(database_url: &str) -> Result<Pool<Sqlite>, DbError> {
@@ -21,23 +24,26 @@ pub async fn init_db(database_url: &str) -> Result<Pool<Sqlite>, DbError> {
         }
     }
 
-    // Add create mode if not already present
-    let url = if database_url.contains("?") {
-        if !database_url.contains("mode=") {
-            format!("{}&mode=rwc", database_url)
-        } else {
-            database_url.to_string()
-        }
-    } else {
-        format!("{}?mode=rwc", database_url)
-    };
-
     tracing::info!("Connecting to database: {}", database_url);
+
+    // §C8: connect in WAL mode with a real busy timeout. Previously the pool ran
+    // in the default rollback-journal (`delete`) mode where writers block readers
+    // and vice versa — with the write-heavy observation-sync paths that meant
+    // SQLITE_BUSY 500s when two students synced while a teacher loaded the
+    // dashboard. WAL lets reads proceed concurrently with a writer; the 10s
+    // busy_timeout absorbs brief write contention instead of erroring. (This also
+    // brings the runtime in line with the backup docs, which already assume WAL.)
+    let options = SqliteConnectOptions::from_str(database_url)
+        .map_err(|e| DbError::Connection(e.to_string()))?
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(10));
 
     // Create connection pool
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(&url)
+        .connect_with(options)
         .await
         .map_err(|e| DbError::Connection(e.to_string()))?;
 
@@ -757,6 +763,51 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         .execute(pool)
         .await
         .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // §C10: assignment_id is the hot filter for compute_assignment_stats, the
+    // duration rollups, recompute_assignment_boards (per board), and the grid
+    // query — all previously full-scanning the largest table. Index it.
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_observations_assignment ON observations(assignment_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // §C9: create observations_decrypted in migrations so it always exists. It
+    // was previously created only as a side effect of the admin decrypt endpoint,
+    // so merge_accounts (which DELETEs from it) 500'd on any DB where decrypt had
+    // never been run (fresh install / clean restore). The admin endpoint still
+    // DROP+CREATEs it on each run to refresh the schema; this just guarantees a
+    // baseline table is present.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS observations_decrypted (
+            observation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            timestamp TEXT,
+            deal_subfolder TEXT,
+            deal_number INTEGER,
+            prompt_index INTEGER,
+            correct INTEGER,
+            board_result_metadata TEXT,
+            board_result_payload TEXT,
+            inferred_board_result TEXT,
+            had_wrong_prompt INTEGER,
+            prompt_count INTEGER,
+            student_bid TEXT,
+            expected_bid TEXT,
+            student_hand TEXT,
+            full_auction TEXT,
+            auction_so_far TEXT,
+            skill_path TEXT,
+            session_id TEXT,
+            decrypted_json TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
     // ---- Index for the "is the board cold?" check (CORRECTNESS_AND_MASTERY.md §7.2) ----
     // Supports the wild_achievement promotion lookup: for a given

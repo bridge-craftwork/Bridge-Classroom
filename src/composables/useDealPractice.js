@@ -871,6 +871,10 @@ export function useDealPractice() {
     boardState.boardHadWrong = false
     boardState.wrongStepIndices = {}
     boardState.studentBidStepIndices = {}
+    // §C4: must clear altStepIndices too. Leaving it set carried an [ACCEPT]
+    // alternative from a prior board into the next, which suppressed the next
+    // board's celebration and mis-tagged same-index steps as alternatives.
+    boardState.altStepIndices = {}
     boardState.promptHistory = []
     boardState.observationId = crypto.randomUUID()
 

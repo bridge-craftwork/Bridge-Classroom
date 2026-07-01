@@ -310,6 +310,12 @@ pub async fn recompute_board_history(
     let mut final_wilderness = String::from("Tame");
     let mut final_timestamp = String::new();
 
+    // §C8: apply the per-observation status/wilderness rewrites in a single
+    // transaction. Previously each row was UPDATEd independently against the
+    // pool, so an error partway through left observations.status inconsistent
+    // with the derived history until the next sync happened to fix it.
+    let mut tx = pool.begin().await.map_err(|e| format!("begin recompute tx failed: {}", e))?;
+
     for (i, obs) in observations.iter().enumerate() {
         let obs_ts = parse_timestamp(&obs.timestamp);
         let wilderness = obs.wilderness.clone()
@@ -365,7 +371,7 @@ pub async fn recompute_board_history(
         .bind(obs_status)
         .bind(&wilderness)
         .bind(&obs.id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| format!("Observation update failed: {}", e))?;
 
@@ -373,6 +379,8 @@ pub async fn recompute_board_history(
         final_wilderness = wilderness;
         final_timestamp = obs.timestamp.clone();
     }
+
+    tx.commit().await.map_err(|e| format!("commit recompute tx failed: {}", e))?;
 
     upsert_board_status_v2(
         pool,

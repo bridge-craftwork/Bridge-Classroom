@@ -627,7 +627,18 @@ async function handleUserReady(user) {
   }
 }
 
-function handleSwitchUser() {
+async function handleSwitchUser() {
+  // §C2: flush the outgoing user's queue BEFORE wiping it. reset() persists an
+  // empty pending array, so without this any observations recorded offline or
+  // inside the 5s sync debounce were silently discarded on switch. Best-effort:
+  // if offline the flush no-ops, but we still must clear so the next user never
+  // inherits the previous user's queue.
+  try {
+    await dataSync.forceSync()
+  } catch (e) {
+    // Non-fatal — proceed with the switch regardless.
+  }
+
   // Clear all cached per-user data before switching
   useAccomplishments().reset()
   useStudentProgress().clearCache()
@@ -643,6 +654,15 @@ function handleSwitchUser() {
   practice.resetStats()
   appConfig.setCollectionInUrl(null)
   appConfig.setLessonInUrl(null)
+
+  // §C2: also clear per-user UI state that otherwise leaks into the next user's
+  // session (e.g. forceBoardStatus mastery-circle colors briefly showing the
+  // previous user's play on the same lesson).
+  forceBoardStatus.value = {}
+  scenarioChat.value = null
+  introUrl.value = null
+  showIntroPdf.value = false
+  reportContext.value = {}
 
   // Exit any active view-as session and clear current user to show welcome screen
   userStore.stopViewingAs()

@@ -308,9 +308,10 @@ pub async fn request_recovery(
     // or created a duplicate account).
     let expires_at = now + chrono::Duration::hours(24);
 
-    tracing::info!("========== Creating recovery token ==========");
-    tracing::info!("Generated token (first 20 chars): {}...", &token.chars().take(20).collect::<String>());
-    tracing::info!("Recovery code: {}", recovery_code);
+    // SECURITY (§S4): do NOT log the recovery code or the token here. This path
+    // runs on every successful recovery request, so logging the one-time secret
+    // turned the API log into a credential store. Log only a non-sensitive marker.
+    tracing::info!("Creating recovery token for user {}", user_id);
 
     // Delete any existing tokens for this user
     sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ?")
@@ -348,8 +349,10 @@ pub async fn request_recovery(
         .map(|origin| format!("{}/solo-practice-app", origin))
         .unwrap_or(frontend_url);
     let recovery_url = format!("{}?recover={}&user_id={}", base_url, token, user_id);
-    tracing::info!("Recovery URL token (first 20 chars): {}...", &token.chars().take(20).collect::<String>());
-    tracing::info!("Full recovery URL: {}", recovery_url);
+    // SECURITY (§S4): the recovery URL embeds the one-time token — never log it
+    // on the success path. (The email-delivery-failed break-glass block below
+    // still prints it as a deliberate operational escape hatch when email is
+    // down; that path is rare and is the only manual recovery channel.)
 
     // Send recovery email via Resend if API key is configured
     let mut email_sent = false;
@@ -405,7 +408,9 @@ pub async fn request_recovery(
     Ok(Json(RecoveryRequestResponse {
         success: true, // Account exists, even if email failed
         message,
-        user_id: Some(user_id),
+        // SECURITY (§S4): the client never needs the user_id here (the claim flow
+        // reads it from the emailed recovery URL), so don't hand it out.
+        user_id: None,
     }))
 }
 
@@ -458,12 +463,22 @@ pub async fn claim_recovery(
         }
     };
 
-    // Mark token as used
-    sqlx::query("UPDATE recovery_tokens SET used = 1 WHERE id = ?")
+    // Mark token as used — atomically (§S4). The `AND used = 0` guard plus the
+    // rows_affected check closes a TOCTOU where two concurrent claims of the same
+    // token could both pass the SELECT above and both succeed.
+    let marked = sqlx::query("UPDATE recovery_tokens SET used = 1 WHERE id = ? AND used = 0")
         .bind(&token_id)
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if marked.rows_affected() == 0 {
+        tracing::warn!("Recovery token {} was already claimed (race)", token_id);
+        return Ok(Json(RecoveryClaimResponse {
+            success: false,
+            user: None,
+            error: Some("This recovery link has expired or was already used. Please request a new recovery email.".to_string()),
+        }));
+    }
 
     // Get user data with recovery key
     let user = sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String)>(
@@ -651,12 +666,22 @@ pub async fn claim_by_code(
         }
     };
 
-    // Mark token as used
-    sqlx::query("UPDATE recovery_tokens SET used = 1 WHERE id = ?")
+    // Mark token as used — atomically (§S4). The `AND used = 0` guard plus the
+    // rows_affected check closes a TOCTOU where two concurrent claims of the same
+    // token could both pass the SELECT above and both succeed.
+    let marked = sqlx::query("UPDATE recovery_tokens SET used = 1 WHERE id = ? AND used = 0")
         .bind(&token_id)
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if marked.rows_affected() == 0 {
+        tracing::warn!("Recovery token {} was already claimed (race)", token_id);
+        return Ok(Json(RecoveryClaimResponse {
+            success: false,
+            user: None,
+            error: Some("This recovery link has expired or was already used. Please request a new recovery email.".to_string()),
+        }));
+    }
 
     // Get user data with recovery key
     let user = sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String)>(

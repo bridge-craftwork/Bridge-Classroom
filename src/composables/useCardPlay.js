@@ -45,6 +45,13 @@ const autoplayUserSingletons = ref(false)
 // count the claim awarded; defenders get the rest of the remaining tricks.
 const claim = ref(null)  // { declarerTricks, atTrick }
 
+// §C3: cancellation epoch for the async bot driver. startPlay/reset bump it;
+// the driver captures it on entry and bails after every await if it changed.
+// Without this, a bot call in flight (BEN cold-start ~20s) could resolve after
+// the deal was switched and record a play into the NEW deal, or leave two
+// drivers running at once.
+let playEpoch = 0
+
 // ── Derived ────────────────────────────────────────────────────────────
 
 const isActive = computed(() => dealCtx.value !== null)
@@ -132,6 +139,9 @@ export function startPlay({
   const trump = trumpFromContract(contract)
   const dummySeat = SEAT_ORDER[(SEAT_ORDER.indexOf(declarer) + 2) % 4]
   const openingLeader = nextSeat(declarer)
+
+  // §C3: invalidate any in-flight driver from a previous deal.
+  playEpoch++
 
   dealCtx.value = {
     hands,
@@ -226,6 +236,8 @@ export function claimTricks(declarerTricks, { overridden = false, rejectionMessa
 
 // Reset play to pre-cardplay state. Caller can then call startPlay again.
 export function reset() {
+  // §C3: invalidate any in-flight bot driver so it can't record into the next deal.
+  playEpoch++
   dealCtx.value = null
   currentTrick.leader = null
   currentTrick.plays = []
@@ -262,11 +274,16 @@ export async function onUserCard(suit, rank) {
 
 async function advanceBotsIfTheirTurn() {
   if (!isActive.value || playComplete.value) return
+  // §C3: snapshot the epoch for this driver invocation. If the deal is reset or
+  // a new one starts (playEpoch bumps), this driver must stop touching state.
+  const myEpoch = playEpoch
+  const stale = () => myEpoch !== playEpoch
   while (true) {
-    if (playComplete.value) return
+    if (stale() || playComplete.value) return
     // Finalize a completed trick first if 4 plays sit in currentTrick.
     if (currentTrick.plays.length === 4) {
       await finalizeTrick()
+      if (stale()) return
       continue
     }
     const cur = currentPlayer.value
@@ -286,6 +303,7 @@ async function advanceBotsIfTheirTurn() {
       }
       await recordPlay({ seat: cur, ...legalCards[0] })
       await sleep(dealCtx.value.pacing.betweenPlays)
+      if (stale()) return
       continue
     }
 
@@ -298,10 +316,14 @@ async function advanceBotsIfTheirTurn() {
     try {
       card = await callBotForSeat(cur)
     } catch (err) {
+      if (stale()) { botLoading.value = false; return }
       botError.value = err.message || String(err)
       botLoading.value = false
       return
     }
+    // §C3: the deal was switched/reset while this bot was thinking — drop the
+    // result rather than recording it into the new deal.
+    if (stale()) { botLoading.value = false; return }
     const elapsedMs = ((typeof performance !== 'undefined') ? performance.now() : Date.now()) - startedAt
     botLatencies.value = [...botLatencies.value, elapsedMs]
     if (typeof console !== 'undefined') {
@@ -313,6 +335,7 @@ async function advanceBotsIfTheirTurn() {
     if (!card) return
     await recordPlay({ seat: cur, ...card })
     await sleep(dealCtx.value.pacing.betweenPlays)
+    if (stale()) return
   }
 }
 

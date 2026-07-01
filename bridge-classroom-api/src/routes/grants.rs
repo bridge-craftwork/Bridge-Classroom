@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
@@ -10,6 +10,15 @@ use crate::models::{
     SharingGrant,
 };
 use crate::AppState;
+
+/// Validate API key from request headers
+fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
+    headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|k| k == expected_key)
+        .unwrap_or(false)
+}
 
 /// Query parameters for grant lookup
 #[derive(Debug, Deserialize)]
@@ -21,8 +30,13 @@ pub struct GrantQuery {
 /// Create a new sharing grant
 pub async fn create_grant(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateGrantRequest>,
 ) -> Result<Json<CreateGrantResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
     let grant = SharingGrant::from_request(&req);
 
     // Use upsert to handle re-granting (update encrypted_payload if grant exists)
@@ -158,8 +172,13 @@ pub async fn get_grants(
 /// Revoke a sharing grant
 pub async fn revoke_grant(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(grant_id): Path<String>,
 ) -> Result<Json<RevokeGrantResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
     let now = chrono::Utc::now().to_rfc3339();
 
     let result = sqlx::query(

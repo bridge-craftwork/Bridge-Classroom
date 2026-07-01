@@ -1268,19 +1268,26 @@ async function loadDealAt(idx) {
 
   try {
     const result = await generateAuction(dealRef, currentScenario.value)
+    // §C3: a newer loadDealAt may have swapped the deal while BBA was
+    // responding. Abandon this stale result rather than overwriting the
+    // current deal's auction/meanings (matches the doubleDummy guard above).
+    if (currentDeal.value !== dealRef) return
     expectedAuction.value = result.auction
     originalExpectedAuction.value = result.auction
     conventionsUsed.value = result.conventionsUsed || null
     meanings.value = result.meanings || []
     originalMeanings.value = result.meanings || []
-    await playToHumanTurn()
+    await playToHumanTurn(dealRef)
   } catch (err) {
+    if (currentDeal.value !== dealRef) return  // stale error from an abandoned load
     dealError.value = 'BBA error: ' + err.message
     if (err.message.includes('Failed to fetch') || err.message.includes('CORS')) {
       dealErrorHint.value = 'Likely a CORS issue — the BBA server must allow this origin.'
     }
   } finally {
-    auctionLoading.value = false
+    // Only the load that still owns the current deal clears the spinner, so a
+    // stale loader can't turn off the newer load's loading state.
+    if (currentDeal.value === dealRef) auctionLoading.value = false
   }
 }
 
@@ -1391,12 +1398,15 @@ async function restartCardplay() {
   })
 }
 
-async function playToHumanTurn() {
+async function playToHumanTurn(dealRef = currentDeal.value) {
   while (!isAuctionOver(bids.value) && bids.value.length < expectedAuction.value.length) {
     const seat = seatAtIndex(currentDeal.value.dealer, bids.value.length)
     if (seat === STUDENT_SEAT) break
     const bid = expectedAuction.value[bids.value.length]
     await sleep(300)
+    // §C3: bail if the deal was switched during the pause, so we don't inject
+    // stale auto-bids (computed against the old dealer) into the new auction.
+    if (currentDeal.value !== dealRef) return
     bids.value.push(bid)
   }
 }

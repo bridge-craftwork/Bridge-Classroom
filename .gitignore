@@ -44,3 +44,6 @@ activity-log.json
 
 # Playwright MCP session artifacts
 .playwright-mcp/
+
+# Private security & code review (documents live vulnerabilities — never commit)
+SECURITY-AND-CODE-REVIEW.md
