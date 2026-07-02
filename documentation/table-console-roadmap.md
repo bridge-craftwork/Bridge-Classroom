@@ -47,7 +47,7 @@ end session. Shark features to add, roughly in value order:
 
 | Shark | Ours | Notes |
 |---|---|---|
-| Show All Cards | teacher kibitz already sees all | add per-table "show all to students" toggle (reveal event) for post-mortem teaching |
+| Show All Cards | teacher kibitz already sees all; teacher's own "👁 all hands / my view" display toggle DONE 2026-07-02 (TableView header, persisted) | still todo: per-table "show all to STUDENTS" toggle (reveal event) for post-mortem teaching |
 | Run Robots | per-seat `bot_takeover` request | teacher forces a bot to play a stuck/absent student's seat (zombie takeover exists; this is the manual trigger) |
 | Stop play | pause flag on the room | bots stop acting, humans get "paused by teacher" |
 | Swap Students | one-step reseat | needs `sub` in seats_json (known gap) |

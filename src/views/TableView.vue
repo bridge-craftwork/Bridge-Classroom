@@ -27,6 +27,16 @@
           >
             {{ botMode === 'random' ? 'practice bots' : 'bots: ' + botMode }}
           </span>
+          <button
+            v-if="canToggleHands"
+            class="tv-tag tv-tag-toggle"
+            :title="showAllHands
+              ? 'Teacher view: all hands visible. Click to see only what a player would.'
+              : 'Player view: hidden hands stay hidden. Click to reveal all hands.'"
+            @click="toggleShowAllHands"
+          >
+            {{ showAllHands ? '👁 all hands' : '👁 my view' }}
+          </button>
         </div>
         <div class="tv-header-right">
           <span class="tv-conn" :class="'tv-conn-' + connectionStatus">
@@ -87,7 +97,7 @@
         <div class="tv-table-wrap">
           <BridgeTable
             :hands="hands"
-            :hidden-seats="hiddenSeats"
+            :hidden-seats="displayHiddenSeats"
             :show-hcp="false"
             :clickable-seat="clickableSeat"
             :hide-played-cards="true"
@@ -207,7 +217,7 @@
 // identity, and leave() — so this component works identically for players,
 // guests, and the teacher's kibitz panel (where yourSeat is null and every
 // interaction is naturally disabled).
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BridgeTable from '../components/BridgeTable.vue'
 import BiddingBox from '../components/BiddingBox.vue'
@@ -231,9 +241,9 @@ const table = useRemoteTable()
 
 const {
   connectionStatus,
-  sessionId, tableId, yourSeat, seeAll, botMode,
+  sessionId, tableId, yourSeat, role, seeAll, botMode,
   seq, boardNumber, dealer, vulnerable, phase,
-  auction, contract, declarer,
+  auction, contract, declarer, dummySeat,
   nextToAct, hands, handCounts,
   currentTrick, lastFinishedTrick, tricksTaken, seats,
   readySeats, boardComplete, sessionClosed,
@@ -241,6 +251,42 @@ const {
   isYourBid, lastSuitBid, canDouble, canRedouble,
   errorMessage, undoBy,
 } = table
+
+// ── Teacher hand-visibility toggle ─────────────────────────────────────
+// The server sends teachers unredacted hands (see-all) even when seated at
+// the demo table. That's right for teaching, wrong for a teacher playing a
+// practice board — so teachers get an "All hands / My view" toggle. Purely
+// a display filter: the data is already in this client either way.
+const SHOW_ALL_HANDS_KEY = 'bridgeTableShowAllHands'
+const showAllHands = ref(localStorage.getItem(SHOW_ALL_HANDS_KEY) !== '0')
+
+function toggleShowAllHands() {
+  showAllHands.value = !showAllHands.value
+  localStorage.setItem(SHOW_ALL_HANDS_KEY, showAllHands.value ? '1' : '0')
+}
+
+// Offer the toggle only to viewers the server over-shares with: teacher
+// tickets and see-all (kibitz) connections.
+const canToggleHands = computed(() => seeAll.value || role.value === 'teacher')
+
+// Dummy is public knowledge once the opening lead has been made.
+const dummyPublic = computed(() =>
+  phase.value === 'play' &&
+  (currentTrick.plays.length > 0 || tricksTaken.value.NS + tricksTaken.value.EW > 0))
+
+// What BridgeTable actually hides: the server's redaction, plus — in "My
+// view" — every hand a normal player at this seat couldn't see.
+const displayHiddenSeats = computed(() => {
+  if (!canToggleHands.value || showAllHands.value || phase.value === 'complete') {
+    return hiddenSeats.value
+  }
+  return SEAT_ORDER.filter(s => {
+    if (!hands.value[s]) return true
+    if (s === yourSeat.value) return false
+    if (s === dummySeat.value && dummyPublic.value) return false
+    return true
+  })
+})
 
 const connectionLabel = computed(() => ({
   connected: 'Connected',
@@ -406,6 +452,11 @@ function onReady() {
 .tv-tag-vul { background: #ffebee; color: #c62828; }
 .tv-tag-contract { background: #e8f5e9; color: #1b5e20; font-weight: 600; }
 .tv-tag-bots { background: #ede7f6; color: #4527a0; }
+.tv-tag-toggle {
+  background: #e3f2ec; color: #1d6e50; border: 1px solid #bcd9cc;
+  cursor: pointer; font: inherit; font-size: inherit;
+}
+.tv-tag-toggle:hover { background: #d2e9de; }
 
 .tv-conn { font-size: 13px; color: #666; }
 .tv-conn-connected { color: #1d9e75; }
