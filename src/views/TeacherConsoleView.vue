@@ -168,7 +168,7 @@
 // / force_advance / kibitz. Kibitzing streams one table's snapshot+events
 // through useRemoteTable, rendered by the same TableView players use
 // (teacher has no seat, so it's naturally read-only — undo still works).
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TableView from './TableView.vue'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
@@ -251,11 +251,25 @@ async function endSession() {
   }
 }
 
-onMounted(() => {
-  userStore.initialize()
-  if (!currentUser.value) return
+function joinSession() {
+  if (!currentUser.value || !sessionId.value) return
   console_.attach()
   table.join({ sessionId: sessionId.value, userId: currentUser.value.id })
+}
+
+// Route changes reuse this component (old console → new console): rebuild
+// the connection for the new session id.
+watch(sessionId, (id, old) => {
+  if (id === old) return
+  menu.value = null
+  console_.detach() // clears the stale lobby frame + kibitz selection
+  table.leave() // also resets sessionClosed from a previous session
+  joinSession()
+})
+
+onMounted(() => {
+  userStore.initialize()
+  joinSession()
 })
 
 onBeforeUnmount(() => {
