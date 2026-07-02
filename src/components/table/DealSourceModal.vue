@@ -32,6 +32,10 @@
 
       <!-- Scenarios -->
       <div v-else-if="tab === 'scenarios'" class="dsm-body dsm-scroll">
+        <label class="dsm-check">
+          <input v-model="useScript" type="checkbox" />
+          Generate a fresh deal (dealer script) instead of a pre-made one
+        </label>
         <p v-if="menuLoading" class="dsm-muted">Loading scenarios…</p>
         <p v-else-if="menuError" class="dsm-error">{{ menuError }}</p>
         <template v-else>
@@ -92,6 +96,7 @@ import { ref, watch } from 'vue'
 import {
   fetchScenarioMenu,
   fetchScenarioDeals,
+  fetchScenarioScript,
   dealToMinimalPbn,
   randomItem,
 } from '../../utils/pbsScenarios.js'
@@ -146,10 +151,21 @@ function deal(payload) {
   emit('close')
 }
 
+// "Generate fresh": run the scenario's .dlr through the server's dealer
+// proxy for a brand-new constrained deal instead of a pre-made PBN one.
+const SCRIPT_KEY = 'bridgeTableDealViaScript'
+const useScript = ref(localStorage.getItem(SCRIPT_KEY) === '1')
+watch(useScript, (v) => localStorage.setItem(SCRIPT_KEY, v ? '1' : '0'))
+
 async function dealFromScenario(item) {
   busy.value = true
   error.value = ''
   try {
+    if (useScript.value) {
+      const script = await fetchScenarioScript(item.file)
+      deal({ source: 'script', script, rotate: rotation() })
+      return
+    }
     const deals = await fetchScenarioDeals(item.file)
     const pick = randomItem(deals)
     deal({ source: 'pbn', pbn: dealToMinimalPbn(pick), rotate: rotation() })
