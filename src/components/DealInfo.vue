@@ -264,10 +264,12 @@ const openingLeadHtml = computed(() => {
 
 .value.result {
   margin-left: 6px;
-  padding: 0 5px;
+  padding: 0 6px;
   border-radius: 4px;
   background: #eef2f7;
   color: #33475b;
+  font-size: 18px;
+  font-weight: bold;
   font-variant-numeric: tabular-nums;
 }
 
