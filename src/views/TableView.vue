@@ -8,6 +8,7 @@
     </div>
 
     <template v-else>
+      <DealSourceModal v-if="dealModalOpen" @close="dealModalOpen = false" />
       <div class="tv-header">
         <div class="tv-header-left">
           <span class="tv-title">{{ tableTitle }}</span>
@@ -49,6 +50,15 @@
             @click="onUndo"
           >
             Undo
+          </button>
+          <button
+            v-if="canDeal"
+            class="tv-btn tv-btn-primary"
+            :disabled="connectionStatus !== 'connected'"
+            title="Choose the next deal: random, replay, a bidding scenario, or pasted PBN"
+            @click="dealModalOpen = true"
+          >
+            New deal
           </button>
         </div>
       </div>
@@ -217,13 +227,14 @@
 // identity, and leave() — so this component works identically for players,
 // guests, and the teacher's kibitz panel (where yourSeat is null and every
 // interaction is naturally disabled).
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import BridgeTable from '../components/BridgeTable.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
+import DealSourceModal from '../components/table/DealSourceModal.vue'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { SUIT_SYMBOLS } from '../utils/cardFormatting.js'
 
@@ -234,6 +245,11 @@ const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
 // dump + protocol frame log, see TableDiagnostics.vue.
 const route = useRoute()
 const showDiagnostics = computed(() => route.query.debug !== undefined)
+
+// Deal-source picker (roadmap Phase 2). Demo room only — session boards
+// belong to the teacher console's round flow (the server enforces this
+// too); any seated player at the demo table may re-deal.
+const dealModalOpen = ref(false)
 
 defineEmits(['exit'])
 
@@ -273,6 +289,21 @@ const canToggleHands = computed(() => seeAll.value || role.value === 'teacher')
 const dummyPublic = computed(() =>
   phase.value === 'play' &&
   (currentTrick.plays.length > 0 || tricksTaken.value.NS + tricksTaken.value.EW > 0))
+
+const canDeal = computed(() => tableId.value === 'demo' && !!yourSeat.value)
+
+// URL-supplied deal (?pbn=<single-board PBN>): launched-from-elsewhere
+// replays (e.g. the club game-analysis app). Applied once per page load,
+// as soon as we're seated at the demo table.
+let urlDealApplied = false
+watch([() => connectionStatus.value, () => yourSeat.value], () => {
+  if (urlDealApplied || connectionStatus.value !== 'connected') return
+  if (!canDeal.value) return
+  const pbn = typeof route.query.pbn === 'string' ? route.query.pbn.trim() : ''
+  if (!pbn) return
+  urlDealApplied = true
+  table.sendDeal({ source: 'pbn', pbn })
+})
 
 // What BridgeTable actually hides: the server's redaction, plus — in "My
 // view" — every hand a normal player at this seat couldn't see.

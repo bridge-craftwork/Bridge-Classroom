@@ -504,6 +504,13 @@ function sendCard(seat, suit, rank) {
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
+// Deal-source controls (demo room; the server rejects on session tables).
+// payload: { source: 'random' | 'replay' } or
+//          { source: 'pbn', pbn: '<single-board PBN>', rotate?: 0..3 }
+function sendDeal(payload) {
+  return socket.send({ t: 'deal', ...payload })
+}
+
 // Unlimited any-actor undo (Shark-style): rewind the last action.
 function sendUndo() {
   if (seq.value === 0) return { ok: false, reason: 'nothing to undo' }
@@ -612,6 +619,7 @@ export function useRemoteTable() {
     sendCard,
     sendUndo,
     sendReady,
+    sendDeal,
     // exposed for unit tests (message folding without a live socket)
     _handleMessage: handleMessage,
     _resetTableState: resetTableState,
