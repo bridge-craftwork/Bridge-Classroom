@@ -32,6 +32,8 @@ const tableId = ref(null)
 const yourName = ref('')
 const role = ref('')
 const yourSeat = ref(null)
+// Server-confirmed bot backend for empty seats ('' until the welcome says).
+const botMode = ref('')
 
 const seq = ref(0)
 const board = ref(null) // { number, dealer, vulnerable }
@@ -132,6 +134,12 @@ function determineContract(calls, dealer) {
 
 function partnerOf(seat) {
   return SEAT_ORDER[(SEAT_ORDER.indexOf(seat) + 2) % 4]
+}
+
+// BiddingBox emits notrump as '1NT'; the wire protocol (like PBN and the
+// snapshot auction) uses '1N'. Exported for tests.
+export function toServerCall(call) {
+  return call.replace(/^(\d)NT$/, '$1N')
 }
 
 function clearTrickLinger() {
@@ -345,6 +353,7 @@ function handleMessage(msg) {
       yourName.value = msg.name
       role.value = msg.role
       yourSeat.value = msg.seat || null
+      botMode.value = msg.bot_mode || ''
       // PROTOCOL GAP WORKAROUND: the server broadcasts the seat_update for a
       // join BEFORE the joining connection subscribes to the room, so the
       // joiner never sees its own seating (or who else is already seated).
@@ -394,10 +403,10 @@ function handleMessage(msg) {
 
 // ── Public actions ─────────────────────────────────────────────────────
 
-async function join({ sessionId, userId = null, guestName = null }) {
+async function join({ sessionId, userId = null, guestName = null, bot = null }) {
   resetTableState()
   if (!unsubscribe) unsubscribe = socket.onMessage(handleMessage)
-  return socket.connect({ sessionId, userId, guestName })
+  return socket.connect({ sessionId, userId, guestName, bot })
 }
 
 function leave() {
@@ -408,7 +417,7 @@ function leave() {
 
 function sendBid(call) {
   if (!isYourBid.value) return { ok: false, reason: 'not your turn to bid' }
-  const ok = socket.send({ t: 'bid', call })
+  const ok = socket.send({ t: 'bid', call: toServerCall(call) })
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
@@ -438,6 +447,7 @@ function resetTableState() {
   yourName.value = ''
   role.value = ''
   yourSeat.value = null
+  botMode.value = ''
   seq.value = 0
   board.value = null
   phase.value = null
@@ -468,6 +478,7 @@ export function useRemoteTable() {
     yourName,
     role,
     yourSeat,
+    botMode,
     // table state
     seq,
     board,

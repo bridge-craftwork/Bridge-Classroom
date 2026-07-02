@@ -39,7 +39,7 @@ const ticketInfo = ref(null)
 
 let socket = null
 let ticket = null
-let identity = null // { sessionId, userId?, guestName? }
+let identity = null // { sessionId, userId?, guestName?, bot? }
 const handlers = new Set()
 let backoffMs = 1000
 let reconnectTimer = null
@@ -79,7 +79,12 @@ function cacheGuestTicket({ sessionId, guestName }, minted) {
 }
 
 async function mintTicket({ sessionId, userId, guestName }) {
-  if (guestName) {
+  if (userId) {
+    // A logged-in user always mints under their user_id. Drop any per-tab
+    // guest ticket so a stale guest identity can never resurface in this tab
+    // (e.g. joined as a guest earlier, then logged in).
+    try { sessionStorage.removeItem(GUEST_TICKET_CACHE_KEY) } catch { /* ignore */ }
+  } else if (guestName) {
     const cached = cachedGuestTicket({ sessionId, guestName })
     if (cached) return cached
   }
@@ -103,7 +108,7 @@ async function mintTicket({ sessionId, userId, guestName }) {
     throw err
   }
   const minted = await res.json()
-  if (guestName) cacheGuestTicket({ sessionId, guestName }, minted)
+  if (!userId && guestName) cacheGuestTicket({ sessionId, guestName }, minted)
   return minted
 }
 
@@ -141,7 +146,11 @@ function openSocket(myEpoch) {
 
   ws.onopen = () => {
     if (myEpoch !== epoch || socket !== ws) return
-    ws.send(JSON.stringify({ t: 'hello', ticket }))
+    const hello = { t: 'hello', ticket }
+    // Optional bot selector (?bot=random on the table route). The server
+    // confirms the active mode via `bot_mode` in the welcome frame.
+    if (identity?.bot) hello.bot = identity.bot
+    ws.send(JSON.stringify(hello))
     status.value = 'connected'
     backoffMs = 1000
     // Keepalive: the server treats "pong" as a no-op, but the traffic keeps
@@ -211,13 +220,32 @@ function scheduleReconnect(myEpoch, immediate = false) {
   }, delay)
 }
 
+// Tab close / navigation away: close the socket cleanly so the server frees
+// the connection immediately. Without this, a dangling socket from a closed
+// tab keeps auto-reconnecting and can re-occupy a seat (e.g. steal South in
+// a freshly reset room) from a tab nobody is looking at.
+function handlePageUnload() {
+  epoch++ // invalidate pending reconnects/mints
+  clearTimers()
+  if (socket) {
+    const ws = socket
+    socket = null
+    ws.onclose = null // no reconnect from an unloading page
+    try { ws.close(1000, 'page unload') } catch { /* already closed */ }
+  }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 // Connect (or switch) to a table session. Exactly one of userId / guestName.
-async function connect({ sessionId, userId = null, guestName = null }) {
+// `bot` optionally selects the server's bot backend (e.g. 'random').
+async function connect({ sessionId, userId = null, guestName = null, bot = null }) {
   disconnect()
   const myEpoch = ++epoch
-  identity = { sessionId, userId, guestName }
+  identity = { sessionId, userId, guestName, bot }
+  // pagehide covers mobile Safari / bfcache where beforeunload doesn't fire.
+  window.addEventListener('beforeunload', handlePageUnload)
+  window.addEventListener('pagehide', handlePageUnload)
   lastError.value = ''
   status.value = 'minting'
   let minted
@@ -238,6 +266,8 @@ async function connect({ sessionId, userId = null, guestName = null }) {
 
 function disconnect() {
   epoch++
+  window.removeEventListener('beforeunload', handlePageUnload)
+  window.removeEventListener('pagehide', handlePageUnload)
   clearTimers()
   if (socket) {
     try { socket.close() } catch { /* already closed */ }

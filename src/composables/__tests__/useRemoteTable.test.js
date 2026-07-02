@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useRemoteTable } from '../useRemoteTable.js'
+import { useRemoteTable, toServerCall } from '../useRemoteTable.js'
 
 // Feed server frames straight into the message handler — no live socket.
 // (The socket layer's resync() no-ops when never connected.)
@@ -178,6 +178,28 @@ describe('useRemoteTable', () => {
     table._handleMessage({ t: 'event', kind: 'bid_made', seq: 3, call: '7NT', next_to_act: 'N' })
     expect(table.auction.value).toEqual(['1S'])
     expect(table.seq.value).toBe(5)
+  })
+
+  it('captures bot_mode from the welcome and clears it on reset', () => {
+    table._handleMessage({
+      t: 'welcome', table_id: 'demo', name: 'A', role: 'guest', seat: 'S', bot_mode: 'random',
+    })
+    expect(table.botMode.value).toBe('random')
+    table._resetTableState()
+    expect(table.botMode.value).toBe('')
+    // A welcome without bot_mode leaves it cleared.
+    table._handleMessage({ t: 'welcome', table_id: 'demo', name: 'A', role: 'guest', seat: 'S' })
+    expect(table.botMode.value).toBe('')
+  })
+
+  it('normalizes BiddingBox NT calls to the wire format', () => {
+    // BiddingBox emits '1NT'; the protocol (like PBN) uses '1N'.
+    expect(toServerCall('3NT')).toBe('3N')
+    expect(toServerCall('1NT')).toBe('1N')
+    expect(toServerCall('1H')).toBe('1H')
+    expect(toServerCall('Pass')).toBe('Pass')
+    expect(toServerCall('X')).toBe('X')
+    expect(toServerCall('XX')).toBe('XX')
   })
 
   it('surfaces error frames and undo attribution as transient messages', () => {

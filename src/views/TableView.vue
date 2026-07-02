@@ -50,6 +50,13 @@
             <span v-html="contractHtml"></span> by {{ declarer }}
           </span>
           <span v-else-if="phase === 'bidding'" class="tv-tag">Bidding</span>
+          <span
+            v-if="botMode"
+            class="tv-tag tv-tag-bots"
+            title="Empty seats are played by practice bots"
+          >
+            {{ botMode === 'random' ? 'practice bots' : 'bots: ' + botMode }}
+          </span>
         </div>
         <div class="tv-header-right">
           <span class="tv-conn" :class="'tv-conn-' + connectionStatus">
@@ -87,8 +94,12 @@
             :class="{ 'tv-seat-dot-off': !seats[seat].connected }"
             :title="seats[seat].connected ? 'connected' : 'disconnected'"
           ></span>
-          <span v-if="handCounts[seat] && phase === 'play'" class="tv-seat-count">
-            {{ handCounts[seat] }}
+          <span
+            v-if="handCounts[seat] && phase === 'play'"
+            class="tv-seat-count"
+            :title="`${handCounts[seat]} card${handCounts[seat] === 1 ? '' : 's'} left in this hand`"
+          >
+            {{ handCounts[seat] }} card{{ handCounts[seat] === 1 ? '' : 's' }}
           </span>
         </div>
       </div>
@@ -214,7 +225,7 @@ const table = useRemoteTable()
 
 const {
   connectionStatus, connectionError,
-  tableId, yourSeat,
+  tableId, yourSeat, botMode,
   seq, boardNumber, dealer, vulnerable, phase,
   auction, contract, declarer,
   nextToAct, hands, handCounts,
@@ -284,7 +295,10 @@ const botThinking = computed(() => {
 
 async function doJoin(opts) {
   joining.value = true
-  const ok = await table.join({ sessionId: sessionId.value, ...opts })
+  // ?bot=random selects the server's bot backend for empty seats; the
+  // welcome frame's bot_mode confirms what's actually active.
+  const bot = typeof route.query.bot === 'string' && route.query.bot ? route.query.bot : null
+  const ok = await table.join({ sessionId: sessionId.value, bot, ...opts })
   joining.value = false
   if (ok) hasJoined.value = true
 }
@@ -395,6 +409,7 @@ onBeforeUnmount(() => {
 }
 .tv-tag-vul { background: #ffebee; color: #c62828; }
 .tv-tag-contract { background: #e8f5e9; color: #1b5e20; font-weight: 600; }
+.tv-tag-bots { background: #ede7f6; color: #4527a0; }
 
 .tv-conn { font-size: 13px; color: #666; }
 .tv-conn-connected { color: #1d9e75; }
