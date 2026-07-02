@@ -33,6 +33,7 @@
       <div class="info-item">
         <span class="value contract" v-html="contractHtml"></span>
         <span v-if="declarer" class="label">by {{ declarerName }}</span>
+        <span v-if="showResult && resultDisplay" class="value result" title="Single-dummy result">{{ resultDisplay }}</span>
       </div>
       <div v-if="openingLead" class="info-item">
         <span class="label">OL:</span>
@@ -101,6 +102,14 @@ const props = defineProps({
   bridgeContext: {
     type: String,
     default: ''
+  },
+  result: {
+    type: [String, Number],
+    default: ''
+  },
+  showResult: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -127,6 +136,16 @@ const vulClass = computed(() => {
 const contractHtml = computed(() => {
   if (!props.contract) return ''
   return formatBid(props.contract).html
+})
+
+// Single-dummy result as a trick differential vs the contract: +1 / = / -1
+const resultDisplay = computed(() => {
+  if (!props.contract || props.result === '' || props.result == null) return ''
+  const level = parseInt(String(props.contract)[0], 10)
+  const made = parseInt(props.result, 10)
+  if (!level || Number.isNaN(made)) return ''
+  const diff = made - (6 + level)
+  return diff > 0 ? `+${diff}` : diff === 0 ? '=' : `${diff}`
 })
 
 const openingLeadHtml = computed(() => {
@@ -241,6 +260,15 @@ const openingLeadHtml = computed(() => {
 .value {
   font-size: 14px;
   font-weight: 500;
+}
+
+.value.result {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #eef2f7;
+  color: #33475b;
+  font-variant-numeric: tabular-nums;
 }
 
 .vul-both {

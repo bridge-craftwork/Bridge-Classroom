@@ -105,6 +105,8 @@
               :currentIndex="currentDealIndex"
               :dealBoardNumbers="deals.map(d => d.boardNumber)"
               :bridgeContext="currentDeal?.bridgeContext || ''"
+              :result="currentDeal?.result"
+              :showResult="practice.auctionState.auctionComplete && currentCollection === 'pbs-coaching'"
               @goto="gotoDeal"
             />
 
