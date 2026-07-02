@@ -28,6 +28,18 @@ Works for players, guests, teachers, on the demo room and session tables.
 
 ## Phase 2 — Deal sources & board options (requirements, Rick 2026-07-02)
 
+**Status 2026-07-02 (late):** SHIPPED — deal-source popup ("New deal"
+button, demo room, seated players): random (server shuffle, standard
+dealer/vul rotation), replay, scenario PBNs (PBS menu, bba-filtered
+first), "generate fresh" dealer-script proxy (server-side token,
+internal droplet network), paste-PBN, random-rotate toggle, and the
+`?pbn=` launch parameter. Server: `{"t":"deal", source: random|replay|
+pbn|script, rotate}` (session tables reject; console owns their
+boards). NOT yet built from this section: lesson collections
+(toc.json-driven), `?lin=` param + game-analysis launch button,
+bid-only/play-only modes (design below — next slice), auto-rotate
+beyond random.
+
 Context: today the demo room plays ONE hardcoded deal (the PBN spec's
 example board, compiled in) and session tables play only the PBN uploaded
 at creation. A completed demo board is a dead table until service restart.
