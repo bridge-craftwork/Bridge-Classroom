@@ -9,7 +9,7 @@
         </p>
       </div>
       <div class="header-actions">
-        <button class="btn btn-ghost" title="Open the Game Analysis app to send a whole club game here" @click="openGameAnalysis">Import a club game ↗</button>
+        <button class="btn btn-ghost" title="Open the Game Analysis app — games you analyze while signed in auto-save and are dealable at a table via 'My club games'" @click="openGameAnalysis">Analyze club games ↗</button>
         <button class="btn btn-secondary" @click="openCreate('folder')">+ Folder</button>
         <button class="btn btn-primary" @click="openCreate('file')">+ Boards file</button>
       </div>
@@ -150,19 +150,15 @@ const folderOptions = computed(() =>
     .map((r) => ({ id: r.entry.id, label: '  '.repeat(r.depth) + r.entry.name }))
 )
 
-// Launch the Game Analysis app with our user id so its "Send to Library"
-// button can post a whole club game straight into this library (the
-// ?bc_owner handshake — game-analysis has no login of its own). The app is
-// GitHub-Pages-served at game-analysis.bridge-classroom.com (.com only);
-// override for local dev with localStorage['bc-analysis-base'].
+// Open the Game Analysis app (now co-located same-origin at /game-analysis/,
+// so it reads our signed-in user directly — no ?bc_owner handshake). Games a
+// signed-in user analyzes auto-save to their club_games archive and are dealable
+// at a table via the "My club games" deal source. Override for local dev with
+// localStorage['bc-analysis-base'].
 function openGameAnalysis() {
-  const user = userStore.currentUser.value
-  if (!user) return
   let override = null
   try { override = localStorage.getItem('bc-analysis-base') } catch { /* private mode */ }
-  const base = override || 'https://game-analysis.bridge-classroom.com/'
-  const sep = base.includes('?') ? '&' : '?'
-  window.open(`${base}${sep}bc_owner=${encodeURIComponent(user.id)}`, '_blank', 'noopener')
+  window.open(override || '/game-analysis/', '_blank', 'noopener')
 }
 
 function openCreate(kind, parentId = null) {
