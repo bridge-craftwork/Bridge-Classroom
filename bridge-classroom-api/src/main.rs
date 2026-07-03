@@ -148,6 +148,17 @@ async fn main() -> anyhow::Result<()> {
                 .put(routes::update_exercise)
                 .delete(routes::delete_exercise),
         )
+        // Teacher deal library routes (Phase 2.5)
+        .route(
+            "/api/deal-library",
+            post(routes::create_deal_library_entry).get(routes::list_deal_library),
+        )
+        .route(
+            "/api/deal-library/:id",
+            get(routes::get_deal_library_entry)
+                .put(routes::update_deal_library_entry)
+                .delete(routes::delete_deal_library_entry),
+        )
         // Assignment routes
         .route("/api/assignments", post(routes::create_assignment).get(routes::list_assignments))
         .route(

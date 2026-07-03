@@ -915,6 +915,64 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Teacher deal library (Phase 2.5) ----
+    // A per-teacher hierarchy of deal material. One table covers the
+    // library, favorites, AND playlists via `kind`:
+    //   kind=folder → hierarchy ("Tuesday class" / "Week 3"); payload NULL.
+    //   kind=file   → MATERIALIZED PBN text (uploads and playlists — the
+    //                 boards are copied in at creation, never live refs, so
+    //                 they can't silently diverge). payload = PBN.
+    //   kind=link   → live REFERENCE to an external, evolving source
+    //                 (github lesson, PBS scenario/script, random). payload
+    //                 = JSON descriptor. Favorites = a folder of links; they
+    //                 intentionally track the current source rather than a
+    //                 frozen copy.
+    // `settings` is a per-entry JSON blob applied when the entry is dealt or
+    // loaded into a session (rotate with semantic labels, default board
+    // mode, bot mode) — file/link only; NULL on folders. Strictly
+    // per-teacher in v1 (no sharing): `owner` is NOT NULL and every
+    // endpoint scopes to it. `deleted_at` soft-deletes; folder deletes
+    // cascade to descendants in code — sqlx enables PRAGMA foreign_keys, but
+    // a soft-delete is an UPDATE, which never fires an ON DELETE cascade, so
+    // `parent_id` deliberately has no ON DELETE clause and the route walks
+    // the subtree itself.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS deal_library (
+            id TEXT PRIMARY KEY,
+            owner TEXT NOT NULL REFERENCES users(id),
+            parent_id TEXT REFERENCES deal_library(id),
+            kind TEXT NOT NULL CHECK (kind IN ('folder', 'file', 'link')),
+            name TEXT NOT NULL,
+            payload TEXT,
+            settings TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            deleted_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_deal_library_owner
+           ON deal_library(owner)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_deal_library_parent
+           ON deal_library(parent_id)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ---- schema_meta — gates one-shot data migrations ----
     // Each row records that a named migration has run. Used to keep
     // the v2 backfill (in a follow-up commit) from re-running on every
