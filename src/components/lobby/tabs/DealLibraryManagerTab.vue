@@ -9,6 +9,7 @@
         </p>
       </div>
       <div class="header-actions">
+        <button class="btn btn-ghost" title="Open the Game Analysis app to send a whole club game here" @click="openGameAnalysis">Import a club game ↗</button>
         <button class="btn btn-secondary" @click="openCreate('folder')">+ Folder</button>
         <button class="btn btn-primary" @click="openCreate('file')">+ Boards file</button>
       </div>
@@ -149,6 +150,21 @@ const folderOptions = computed(() =>
     .map((r) => ({ id: r.entry.id, label: '  '.repeat(r.depth) + r.entry.name }))
 )
 
+// Launch the Game Analysis app with our user id so its "Send to Library"
+// button can post a whole club game straight into this library (the
+// ?bc_owner handshake — game-analysis has no login of its own). The app is
+// GitHub-Pages-served at game-analysis.bridge-classroom.com (.com only);
+// override for local dev with localStorage['bc-analysis-base'].
+function openGameAnalysis() {
+  const user = userStore.currentUser.value
+  if (!user) return
+  let override = null
+  try { override = localStorage.getItem('bc-analysis-base') } catch { /* private mode */ }
+  const base = override || 'https://game-analysis.bridge-classroom.com/'
+  const sep = base.includes('?') ? '&' : '?'
+  window.open(`${base}${sep}bc_owner=${encodeURIComponent(user.id)}`, '_blank', 'noopener')
+}
+
 function openCreate(kind, parentId = null) {
   editingId.value = null
   editingParentId.value = parentId
@@ -262,6 +278,8 @@ onMounted(loadList)
 .btn-primary:hover { background: var(--green-dark, #2d6a4f); }
 .btn-secondary { background: #f3f4f6; color: var(--text-primary, #1a1a1a); }
 .btn-secondary:hover { background: #e5e7eb; }
+.btn-ghost { background: transparent; color: var(--green-dark, #2d6a4f); border: 1px solid var(--card-border, #e0ddd7); }
+.btn-ghost:hover { background: #f6f8f7; }
 .btn-danger { background: var(--red, #ef4444); color: white; }
 .btn-danger:hover { background: #dc2626; }
 
