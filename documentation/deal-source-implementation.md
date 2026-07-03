@@ -194,8 +194,10 @@ None block build-order item 1.
 
 ## 7. Build sequence (revised — both item 1 & dealerClient now unblocked)
 
-1. **`useDealSourceResolver.js`** — `refBoards`/`nextBoard`/`materialize` + pool +
-   cache. Pure logic. **Unit-test without UI.** *(unblocked)*
+1. ✅ **`useDealSourceResolver.js`** — `refBoards`/`nextBoard`/`materialize` + pool +
+   cache. **DONE + tested (2026-07-03)**: 16 unit tests green (offline pbn/random +
+   mocked network arms). D-A/B/C baked in. Baker scenario / local clubboard / userColl
+   are explicit throwing stubs for later phases.
 2. ✅ **`dealerClient.js`** — POST /deal + shaping. **DONE + verified** against the
    live service (2026-07-03). Exports `generateBoardPbn`/`prepareScript`/`extractPbn`/
    `getDealerUrl`. The resolver's `script` arm wires to `generateBoardPbn`.
