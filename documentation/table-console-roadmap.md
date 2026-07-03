@@ -185,9 +185,30 @@ deal" repeat it. (b) **TableSessionNewView** (#/tables/new) — "Load from
 my library" fills the boards box from a file's payload, and "Save to my
 library" materializes the current boards as a `kind=file` entry (closes
 the authoring loop). Browser-verified 2026-07-02: save→list→load round
-trip through the live API + DB, teacher-gating, 0 console errors. Not yet:
-folder/playlist authoring UI, per-entry settings editor, link (favorite)
-dealing, analysis-app send-to-library (step 3).
+trip through the live API + DB, teacher-gating, 0 console errors.
+
+**Status 2026-07-03:** authoring UI + step (3) BUILT & deployed.
+- Authoring UI: a teacher/admin **"Deal Library" lobby tab**
+  ([DealLibraryManagerTab.vue](../src/components/lobby/tabs/DealLibraryManagerTab.vue)
+  + [DealLibraryEntryModal.vue](../src/components/lobby/DealLibraryEntryModal.vue)):
+  create/nest/rename/move/delete folders & files (folders cascade), and a
+  structured **per-entry settings editor** (board mode bid/play/full +
+  deal rotation 0/90/180/270°, honoured on deal). Browser-verified
+  create/edit/settings-round-trip/cascade-delete.
+- Step (3) game-analysis hand-off (revised to normalized-JSON, no LIN, no
+  new endpoint): the Deal Library tab gets an **"Import a club game ↗"**
+  link that opens `game-analysis.bridge-classroom.com?bc_owner=<id>`; that
+  app (separate repo, GitHub-Pages-served) got a **"Send to Library"**
+  button that builds a whole-game PBN (`buildGamePBN`) and POSTs it to the
+  existing `/deal-library` (kind=file). Identity via the `?bc_owner`
+  handshake (game-analysis has no login). Required adding the
+  game-analysis origin to the API's `ALLOWED_ORIGINS` (CORS). Verified
+  end-to-end locally (buildGamePBN → cross-origin POST → DB row); CORS
+  preflight confirmed live.
+- Still deferred: playlist assembly UI, semantic rotate labels
+  ("students defend E/W" → quarter-turn), bot-mode setting, link
+  (favorite) dealing, single-board `?lin=`/`?pbn=` replay button in
+  game-analysis (single-deal replay already works via `?pbn=`).
 
 ## Phase 3 — Teacher console parity (Shark Control Panel)
 
