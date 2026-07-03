@@ -150,8 +150,23 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   tracking.
 - **I4 — Tracking vs evolving content.** Re-publishing a tracked board silently
   muddies mastery (C3). Snapshots need versioned identity.
-- **I5 — Two deal-organization systems.** Lesson taxonomy (apps 1/2, static
-  Baker/PBS) and the deal library (apps 3/4, materialized). Possible duplication.
+- **I5 — Two ways to store board-sets in the DB today** (different by design):
+  - **`exercises` + `exercise_boards`** — **reference-based**. A board is a
+    *pointer* (`deal_subfolder`, `deal_number`, `sort_order`, `collection_id`)
+    into the static lesson taxonomy (Baker PBN files); no deal text is stored.
+    Feeds tracked assignments — observations key off `exercise_id`, and mastery
+    relies on those stable taxonomy ids. This is app 1's tracked path.
+  - **`deal_library`** — **materialized (or link)**. `kind=file` stores the PBN
+    text as a frozen copy; `kind=link` stores a JSON descriptor to an evolving
+    source. Deliberately materialized to avoid the "exercise mutated after it was
+    assigned" problem — table sessions have no history to protect, so a frozen
+    snapshot is what you want. This is the table apps' path (Phase 2.5).
+  - The split is *intentional*: references suit tracked lessons (stable ids +
+    live content), materialization suits tables (no history, want a frozen deal).
+    Club games (D7) have nothing in the taxonomy to reference, so they land on the
+    **materialized** side — either reused as a `deal_library` file-per-game or a
+    dedicated `club_games` store (Q10). The open risk is *drift/duplication*
+    between the two if we're not deliberate about which owns what.
 - **I6 — app 2 vs app 3 overlap.** "Single human plays with feedback" exists in
   both the light local engine (A2) and the table server (B1). Roles must be crisp
   or they blur.
@@ -274,19 +289,26 @@ Marked **Proposed** (pending Rick's confirmation) or **Settled**.
 - **D5 — Settled (already true):** Apps 1–4 share one SPA origin/bundle/identity;
   game-analysis is the separate one (and itself dual-origin). The
   credential-access question is a single boundary, not a per-app matter.
-- **D6 — Proposed:** Bring club-analysis to the SPA origin (start with the cheap
-  same-origin subpath, Q7b). This is the *enabler* — it makes the table's
-  deal-source picker able to *pull* cached club games (I12), and lets registered
-  users persist games to the DB while anonymous users stay local (I13). Storage
-  tier is per-user (anon → local/IndexedDB, registered → DB) so we keep the
-  no-account value prop. Cached club games surface as a **deal source in the
-  shared picker**, orthogonal to which table face consumes them (Q9). Sequence
-  this **before the ACBL extensions ship** (I11).
+- **D6 — Decided (Rick, 2026-07-03): Option A.** Bring club-analysis to the SPA
+  origin at `bridge-classroom.com/game-analysis/` (cheap same-origin subpath,
+  Q7b), and **finalize that URL + update the extension manifest before the Safari
+  extension ships** (I11) — doing it now costs zero re-release; doing it later
+  costs an App Store review. This is the *enabler*: table can *pull* cached club
+  games (I12), registered users persist to the DB while anonymous stay local
+  (I13), and the `?bc_owner` handshake goes away. Cached club games surface as a
+  **deal source in the shared picker**, orthogonal to which table face consumes
+  them (Q9).
   Nuance from D7: once registered games live in the DB, the table can *read* them
-  via the API even cross-origin — so same-origin is no longer strictly required
-  for the registered *pull*; it's still wanted for (a) attributing *writes* to a
-  user in the analysis app without a handshake, (b) anonymous local replay, and
-  (c) UX unification (I7) / dropping the `?bc_owner` hack.
+  via the API even cross-origin — so same-origin isn't strictly required for the
+  registered *pull*; it's still wanted for (a) attributing *writes* without a
+  handshake, (b) anonymous local replay, and (c) UX unification (I7).
+- **D11 — Decided (Rick, 2026-07-03):** The club-game cache goes to **IndexedDB**,
+  not localStorage (M2 rides with M1, not optional). Rationale: co-locating
+  (D6) merges storage buckets, and the game cache must **not** bloat the SPA's
+  localStorage — which holds **critical E2E encryption-key material**. IndexedDB
+  keeps the large, churny cache in its own store. (Durability caveat stands: on
+  Safari, ITP can still evict IndexedDB after ~7 days idle — durability is the
+  server DB, D7.)
 - **D7 — Decided (Rick, 2026-07-03):** Club-game persistence is **tiered by
   registration**. *Registered* users' games save to the **database** — durable,
   cross-device, no localStorage roll-off (Rick's long-standing gripe), and small
@@ -333,14 +355,13 @@ it saves.
   `?bc_owner` handshake and the API CORS entry become unnecessary. **Decide this
   canonical URL before the ACBL extensions ship (I11)** and point them at it;
   301 the old `game-analysis.bridge-classroom.{com,org}` → the new path.
-- **M2 — Cache → IndexedDB (Q8) — OPTIONAL.** Move the game-results cache off
-  localStorage (one-time copy-on-load migration). Fixes the **5 MB size cap** /
-  roll-off. **Caveat:** IndexedDB is universal (incl. Safari since ~2016), but
-  **Safari's ITP evicts local storage — both localStorage *and* IndexedDB —
-  after ~7 days of no interaction**, so IndexedDB fixes *size* but not
-  *durability* on Safari. Durability = the server DB (D7). So M2 is a
-  bigger/nicer *anonymous cache*, not a durability guarantee; skippable if anon
-  users keep only a handful of recent games.
+- **M2 — Cache → IndexedDB (Q8, D11) — rides with M1.** Move the game-results
+  cache off localStorage (one-time copy-on-load migration). Two reasons, now that
+  M1 co-locates: (1) fixes the **5 MB cap** / roll-off; (2) **keeps the large,
+  churny cache out of the SPA localStorage that holds the E2E keys** (D11).
+  **Caveat:** IndexedDB is universal (incl. Safari since ~2016), but **Safari ITP
+  evicts local storage — both APIs — after ~7 days idle**, so it fixes *size*,
+  not *durability*. Durability = the server DB (D7).
 - **M3 — Tiered persistence (D7).** Same-origin lets the app read the SPA user
   store. *Registered* → also POST games to the DB (schema per Q10); *anonymous* →
   IndexedDB only, with a "register to keep these across devices" nudge (the carrot).
