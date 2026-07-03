@@ -43,6 +43,7 @@ cp docs/styles.css             dist/styles.css
 cp docs/site.js                dist/site.js
 cp docs/about.html             dist/about.html
 cp docs/privacy.html           dist/privacy.html
+cp docs/dev.html               dist/dev.html   # noindex dev/testing launcher (direct app links)
 cp docs/solo-practice.html     dist/solo-practice.html
 cp docs/classrooms.html        dist/classrooms.html
 cp docs/game-analysis.html     dist/game-analysis.html
