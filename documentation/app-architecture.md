@@ -430,9 +430,29 @@ the query form, and 301 the old origin.
   tests pass, chrome build valid. Committed **locally** on the unpushed
   `route-live-acbl-through-tab` WIP branch — placement is Rick's call. **Needs a
   browser load-test before publishing** (Safari ships via App Store review).
-- **Remaining M1 tail:** 301 `game-analysis.bridge-classroom.*` → the subpath
-  (DNS, manual) once the extension is ready; then the M3/M4 wiring (read the
-  shared user store; club games as a table deal source) can begin.
+- **Old deploy retired (2026-07-03):** the standalone
+  `game-analysis.bridge-classroom.*` Pages deploy + CNAME are removed (Rick: no
+  redirect; he's the only extension tester, users re-find it at the new URL).
+  Repo stays the source. **Manual tail:** remove the Cloudflare DNS record +
+  disable Pages for the game-analysis repo.
+
+**M3 status (2026-07-03) — DONE + live.**
+- `club_games` table + owner-scoped CRUD on the API (native normalized JSON +
+  metadata + rollups; upsert by `(owner, event_key)`; soft-delete). Live via the
+  tunnel. Backend smoke-tested (insert / upsert-dedup / list / detail / 403).
+- Co-located game-analysis reads the **shared same-origin SPA user store**
+  (`bcCurrentUserId`, no handshake — the M1 payoff) and, on every load
+  (`applyUploadResponse` funnel), auto-saves a **registered** user's game to
+  `club_games`; anonymous users save nothing (stay local). Verified: a
+  logged-in load → one deduped row with the native JSON. Live at
+  `bridge-classroom.com/game-analysis/`.
+- Note: `location` column exists but is NULL for now — the normalized schema has
+  no venue field yet (data is preserved in `payload` regardless).
+
+**Next: M4** — surface `club_games` in the table deal-source picker (the pull
+path): list a user's games → pick one/board → derive PBN → deal. Plus the
+deferred cleanup: the old "Send to Library" button (whole game → `deal_library`
+PBN) now overlaps `club_games` — decide whether to retire/repurpose it.
 
 ### 7.2 Shared bots (D10) — later, tracked separately
 
