@@ -290,15 +290,15 @@ Marked **Proposed** (pending Rick's confirmation) or **Settled**.
   (open a table → pick "my club games") is the teacher/registered path — teachers
   are normally registered and prefer pull. So: push → B1; pull → B1 or B2 by
   whichever face you opened.
-- **D9 — Proposed (Rick's direction, 2026-07-03):** A **single-user single table
-  defaults to the local engine** (snappy, no infra, works with the same authored
-  guidance path), and **upgrades to the table server when a second human is
-  added** — *if* the switch is seamless to the user. Open sub-question: the
-  **seam**. Mid-hand local→server handoff is hard (different state models); the
-  pragmatic seam is a **board boundary** — "invite a person" spins up a server
-  table from the *same deal source*, resuming at the next board, not mid-play.
-  Made invisible by D10 (same bots) + a shared deal source, so who-you-play and
-  what-you're-dealt don't change across the switch.
+- **D9 — Decided (Rick, 2026-07-03):** A **single-user single table defaults to
+  the local engine** (snappy, no infra, works with the same authored guidance
+  path), and **upgrades to the table server when a second human is added**. The
+  **seam is a board boundary** — mid-hand continuity is *not* required (Rick:
+  "going to the next hand would be expected"). So "invite a person" spins up a
+  server table from the *same deal source*, resuming at the next board. Made
+  invisible by D10 (same bots) + a shared deal source, so who-you-play and
+  what-you're-dealt don't change across the switch. This keeps the switch a
+  *small* feature, not a big one.
 - **D10 — Proposed (Rick's direction, 2026-07-03):** **One bot behavior across
   all engines** (I14). Keep the pluggable interface (`cardplayBots.js` /
   `bots.rs`); converge the *implementations*: share the **Rules** bot via the
