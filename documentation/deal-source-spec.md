@@ -175,11 +175,18 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
     service**. With `DEAL_TIMEOUT_SECONDS=5` + a concurrency limit, an open dealer is
     *cheaper* to abuse than the already-open BEN (up to 50s/call, browser-direct, no
     token). If BEN clears the bar, dealer clears it easily.
+  - **Status (2026-07-03): dealer-service side DONE + verified.** New image with
+    auth removed is live; tokenless POST returns a real deal, a Bearer header is
+    accepted-and-ignored (internal-caller compat), empty script → 400, impossible
+    `condition` → 408 at ~5s (wall-clock cap intact), no 401 reachable. Edge-Caddy
+    CORS verified from a browser: preflight from `.com`/`localhost:5173` → 204 with
+    per-origin `ACAO` echoed; `evil.example.com` → no `ACAO` (browser drops it).
+    Remaining work is frontend-only: item 3 (`dealerClient.js`). Item 4 is a no-op.
   - **Punch-list to go direct:**
-    1. **Relax dealer-service auth** — its `API_TOKEN` is currently *required* (401
+    1. ✅ **Relax dealer-service auth** — its `API_TOKEN` was *required* (401
        without). Drop the requirement or swap to the same coarse shared key the rest
        of the frontend uses (CLAUDE.md: "not secret — filters casual misuse").
-    2. **CORS at the shared edge Caddy, not in-app** — mirror BEN exactly. BEN does
+    2. ✅ **CORS at the shared edge Caddy, not in-app** — mirror BEN exactly. BEN does
        CORS in `bridge-craftwork-platform/edge/Caddyfile` (see :86–114, and
        `docs/runbooks/bridge-classroom-cardplay.md`): a `header_regexp` on `Origin`
        echoed back per-request (never `*`), a preflight handler, and `Vary: Origin`.
@@ -187,16 +194,17 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
        CorsLayer**. Keeps the allow-list a deployment concern (bump the regex,
        `reload.sh`, no image rebuild) and leaves dealer-service CORS-agnostic like
        BEN's upstream.
-    3. **New `dealerClient.js`** (mirrors `benClient.js`) holds the ~8 lines that used
-       to live in table-service `dealer.rs`: input-shaping (`produce 1`,
-       `printoneline`→`printpbn`) + output-shaping (keep `[` lines, require `[Deal `).
-       Presentation glue that belongs client-side anyway.
+    3. ✅ **New `dealerClient.js`** (mirrors `benClient.js`, POST not GET) holds the
+       shaping that used to live in table-service `dealer.rs`: input (`produce 1`,
+       `printoneline`→`printpbn`) + output (keep `[` lines, require `[Deal `).
+       `generateBoardPbn(script, {seed?}) → {pbn, seed, elapsedMs, raw}`. Built +
+       verified against the live service 2026-07-03 (unit + real deal, 135ms).
     4. **table-service keeps its internal `dealer.rs` as-is** for the server-table WS
        path (fast internal hop, holds the token internally) — no duplication, the
        browser paths just don't route through it.
-    5. **Harden dealer-service itself** with an explicit **generation/output-size cap**
-       alongside the wall-clock cap, so a script can't `produce` a huge payload inside
-       the 5s window. Cap time *and* volume, once, at the service, for all callers.
+    5. ✅ **Harden dealer-service** — caps confirmed intact: wall-clock (408 at ~5s),
+       plus the pre-existing `DEAL_MAX_OUTPUT_BYTES`/`DEAL_MAX_SCRIPT_BYTES`/
+       `DEAL_MAX_CONCURRENCY`. Cap time *and* volume, at the service, for all callers.
 
 ## 5. Global text filter
 
