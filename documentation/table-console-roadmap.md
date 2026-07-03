@@ -101,6 +101,44 @@ Demo room: any seated player may use it. Session tables: teacher-gated.
   dealer scripts (service-side proxy) → `?lin=`/`?pbn=` param + a "Replay
   at a table" button in game-analysis → modes → auto-rotate.
 
+## Phase 2.5 — Teacher Deal Library & Favorites (requirements, Rick 2026-07-02)
+
+Survey: BBO = user-uploaded LIN library + dealer-script source; Shark =
+teacher deal library built from PBN uploads (+ a database source that
+isn't generally available). Ours adds GitHub collection repos, PBS
+scenarios/scripts, and the game-analysis app hand-off.
+
+One model covers library AND favorites — a per-teacher hierarchy in the
+Mac API's SQLite:
+
+    deal_library: id, owner, parent_id, kind, name, payload, created_at
+      kind=folder → hierarchy ("Tuesday class" / "Week 3")
+      kind=file   → uploaded PBN text (24 boards ≈ 4KB; nightly-backed DB)
+      kind=link   → JSON descriptor of an external source (github lesson,
+                    PBS scenario file, dealer script, random)
+
+Key decisions:
+- SERVER-SIDE (DB), not localStorage and not local-folder-first: Rick
+  preloads class material days ahead; the library must be cross-device
+  and durable. localStorage is device-bound; the File System Access API
+  local-folder idea is Chrome-only and permission-fiddly — revisit only
+  if the library doesn't cover the workflow (upload multiple PBNs by
+  drag-drop instead).
+- Favorites = folders of kind=link entries. No separate favorites
+  system; "upcoming classes" is a folder of pointers.
+- The game-analysis app gets a "Send to my Bridge Classroom library"
+  button (authenticated POST of a whole club game's deals) — this
+  replaces the massive-URL idea for whole-game export. `?lin=` remains
+  for single-deal "replay this board now".
+- The library feeds BOTH the demo table's deal-source picker (a "My
+  library" tab) and session creation at #/tables/new (class sets).
+- LIN file upload = later (needs a LIN parser); PBN first.
+
+Build order: (1) API deal_library table + CRUD (owner-scoped),
+(2) "My library" picker tab + library-driven session creation,
+(3) analysis-app send-to-library + per-board ?lin=,
+(4) .lin parsing / local-folder only if still wanted.
+
 ## Phase 3 — Teacher console parity (Shark Control Panel)
 
 Existing: lobby grid, kibitz-any-table, open-round gate, boot/assign seat,
