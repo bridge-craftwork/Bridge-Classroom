@@ -416,6 +416,24 @@ copy; additive/non-breaking — the old origin deploy stays live during transiti
 Then update the extension manifest to `bridge-classroom.com/game-analysis/*` +
 the query form, and 301 the old origin.
 
+**M1 status (2026-07-03):**
+- **Step 1 DONE + live** — game-analysis made base-path portable (relative
+  assets, `?analyze` query in place of the `/analyze` pathname; back-compat
+  kept). Committed to Bridge-Game-Analysis `main`.
+- **Step 2 DONE + live** — `build-site.sh` + `deploy.yml` co-locate it at
+  `/game-analysis/`; live on **both** `bridge-classroom.com/game-analysis/` and
+  `.org`. Verified same-origin: a value written on `/game-analysis/` reads back
+  on `/solo-practice-app/`. Old `game-analysis.bridge-classroom.*` untouched
+  (parallel during transition).
+- **Step 3 code DONE (not shipped)** — `acbl-live-fetch` extension repointed to
+  `bridge-classroom.{tld}/game-analysis/?analyze` (TLD-mirror preserved); 219
+  tests pass, chrome build valid. Committed **locally** on the unpushed
+  `route-live-acbl-through-tab` WIP branch — placement is Rick's call. **Needs a
+  browser load-test before publishing** (Safari ships via App Store review).
+- **Remaining M1 tail:** 301 `game-analysis.bridge-classroom.*` → the subpath
+  (DNS, manual) once the extension is ready; then the M3/M4 wiring (read the
+  shared user store; club games as a table deal source) can begin.
+
 ### 7.2 Shared bots (D10) — later, tracked separately
 
 Not blocking 7.1. Sequenced with the `bridge-rulebot-wasm` work already in the
