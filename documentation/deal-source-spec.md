@@ -179,7 +179,14 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
     1. **Relax dealer-service auth** — its `API_TOKEN` is currently *required* (401
        without). Drop the requirement or swap to the same coarse shared key the rest
        of the frontend uses (CLAUDE.md: "not secret — filters casual misuse").
-    2. **CORS on dealer-service/Caddy** for the app origins — copy BEN's edge config.
+    2. **CORS at the shared edge Caddy, not in-app** — mirror BEN exactly. BEN does
+       CORS in `bridge-craftwork-platform/edge/Caddyfile` (see :86–114, and
+       `docs/runbooks/bridge-classroom-cardplay.md`): a `header_regexp` on `Origin`
+       echoed back per-request (never `*`), a preflight handler, and `Vary: Origin`.
+       Add an equivalent stanza for `dealer.bridge-craftwork.com`; **no in-app
+       CorsLayer**. Keeps the allow-list a deployment concern (bump the regex,
+       `reload.sh`, no image rebuild) and leaves dealer-service CORS-agnostic like
+       BEN's upstream.
     3. **New `dealerClient.js`** (mirrors `benClient.js`) holds the ~8 lines that used
        to live in table-service `dealer.rs`: input-shaping (`produce 1`,
        `printoneline`→`printpbn`) + output-shaping (keep `[` lines, require `[Deal `).
