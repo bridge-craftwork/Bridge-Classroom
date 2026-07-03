@@ -236,7 +236,9 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   request upgrade already noted in CLAUDE.md) instead of the raw `?bc_owner`.
 - **Q3 — One TLD or two?** Canonicalize to a single origin (kills I1's split
   identity) vs keep dual-deploy for the Norton fallback (and accept split
-  storage, or add identity federation).
+  storage, or add identity federation). **Resolved — see D14:** keep `.com`/`.org`
+  for now — the `.com` reputation flags are mostly (not fully) cleared, and this
+  release ships before they're done, so `.org` must stay a working fallback.
 - **Q4 — Snapshot versioning.** How do snapshots get stable ids so A1's tracking
   survives a re-publish? (New subfolder per version? version suffix on
   `deal_subfolder`? explicit `subfolder` field on the taxonomy?) **Deferred — see
@@ -245,7 +247,8 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   taxonomy and the deal library separate by engine?
 - **Q6 — Share the authored-guidance renderer.** Extract app 1's guided
   state-machine so app 2 can render authored guidance too — where does that
-  shared module live, and what's the smallest extraction?
+  shared module live, and what's the smallest extraction? **Resolved — see D15:**
+  one engine, integrated into both apps — reuse as much as possible.
 - **Q7 — Move club-analysis to the SPA origin?** (Refines Q2.) Same-origin is the
   *enabler* for the natural pull (I12) and replay, regardless of where data
   lives. Two ways: (b) serve the existing vanilla-JS app at
@@ -354,6 +357,14 @@ Marked **Proposed** (pending Rick's confirmation) or **Settled**.
   rollups**. Derive PBN on demand when feeding a board to a table. Keeps ownership
   clean vs `deal_library` (curated materialized sets, I5): club games = the rich
   analyzed-event archive; deal_library = curated board sets.
+- **D14 — Decided (Rick, 2026-07-03):** Keep the `.com`/`.org` dual origin for
+  now (I1 split identity accepted). The `.com` reputation flags are mostly but not
+  fully cleared; this work releases before that finishes, so `.org` stays a live
+  fallback. Revisit canonicalizing to one origin once `.com` is clean.
+- **D15 — Decided (Rick, 2026-07-03):** **One authored-guidance engine, two apps**
+  (Q6). Extract app 1's guided state-machine (parser coaching/`[Play]` handling +
+  `useCardPlay` + the coaching-stage rendering) into a shared module used by both
+  A1 (tracked) and A2 (untracked). Reuse as much as possible rather than fork.
 
 ---
 
@@ -391,6 +402,19 @@ Note the ordering flexibility from D7: M3's DB path makes the *registered* pull
 work even without M1, so if the origin move slips, registered users still get
 pull via the API — M1 is what buys anonymous local replay + dropping the
 handshake + UX unification.
+
+**M1 blocker found (I16):** game-analysis assumes it lives at an origin *root*.
+For the `/game-analysis/` subpath: (a) relativize absolute assets (`/static/…`,
+`href="/"`); (b) **switch the extension hand-off from the `/analyze` *pathname*
+to a query/hash marker** — at a subpath `/game-analysis/analyze` is a missing
+file that falls back to the *SPA's* 404.html, not game-analysis, so pathname
+routing can't work; a query on the real `index.html` (`/game-analysis/?analyze`)
+does. This redefines the app↔extension hand-off contract (both unshipped, so
+free to change now). (c) Build integration: pull game-analysis's `index.html` +
+`static/` into `dist/game-analysis/` (Actions cross-repo checkout + build-site.sh
+copy; additive/non-breaking — the old origin deploy stays live during transition).
+Then update the extension manifest to `bridge-classroom.com/game-analysis/*` +
+the query form, and 301 the old origin.
 
 ### 7.2 Shared bots (D10) — later, tracked separately
 
