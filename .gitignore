@@ -47,3 +47,6 @@ activity-log.json
 
 # Private security & code review (documents live vulnerabilities — never commit)
 SECURITY-AND-CODE-REVIEW.md
+
+# Ephemeral clone of the Game Analysis app for /game-analysis/ co-location (build-site.sh)
+game-analysis-src/

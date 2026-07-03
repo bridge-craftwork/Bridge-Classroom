@@ -60,5 +60,22 @@ cp -r docs/curator           dist/curator
 cp -r docs/bidding-practice  dist/bidding-practice
 cp -r docs/screenshots       dist/screenshots
 
+# ── Co-locate the Game Analysis app under /game-analysis/ (same-origin) ──────
+# app-architecture.md M1: serve club-game-analysis from the SPA origin so it
+# shares identity + localStorage and the table can pull cached club games.
+# Source is the sibling Bridge-Game-Analysis repo — a self-contained index.html
+# + static/. CI clones it and points GAME_ANALYSIS_SRC at the checkout; local
+# runs default to the sibling working copy. Non-fatal if absent, so a local
+# build-site.sh without the sibling repo still succeeds (just no /game-analysis/).
+GAME_ANALYSIS_SRC="${GAME_ANALYSIS_SRC:-../Bridge-Game-Analysis}"
+if [ -f "$GAME_ANALYSIS_SRC/index.html" ]; then
+  echo "build-site.sh: co-locating game-analysis from $GAME_ANALYSIS_SRC"
+  mkdir -p dist/game-analysis
+  cp "$GAME_ANALYSIS_SRC/index.html" dist/game-analysis/index.html
+  [ -d "$GAME_ANALYSIS_SRC/static" ] && cp -r "$GAME_ANALYSIS_SRC/static" dist/game-analysis/static
+else
+  echo "build-site.sh: NOTE game-analysis source not at $GAME_ANALYSIS_SRC — skipping /game-analysis/ (non-fatal)"
+fi
+
 echo "==== build-site.sh: DONE — dist/ ready to publish ===="
 ls -1 dist/ | sed 's/^/  dist\//'

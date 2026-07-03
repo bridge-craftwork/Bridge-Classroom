@@ -49,8 +49,15 @@ jobs:
       - name: Build SPA
         run: npm run build
 
+      # Co-locate the Game Analysis app at /game-analysis/ (app-architecture M1).
+      # Public repo → anonymous shallow clone; build-site.sh copies it into dist/.
+      - name: Fetch Game Analysis app
+        run: git clone --depth 1 https://github.com/bridge-craftwork/Bridge-Game-Analysis.git game-analysis-src
+
       - name: Restructure for new site layout
         run: bash scripts/build-site.sh
+        env:
+          GAME_ANALYSIS_SRC: game-analysis-src
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -117,9 +124,15 @@ jobs:
         if: env.CF_API_TOKEN != ''
         run: npm run build
 
+      - name: Fetch Game Analysis app
+        if: env.CF_API_TOKEN != ''
+        run: git clone --depth 1 https://github.com/bridge-craftwork/Bridge-Game-Analysis.git game-analysis-src
+
       - name: Restructure for new site layout
         if: env.CF_API_TOKEN != ''
         run: bash scripts/build-site.sh
+        env:
+          GAME_ANALYSIS_SRC: game-analysis-src
 
       # Deploy with the project's pinned wrangler (devDependency, ^4). Using
       # `npx wrangler` directly rather than cloudflare/wrangler-action avoids the
