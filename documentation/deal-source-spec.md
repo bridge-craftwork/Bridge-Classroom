@@ -32,7 +32,7 @@ The atom the picker deals in. Multi-select = a set of these.
 ```
 SourceRef =
   | { kind:'scenario',  repo:'pbs'|'baker', file, label, curated?:bool }
-  | { kind:'clubgame',  origin:'db'|'local', gameId, label }
+  | { kind:'clubboard', origin:'db'|'local', gameId, boardNumber, label }  // a specific board (drill-down, §4.3)
   | { kind:'library',   entryId, label }              // teacher deal_library file
   | { kind:'userColl',  collectionUrl, file, label }  // user-added collection
   | { kind:'pbn',       text, label }                 // pasted / uploaded
@@ -50,7 +50,7 @@ each draw); the rest are **fixed board sets**.
 DealSourceSelection = {
   items: SourceRef[],                 // the multi-selected pool (>=1)
   options: {
-    drawOrder:  'random' | 'sequential',   // how the pool is consumed
+    drawOrder:  'sequential' | 'random',   // pool consumption; DEFAULT sequential (Rick)
     rotate:     0..3 | 'auto',             // deal rotation (see app-arch settings)
     mode:       'bid-and-play'|'bid-only'|'play-only',
     fresh:      bool,                      // scenarios → use dealer script (2.1 script)
@@ -73,6 +73,12 @@ switch in `useDealSource.nextDeal`):
 - **`materialize(selection)` → `{ boardsPbn, count }`** — resolve the whole pool
   NOW into an ordered multi-board PBN. This is the **static** path — a class set at
   session creation, or a materialized playlist in the deal library.
+
+The pool is an **ordered concatenation** of each item's boards (a set-ref like a
+scenario file contributes its boards; a single-board ref like a club board
+contributes one). `drawOrder:sequential` (default) walks that concatenation in
+order; `random` draws uniformly. Generators (`random`, `script`) yield a fresh
+board each draw and have no fixed position.
 
 Consumers then adapt:
 
@@ -127,12 +133,15 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
 - Open question (Q1): separate tab, or a **"curated only" toggle** on the Scenarios
   tab? A toggle is less duplication; a tab is more discoverable. Lean: toggle.
 
-### 4.3 Club games (DB or browser) — multi-select
-- Registered users: `useClubGames.fetchGames(owner)` → `club_games` (server, M3).
-- Anonymous / same-origin: the browser store (IndexedDB, once M2 lands — today
-  localStorage `bc-game`/event cache). Same list shape, different backend.
-- A game expands to its boards (`normalizedDeal.clubGameBoards` +
-  `boardToMinimalPbn`); multi-select at game OR board granularity (Q2).
+### 4.3 Club games (DB or browser) — drill to boards, multi-select boards
+- **No collection-level multi-select** (Rick): you don't pool whole games. You
+  pick ONE game, drill into its boards, and **multi-select individual boards**
+  (each a `clubboard` ref). This matters because a club game is *your* real
+  boards — you want specific hands (the one you misdefended), not a random draw.
+- Registered users: `useClubGames.fetchGames(owner)` → `club_games` (server, M3);
+  `fetchGame(id)` → boards via `normalizedDeal.clubGameBoards` + `boardToMinimalPbn`.
+- Anonymous / same-origin: the browser store (IndexedDB once M2 lands — today
+  localStorage `bc-game`/event cache). Same board shape, different backend.
 
 ### 4.4 My library (teacher deal_library) — multi-select, teacher-gated
 - `useDealLibrary` folders/files. A `kind=file` entry = a materialized board set;
@@ -151,10 +160,15 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
   has a paired `/dlr` script, so "dealer script" = the *fresh-generated* variant of a
   chosen scenario (`options.fresh` → `SourceRef{kind:'script'}`). Present it as the
   **"☐ Fresh deals (generate)"** option on Scenarios/Curated (matches today's toggle),
-  not a standalone tab. Constraint: the dealer service needs a Bearer token → only
-  resolvable through a **server proxy** (table service today; the local Practice
-  Table would need an API proxy, Q3). So `fresh` is disabled in pure-local contexts
-  until proxied.
+  not a standalone tab.
+- **Dealer service is ours** (droplet) but needs a Bearer token the browser can't
+  hold, so it resolves through a **server proxy** — never a direct browser call.
+  We already proxy it in the **table service** (demo table). To make `fresh`
+  available in the **local Practice Table** and **session-creation (materialize)**
+  contexts, add a thin **Mac-API proxy** (`POST /api/deal/generate {script,seed?}` →
+  forwards to `dealer.bridge-craftwork.com` with `DEALER_TOKEN`). Then `fresh` works
+  **everywhere** — the resolver just picks the right proxy per context. (Was Q3;
+  resolved — build the API proxy.)
 
 ## 5. Global text filter
 
@@ -186,7 +200,7 @@ One control; the **host declares which tabs/options are allowed**. Rough matrix
 | User Collections | ✓ | ✓ | ✓ | |
 | Paste PBN | ✓ | ✓ | ✓ | |
 | Random | ✓ | ✓ | ✓ (fresh per board) | |
-| Fresh deals (script) | proxy only (Q3) | ✓ | ✓ | |
+| Fresh deals (script) | ✓ (via Mac-API proxy) | ✓ (table-service proxy) | ✓ (Mac-API proxy) | |
 | **Action** | Deal (stream) | Deal (stream) | Add to session (materialize) | Deal (stream) |
 
 `replay` (re-run the same board) stays a table-only action, orthogonal to source.
@@ -226,16 +240,53 @@ Let users point at their own board sets.
 - **Reuse:** `pbsScenarios`, `bakerBridgeTaxonomy`, `useAppConfig.COLLECTIONS`,
   `useDealLibrary`, `useClubGames`, `normalizedDeal` unchanged underneath.
 
-## 9. Open questions
+## 9. Fitting the different hosts — THE hard part (Rick)
+
+The real risk isn't the sources — it's that the same control must sit in very
+different containers:
+
+| Host | Container | Constraints |
+|---|---|---|
+| Server table deal popup | compact **modal** (~560px, ~84vh) | tight; tabs + tray + options must fit; one primary action ("Deal") |
+| Local Practice Table (`#/bidding-practice`) | **full-screen** region | room to breathe; the tree + filter can be generous |
+| Session creation (`#/tables/new`) | **inline form section** | embedded among other fields; action is "Add to session", not "Deal"; materialize mode |
+| (future) Guided A2 | full-screen | authored-tagged files only |
+
+Design implications (bake into `DealSourcePicker` from day one, don't retrofit):
+- **Layout-agnostic:** the component owns *content* (tabs, filter, tree, tray,
+  options), the **host owns the frame** (modal vs inline vs full) and passes a
+  `layout` hint (`'compact' | 'full'`) that collapses/expands chrome (e.g. compact
+  hides the tree and leans on the filter + tray; full shows the tree).
+- **Host-provided action:** `actionLabel` + emits `submit(selection)`; the host wires
+  it to `nextBoard` (Deal) or `materialize` (Add to session / Save playlist).
+- **Allow-list drives visible tabs/options** (§6) so each host shows only what fits
+  and what's permitted — a small modal can even show *only* the filter + a couple of
+  tabs.
+- **Selection tray is the shared spine** — it's the one piece that reads the same in
+  every host; make it compact and always visible.
+
+Prototype the **compact modal** first (hardest fit); if it works there, the roomy
+hosts are easy.
+
+## 10. Open questions (remaining)
 
 - **Q1 — Curated: tab or toggle?** Lean toggle ("curated only") on Scenarios.
-- **Q2 — Club-game granularity:** multi-select whole games, or drill to boards?
-  (Whole-game draw-random is simplest; board-level is more control.)
-- **Q3 — Dealer scripts on the local table:** add an API proxy so the pure-local
-  Practice Table can use `fresh`, or leave `fresh` server-contexts-only?
-- **Q4 — Draw order default:** random (matches `BiddingPracticeView`) vs sequential.
-  Random for practice; sequential likely wanted for a taught class set.
-- **Q5 — Baker + PBS in one tree vs two tabs?** One "Scenario Collections" tree with
-  two groups keeps the filter global and the tab count down.
 - **Q6 — Rotation "auto"/semantic labels** (app-arch deferred) — resolver honors a
   numeric `rotate` now; semantic ("students defend E/W") later.
+
+Resolved (Rick 2026-07-03): Q2 club games = **drill to boards, multi-select boards**
+(no whole-game pooling); Q3 dealer scripts = **build a Mac-API proxy**, available
+everywhere; Q4 draw order = **default sequential**; Q5 = **one Scenario Collections
+tab** (Baker + PBS as two groups).
+
+## 11. Build order (when we pick this up)
+
+1. **`useDealSourceResolver.js`** — the `SourceRef` union + `nextBoard`/`materialize`
+   (absorbs `useDealSource.nextDeal`, `normalizedDeal`, scenario/library/clubgame
+   fetch). Pure logic, unit-testable without UI.
+2. **Mac-API dealer proxy** (`POST /api/deal/generate`) — unblocks `fresh` everywhere.
+3. **`DealSourcePicker.vue`** — tab sheet + global filter + multi-select tray +
+   options + `layout`/`allow`/`actionLabel` props. Prototype the **compact** layout
+   first (§9).
+4. Retrofit consumers one at a time: `DealSourceModal` (compact stream) →
+   `BiddingPracticeView` (full stream) → `TableSessionNewView` (inline materialize).
