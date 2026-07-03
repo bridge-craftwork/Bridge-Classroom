@@ -157,6 +157,38 @@ Build order: (1) API deal_library table + CRUD (owner-scoped),
 (3) analysis-app send-to-library + per-board ?lin=,
 (4) .lin parsing / local-folder only if still wanted.
 
+**Status 2026-07-02:** step (1) BUILT — `deal_library` table
+([db.rs](../bridge-classroom-api/src/db.rs), one table, `kind`
+folder/file/link, separate `settings` JSON column) + owner-scoped CRUD
+([deal_library.rs](../bridge-classroom-api/src/routes/deal_library.rs),
+model [deal_library.rs](../bridge-classroom-api/src/models/deal_library.rs)):
+`POST/GET /api/deal-library`, `GET/PUT/DELETE /api/deal-library/:id`.
+List returns metadata only (no payload; `has_payload`/`payload_bytes`
+inlined); detail returns the payload. Folder DELETE soft-deletes and
+cascades to the subtree in code (soft-delete is an UPDATE, so no FK
+cascade fires; sqlx does enable PRAGMA foreign_keys). Re-parent/
+clear-settings use a double-`Option` PATCH (`Some(None)` = move-to-root /
+clear). Per-owner creation quotas (1000/30-days, 10k lifetime). Not yet:
+analysis-app hand-off (step 3). Smoke-tested against
+the live server 2026-07-02 (CRUD + cascade + 6 negative cases all pass).
+
+**Status 2026-07-02:** step (2) BUILT — frontend library consumption.
+`useDealLibrary.js` (owner-scoped CRUD + `parseSettings`, mirrors
+useExercises); shared `DealLibraryPicker.vue` (flat→tree browser, folders
+collapsible, files selectable, links shown-not-yet-dealable). Wired into
+(a) the demo table's **DealSourceModal** as a teacher/admin-only "My
+library" tab — picking a file deals a fresh random board from its
+materialized PBN and applies the entry's `settings.mode` (bid/play/full →
+modal modes; a numeric `settings.rotate` is honoured, semantic rotate
+labels deferred); a new `library` source kind in useDealSource lets "Next
+deal" repeat it. (b) **TableSessionNewView** (#/tables/new) — "Load from
+my library" fills the boards box from a file's payload, and "Save to my
+library" materializes the current boards as a `kind=file` entry (closes
+the authoring loop). Browser-verified 2026-07-02: save→list→load round
+trip through the live API + DB, teacher-gating, 0 console errors. Not yet:
+folder/playlist authoring UI, per-entry settings editor, link (favorite)
+dealing, analysis-app send-to-library (step 3).
+
 ## Phase 3 — Teacher console parity (Shark Control Panel)
 
 Existing: lobby grid, kibitz-any-table, open-round gate, boot/assign seat,

@@ -28,6 +28,21 @@
 
       <!-- The form -->
       <form v-else @submit.prevent="create">
+        <!-- Library-driven session creation: pull a saved class set into
+             the PBN box instead of pasting/uploading (teacher/admin). -->
+        <div v-if="isTeacher" class="tn-lib">
+          <button type="button" class="tn-btn tn-btn-sm" @click="showLibrary = !showLibrary">
+            📚 {{ showLibrary ? 'Hide my library' : 'Load from my library' }}
+          </button>
+          <div v-if="showLibrary" class="tn-lib-panel">
+            <DealLibraryPicker
+              :owner="currentUser.id"
+              :busy-id="libBusyId"
+              @select="loadFromLibrary"
+            />
+          </div>
+        </div>
+
         <label class="tn-label">
           Boards (PBN)
           <textarea
@@ -44,6 +59,21 @@
         <div class="tn-row tn-upload-row">
           <input ref="fileInput" type="file" accept=".pbn,.txt" class="tn-file" @change="onFile">
           <span v-if="fileName" class="tn-muted">{{ fileName }}</span>
+        </div>
+
+        <!-- Save the current boards as a reusable library file (materialized
+             copy) so they're one click away next time. -->
+        <div v-if="isTeacher && pbn.trim()" class="tn-row tn-save-lib">
+          <input v-model="saveName" class="tn-save-name" placeholder="Save these boards as…">
+          <button
+            type="button"
+            class="tn-btn tn-btn-sm"
+            :disabled="saving || !saveName.trim()"
+            @click="saveToLibrary"
+          >
+            {{ saving ? 'Saving…' : '💾 Save to my library' }}
+          </button>
+          <span v-if="saveMsg" class="tn-muted">{{ saveMsg }}</span>
         </div>
 
         <div class="tn-row">
@@ -97,6 +127,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
+import { useDealLibrary } from '../composables/useDealLibrary.js'
+import DealLibraryPicker from '../components/table/DealLibraryPicker.vue'
 import { API_URL } from '../utils/apiUrl.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
@@ -111,6 +143,7 @@ const SEAT_POLICIES = {
 const router = useRouter()
 const userStore = useUserStore()
 const currentUser = userStore.currentUser
+const { fetchEntry, createEntry } = useDealLibrary()
 
 const pbn = ref('')
 const fileName = ref('')
@@ -119,6 +152,13 @@ const seatPolicyKey = ref('first_free')
 const kind = ref('teacher_set')
 const creating = ref(false)
 const errorMessage = ref('')
+
+// Deal-library integration
+const showLibrary = ref(false)
+const libBusyId = ref('')
+const saveName = ref('')
+const saving = ref(false)
+const saveMsg = ref('')
 
 const created = ref(null) // { sessionId }
 const shareUrl = ref('')
@@ -135,6 +175,39 @@ function onFile(e) {
   const reader = new FileReader()
   reader.onload = () => { pbn.value = String(reader.result || '') }
   reader.readAsText(file)
+}
+
+// Pull a saved library file's materialized PBN into the boards box.
+async function loadFromLibrary(entry) {
+  libBusyId.value = entry.id
+  const detail = await fetchEntry(entry.id)
+  libBusyId.value = ''
+  if (detail && detail.payload) {
+    pbn.value = detail.payload
+    fileName.value = entry.name
+    showLibrary.value = false
+  }
+}
+
+// Save the current boards as a reusable library file (kind=file).
+async function saveToLibrary() {
+  if (!saveName.value.trim() || !pbn.value.trim()) return
+  saving.value = true
+  saveMsg.value = ''
+  const res = await createEntry({
+    owner: currentUser.value.id,
+    kind: 'file',
+    name: saveName.value.trim(),
+    payload: pbn.value,
+  })
+  saving.value = false
+  if (res.success) {
+    saveMsg.value = 'Saved ✓'
+    saveName.value = ''
+    setTimeout(() => { saveMsg.value = '' }, 2500)
+  } else {
+    saveMsg.value = res.error || 'Could not save.'
+  }
 }
 
 async function apiPost(path, body) {
@@ -272,4 +345,23 @@ onMounted(() => {
   background: #fafafa;
 }
 .tn-actions { display: flex; gap: 10px; margin-top: 14px; }
+
+.tn-btn-sm { padding: 6px 12px; font-size: 13px; }
+.tn-lib { margin-bottom: 12px; }
+.tn-lib-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e2e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.tn-save-lib { align-items: center; margin-top: 8px; }
+.tn-save-name {
+  flex: 1;
+  min-width: 160px;
+  padding: 7px 9px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+}
 </style>

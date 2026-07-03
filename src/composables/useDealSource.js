@@ -12,13 +12,16 @@ import {
   dealToMinimalPbn,
   randomItem,
 } from '../utils/pbsScenarios.js'
+import { parsePbn } from '../utils/pbnParser.js'
 import { useRemoteTable } from './useRemoteTable.js'
+import { useDealLibrary } from './useDealLibrary.js'
 
 const STORAGE_KEY = 'bridgeTableDealSource'
 const MODE_KEY = 'bridgeTableBoardMode'
 
 // { kind: 'random' } | { kind: 'scenario', file, label, useScript } |
-// { kind: 'pbn', text }   ('replay' is an action, never sticky)
+// { kind: 'pbn', text } | { kind: 'library', entryId, name }
+// ('replay' is an action, never sticky)
 const source = ref(loadSource())
 // 'bid-and-play' | 'bid-only' | 'play-only' — rides on every deal.
 const mode = ref(localStorage.getItem(MODE_KEY) || 'bid-and-play')
@@ -51,6 +54,7 @@ function label() {
   const s = source.value
   if (s.kind === 'scenario') return `${s.label}${s.useScript ? ' (fresh)' : ''}`
   if (s.kind === 'pbn') return 'pasted PBN'
+  if (s.kind === 'library') return s.name || 'library file'
   return 'random'
 }
 
@@ -68,6 +72,15 @@ async function nextDeal(rotate = 0) {
     } else if (s.kind === 'scenario') {
       const pick = randomItem(await fetchScenarioDeals(s.file))
       payload = { source: 'pbn', pbn: dealToMinimalPbn(pick), rotate }
+    } else if (s.kind === 'library') {
+      // Materialized PBN from the teacher's library: fetch the entry's
+      // payload and draw a fresh random board each "Next deal", the same
+      // way scenarios do.
+      const entry = await useDealLibrary().fetchEntry(s.entryId)
+      if (!entry || !entry.payload) throw new Error('Library file is unavailable.')
+      const deals = parsePbn(entry.payload).filter((d) => d.dealString)
+      if (!deals.length) throw new Error('That library file has no boards.')
+      payload = { source: 'pbn', pbn: dealToMinimalPbn(randomItem(deals)), rotate }
     } else if (s.kind === 'pbn') {
       payload = { source: 'pbn', pbn: s.text, rotate }
     } else {

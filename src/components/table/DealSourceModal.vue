@@ -59,6 +59,15 @@
         </template>
       </div>
 
+      <!-- My library -->
+      <div v-else-if="tab === 'library'" class="dsm-body dsm-scroll">
+        <DealLibraryPicker
+          :owner="currentUser?.id || ''"
+          :busy-id="busyEntryId"
+          @select="dealFromLibrary"
+        />
+      </div>
+
       <!-- Paste PBN -->
       <div v-else class="dsm-body">
         <textarea
@@ -107,15 +116,19 @@
 // success. Scenario deals are fetched client-side from the PBS repo and
 // handed over as single-board PBN — the server has one door for all
 // client-supplied deals.
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { fetchScenarioMenu } from '../../utils/pbsScenarios.js'
 import { useRemoteTable } from '../../composables/useRemoteTable.js'
 import { useDealSource } from '../../composables/useDealSource.js'
+import { parseSettings } from '../../composables/useDealLibrary.js'
+import { useUserStore } from '../../composables/useUserStore.js'
+import DealLibraryPicker from './DealLibraryPicker.vue'
 
 const emit = defineEmits(['close'])
 
 const table = useRemoteTable()
 const dealSource = useDealSource()
+const { currentUser } = useUserStore()
 
 const MODES = [
   { id: 'bid-and-play', label: 'Bid + play', hint: 'Full board: auction then cardplay' },
@@ -123,13 +136,25 @@ const MODES = [
   { id: 'play-only', label: 'Play only', hint: 'Bots bid the auction automatically; you just play' },
 ]
 
-const tabs = [
+// Per-entry `settings.mode` uses bid/play/full (roadmap Phase 2.5); map to
+// the modal's mode ids. A settings value that's already a modal id passes
+// through.
+const MODE_FROM_SETTINGS = { full: 'bid-and-play', bid: 'bid-only', play: 'play-only' }
+
+// The "My library" tab is a teacher/admin feature (the deal library is
+// per-teacher). Students seated at the demo table just don't see it.
+const isTeacher = computed(
+  () => currentUser.value && ['teacher', 'admin'].includes(currentUser.value.role)
+)
+const tabs = computed(() => [
   { id: 'quick', label: 'Quick' },
   { id: 'scenarios', label: 'Bidding scenarios' },
+  ...(isTeacher.value ? [{ id: 'library', label: 'My library' }] : []),
   { id: 'pbn', label: 'Paste PBN' },
-]
+])
 const tab = ref('quick')
 const busy = ref(false)
+const busyEntryId = ref('')
 const error = ref('')
 const pastedPbn = ref('')
 
@@ -175,12 +200,13 @@ const useScript = ref(localStorage.getItem(SCRIPT_KEY) === '1')
 watch(useScript, (v) => localStorage.setItem(SCRIPT_KEY, v ? '1' : '0'))
 
 // Picking here SETS the sticky source (the header's "Next deal" repeats
-// it) and deals immediately.
-async function dealVia(descriptor) {
+// it) and deals immediately. `rotateOverride` lets a source with its own
+// rotation (a library entry's settings) bypass the modal's checkbox.
+async function dealVia(descriptor, rotateOverride) {
   busy.value = true
   error.value = ''
   dealSource.setSource(descriptor)
-  const ok = await dealSource.nextDeal(rotation())
+  const ok = await dealSource.nextDeal(rotateOverride ?? rotation())
   busy.value = false
   if (ok) emit('close')
   else error.value = dealSource.dealError.value || 'Deal failed.'
@@ -192,6 +218,21 @@ function dealFromScenario(item) {
 
 function dealFromPaste() {
   dealVia({ kind: 'pbn', text: pastedPbn.value })
+}
+
+// Deal a board from a materialized library file. The entry's per-entry
+// settings (from the list metadata — no extra fetch) drive the board mode
+// and, when given as a plain 0..3, the rotation; the payload itself is
+// fetched inside nextDeal. Semantic rotate labels ("students_defend_ew")
+// aren't mapped to a quarter-turn yet — that's a later slice — so only a
+// numeric rotate is honoured here.
+async function dealFromLibrary(entry) {
+  const s = parseSettings(entry)
+  if (s.mode) dealSource.setMode(MODE_FROM_SETTINGS[s.mode] || s.mode)
+  const rotate = typeof s.rotate === 'number' ? s.rotate : undefined
+  busyEntryId.value = entry.id
+  await dealVia({ kind: 'library', entryId: entry.id, name: entry.name }, rotate)
+  busyEntryId.value = ''
 }
 </script>
 
