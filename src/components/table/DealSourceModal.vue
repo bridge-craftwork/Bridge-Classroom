@@ -75,12 +75,27 @@
       </div>
 
       <div class="dsm-footer">
-        <label class="dsm-check">
-          <input v-model="rotateRandomly" type="checkbox" />
-          Rotate deal randomly (the deal moves, not the players)
-        </label>
-        <span v-if="error" class="dsm-error">{{ error }}</span>
-        <span v-else-if="busy" class="dsm-muted">Dealing…</span>
+        <div class="dsm-footer-row">
+          <span class="dsm-footer-label">Mode</span>
+          <button
+            v-for="m in MODES"
+            :key="m.id"
+            class="dsm-pill"
+            :class="{ active: dealSource.mode.value === m.id }"
+            :title="m.hint"
+            @click="dealSource.setMode(m.id)"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+        <div class="dsm-footer-row">
+          <label class="dsm-check">
+            <input v-model="rotateRandomly" type="checkbox" />
+            Rotate deal randomly (the deal moves, not the players)
+          </label>
+          <span v-if="error" class="dsm-error">{{ error }}</span>
+          <span v-else-if="busy" class="dsm-muted">Dealing…</span>
+        </div>
       </div>
     </div>
   </div>
@@ -101,6 +116,12 @@ const emit = defineEmits(['close'])
 
 const table = useRemoteTable()
 const dealSource = useDealSource()
+
+const MODES = [
+  { id: 'bid-and-play', label: 'Bid + play', hint: 'Full board: auction then cardplay' },
+  { id: 'bid-only', label: 'Bid only', hint: 'Board ends at the contract; all hands revealed for discussion' },
+  { id: 'play-only', label: 'Play only', hint: 'Bots bid the auction automatically; you just play' },
+]
 
 const tabs = [
   { id: 'quick', label: 'Quick' },
@@ -307,12 +328,21 @@ function dealFromPaste() {
 }
 .dsm-footer {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 18px 14px;
   border-top: 1px solid #eee;
   font-size: 13px;
 }
+.dsm-footer-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dsm-footer-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #99a;
+}
+.dsm-pill {
+  border: 1px solid #cfd8d3; background: #fff; border-radius: 999px;
+  padding: 3px 12px; font-size: 12.5px; cursor: pointer; color: #444;
+}
+.dsm-pill.active { background: #1d6e50; border-color: #1d6e50; color: #fff; font-weight: 600; }
 .dsm-check {
   display: flex;
   align-items: center;

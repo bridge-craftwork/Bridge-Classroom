@@ -37,6 +37,8 @@ const yourSeat = ref(null)
 const seeAll = ref(false)
 // Server-confirmed bot backend for empty seats ('' until the welcome says).
 const botMode = ref('')
+// Board mode from the snapshot: 'bid-and-play' | 'bid-only' | 'play-only'.
+const boardMode = ref('bid-and-play')
 
 const seq = ref(0)
 const board = ref(null) // { number, dealer, vulnerable }
@@ -395,6 +397,7 @@ function handleMessage(msg) {
       break
     case 'snapshot':
       if (msg.table_id) tableId.value = msg.table_id
+      if (msg.board_mode) boardMode.value = msg.board_mode
       applySnapshot(msg.state)
       if (msg.seats) seats.value = msg.seats
       break
@@ -433,6 +436,7 @@ function handleMessage(msg) {
           boardComplete.value = {
             boardNo: msg.board_no,
             passedOut: !!msg.passed_out,
+            bidOnly: !!msg.bid_only,
             contract: msg.contract
               ? {
                   text: msg.contract.text,
@@ -587,6 +591,7 @@ export function useRemoteTable() {
     yourSeat,
     seeAll,
     botMode,
+    boardMode,
     // table state
     seq,
     board,

@@ -238,6 +238,7 @@ describe('useRemoteTable', () => {
     expect(table.boardComplete.value).toEqual({
       boardNo: 1,
       passedOut: false,
+      bidOnly: false,
       contract: { text: '4S', declarer: 'S', declarerTricks: 11, made: 1 },
       tricks: { NS: 11, EW: 2 },
     })

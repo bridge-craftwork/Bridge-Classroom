@@ -153,7 +153,11 @@
             />
           </div>
 
-          <div v-if="isYourBid" class="tv-card">
+          <div v-if="phase === 'bidding' && boardMode === 'play-only'" class="tv-card tv-waiting">
+            Play-only board — the auction is bid automatically…
+          </div>
+
+          <div v-else-if="isYourBid" class="tv-card">
             <h3>Your bid</h3>
             <BiddingBox
               :last-bid="lastSuitBid"
@@ -277,7 +281,7 @@ const table = useRemoteTable()
 
 const {
   connectionStatus,
-  sessionId, tableId, yourSeat, role, seeAll, botMode,
+  sessionId, tableId, yourSeat, role, seeAll, botMode, boardMode,
   seq, boardNumber, dealer, vulnerable, phase,
   auction, contract, declarer, dummySeat,
   nextToAct, hands, handCounts,
@@ -392,6 +396,9 @@ const resultBanner = computed(() => {
   if (r.passedOut) return 'Passed out.'
   const c = r.contract
   if (!c) return ''
+  if (r.bidOnly) {
+    return `Contract: ${formatContract(c.text)} by ${c.declarer} — bid-only board, no play.`
+  }
   const made = c.made
   const outcome = made > 0
     ? `made with ${made} overtrick${made === 1 ? '' : 's'}`

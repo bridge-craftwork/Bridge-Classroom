@@ -15,12 +15,22 @@ import {
 import { useRemoteTable } from './useRemoteTable.js'
 
 const STORAGE_KEY = 'bridgeTableDealSource'
+const MODE_KEY = 'bridgeTableBoardMode'
 
 // { kind: 'random' } | { kind: 'scenario', file, label, useScript } |
 // { kind: 'pbn', text }   ('replay' is an action, never sticky)
 const source = ref(loadSource())
+// 'bid-and-play' | 'bid-only' | 'play-only' — rides on every deal.
+const mode = ref(localStorage.getItem(MODE_KEY) || 'bid-and-play')
 const dealing = ref(false)
 const dealError = ref('')
+
+function setMode(next) {
+  mode.value = next
+  try {
+    localStorage.setItem(MODE_KEY, next)
+  } catch { /* private mode etc. */ }
+}
 
 function loadSource() {
   try {
@@ -63,6 +73,7 @@ async function nextDeal(rotate = 0) {
     } else {
       payload = { source: 'random' }
     }
+    payload.mode = mode.value
     if (!table.sendDeal(payload)) throw new Error('Not connected.')
     return true
   } catch (err) {
@@ -74,5 +85,5 @@ async function nextDeal(rotate = 0) {
 }
 
 export function useDealSource() {
-  return { source, setSource, label, nextDeal, dealing, dealError }
+  return { source, setSource, mode, setMode, label, nextDeal, dealing, dealError }
 }
