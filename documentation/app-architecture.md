@@ -95,6 +95,14 @@ can't.* The internal apps are already unified for identity.
 - **B2 — teacher console** (today's app 4): Shark-style multi-table setup +
   management, fed by the deal library / playlists.
 
+**Evidence (2026-07-03, commit `88e5d28`):** David's "declarer-play coaching"
+landed in app 1 (MainLayout) — a board ships a recorded `[Play]` table +
+`[ROLE][STAGE]` prose; the parser builds per-seat queues; a new
+`makeReplayBot` drives the defenders down the scripted line (no solver, no
+network); the student declares S+dummy. Confirms authored guidance now spans
+cardplay, is fully tag/PBN-driven, lives in the A1 (local) engine, and rides on
+the shared pluggable bot interface (`cardplayBots.js`: Random / BEN / Replay).
+
 ### 2.3 Source → release (the snapshot workflow)
 
 The snapshot is a *publish* step, and it's **required, not just convenient**:
@@ -174,6 +182,16 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   registration, or we lose that reach. The resolution (see Q7/Q10): same-origin
   enables replay + DB persistence *as opt-in enhancements for registered users*,
   while anonymous users keep a local-only path.
+- **I14 — Bot implementations diverge across engines.** The frontend
+  (`cardplayBots.js`) has Random / BEN / **Replay**; the table server
+  (`bots.rs`) has BBA (bidding) + BEN + Rules + Random. Different codebases for
+  overlapping behavior. "Same bots everywhere" (Rick) wants convergence — and
+  it's a **prerequisite** for the seamless local↔server switch (D9): if the bots
+  and deal source match, switching engines is invisible to the user. See D10.
+- **I15 — BEN latency.** Cold-start ~20s, ~500ms warm ([[project_ben_latency]]).
+  Thorvald has provided information on speeding BEN up — pending write-up. This
+  matters for any path that puts BEN in the live loop (both the local free-play
+  bot and the server).
 
 ---
 
@@ -181,7 +199,9 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
 
 - **Q1 — Where does solo live-play-with-feedback live?** Table server (B1, richer
   bots, one engine) or the light local engine (A2, snappier, no infra)? BEN's
-  ~20s cold start argues for keeping a light local path.
+  ~20s cold start argues for keeping a light local path. **Resolved — see D9:**
+  default to the local engine for one human at a table, upgrade to the server
+  when a second human joins (seam TBD).
 - **Q2 — game-analysis future.** Three options for the identity boundary (I2):
   (a) **fold the code into the SPA** (best identity, biggest effort);
   (b) **serve it same-origin at `bridge-classroom.com/game-analysis/`** — shared
@@ -270,3 +290,57 @@ Marked **Proposed** (pending Rick's confirmation) or **Settled**.
   (open a table → pick "my club games") is the teacher/registered path — teachers
   are normally registered and prefer pull. So: push → B1; pull → B1 or B2 by
   whichever face you opened.
+- **D9 — Proposed (Rick's direction, 2026-07-03):** A **single-user single table
+  defaults to the local engine** (snappy, no infra, works with the same authored
+  guidance path), and **upgrades to the table server when a second human is
+  added** — *if* the switch is seamless to the user. Open sub-question: the
+  **seam**. Mid-hand local→server handoff is hard (different state models); the
+  pragmatic seam is a **board boundary** — "invite a person" spins up a server
+  table from the *same deal source*, resuming at the next board, not mid-play.
+  Made invisible by D10 (same bots) + a shared deal source, so who-you-play and
+  what-you're-dealt don't change across the switch.
+- **D10 — Proposed (Rick's direction, 2026-07-03):** **One bot behavior across
+  all engines** (I14). Keep the pluggable interface (`cardplayBots.js` /
+  `bots.rs`); converge the *implementations*: share the **Rules** bot via the
+  planned `bridge-rulebot-wasm` (frontend) ↔ native `bridge-rulebot` (server),
+  call the **BEN** service from both, and mirror the trivial **Random**/**Replay**
+  bots. Prerequisite for D9's seamless switch. BEN speedup (I15, Thorvald) feeds
+  this.
+
+---
+
+## 7. Migration sketches
+
+### 7.1 Club-analysis → SPA origin + tiered storage (D6 / D7)
+
+Incremental; each phase ships on its own, no big-bang rewrite. The vanilla-JS
+analysis app is **not** rewritten — it just changes where it's served and where
+it saves.
+
+- **M1 — Co-locate (unblocks everything, zero behavior change).** Serve the
+  existing `index.html` under the SPA origin at `bridge-classroom.com/game-analysis/`
+  (have `scripts/build-site.sh` drop the built file into `dist/game-analysis/`, or
+  add a route). Now it shares localStorage + identity with the SPA → the
+  `?bc_owner` handshake and the API CORS entry become unnecessary. **Decide this
+  canonical URL before the ACBL extensions ship (I11)** and point them at it;
+  301 the old `game-analysis.bridge-classroom.{com,org}` → the new path.
+- **M2 — Cache → IndexedDB (Q8).** Move the game-results cache off localStorage
+  (one-time copy-on-load migration). Big quota, no roll-off, stops competing with
+  SPA storage. Removes the original reason for the separate origin (I10).
+- **M3 — Tiered persistence (D7).** Same-origin lets the app read the SPA user
+  store. *Registered* → also POST games to the DB (schema per Q10); *anonymous* →
+  IndexedDB only, with a "register to keep these across devices" nudge (the carrot).
+- **M4 — Wire into the deal-source picker (the payoff, I12).** Add a "My club
+  games" source: registered → list from the DB (works regardless of origin,
+  since it's server-side); anonymous → list from IndexedDB (needs M1's
+  same-origin). Push from analysis → single table (D8).
+
+Note the ordering flexibility from D7: M3's DB path makes the *registered* pull
+work even without M1, so if the origin move slips, registered users still get
+pull via the API — M1 is what buys anonymous local replay + dropping the
+handshake + UX unification.
+
+### 7.2 Shared bots (D10) — later, tracked separately
+
+Not blocking 7.1. Sequenced with the `bridge-rulebot-wasm` work already in the
+roadmap; needed before D9's seamless local↔server switch is worth building.
