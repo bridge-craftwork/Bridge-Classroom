@@ -159,6 +159,15 @@ async fn main() -> anyhow::Result<()> {
                 .put(routes::update_deal_library_entry)
                 .delete(routes::delete_deal_library_entry),
         )
+        // Club games — registered users' analyzed-event archive (M3)
+        .route(
+            "/api/club-games",
+            post(routes::save_club_game).get(routes::list_club_games),
+        )
+        .route(
+            "/api/club-games/:id",
+            get(routes::get_club_game).delete(routes::delete_club_game),
+        )
         // Assignment routes
         .route("/api/assignments", post(routes::create_assignment).get(routes::list_assignments))
         .route(

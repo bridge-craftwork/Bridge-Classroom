@@ -1,5 +1,6 @@
 mod assignment;
 mod classroom;
+mod club_game;
 mod convention_card;
 mod deal_library;
 mod exercise;
@@ -10,6 +11,7 @@ mod viewer;
 
 pub use assignment::*;
 pub use classroom::*;
+pub use club_game::*;
 pub use convention_card::*;
 pub use deal_library::*;
 pub use exercise::*;

@@ -973,6 +973,50 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Club games (app-architecture.md M3 / D13) ----
+    // Registered users' analyzed club games, stored in the extractor's NATIVE
+    // normalized JSON (not flattened to PBN) so they carry event metadata and
+    // the analysis rollups. This is the rich analyzed-event archive — distinct
+    // from `deal_library` (curated materialized board sets) and
+    // `exercise_boards` (tracked lesson references). PBN is derived on demand
+    // when a board is sent to a table. Anonymous users keep games only in the
+    // browser (IndexedDB); saving here is the registered-tier durability
+    // benefit. `event_key` is a per-owner stable id (from the extractor) used
+    // to upsert so re-loading the same game doesn't duplicate it.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS club_games (
+            id TEXT PRIMARY KEY,
+            owner TEXT NOT NULL REFERENCES users(id),
+            event_key TEXT,
+            event_name TEXT,
+            event_date TEXT,
+            location TEXT,
+            board_count INTEGER,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            deleted_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_club_games_owner ON club_games(owner)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_club_games_owner_event
+           ON club_games(owner, event_key)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ---- schema_meta — gates one-shot data migrations ----
     // Each row records that a named migration has run. Used to keep
     // the v2 backfill (in a follow-up commit) from re-running on every
