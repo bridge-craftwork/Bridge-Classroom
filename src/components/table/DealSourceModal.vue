@@ -68,6 +68,27 @@
         />
       </div>
 
+      <!-- My club games -->
+      <div v-else-if="tab === 'clubgames'" class="dsm-body dsm-scroll">
+        <p v-if="clubLoading" class="dsm-muted">Loading your games…</p>
+        <p v-else-if="clubError" class="dsm-error">{{ clubError }}</p>
+        <p v-else-if="!clubGames.length" class="dsm-muted">
+          No saved games yet. Analyze a club game (signed in) and it lands here.
+        </p>
+        <button
+          v-for="g in clubGames"
+          :key="g.id"
+          class="dsm-big"
+          :disabled="busy"
+          @click="dealFromClubGame(g)"
+        >
+          {{ g.event_name || 'Club game' }}
+          <span class="dsm-sub">
+            {{ g.event_date || '' }}<template v-if="g.board_count"> · {{ g.board_count }} boards</template>
+          </span>
+        </button>
+      </div>
+
       <!-- Paste PBN -->
       <div v-else class="dsm-body">
         <textarea
@@ -121,6 +142,7 @@ import { fetchScenarioMenu } from '../../utils/pbsScenarios.js'
 import { useRemoteTable } from '../../composables/useRemoteTable.js'
 import { useDealSource } from '../../composables/useDealSource.js'
 import { parseSettings } from '../../composables/useDealLibrary.js'
+import { useClubGames } from '../../composables/useClubGames.js'
 import { useUserStore } from '../../composables/useUserStore.js'
 import DealLibraryPicker from './DealLibraryPicker.vue'
 
@@ -146,10 +168,13 @@ const MODE_FROM_SETTINGS = { full: 'bid-and-play', bid: 'bid-only', play: 'play-
 const isTeacher = computed(
   () => currentUser.value && ['teacher', 'admin'].includes(currentUser.value.role)
 )
+// "My club games" is for any signed-in user (a student can replay their own
+// club boards); the deal library stays teacher/admin.
 const tabs = computed(() => [
   { id: 'quick', label: 'Quick' },
   { id: 'scenarios', label: 'Bidding scenarios' },
   ...(isTeacher.value ? [{ id: 'library', label: 'My library' }] : []),
+  ...(currentUser.value ? [{ id: 'clubgames', label: 'My club games' }] : []),
   { id: 'pbn', label: 'Paste PBN' },
 ])
 const tab = ref('quick')
@@ -157,6 +182,13 @@ const busy = ref(false)
 const busyEntryId = ref('')
 const error = ref('')
 const pastedPbn = ref('')
+
+// My club games (fetched on first open of the tab).
+const clubGamesStore = useClubGames()
+const clubGames = clubGamesStore.games
+const clubLoading = clubGamesStore.loading
+const clubError = clubGamesStore.error
+let clubLoaded = false
 
 const ROTATE_KEY = 'bridgeTableRotateDeals'
 const rotateRandomly = ref(localStorage.getItem(ROTATE_KEY) === '1')
@@ -176,6 +208,13 @@ watch(tab, async (t) => {
   } finally {
     menuLoading.value = false
   }
+})
+
+// Fetch the user's club games on first open of that tab.
+watch(tab, (t) => {
+  if (t !== 'clubgames' || clubLoaded || !currentUser.value) return
+  clubLoaded = true
+  clubGamesStore.fetchGames(currentUser.value.id)
 })
 
 function rotation() {
@@ -233,6 +272,12 @@ async function dealFromLibrary(entry) {
   busyEntryId.value = entry.id
   await dealVia({ kind: 'library', entryId: entry.id, name: entry.name }, rotate)
   busyEntryId.value = ''
+}
+
+// Deal a board from one of the user's analyzed club games. nextDeal fetches the
+// game's normalized JSON and draws a fresh random board each time.
+function dealFromClubGame(game) {
+  dealVia({ kind: 'clubgame', gameId: game.id, name: game.event_name || 'Club game' })
 }
 </script>
 

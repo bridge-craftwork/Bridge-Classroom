@@ -13,14 +13,17 @@ import {
   randomItem,
 } from '../utils/pbsScenarios.js'
 import { parsePbn } from '../utils/pbnParser.js'
+import { clubGameBoards, boardToMinimalPbn } from '../utils/normalizedDeal.js'
 import { useRemoteTable } from './useRemoteTable.js'
 import { useDealLibrary } from './useDealLibrary.js'
+import { useClubGames } from './useClubGames.js'
 
 const STORAGE_KEY = 'bridgeTableDealSource'
 const MODE_KEY = 'bridgeTableBoardMode'
 
 // { kind: 'random' } | { kind: 'scenario', file, label, useScript } |
-// { kind: 'pbn', text } | { kind: 'library', entryId, name }
+// { kind: 'pbn', text } | { kind: 'library', entryId, name } |
+// { kind: 'clubgame', gameId, name }
 // ('replay' is an action, never sticky)
 const source = ref(loadSource())
 // 'bid-and-play' | 'bid-only' | 'play-only' — rides on every deal.
@@ -55,6 +58,7 @@ function label() {
   if (s.kind === 'scenario') return `${s.label}${s.useScript ? ' (fresh)' : ''}`
   if (s.kind === 'pbn') return 'pasted PBN'
   if (s.kind === 'library') return s.name || 'library file'
+  if (s.kind === 'clubgame') return s.name || 'club game'
   return 'random'
 }
 
@@ -81,6 +85,16 @@ async function nextDeal(rotate = 0) {
       const deals = parsePbn(entry.payload).filter((d) => d.dealString)
       if (!deals.length) throw new Error('That library file has no boards.')
       payload = { source: 'pbn', pbn: dealToMinimalPbn(randomItem(deals)), rotate }
+    } else if (s.kind === 'clubgame') {
+      // A club game's native normalized JSON: fetch it, draw a fresh random
+      // board each "Next deal", convert to PBN (same as the library flow).
+      const game = await useClubGames().fetchGame(s.gameId)
+      if (!game || !game.payload) throw new Error('Club game is unavailable.')
+      let normalized
+      try { normalized = JSON.parse(game.payload) } catch { throw new Error('Club game data is corrupt.') }
+      const boards = clubGameBoards(normalized)
+      if (!boards.length) throw new Error('That club game has no boards.')
+      payload = { source: 'pbn', pbn: boardToMinimalPbn(randomItem(boards)), rotate }
     } else if (s.kind === 'pbn') {
       payload = { source: 'pbn', pbn: s.text, rotate }
     } else {
