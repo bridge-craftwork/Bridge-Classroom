@@ -31,6 +31,9 @@
   .tag.new  { background: #e6e1f5; color: #5b4b9e; }
   .card .desc { font-size: 12.5px; color: var(--color-text-secondary, #666); margin-bottom: 6px; line-height: 1.4; }
   .card .path { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #99a; word-break: break-all; }
+  .card.placeholder { background: #f6f5f2; border-style: dashed; cursor: default; }
+  .card.placeholder:hover { border-color: var(--color-border-tertiary, #e0ddd7); box-shadow: none; }
+  .card.placeholder .name { color: #888; }
   .note { font-size: 12px; color: #888; margin-top: 4px; }
 </style>
 </head>
@@ -47,13 +50,13 @@
       <div class="path">/solo-practice-app/#/</div>
     </a>
     <a class="card" href="/solo-practice-app/#/bidding-practice">
-      <div class="name">Quick Practice <span class="tag dev">A2 · author/dev</span></div>
-      <div class="desc">Trim one-at-a-time guided player, nothing saved. Live (unfrozen) files — David's workbench for now. (Currently "Bidding Practice".)</div>
+      <div class="name">Practice Table <span class="tag live">local</span></div>
+      <div class="desc">Single-table play, no authored guidance: any deal source, BBA bidding + rules/BEN cardplay, no history. The local-engine table — will gain "add people" via the server later (D9). (Currently "Bidding Practice".)</div>
       <div class="path">/solo-practice-app/#/bidding-practice</div>
     </a>
     <a class="card" href="/solo-practice-app/#/table/demo">
-      <div class="name">Practice Table <span class="tag live">B1</span></div>
-      <div class="desc">Single seat + bots at the demo table. Cardplay now defaults to the instant rulebot.</div>
+      <div class="name">Practice Table (server-based) <span class="tag live">server</span></div>
+      <div class="desc">The table-server single-table (demo room): a seat + bots, cardplay defaults to the instant rulebot. Kept as-is for now; converges with the local one later.</div>
       <div class="path">/solo-practice-app/#/table/demo</div>
     </a>
     <a class="card" href="/game-analysis/">
@@ -79,6 +82,11 @@
 
   <div class="sec-label">Author / dev tools</div>
   <div class="grid">
+    <div class="card placeholder">
+      <div class="name">Guided Practice <span class="tag dev">A2 · not built</span></div>
+      <div class="desc">The separated no-history, <em>authored-guidance</em> player reading David's LIVE files — his workbench for evolving the guidance engine without freezing. Not carved out yet; nothing to link.</div>
+      <div class="path">— (planned)</div>
+    </div>
     <a class="card" href="/solo-practice-app/#/">
       <div class="name">Deal Library <span class="tag new">tab</span></div>
       <div class="desc">Sign in as teacher/admin → the "Deal Library" lobby tab (folders, files, per-entry settings). No deep link — it's a tab on the lobby.</div>

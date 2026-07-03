@@ -11,25 +11,43 @@ the several "apps" relate *before* reorganizing them. Items are numbered
 
 ### 1.1 The apps
 
-| # | Name | Engine | Identity | Deal source | Guidance |
-|---|------|--------|----------|-------------|----------|
-| 1 | Solo practice (lobby / `#/`) | local scripted renderer | tracked (login + E2E + mastery) | static (Baker PBN) | **authored** (tag scripts) |
-| 2 | Bidding practice (`#/bidding-practice`) | local scripted renderer | untracked | dynamic (PBS live, dealer scripts, random) | computed (BBA delta); **no** authored yet |
-| 3 | Player table (`#/play`, `#/table`, `#/tables/new`) | **table server** | guest or tracked | any (PBS, Baker, dealer scripts, local PBN, deal library, club-analysis) | computed (BBA delta) |
-| 4 | Teacher console (`#/tables/console/:id`) | **table server** | tracked (teacher) | deal library / playlists | n/a (management) |
-| — | Club Game Analysis | vanilla-JS app, **separate origin** | none (no login) | uploaded club games | n/a |
+Public name → what it actually is (corrected 2026-07-03, Rick):
+
+| Public name | Route (today) | Engine | Identity | Content/source | Guidance |
+|---|---|---|---|---|---|
+| **Scenario Mastery** (A1) | `#/` (lobby) | local scripted renderer | tracked (login + E2E + mastery) | **snapshot** (frozen) PBS/Baker | **authored** (tag scripts) |
+| **Guided Practice** (A2) — **NOT BUILT** | — | local scripted renderer | untracked | **live** (unfrozen) files | **authored** — David's workbench, to be carved from A1's engine |
+| **Practice Table** (local) | `#/bidding-practice` | local scripted renderer | untracked | **any** deal source | **none** — free play, computed BBA-delta feedback only |
+| **Practice Table (server-based)** | `#/table`, `#/play` (demo room) | **table server** | guest or tracked | any | none (computed BBA-delta) |
+| **Class Tables** | `#/tables/new`, `#/tables/console/:id` | **table server** | tracked (teacher) | deal library / playlists / `club_games` | n/a (management) |
+| **Game Analysis** | `/game-analysis/` (co-located, M1) | vanilla-JS, now **same-origin** | login-optional | uploaded / `club_games` | n/a |
+
+Two corrections vs. earlier drafts: (1) `#/bidding-practice` is the **local
+Practice Table** (free play, *no* authored guidance) — NOT the guided A2; (2) the
+real **A2** (untracked *authored*-guided, David's live-files workbench) **doesn't
+exist yet**. The two Practice Tables (local `#/bidding-practice` + server
+`#/table`) are the same "play a board" experience on different engines; they
+**converge** per D9 (local upgrades to server when a 2nd human joins).
 
 ### 1.2 Two engines
 
-- **Engine A — local scripted renderer** (apps 1 & 2): single human, in-browser
-  state machine, PBN-tag-driven, deterministic. No table server. This is the
-  "dumb renderer" — the PBN carries the behavior.
-- **Engine B — table server** (apps 3 & 4): `bridge-table-service` on the
-  droplet, real-time, multi-human, bots-as-services (BBA bidding, BEN/Rules
-  cardplay), seat policies, join tickets. Apps 3 and 4 are two *views* of this
-  one system (player view / teacher console), not two apps.
+- **Engine A — local scripted renderer** (Scenario Mastery A1, the future
+  Guided Practice A2, AND the local Practice Table): single human, in-browser
+  state machine, PBN-tag-driven, deterministic. No table server. Runs in two
+  modes: **authored-guidance walkthrough** (A1/A2, tag scripts) or **free play**
+  (local Practice Table — the tags just aren't guidance tags). The "dumb
+  renderer" — the PBN carries the behavior.
+- **Engine B — table server** (server Practice Table + Class Tables):
+  `bridge-table-service` on the droplet, real-time, multi-human, bots-as-services
+  (BBA bidding, BEN/Rules cardplay), seat policies, join tickets. The player
+  view and teacher console are two *views* of this one system, not two apps.
 
 ### 1.3 Origins and storage (answers "how many origins?")
+
+**Superseded by M1 (2026-07-03):** game-analysis is now co-located same-origin
+at `bridge-classroom.{com,org}/game-analysis/` and its standalone
+`game-analysis.bridge-classroom.*` origins are retired — so the "four origins"
+below collapses to just the two SPA origins (`.com`/`.org`). Kept for context.
 
 **Four** page-origins, i.e. four separate `localStorage` buckets:
 
