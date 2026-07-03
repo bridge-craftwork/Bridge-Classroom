@@ -17,9 +17,28 @@ export function parsePbn(pbnContent) {
   let inCommentary = false
   let commentaryBuffer = ''
   let fileBridgeContext = ''
+  // Multi-line [Play "X"] table state (declarer-play lessons). See the header
+  // parse below and finalizePlayLine().
+  let inPlaySection = false
+  let playLeader = null
+  let playRows = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+
+    // Consume the rows of a multi-line [Play] table. Each row is a trick's
+    // cards in fixed clockwise column order starting from the leader. The
+    // section ends at the first non-trick-row line (blank, a comment '{', or a
+    // tag), which then falls through to normal processing.
+    if (inPlaySection) {
+      if (isTrickRow(line)) {
+        playRows.push(line.trim().split(/\s+/))
+        continue
+      }
+      if (currentDeal) finalizePlayLine(currentDeal, playLeader, playRows)
+      inPlaySection = false
+      // fall through — this line is a comment/tag/blank to be handled normally
+    }
 
     // Capture file-level %bridge-context: line, then skip all % header lines
     if (line.startsWith('%')) {
@@ -55,11 +74,19 @@ export function parsePbn(pbnContent) {
       continue
     }
 
-    // Parse [Play "X"]card format (opening lead)
-    const playMatch = line.match(/\[Play\s+"([NESW])"\](\w+)/)
-    if (playMatch && currentDeal) {
-      currentDeal.openingLeader = playMatch[1]
-      currentDeal.openingLead = playMatch[2]
+    // Parse [Play "X"] — two forms:
+    //   inline  [Play "W"]H8        → single opening-lead card (defense lessons)
+    //   table   [Play "W"]\n rows…  → full recorded line (declarer-play lessons)
+    const playHeader = line.match(/^\s*\[Play\s+"([NESW])"\]\s*(\w+)?\s*$/)
+    if (playHeader && currentDeal) {
+      if (playHeader[2]) {
+        currentDeal.openingLeader = playHeader[1]
+        currentDeal.openingLead = playHeader[2]
+      } else {
+        inPlaySection = true
+        playLeader = playHeader[1]
+        playRows = []
+      }
       continue
     }
 
@@ -74,6 +101,8 @@ export function parsePbn(pbnContent) {
           currentDeal.commentary = formatCommentary(currentCommentary)
           currentDeal.steps = parseUnifiedSteps(currentCommentary)
           currentDeal.auction = trimAuction(currentDeal.auction)
+          currentDeal.playCoaching = parsePlayCoaching(currentCommentary)
+          currentDeal.isDeclarerPlay = !!currentDeal.playLine
           deals.push(currentDeal)
         }
         // Start new deal
@@ -144,13 +173,71 @@ export function parsePbn(pbnContent) {
 
   // Don't forget the last deal
   if (currentDeal) {
+    if (inPlaySection) finalizePlayLine(currentDeal, playLeader, playRows)
     currentDeal.commentary = formatCommentary(currentCommentary)
     currentDeal.steps = parseUnifiedSteps(currentCommentary)
     currentDeal.auction = trimAuction(currentDeal.auction)
+    currentDeal.playCoaching = parsePlayCoaching(currentCommentary)
+    currentDeal.isDeclarerPlay = !!currentDeal.playLine
     deals.push(currentDeal)
   }
 
   return deals
+}
+
+// ── Declarer-play recorded line ([Play] table) ───────────────────────────────
+const PLAY_CLOCKWISE = { N: 'E', E: 'S', S: 'W', W: 'N' }
+const TRICK_CARD_RE = /^([SHDC](?:10|[2-9TJQKA])|-)$/i
+
+// A trick row is 1–4 whitespace-separated card codes (or '-' void placeholders).
+function isTrickRow(line) {
+  const t = line.trim()
+  if (!t || t.startsWith('[') || t.startsWith('{') || t.startsWith('%')) return false
+  const toks = t.split(/\s+/)
+  if (toks.length === 0 || toks.length > 4) return false
+  return toks.every(tok => TRICK_CARD_RE.test(tok))
+}
+
+// Fold the columnar [Play] table into per-seat card queues. Columns are fixed
+// directions clockwise from the leader, so column j → seat, and each seat plays
+// once per row → its column read top-to-bottom is its chronological queue. BC's
+// replay bot dequeues from bySeat[seat] whenever that seat is on play.
+function finalizePlayLine(deal, leader, rows) {
+  if (!leader || !rows.length) return
+  const seats = [leader]
+  for (let j = 0; j < 3; j++) seats.push(PLAY_CLOCKWISE[seats[j]])
+  const bySeat = { N: [], E: [], S: [], W: [] }
+  for (const row of rows) {
+    for (let j = 0; j < row.length && j < 4; j++) {
+      const card = row[j]
+      if (card && card !== '-') bySeat[seats[j]].push(normalizeCardCode(card))
+    }
+  }
+  deal.playLine = { leader, bySeat }
+  deal.openingLeader = leader
+  if (bySeat[leader].length) deal.openingLead = bySeat[leader][0]
+}
+
+// Split the coaching comment into { stage → prose } keyed by the [STAGE x] of
+// the declarer's role chunks (auction-end, post-lead, post-play) plus the
+// leader's pre-lead tip. Used to narrate the interactive declarer play.
+function parsePlayCoaching(commentaryParts) {
+  const full = (commentaryParts || []).join('\n')
+  if (!full.includes('[ROLE')) return null
+  const out = {}
+  const re = /\[ROLE\s+(declarer|leader|defender)\]\s*\[STAGE\s+([a-z-]+)\]/gi
+  let m
+  const marks = []
+  while ((m = re.exec(full)) !== null) {
+    marks.push({ role: m[1].toLowerCase(), stage: m[2].toLowerCase(), start: m.index, end: re.lastIndex })
+  }
+  for (let i = 0; i < marks.length; i++) {
+    const body = full.slice(marks[i].end, i + 1 < marks.length ? marks[i + 1].start : undefined).trim()
+    // Convert \S \H \D \C suit escapes to glyphs, matching formatCommentary so
+    // the play coaching colorizes like the bidding commentary.
+    out[marks[i].stage] = replaceSuitSymbols(body)
+  }
+  return Object.keys(out).length ? out : null
 }
 
 /**

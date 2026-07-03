@@ -53,6 +53,46 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
+// ── ReplayBot ──────────────────────────────────────────────────────────
+//
+// Plays a pre-recorded line (the [Play] table shipped with declarer-play
+// coaching boards). Built per-deal from the parser's `bySeat` queues. Used to
+// drive the two defenders in a classroom declarer lesson deterministically —
+// no live solver, no network — so the hand plays the teaching line every time.
+//
+// It counts how many cards the seat has already played (from ctx.played) rather
+// than counting calls, so it stays aligned even when the engine auto-plays a
+// forced single-legal card without consulting the bot. If the student deviates
+// from the model line (misplays declarer), a recorded card can become illegal;
+// we then fall back to a legal card so play degrades gracefully instead of
+// throwing.
+export function makeReplayBot(bySeat) {
+  const q = {
+    N: [...(bySeat?.N || [])],
+    E: [...(bySeat?.E || [])],
+    S: [...(bySeat?.S || [])],
+    W: [...(bySeat?.W || [])],
+  }
+  function nextFor(seat, played, legalCards) {
+    const count = (played || []).filter(p => p.seat === seat).length
+    const code = q[seat] && q[seat][count]
+    if (code) {
+      const card = { suit: code[0], rank: code.slice(1) }
+      if (legalCards.some(c => c.suit === card.suit && c.rank === card.rank)) return card
+    }
+    return legalCards[0]
+  }
+  return {
+    name: 'replay',
+    async chooseOpeningLead(ctx) {
+      return nextFor(ctx.seat, [], ctx.legalCards)
+    },
+    async chooseCard(ctx) {
+      return nextFor(ctx.seat, ctx.played, ctx.legalCards)
+    },
+  }
+}
+
 // ── BenBot ─────────────────────────────────────────────────────────────
 //
 // BEN-backed bot. Wraps benClient's HTTP API. Slow (~10s per call) and

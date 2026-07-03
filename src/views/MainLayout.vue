@@ -99,7 +99,7 @@
               :vulnerable="currentDeal?.vulnerable"
               :contract="currentDeal?.contract"
               :declarer="currentDeal?.declarer"
-              :showContract="practice.auctionState.auctionComplete || practice.showOpeningLead.value || (practice.hasSteps.value && !practice.hasBidSteps.value)"
+              :showContract="isDeclarerPlay || practice.auctionState.auctionComplete || practice.showOpeningLead.value || (practice.hasSteps.value && !practice.hasBidSteps.value)"
               :openingLead="practice.showOpeningLead.value ? currentDeal?.openingLead : ''"
               :totalDeals="deals.length"
               :currentIndex="currentDealIndex"
@@ -111,6 +111,7 @@
             />
 
             <BridgeTable
+              v-if="!isDeclarerPlay"
               :hands="practice.hands.value"
               :hiddenSeats="practice.hiddenSeats.value"
               :showHcp="practice.showHcp.value"
@@ -119,6 +120,29 @@
               :playedCards="practice.showcardsPlayedCards.value"
               @card-click="onCardClick"
             />
+            <!-- Declarer-play lessons: live card table driven by the cardplay engine -->
+            <BridgeTable
+              v-else
+              :hands="currentDeal.hands"
+              :hiddenSeats="cardplay.hiddenSeats.value"
+              :showHcp="true"
+              :compact="true"
+              :clickableSeat="cardplay.clickableSeat.value"
+              :playedCards="cardplay.playedBySeat.value"
+              :hidePlayedCards="true"
+              @card-click="onDeclarerCard"
+            >
+              <template #center>
+                <TrickArea
+                  :current-trick="cardplay.currentTrick"
+                  :last-finished-trick="cardplay.lastFinishedTrick.value"
+                  :tricks-taken="cardplay.tricksTaken.value"
+                  :next-seat="cardplay.currentPlayer.value"
+                  :bot-loading="cardplay.botLoading.value"
+                  bot-name="Defense"
+                />
+              </template>
+            </BridgeTable>
           </div>
 
           <!-- Right column: Tag-driven content -->
@@ -235,11 +259,27 @@
               </div>
             </div>
 
+            <!-- Declarer-play lessons: coaching tip + tricks result + next -->
+            <div v-if="isDeclarerPlay" class="declarer-play-panel">
+              <div
+                class="display-commentary"
+                v-html="colorizeSuits(flowText(stripControlDirectives(declarerCoachingText)))"
+              ></div>
+              <div v-if="cardplay.playComplete.value" class="declarer-play-result">
+                You took {{ cardplay.tricksTaken.value[declarerSide] }}
+                trick{{ cardplay.tricksTaken.value[declarerSide] === 1 ? '' : 's' }}<span
+                  v-if="tricksNeeded"> — needed {{ tricksNeeded }} for {{ currentDeal.contract }}</span>.
+              </div>
+              <div v-if="cardplay.playComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
+                <button class="next-deal-btn" @click="nextDeal">Next Deal →</button>
+              </div>
+            </div>
+
             <!-- Display-only commentary (no interactive steps) -->
             <div v-else-if="currentDeal?.commentary" class="display-commentary" v-html="colorizeSuits(flowText(stripControlDirectives(currentDeal.commentary)))">
             </div>
             <!-- Display-only completion: Next Deal button -->
-            <div v-if="!practice.hasSteps.value && practice.isComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
+            <div v-if="!practice.hasSteps.value && !isDeclarerPlay && practice.isComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
               <button class="next-deal-btn" @click="nextDeal">
                 Next Deal →
               </button>
@@ -315,6 +355,8 @@ import { useRouter } from 'vue-router'
 import { parsePbn, getDealTitle } from '../utils/pbnParser.js'
 import { stripControlDirectives, colorizeSuits, flowText, formatBid } from '../utils/cardFormatting.js'
 import { useDealPractice } from '../composables/useDealPractice.js'
+import { useCardPlay } from '../composables/useCardPlay.js'
+import { makeReplayBot } from '../utils/cardplayBots.js'
 import { useAppConfig } from '../composables/useAppConfig.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useAssignmentStore } from '../composables/useAssignmentStore.js'
@@ -329,6 +371,7 @@ import { useAssignments } from '../composables/useAssignments.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 
 import BridgeTable from '../components/BridgeTable.vue'
+import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import DealInfo from '../components/DealInfo.vue'
@@ -363,6 +406,10 @@ const assignmentsApi = useAssignments()
 
 // Unified practice state - tag-driven, no modes
 const practice = useDealPractice()
+// Declarer-play lessons (Hold_Up_3N, Finesse_Simple, …) run on the live
+// card-play engine instead of the step walk. Isolated path — the normal bid /
+// choose-card lessons never touch `cardplay`, so Baker Bridge is unaffected.
+const cardplay = useCardPlay()
 
 // --- Coaching feedback fade (branch: coaching-feedback-fade) ----------------
 // In the bidding scrollback we distinguish three cases:
@@ -703,6 +750,58 @@ watch(currentDealIndex, () => {
     appConfig.setDealInUrl(currentDeal.value.boardNumber)
   }
 }, { flush: 'sync' })
+
+// ── Declarer-play lessons ────────────────────────────────────────────────
+// A board is declarer-play when the parser attached a recorded [Play] line.
+// The student declares (South + dummy North); the two defenders replay the
+// shipped double-dummy line via the ReplayBot. One watcher on currentDeal
+// covers every load path (lesson load, nextDeal, gotoDeal, index change).
+const DUMMY_OF = { N: 'S', S: 'N', E: 'W', W: 'E' }
+const SIDE_OF = { N: 'NS', S: 'NS', E: 'EW', W: 'EW' }
+
+const isDeclarerPlay = computed(() => !!(currentDeal.value?.isDeclarerPlay && currentDeal.value?.playLine))
+const declarerSide = computed(() => SIDE_OF[currentDeal.value?.declarer || 'S'])
+const tricksNeeded = computed(() => {
+  const c = currentDeal.value?.contract
+  const lvl = c && /^[1-7]/.test(c) ? parseInt(c[0], 10) : null
+  return lvl ? lvl + 6 : null
+})
+
+// Which coaching tip to surface as play progresses.
+const declarerCoachingText = computed(() => {
+  const pc = currentDeal.value?.playCoaching
+  if (!pc) return ''
+  if (cardplay.playComplete.value) return pc['post-play'] || pc['auction-end'] || ''
+  if (cardplay.played.value.length > 0 && pc['post-lead']) return pc['post-lead']
+  return pc['auction-end'] || pc['pre-lead'] || ''
+})
+
+function startDeclarerPlay(deal) {
+  const declarer = deal.declarer || 'S'
+  cardplay.startPlay({
+    hands: deal.hands,
+    dealer: deal.dealer,
+    vulnerable: deal.vulnerable,
+    bids: deal.auction || [],
+    contract: deal.contract,
+    declarer,
+    bot: makeReplayBot(deal.playLine.bySeat),
+    userSeats: [declarer, DUMMY_OF[declarer]],
+    pacing: { betweenPlays: 550, betweenTricks: 1300 },
+  })
+}
+
+async function onDeclarerCard({ suit, rank }) {
+  await cardplay.onUserCard(suit, rank)
+}
+
+watch(currentDeal, (deal) => {
+  if (deal?.isDeclarerPlay && deal?.playLine) {
+    startDeclarerPlay(deal)
+  } else if (cardplay.isActive.value) {
+    cardplay.reset()
+  }
+}, { immediate: true })
 
 // Trigger sync when new observations are recorded
 watch(() => practice.observationStore.pendingCount.value, (newCount, oldCount) => {
