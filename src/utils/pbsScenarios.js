@@ -81,14 +81,17 @@ export async function fetchScenarioMenu() {
 
 // Deals for a scenario: bba-filtered set first, plain pbn as fallback.
 // Returns parsePbn() deal objects (dealer, vulnerable, dealString, …).
-export async function fetchScenarioDeals(file) {
-  for (const dir of [PBS.BBA_FILTERED_DIR, PBS.PBN_DIR]) {
+// `curated:true` forces the auction-filtered set only (no /pbn fallback) —
+// the "Curated" source in the deal-source picker (deal-source-spec D-A).
+export async function fetchScenarioDeals(file, { curated = false } = {}) {
+  const dirs = curated ? [PBS.BBA_FILTERED_DIR] : [PBS.BBA_FILTERED_DIR, PBS.PBN_DIR]
+  for (const dir of dirs) {
     const resp = await fetch(`${PBS.RAW_BASE}${dir}/${file}.pbn`)
     if (!resp.ok) continue
     const deals = parsePbn(await resp.text()).filter((d) => d.dealString)
     if (deals.length > 0) return deals
   }
-  throw new Error(`no PBN deals for ${file}`)
+  throw new Error(curated ? `no curated (bba-filtered) deals for ${file}` : `no PBN deals for ${file}`)
 }
 
 // Raw dealer-script text for a scenario (the /dlr twin of the PBN file).
