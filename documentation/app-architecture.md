@@ -449,10 +449,24 @@ the query form, and 301 the old origin.
 - Note: `location` column exists but is NULL for now — the normalized schema has
   no venue field yet (data is preserved in `payload` regardless).
 
-**Next: M4** — surface `club_games` in the table deal-source picker (the pull
-path): list a user's games → pick one/board → derive PBN → deal. Plus the
-deferred cleanup: the old "Send to Library" button (whole game → `deal_library`
-PBN) now overlaps `club_games` — decide whether to retire/repurpose it.
+**M4 status (2026-07-03) — DONE (build + data-path verified).** The **pull**
+path: the table deal-source picker (`DealSourceModal`) gets a **"My club games"**
+tab (any signed-in user — a student can replay their own boards) that lists the
+user's `club_games` and deals a fresh random board from the chosen game. New
+`clubgame` source kind in `useDealSource` (fetch game → `clubGameBoards` →
+`boardToMinimalPbn` → deal, mirroring the library flow); `useClubGames.js`
+read-side composable; `utils/normalizedDeal.js` converts a normalized board to
+PBN (mirrors game-analysis `dealToPBN`). Verified: build clean; the full chain
+(list → payload → convert) runs against the live API and yields valid PBN. The
+live-table *deal* interaction (demo table, deal-source popup) is to be confirmed
+in-app.
+
+**Remaining cleanup (deferred):** the game-analysis "Send to Library" button
+(whole game → `deal_library` PBN) now overlaps `club_games` — decide whether to
+retire or repurpose it (e.g. "add selected boards to a curated library set").
+And once real games are in `club_games`, wire a **table-face** entry (open a
+table → "My club games") so pull is discoverable without going through the
+deal-source popup.
 
 ### 7.2 Shared bots (D10) — later, tracked separately
 
