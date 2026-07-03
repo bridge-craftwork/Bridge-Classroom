@@ -161,14 +161,35 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
   chosen scenario (`options.fresh` → `SourceRef{kind:'script'}`). Present it as the
   **"☐ Fresh deals (generate)"** option on Scenarios/Curated (matches today's toggle),
   not a standalone tab.
-- **Dealer service is ours** (droplet) but needs a Bearer token the browser can't
-  hold, so it resolves through a **server proxy** — never a direct browser call.
-  We already proxy it in the **table service** (demo table). To make `fresh`
-  available in the **local Practice Table** and **session-creation (materialize)**
-  contexts, add a thin **Mac-API proxy** (`POST /api/deal/generate {script,seed?}` →
-  forwards to `dealer.bridge-craftwork.com` with `DEALER_TOKEN`). Then `fresh` works
-  **everywhere** — the resolver just picks the right proxy per context. (Was Q3;
-  resolved — build the API proxy.)
+- **Dealer service is browser-direct, like BEN** (D-fresh, Rick 2026-07-03 —
+  supersedes the earlier "Mac-API proxy" resolution). dealer-service becomes the
+  third peer of BEN/BBA: a stateless droplet service the client calls straight from
+  the browser (`fetch(dealerUrl)`), exactly as `benClient.js` calls
+  `ben.bridge-craftwork.com`. **No proxy** — not on Mac-API, not a new table-service
+  HTTP route — so `fresh` works everywhere with zero server glue.
+  - **Why the proxy plan was dropped:** a proxy forwards the *same* user-supplied
+    script unchanged, so it adds no script safety; and we're *deliberately offering
+    user-defined scripts as a deal source*, so there's nothing to allowlist against.
+    The only real risk is attacker-controlled CPU (the script writes `produce`/
+    `condition`), and a **wall-clock + generation cap neutralizes that at the
+    service**. With `DEAL_TIMEOUT_SECONDS=5` + a concurrency limit, an open dealer is
+    *cheaper* to abuse than the already-open BEN (up to 50s/call, browser-direct, no
+    token). If BEN clears the bar, dealer clears it easily.
+  - **Punch-list to go direct:**
+    1. **Relax dealer-service auth** — its `API_TOKEN` is currently *required* (401
+       without). Drop the requirement or swap to the same coarse shared key the rest
+       of the frontend uses (CLAUDE.md: "not secret — filters casual misuse").
+    2. **CORS on dealer-service/Caddy** for the app origins — copy BEN's edge config.
+    3. **New `dealerClient.js`** (mirrors `benClient.js`) holds the ~8 lines that used
+       to live in table-service `dealer.rs`: input-shaping (`produce 1`,
+       `printoneline`→`printpbn`) + output-shaping (keep `[` lines, require `[Deal `).
+       Presentation glue that belongs client-side anyway.
+    4. **table-service keeps its internal `dealer.rs` as-is** for the server-table WS
+       path (fast internal hop, holds the token internally) — no duplication, the
+       browser paths just don't route through it.
+    5. **Harden dealer-service itself** with an explicit **generation/output-size cap**
+       alongside the wall-clock cap, so a script can't `produce` a huge payload inside
+       the 5s window. Cap time *and* volume, once, at the service, for all callers.
 
 ## 5. Global text filter
 
@@ -200,7 +221,7 @@ One control; the **host declares which tabs/options are allowed**. Rough matrix
 | User Collections | ✓ | ✓ | ✓ | |
 | Paste PBN | ✓ | ✓ | ✓ | |
 | Random | ✓ | ✓ | ✓ (fresh per board) | |
-| Fresh deals (script) | ✓ (via Mac-API proxy) | ✓ (table-service proxy) | ✓ (Mac-API proxy) | |
+| Fresh deals (script) | ✓ (browser-direct) | ✓ (table-service WS path) | ✓ (browser-direct) | |
 | **Action** | Deal (stream) | Deal (stream) | Add to session (materialize) | Deal (stream) |
 
 `replay` (re-run the same board) stays a table-only action, orthogonal to source.
@@ -275,16 +296,18 @@ hosts are easy.
   numeric `rotate` now; semantic ("students defend E/W") later.
 
 Resolved (Rick 2026-07-03): Q2 club games = **drill to boards, multi-select boards**
-(no whole-game pooling); Q3 dealer scripts = **build a Mac-API proxy**, available
-everywhere; Q4 draw order = **default sequential**; Q5 = **one Scenario Collections
-tab** (Baker + PBS as two groups).
+(no whole-game pooling); Q3 dealer scripts = **browser-direct, like BEN — no proxy**
+(supersedes the earlier "Mac-API proxy"; see §4.7 D-fresh); Q4 draw order = **default
+sequential**; Q5 = **one Scenario Collections tab** (Baker + PBS as two groups).
 
 ## 11. Build order (when we pick this up)
 
 1. **`useDealSourceResolver.js`** — the `SourceRef` union + `nextBoard`/`materialize`
    (absorbs `useDealSource.nextDeal`, `normalizedDeal`, scenario/library/clubgame
    fetch). Pure logic, unit-testable without UI.
-2. **Mac-API dealer proxy** (`POST /api/deal/generate`) — unblocks `fresh` everywhere.
+2. **Dealer browser-direct** (§4.7 D-fresh) — relax dealer-service auth + CORS + a
+   generation cap, add `dealerClient.js` (mirrors `benClient.js`). Unblocks `fresh`
+   everywhere with no proxy.
 3. **`DealSourcePicker.vue`** — tab sheet + global filter + multi-select tray +
    options + `layout`/`allow`/`actionLabel` props. Prototype the **compact** layout
    first (§9).
