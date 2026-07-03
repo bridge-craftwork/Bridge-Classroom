@@ -163,10 +163,12 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
     snapshot is what you want. This is the table apps' path (Phase 2.5).
   - The split is *intentional*: references suit tracked lessons (stable ids +
     live content), materialization suits tables (no history, want a frozen deal).
-    Club games (D7) have nothing in the taxonomy to reference, so they land on the
-    **materialized** side — either reused as a `deal_library` file-per-game or a
-    dedicated `club_games` store (Q10). The open risk is *drift/duplication*
-    between the two if we're not deliberate about which owns what.
+    Club games get a **third store** (D13): a dedicated `club_games` table holding
+    the native normalized JSON (metadata + analysis rollups), with PBN derived on
+    demand for table replay. Ownership is now clean: `exercise_boards` = tracked
+    lesson references; `deal_library` = curated materialized board sets;
+    `club_games` = the rich analyzed-event archive. Watch for drift only where
+    they overlap (e.g. a club board cherry-picked into a deal_library playlist).
 - **I6 — app 2 vs app 3 overlap.** "Single human plays with feedback" exists in
   both the light local engine (A2) and the table server (B1). Roles must be crisp
   or they blur.
@@ -237,7 +239,8 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   storage, or add identity federation).
 - **Q4 — Snapshot versioning.** How do snapshots get stable ids so A1's tracking
   survives a re-publish? (New subfolder per version? version suffix on
-  `deal_subfolder`? explicit `subfolder` field on the taxonomy?)
+  `deal_subfolder`? explicit `subfolder` field on the taxonomy?) **Deferred — see
+  D12:** for now, plain **separate GitHub folders** (no versioning machinery).
 - **Q5 — Unify the two deal-organization systems** (Q from I5) or keep the lesson
   taxonomy and the deal library separate by engine?
 - **Q6 — Share the authored-guidance renderer.** Extract app 1's guided
@@ -266,9 +269,9 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   (IndexedDB) path (I13). Open sub-question: does DB-backed club-game storage
   *reuse the deal library* (a materialized file per game) or a dedicated
   `club_games` store? (Relates to I5 — two deal-organization systems.)
-  **Resolved in part — see D7:** registered → DB, anonymous → local. Still open:
-  the DB *schema* (reuse a deal-library file per game vs a dedicated
-  `club_games` store).
+  **Resolved — see D7 + D13:** registered → DB, anonymous → local; schema = a
+  **dedicated `club_games` table storing the native normalized JSON** (metadata +
+  analysis rollups), not a `deal_library` PBN file.
 
 ---
 
@@ -281,9 +284,10 @@ Marked **Proposed** (pending Rick's confirmation) or **Settled**.
 - **D2 — Proposed:** Split guidance into authored vs computed (§2.1). Keep
   authored guidance on the local engine + fixed boards; the table server gets
   computed feedback only.
-- **D3 — Proposed:** A2 (untracked, live PBS) is David's author+play surface; A1
-  (tracked) is snapshot-fed. Build the snapshot/publish tool as the bridge —
-  highest-leverage missing piece for David.
+- **D3 — Decided (Rick, 2026-07-03):** A2 (untracked, live PBS) is David's
+  author+play surface; A1 (tracked) is snapshot-fed. The snapshot "publish" is
+  realized as **separate GitHub folders** (D12), not a build tool yet. Remaining
+  build: give A2 the authored-guidance renderer (Q6).
 - **D4 — Proposed:** The deal library is the universal source hub for the table
   platform (already materialized/built — roadmap Phase 2.5).
 - **D5 — Settled (already true):** Apps 1–4 share one SPA origin/bundle/identity;
@@ -337,6 +341,19 @@ Marked **Proposed** (pending Rick's confirmation) or **Settled**.
   call the **BEN** service from both, and mirror the trivial **Random**/**Replay**
   bots. Prerequisite for D9's seamless switch. BEN speedup (I15, Thorvald) feeds
   this.
+- **D12 — Decided (Rick, 2026-07-03):** **Defer snapshot versioning.** Source →
+  release is just **separate GitHub folders**, referenced via GitHub as today:
+  **PBS** keeps a *snapshot* folder set (frozen, feeds A1/tracked) and a *fluid*
+  folder set (evolving, feeds A2/untracked); **Baker Bridge** maintains snapshot
+  folders too. *Later:* add a per-folder **version/staleness file** with guidance
+  on what's gone stale, and handling for it. No versioning machinery for now.
+- **D13 — Decided (Rick, 2026-07-03):** Club games persist to a **new
+  `club_games` table** (registered users, D7). Store the **native normalized
+  JSON** (the extractor's schema — under our control), **not** flattened PBN,
+  because it carries event metadata (location, time, …) and the **analysis
+  rollups**. Derive PBN on demand when feeding a board to a table. Keeps ownership
+  clean vs `deal_library` (curated materialized sets, I5): club games = the rich
+  analyzed-event archive; deal_library = curated board sets.
 
 ---
 
