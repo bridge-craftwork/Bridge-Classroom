@@ -461,12 +461,18 @@ PBN (mirrors game-analysis `dealToPBN`). Verified: build clean; the full chain
 live-table *deal* interaction (demo table, deal-source popup) is to be confirmed
 in-app.
 
-**Remaining cleanup (deferred):** the game-analysis "Send to Library" button
-(whole game → `deal_library` PBN) now overlaps `club_games` — decide whether to
-retire or repurpose it (e.g. "add selected boards to a curated library set").
-And once real games are in `club_games`, wire a **table-face** entry (open a
-table → "My club games") so pull is discoverable without going through the
-deal-source popup.
+**Cleanup DONE (2026-07-03):** the game-analysis "Send to Library" whole-game
+push (→ `deal_library` PBN) is **retired** — superseded by auto-save to
+`club_games` (M3) + the "My club games" pull (M4); whole games belong in
+`club_games`, not the curated `deal_library`. Removed the button, its handler,
+`buildGamePBN`, `bcOwner`, and the dead `?bc_owner` capture (same-origin now).
+The Deal Library tab's link is relabeled "Analyze club games ↗" and opens the
+co-located `/game-analysis/` (no handshake). A future "add selected boards to a
+curated library set" is the *repurpose* path if wanted later.
+
+**Still open:** a **table-face** entry point (open a table → "My club games") so
+pull is discoverable without the deal-source popup; confirm the live-table deal
+interaction in-app.
 
 ### 7.2 Shared bots (D10) — later, tracked separately
 
