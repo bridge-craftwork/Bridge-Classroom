@@ -134,6 +134,24 @@ Key decisions:
   library" tab) and session creation at #/tables/new (class sets).
 - LIN file upload = later (needs a LIN parser); PBN first.
 
+Refinements (Rick 2026-07-02, second pass):
+- PER-TEACHER only (no sharing in v1; schema needn't anticipate it).
+- PLAYLISTS mirror the solo app's Exercises idea — an ordered set of
+  boards cherry-picked from any sources (e.g. game-analysis
+  bidding-error boards as one set, play-error boards as another, run
+  sequentially not interleaved). Crucially they are MATERIALIZED at
+  creation (boards copied into the entry as ordered PBN), never live
+  references — table sessions have no history, and Rick explicitly does
+  not want the main app's exercises-mutated-after-assignments problem
+  here. Schema-wise a playlist is just kind=file; "playlist" is an
+  assembly UI (multi-source board picker + analysis-app export).
+- PER-ENTRY SETTINGS JSON on file/link entries, applied when dealt or
+  loaded into a session: `rotate` with semantic UI labels ("Students
+  declare N/S" / "Students defend E/W" — defensive lessons store the
+  rotation so the teacher stops tracking seat placement per lesson,
+  Shark pain point), plus default board mode (bid/play/full) and bot
+  mode. Rotation rotates the DEAL, never the players.
+
 Build order: (1) API deal_library table + CRUD (owner-scoped),
 (2) "My library" picker tab + library-driven session creation,
 (3) analysis-app send-to-library + per-board ?lin=,
