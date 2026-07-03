@@ -166,10 +166,19 @@ The snapshot is a *publish* step, and it's **required, not just convenient**:
   club games with the SPA. But the SPA's storage is small (headroom exists), and
   a large cache belongs in **IndexedDB** (hundreds of MB quota) rather than
   localStorage — so "capacity" no longer forces a separate origin. See Q7/Q8.
-- **I11 — ACBL browser extensions reference the club-game-analysis origin/URL**
-  (the `acbl-live-fetch` extension). **They aren't deployed yet**, so the
-  canonical location is still cheap to change — but the decision should be made
-  *before* they ship, since they'll hard-code the target.
+- **I11 — The ACBL extension hard-pins the game-analysis URL, and it ships via
+  the Mac App Store (Safari).** `acbl-live-fetch` is built for four browsers
+  (chrome/firefox/edge/**safari**); its manifest `matches` +
+  `host_permissions` are pinned to `game-analysis.bridge-classroom.{com,org}/analyze*`,
+  and it injects a content script on that origin (`analyzerContent.js`) to hand
+  data to the app. **It isn't deployed yet.** Consequence: the origin/URL for
+  club-analysis must be **final before the Safari build ships**, because Safari
+  Web Extensions update through **App Store review** (slow) — re-pointing the URL
+  later is expensive. This *raises* the cost of a later origin move and is the
+  real forcing function on Q7/D6. (Side note: the manifest targets `/analyze*`,
+  but the live Pages site serves the app at `/` — the content script matches by
+  URL, so it injects on `/analyze` even though that path 404-status-falls-back to
+  the SPA; fragile, worth tidying when the URL is finalized.)
 - **I12 — The table deal-source picker can't list cached club games today.**
   They live in game-analysis's origin localStorage; the SPA (both table faces)
   can't read a different origin's storage. The desired "table lists my cached
@@ -324,9 +333,14 @@ it saves.
   `?bc_owner` handshake and the API CORS entry become unnecessary. **Decide this
   canonical URL before the ACBL extensions ship (I11)** and point them at it;
   301 the old `game-analysis.bridge-classroom.{com,org}` → the new path.
-- **M2 — Cache → IndexedDB (Q8).** Move the game-results cache off localStorage
-  (one-time copy-on-load migration). Big quota, no roll-off, stops competing with
-  SPA storage. Removes the original reason for the separate origin (I10).
+- **M2 — Cache → IndexedDB (Q8) — OPTIONAL.** Move the game-results cache off
+  localStorage (one-time copy-on-load migration). Fixes the **5 MB size cap** /
+  roll-off. **Caveat:** IndexedDB is universal (incl. Safari since ~2016), but
+  **Safari's ITP evicts local storage — both localStorage *and* IndexedDB —
+  after ~7 days of no interaction**, so IndexedDB fixes *size* but not
+  *durability* on Safari. Durability = the server DB (D7). So M2 is a
+  bigger/nicer *anonymous cache*, not a durability guarantee; skippable if anon
+  users keep only a handful of recent games.
 - **M3 — Tiered persistence (D7).** Same-origin lets the app read the SPA user
   store. *Registered* → also POST games to the DB (schema per Q10); *anonymous* →
   IndexedDB only, with a "register to keep these across devices" nudge (the carrot).
