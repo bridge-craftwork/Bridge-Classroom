@@ -19,6 +19,7 @@ const TAB_LABELS = {
   classrooms: 'Classrooms',
   exercises: 'Exercises',
   assignments: 'Assignments',
+  dealLibrary: 'Deal Library',
   conventionCard: 'Convention Card',
   admin: 'Admin'
 }

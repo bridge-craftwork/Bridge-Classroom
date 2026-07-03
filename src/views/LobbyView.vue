@@ -25,6 +25,7 @@
     />
     <AssignmentsTab v-else-if="activeTab === 'assignments'" />
     <TeacherExercisesTab v-else-if="activeTab === 'exercises'" />
+    <DealLibraryManagerTab v-else-if="activeTab === 'dealLibrary'" />
     <ConventionCardView v-else-if="activeTab === 'conventionCard'" embedded />
     <AdminLobby v-else-if="activeTab === 'admin'" />
   </div>
@@ -38,6 +39,7 @@ import LessonsTab from '../components/lobby/tabs/LessonsTab.vue'
 import StudentsTab from '../components/lobby/tabs/StudentsTab.vue'
 import AssignmentsTab from '../components/lobby/tabs/AssignmentsTab.vue'
 import TeacherExercisesTab from '../components/lobby/tabs/TeacherExercisesTab.vue'
+import DealLibraryManagerTab from '../components/lobby/tabs/DealLibraryManagerTab.vue'
 import TeacherLobby from '../components/lobby/TeacherLobby.vue'
 import AdminLobby from '../components/lobby/AdminLobby.vue'
 import ConventionCardView from './ConventionCardView.vue'
@@ -59,10 +61,10 @@ const isViewingAs = computed(() => userStore.isViewingAs.value)
 
 const visibleTabs = computed(() => {
   if (userRole.value === 'admin') {
-    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'conventionCard', 'admin']
+    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'dealLibrary', 'conventionCard', 'admin']
   }
   if (userRole.value === 'teacher') {
-    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'conventionCard']
+    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'dealLibrary', 'conventionCard']
   }
   return ['lessons', 'conventionCard']
 })
