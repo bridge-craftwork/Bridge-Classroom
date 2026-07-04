@@ -5,12 +5,15 @@
       <button class="mt-name" title="Open the full live view of this table" @click="$emit('kibitz')">
         {{ name }}
       </button>
-      <span class="mt-chip">Bd {{ t.board_no }}</span>
-      <span v-if="t.contract" class="mt-chip mt-chip-contract">
-        <span v-html="suitHtml(t.contract.text)"></span> by {{ t.contract.declarer }}
-      </span>
-      <span v-else class="mt-chip" :class="'mt-phase-' + t.phase">{{ t.phase }}</span>
-      <span v-if="t.phase !== 'bidding'" class="mt-chip">NS {{ t.tricks.ns }} · EW {{ t.tricks.ew }}</span>
+      <template v-if="loaded">
+        <span class="mt-chip">Bd {{ t.board_no }}</span>
+        <span v-if="t.contract" class="mt-chip mt-chip-contract">
+          <span v-html="suitHtml(t.contract.text)"></span> by {{ t.contract.declarer }}
+        </span>
+        <span v-else class="mt-chip" :class="'mt-phase-' + t.phase">{{ t.phase }}</span>
+        <span v-if="t.phase !== 'bidding'" class="mt-chip">NS {{ t.tricks.ns }} · EW {{ t.tricks.ew }}</span>
+      </template>
+      <span v-else class="mt-chip mt-chip-nodeal">no deal</span>
       <span class="mt-head-spacer"></span>
       <button
         class="mt-icon"
@@ -42,7 +45,8 @@
       </div>
 
       <div class="mt-pos mt-pos-c">
-        <template v-if="t.phase === 'play' && t.current_trick && t.current_trick.plays.length">
+        <div v-if="!loaded" class="mt-center-note">no deal</div>
+        <template v-else-if="t.phase === 'play' && t.current_trick && t.current_trick.plays.length">
           <div v-for="p in t.current_trick.plays" :key="p.seat" class="mt-trick-card">
             {{ p.seat }}&thinsp;<span v-html="cardHtml(p.card)"></span>
           </div>
@@ -113,6 +117,9 @@ const RANK_VALUE = { A: 14, K: 13, Q: 12, J: 11, T: 10, 9: 9, 8: 8, 7: 7, 6: 6, 
 const props = defineProps({
   t: { type: Object, required: true },
   name: { type: String, required: true },
+  // False while the session has no deal loaded: show seats but no cards/board
+  // (the lobby still carries a placeholder board server-side).
+  loaded: { type: Boolean, default: true },
 })
 defineEmits(['kibitz', 'advance', 'seat-click'])
 
@@ -152,14 +159,16 @@ function suitRanks(seat) {
   return bySuit
 }
 
-// One line: ♠KQ83 ♥1054 ♦J6 ♣863 (N/S).
+// One line: ♠KQ83 ♥1054 ♦J6 ♣863 (N/S). Blank until a deal is loaded.
 function handHtml(seat) {
+  if (!props.loaded) return ''
   const r = suitRanks(seat)
   return SUIT_ORDER.map((s) => `${sym(s)}${r[s] || '—'}`).join(' ')
 }
 
 // Two lines of two suits (W/E side columns).
 function handHtmlSide(seat) {
+  if (!props.loaded) return ''
   const r = suitRanks(seat)
   return (
     `${sym('S')}${r.S || '—'} ${sym('H')}${r.H || '—'}<br>` +
@@ -227,6 +236,7 @@ const lastCallCol = computed(() => {
   font-size: 11px; color: #445; white-space: nowrap;
 }
 .mt-chip-contract { background: #e8f1fb; font-weight: 600; }
+.mt-chip-nodeal { background: #eceff2; color: #8a97a3; font-style: italic; }
 .mt-phase-bidding { background: #fdf3d8; }
 .mt-phase-play { background: #e3f2ec; }
 .mt-phase-complete { background: #ece8f6; }

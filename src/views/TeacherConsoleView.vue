@@ -21,22 +21,16 @@
       <div class="tc-header">
         <div class="tc-header-left">
           <h2 class="tc-title">Teacher console</h2>
-          <span v-if="lobby" class="tc-tag">
-            Boards open <strong>{{ lobby.boards.open }} / {{ lobby.boards.total }}</strong>
-          </span>
           <span class="tc-conn" :class="'tc-conn-' + connectionStatus">{{ connectionStatus }}</span>
         </div>
         <div class="tc-header-right">
           <button
-            class="tc-btn tc-btn-primary"
-            :disabled="!lobby || lobby.boards.open >= lobby.boards.total || connectionStatus !== 'connected'"
-            title="Open the next board for every table (tables advance when their players are ready)"
-            @click="openNextRound"
+            class="tc-btn"
+            :disabled="!shareUrl"
+            :title="shareUrl || 'Generating your class link…'"
+            @click="copyShareUrl"
           >
-            Open next board
-            <template v-if="lobby && lobby.boards.open < lobby.boards.total">
-              (#{{ lobby.boards.open + 1 }})
-            </template>
+            {{ copied ? 'Link copied ✓' : '🔗 Copy class link' }}
           </button>
           <button class="tc-btn tc-btn-danger" @click="endSession">End session</button>
         </div>
@@ -112,6 +106,7 @@
           <MiniTable
             :t="t"
             :name="tableName(t.table_id)"
+            :loaded="deck.loaded"
             @kibitz="watchTable(t.table_id)"
             @advance="console_.forceAdvance(t.table_id)"
             @seat-click="(seat) => toggleMenu(t.table_id, seat)"
@@ -276,17 +271,44 @@ function doAssign(tableId, seat, sub) {
   menu.value = null
 }
 
-function openNextRound() {
-  if (!lobby.value) return
-  console_.openBoards(lobby.value.boards.open + 1)
-}
-
 function watchTable(tableId) {
   console_.kibitz(tableId)
 }
 
 function stopWatching() {
   console_.stopKibitz()
+}
+
+// Evergreen class link (/play/<hostCode>): the teacher's permanent join URL,
+// always resolving to their open session — copyable straight from the console.
+const shareUrl = ref('')
+const copied = ref(false)
+async function ensureShareUrl() {
+  if (!currentUser.value) return
+  try {
+    const res = await fetch(`${API_URL}/users/${currentUser.value.id}/host-code`, {
+      method: 'POST',
+      headers: { 'x-api-key': API_KEY },
+    })
+    const data = await res.json()
+    if (data.code) {
+      shareUrl.value = `${window.location.origin}${window.location.pathname}#/play/${data.code}`
+    }
+  } catch {
+    /* best-effort; the button just stays disabled */
+  }
+}
+async function copyShareUrl() {
+  if (!shareUrl.value) return
+  try {
+    await navigator.clipboard.writeText(shareUrl.value)
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  } catch {
+    /* clipboard unavailable */
+  }
 }
 
 async function endSession() {
@@ -325,6 +347,7 @@ watch(sessionId, (id, old) => {
 onMounted(() => {
   userStore.initialize()
   joinSession()
+  ensureShareUrl()
 })
 
 onBeforeUnmount(() => {

@@ -314,6 +314,34 @@ the same trio if we ever need it outside the lobby stream. Server logs
    matching the Shark panel. Console already has the command channel
    (`useTeacherConsole`).
 
+### Phase 3.2 — Dynamic tables + console-managed session (Shark, Rick 2026-07-04)
+
+From live testing: **table management is unrelated to the deal source**, and
+asking for tables / seating / source at *creation* is premature. The Shark model
+(Control Panel screenshot: Add Tables · Swap Students · seating dropdown ·
+Copy URL, all on the main view): the teacher lands on the console with **no
+tables**, then creates N tables (or lets them auto-fill as students arrive),
+adds/removes tables live, and an empty table can be auto-removed.
+
+**Shipped as interim (2026-07-04, Bridge-Classroom):** creation stripped to
+Tables + Rounds → creates an empty (idle) session and redirects straight to the
+console; deal source removed from creation (loaded on the console); console got a
+**Copy class link** button (`/play/<hostCode>`), the redundant "Boards open"/
+"Open next board" removed, and the idle-board leak fixed (MiniTable `loaded` prop
+hides the placeholder cards, shows "no deal"). Tables count still at creation.
+
+**Still to build (the real refactor):**
+- **table-service:** `rooms` must become **mutable** — allow `table_count: 0`,
+  add `add_tables{count}` / `remove_table{table}` teacher commands, and an
+  **auto-fill** seat policy that creates/removes tables as students arrive/leave.
+  This is the concurrency-sensitive part: `rooms` is a fixed `Vec` assumed
+  everywhere (place/lobby/try_advance/assign_seat/find_seated, kibitzer
+  `room_idx`); moving to a mutable, id-keyed collection (not index-keyed) is the
+  crux. New tables inherit the current board (or placeholder if idle).
+- **Mac API:** `table_count: 0` allowed.
+- **console:** Add Tables (+count), remove-table, a seating-policy control, and
+  auto-fill toggle — all on the main view; creation becomes just "Start session".
+
 ## Phase 4 — Bot/board options (Shark "Add tables" dialog)
 
 Per-table/per-session toggles at creation (and later live): bot strength
