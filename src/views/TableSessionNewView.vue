@@ -26,45 +26,9 @@
         </div>
       </template>
 
-      <!-- The form -->
+      <!-- The form: session settings + Create up top, the (tall) deal-source
+           picker below so the primary controls aren't buried under it. -->
       <form v-else @submit.prevent="create">
-        <!-- Deal source: build the session's board set with the unified picker
-             (scenarios, curated, club events, library, paste/upload, random).
-             "Add to session" materializes the pool into boards_pbn. -->
-        <div class="tn-source">
-          <DealSourcePicker
-            layout="full"
-            mode="materialize"
-            :allow="allow"
-            :owner="currentUser.id"
-            :show-close="false"
-            action-label="Add to session"
-            @submit="onPickSource"
-          />
-          <p v-if="sourceError" class="tn-error">{{ sourceError }}</p>
-          <div v-if="boardCount" class="tn-staged">
-            <span class="tn-staged-ok">
-              ✓ {{ boardCount }} board{{ boardCount === 1 ? '' : 's' }} staged<template v-if="stagedLabel"> — {{ stagedLabel }}</template>
-            </span>
-            <button type="button" class="tn-btn tn-btn-sm" @click="clearStaged">Clear</button>
-          </div>
-        </div>
-
-        <!-- Save the staged boards as a reusable library file (materialized
-             copy) so they're one click away next time. -->
-        <div v-if="isTeacher && boardCount" class="tn-row tn-save-lib">
-          <input v-model="saveName" class="tn-save-name" placeholder="Save these boards as…">
-          <button
-            type="button"
-            class="tn-btn tn-btn-sm"
-            :disabled="saving || !saveName.trim()"
-            @click="saveToLibrary"
-          >
-            {{ saving ? 'Saving…' : '💾 Save to my library' }}
-          </button>
-          <span v-if="saveMsg" class="tn-muted">{{ saveMsg }}</span>
-        </div>
-
         <div class="tn-row">
           <label class="tn-label tn-inline">
             Tables
@@ -90,9 +54,35 @@
           </label>
         </div>
 
+        <!-- Staged summary sits with Create (its enable condition). -->
+        <div v-if="boardCount" class="tn-staged">
+          <span class="tn-staged-ok">
+            ✓ {{ boardCount }} board{{ boardCount === 1 ? '' : 's' }} staged<template v-if="stagedLabel"> — {{ stagedLabel }}</template>
+          </span>
+          <button type="button" class="tn-btn tn-btn-sm" @click="clearStaged">Clear</button>
+        </div>
+
+        <!-- Save the staged boards as a reusable library file (materialized
+             copy) so they're one click away next time. -->
+        <div v-if="isTeacher && boardCount" class="tn-row tn-save-lib">
+          <input v-model="saveName" class="tn-save-name" placeholder="Save these boards as…">
+          <button
+            type="button"
+            class="tn-btn tn-btn-sm"
+            :disabled="saving || !saveName.trim()"
+            @click="saveToLibrary"
+          >
+            {{ saving ? 'Saving…' : '💾 Save to my library' }}
+          </button>
+          <span v-if="saveMsg" class="tn-muted">{{ saveMsg }}</span>
+        </div>
+
         <p v-if="kind === 'teacher_set' && !isTeacher" class="tn-error">
           Class sets need a teacher account — pick "casual" or ask for the
           teacher role.
+        </p>
+        <p v-if="!boardCount" class="tn-muted tn-hint">
+          Pick a deal source below to stage the session's boards.
         </p>
         <p v-if="errorMessage" class="tn-error">{{ errorMessage }}</p>
 
@@ -103,6 +93,26 @@
         >
           {{ creating ? 'Creating…' : 'Create session' }}
         </button>
+
+        <!-- Deal source: build the session's board set with the unified picker
+             (scenarios, curated, club events, library, paste/upload, random).
+             "Add to session" materializes the pool into boards_pbn. Height is
+             bounded so the picker scrolls internally instead of pushing the
+             page down pages-tall. -->
+        <div class="tn-source">
+          <div class="tn-source-label">Deal source</div>
+          <p v-if="sourceError" class="tn-error">{{ sourceError }}</p>
+          <DealSourcePicker
+            class="tn-picker"
+            layout="full"
+            mode="materialize"
+            :allow="allow"
+            :owner="currentUser.id"
+            :show-close="false"
+            action-label="Add to session"
+            @submit="onPickSource"
+          />
+        </div>
       </form>
     </div>
   </div>
@@ -322,7 +332,18 @@ onMounted(() => {
 .tn-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; margin: 10px 0; }
 .tn-num { width: 70px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
 
-.tn-source { margin-bottom: 16px; }
+.tn-source { margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
+.tn-source-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+/* Bound the full-layout picker so it scrolls internally, not pages-tall. */
+.tn-source :deep(.tn-picker) {
+  max-height: 60vh;
+}
+.tn-hint { margin: 6px 0; }
 .tn-staged {
   display: flex;
   align-items: center;
