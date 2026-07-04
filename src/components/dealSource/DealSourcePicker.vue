@@ -17,6 +17,9 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchScenarioMenu, fetchCuratedMenu, fetchScenarioMeta } from '@/utils/pbsScenarios.js'
 import { useDealSourceMemory, refKey } from '@/composables/useDealSourceMemory.js'
+import { useClubGames } from '@/composables/useClubGames.js'
+import { clubGameBoards } from '@/utils/normalizedDeal.js'
+import DealLibraryPicker from '@/components/table/DealLibraryPicker.vue'
 
 const props = defineProps({
   allow: {
@@ -143,6 +146,7 @@ async function loadMeta() {
 function ensureMenu(tab) {
   if (tab === 'scenarios' && props.allow.tabs.includes('scenarios')) loadScenarioMenu()
   if (tab === 'curated' && props.allow.tabs.includes('curated')) loadCuratedMenu()
+  if (tab === 'clubgames' && props.allow.tabs.includes('clubgames')) ensureClub()
 }
 onMounted(() => ensureMenu(activeTab.value))
 watch(activeTab, (t) => ensureMenu(t))
@@ -274,6 +278,56 @@ function refTag(r) {
       return r.kind
   }
 }
+
+// ── My library (registered) ─────────────────────────────────────────────────
+function onLibrarySelect(entry) {
+  pickRef({ kind: 'library', entryId: entry.id, label: entry.name })
+}
+
+// ── Club games (registered) — list games, drill into boards (spec §4.3) ─────
+const clubStore = useClubGames()
+const clubGames = clubStore.games
+const clubLoading = clubStore.loading
+const clubListError = clubStore.error
+let clubLoaded = false
+const clubGame = ref(null) // { id, name } once drilled in
+const clubBoards = ref([])
+const clubBoardsLoading = ref(false)
+const clubBoardsError = ref('')
+
+function ensureClub() {
+  if (!props.owner || clubLoaded) return
+  clubLoaded = true
+  clubStore.fetchGames(props.owner)
+}
+async function openClubGame(g) {
+  clubGame.value = { id: g.id, name: g.event_name || 'Club game' }
+  clubBoards.value = []
+  clubBoardsError.value = ''
+  clubBoardsLoading.value = true
+  try {
+    const game = await clubStore.fetchGame(g.id)
+    if (!game || !game.payload) throw new Error('Game is unavailable.')
+    clubBoards.value = clubGameBoards(JSON.parse(game.payload))
+    if (!clubBoards.value.length) clubBoardsError.value = 'That game has no boards.'
+  } catch (e) {
+    clubBoardsError.value = e?.message || 'Could not load boards.'
+  } finally {
+    clubBoardsLoading.value = false
+  }
+}
+function backToClubGames() {
+  clubGame.value = null
+  clubBoards.value = []
+}
+const clubRef = (b) => ({
+  kind: 'clubboard',
+  origin: 'db',
+  gameId: clubGame.value.id,
+  boardNumber: b.number,
+  label: `${clubGame.value.name} · Board ${b.number}`,
+})
+const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
 </script>
 
 <template>
@@ -461,13 +515,61 @@ function refTag(r) {
         <p v-else class="dsp-note">No history yet — your recent picks will appear here.</p>
       </template>
 
-      <!-- Club games / My library — local (IndexedDB) for unregistered users -->
-      <template v-else-if="activeTab === 'clubgames' || activeTab === 'library'">
-        <p class="dsp-localnote">
-          Stored on this device &amp; browser (unregistered).
-          <a v-if="registerUrl" :href="registerUrl" target="_blank" rel="noopener">Register</a><template v-if="registerUrl"> to save these to your account and use them on any device.</template>
+      <!-- My library (registered → deal_library; unregistered → local note) -->
+      <template v-else-if="activeTab === 'library'">
+        <DealLibraryPicker v-if="owner" :owner="owner" @select="onLibrarySelect" />
+        <p v-else class="dsp-localnote">
+          Your deal library is saved to your account.
+          <a v-if="registerUrl" :href="registerUrl" target="_blank" rel="noopener">Register</a><template v-if="registerUrl"> or sign in to use it.</template>
         </p>
-        <p class="dsp-note dsp-soon">{{ ALL_TABS.find((t) => t.key === activeTab)?.label }} — coming soon in the picker.</p>
+      </template>
+
+      <!-- Club games (registered → DB, drill to boards; unregistered → note) -->
+      <template v-else-if="activeTab === 'clubgames'">
+        <template v-if="owner">
+          <!-- Game list -->
+          <template v-if="!clubGame">
+            <p v-if="clubLoading" class="dsp-note">Loading your games…</p>
+            <p v-else-if="clubListError" class="dsp-note dsp-err">{{ clubListError }}</p>
+            <p v-else-if="!clubGames.length" class="dsp-note">No saved games yet — analyze a club game (signed in) and it lands here.</p>
+            <ul v-else class="dsp-list">
+              <li v-for="g in clubGames" :key="g.id">
+                <button type="button" class="dsp-result dsp-hit" @click="openClubGame(g)">
+                  <span class="dsp-result-main">
+                    <span class="dsp-result-top">
+                      <span class="dsp-result-label">{{ g.event_name || 'Club game' }}</span>
+                      <span class="dsp-origin"><template v-if="g.board_count">{{ g.board_count }} boards </template>›</span>
+                    </span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </template>
+          <!-- Board drill -->
+          <template v-else>
+            <div class="dsp-subbar">
+              <button type="button" class="dsp-back" @click="backToClubGames">‹ Games</button>
+              <span class="dsp-subhint">{{ clubGame.name }} — pick board(s)</span>
+            </div>
+            <p v-if="clubBoardsLoading" class="dsp-note">Loading boards…</p>
+            <p v-else-if="clubBoardsError" class="dsp-note dsp-err">{{ clubBoardsError }}</p>
+            <div v-else class="dsp-section-items">
+              <div v-for="b in clubBoards" :key="b.number" class="dsp-leaf">
+                <label v-if="multi" class="dsp-hit">
+                  <input type="checkbox" :checked="isClubPicked(b)" @change="pickRef(clubRef(b))" />
+                  <span class="dsp-leaf-label">Board {{ b.number }}</span>
+                </label>
+                <button v-else type="button" class="dsp-hit" @click="pickRef(clubRef(b))">
+                  <span class="dsp-leaf-label">Board {{ b.number }}</span>
+                </button>
+              </div>
+            </div>
+          </template>
+        </template>
+        <p v-else class="dsp-localnote">
+          Club games you analyze are saved to your account.
+          <a v-if="registerUrl" :href="registerUrl" target="_blank" rel="noopener">Register</a><template v-if="registerUrl"> or sign in to use them.</template>
+        </p>
       </template>
 
       <!-- Fallback -->
@@ -843,6 +945,16 @@ function refTag(r) {
 .dsp-localnote a {
   color: var(--accent);
   font-weight: 600;
+}
+.dsp-back {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
 }
 .dsp-note {
   color: var(--muted);
