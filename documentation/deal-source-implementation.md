@@ -201,8 +201,16 @@ None block build-order item 1.
 2. ✅ **`dealerClient.js`** — POST /deal + shaping. **DONE + verified** against the
    live service (2026-07-03). Exports `generateBoardPbn`/`prepareScript`/`extractPbn`/
    `getDealerUrl`. The resolver's `script` arm wires to `generateBoardPbn`.
-3. **`DealSourcePicker.vue`** — compact layout first (§4/§9).
-4. **Retrofit** the three consumers (§5), in that order.
+3. 🚧 **`DealSourcePicker.vue`** — compact-modal **skeleton DONE (2026-07-03)**:
+   filter, gated tabs, live PBS scenario tree (multi-select), Curated, Paste PBN,
+   Random, selection tray, options, action. Preview harness at
+   `deal-source-demo.html` (`npm run dev` → `/deal-source-demo.html`). Remaining:
+   wire Club games / My library tabs (currently "coming soon"), collapsible
+   sections (PBS majors say "click to open/close"), a `full` layout variant, and
+   a component test. **Awaiting Rick's UX review of the skeleton before more UI.**
+4. **Retrofit** the three consumers (§5), in that order — this changes production
+   views (incl. the D-B random→sequential default in Practice), so it wants review
+   before/after, not an unattended rewrite.
 
 ## 8. Unit-test list (item 1, no UI)
 - `refBoards` for each set-ref kind returns ordered boards; cached on 2nd call.
