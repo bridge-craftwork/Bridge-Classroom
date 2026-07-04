@@ -111,6 +111,41 @@
         </div>
       </div>
 
+      <!-- Session settings: auto-seat shape + bot backend + pause (Phase 3.2) -->
+      <div v-if="lobby" class="tc-settings-bar">
+        <label class="tc-setting">
+          Seating
+          <select
+            class="tc-select-sm"
+            :value="settings.seatPolicy"
+            :disabled="!connected"
+            @change="console_.setSeatPolicy($event.target.value)"
+          >
+            <option v-for="p in SEAT_POLICIES" :key="p.key" :value="p.key">{{ p.label }}</option>
+            <option v-if="settings.seatPolicy === 'custom'" value="custom" disabled>Custom</option>
+          </select>
+        </label>
+        <label class="tc-setting">
+          Bots
+          <select
+            class="tc-select-sm"
+            :value="settings.botMode"
+            :disabled="!connected"
+            @change="console_.setBotMode($event.target.value)"
+          >
+            <option v-for="b in BOT_MODES" :key="b.key" :value="b.key">{{ b.label }}</option>
+          </select>
+        </label>
+        <button
+          class="tc-btn tc-btn-small"
+          :class="{ 'tc-btn-primary': settings.botsPaused }"
+          :disabled="!connected"
+          @click="console_.pauseBots(!settings.botsPaused)"
+        >
+          {{ settings.botsPaused ? '▶ Resume bots' : '⏸ Pause bots' }}
+        </button>
+      </div>
+
       <!-- Deal-source picker modal → materialize → load onto all tables -->
       <div v-if="showPicker" class="tc-modal-backdrop" @click.self="showPicker = false">
         <div class="tc-modal-shell">
@@ -249,8 +284,22 @@ const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
 
 const { connectionStatus, sessionClosed } = table
-const { lobby, deck, kibitzTableId } = console_
+const { lobby, deck, settings, kibitzTableId } = console_
 const currentUser = userStore.currentUser
+
+const SEAT_POLICIES = [
+  { key: 'first_free', label: 'Fill all seats (S,W,N,E)' },
+  { key: 'one_per_south', label: 'One per table (S)' },
+  { key: 'two_per_ns', label: 'Two per table (N/S)' },
+  { key: 'pairs_ns', label: 'Pairs together (N/S)' },
+  { key: 'manual', label: 'Manual — I seat everyone' },
+]
+const BOT_MODES = [
+  { key: 'rules', label: 'Rulebot (instant)' },
+  { key: 'real', label: 'BEN (slower, stronger)' },
+  { key: 'random', label: 'Random (testing)' },
+  { key: 'slow', label: 'Rulebot, human-paced' },
+]
 
 const connected = computed(() => connectionStatus.value === 'connected')
 
@@ -528,6 +577,19 @@ onBeforeUnmount(() => {
 }
 .tc-class-left, .tc-class-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .tc-wait { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #444; cursor: pointer; }
+.tc-settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  border: 1px solid #e2e6ea;
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.tc-setting { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+.tc-select-sm { padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
 .tc-empty-note { margin: 8px 2px; }
 .tc-kib-group { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #99a; margin: 8px 0 2px; }
 .tc-kib-parked li { color: #8a6d1a; }

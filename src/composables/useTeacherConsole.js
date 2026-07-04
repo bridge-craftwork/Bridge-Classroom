@@ -35,6 +35,17 @@ const deck = computed(() => {
     total: l.boards?.total || 0,
   }
 })
+
+// Live session settings surfaced in the lobby frame (survive reconnect).
+const settings = computed(() => {
+  const l = lobby.value
+  return {
+    seatPolicy: l?.seat_policy || 'first_free',
+    botMode: l?.bot_mode || 'rules',
+    botsPaused: !!l?.bots_paused,
+    waitToSeat: !!l?.wait_to_seat,
+  }
+})
 // The table the console is currently kibitzing (table_id or null).
 const kibitzTableId = ref(null)
 
@@ -110,6 +121,19 @@ function addTables(count) {
   return socket.send({ t: 'add_tables', count })
 }
 
+// Live auto-seat shape (first_free | one_per_south | two_per_ns | pairs_ns | manual).
+function setSeatPolicy(policy) {
+  return socket.send({ t: 'set_seat_policy', policy })
+}
+
+// Bot backend for every table (rules | real | random | slow) + pause/resume.
+function setBotMode(mode) {
+  return socket.send({ t: 'set_bot_mode', mode })
+}
+function pauseBots(on) {
+  return socket.send({ t: 'pause_bots', on: !!on })
+}
+
 // Advance one table to its next board, skipping the ready/open checks.
 function forceAdvance(tableId) {
   return socket.send({ t: 'force_advance', table: tableId })
@@ -143,6 +167,7 @@ export function useTeacherConsole() {
   return {
     lobby,
     deck,
+    settings,
     kibitzTableId,
     attach,
     detach,
@@ -154,6 +179,9 @@ export function useTeacherConsole() {
     seatStudents,
     setWaitToSeat,
     addTables,
+    setSeatPolicy,
+    setBotMode,
+    pauseBots,
     forceAdvance,
     assignSeat,
     boot,
