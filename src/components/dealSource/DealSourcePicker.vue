@@ -35,9 +35,9 @@ const ALL_TABS = [
   { key: 'history', label: 'History', icon: '🕐' },
   { key: 'scenarios', label: 'Scenarios' },
   { key: 'curated', label: 'Curated' },
-  { key: 'clubgames', label: 'Club games' },
-  { key: 'library', label: 'My library' },
-  { key: 'pbn', label: 'Paste PBN' },
+  { key: 'clubgames', label: 'Club' },
+  { key: 'library', label: 'Library' },
+  { key: 'pbn', label: 'Paste' },
   { key: 'random', label: 'Random' },
 ]
 const visibleTabs = computed(() => ALL_TABS.filter((t) => props.allow.tabs.includes(t.key)))
