@@ -309,6 +309,8 @@ function refTag(r) {
       return 'PBN'
     case 'clubboard':
       return 'Club board'
+    case 'clubgame':
+      return 'Club event'
     case 'library':
       return 'Library'
     default:
@@ -365,6 +367,15 @@ const clubRef = (b) => ({
   label: `${clubGame.value.name} · Board ${b.number}`,
 })
 const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
+// A whole event as one source (all its boards). The chevron drills in for
+// board-by-board picking instead (clubRef above).
+const clubGameRef = (g) => ({
+  kind: 'clubgame',
+  origin: 'db',
+  gameId: g.id,
+  label: g.event_name || 'Club game',
+})
+const isGamePicked = (g) => pool.value.some((r) => sameRef(r, clubGameRef(g)))
 </script>
 
 <template>
@@ -597,14 +608,32 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
             <p v-else-if="!clubGames.length" class="dsp-note">No saved games yet — analyze a club game (signed in) and it lands here.</p>
             <ul v-else class="dsp-list">
               <li v-for="g in clubGames" :key="g.id">
-                <button type="button" class="dsp-result dsp-hit" @click="openClubGame(g)">
-                  <span class="dsp-result-main">
-                    <span class="dsp-result-top">
-                      <span class="dsp-result-label">{{ g.event_name || 'Club game' }}</span>
-                      <span class="dsp-origin"><template v-if="g.board_count">{{ g.board_count }} boards </template>›</span>
+                <div class="dsp-result-row">
+                  <component
+                    :is="multi ? 'label' : 'button'"
+                    :type="multi ? undefined : 'button'"
+                    class="dsp-result dsp-hit"
+                    :title="`Use the whole event${g.board_count ? ' (' + g.board_count + ' boards)' : ''}`"
+                    @click="!multi && pickRef(clubGameRef(g))"
+                  >
+                    <input v-if="multi" type="checkbox" :checked="isGamePicked(g)" @change="pickRef(clubGameRef(g))" />
+                    <span class="dsp-result-main">
+                      <span class="dsp-result-top">
+                        <span class="dsp-result-label">{{ g.event_name || 'Club game' }}</span>
+                        <span v-if="g.board_count" class="dsp-origin">{{ g.board_count }} boards</span>
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </component>
+                  <button
+                    type="button"
+                    class="dsp-drill"
+                    title="Pick individual boards"
+                    aria-label="Pick individual boards"
+                    @click.stop="openClubGame(g)"
+                  >
+                    ›
+                  </button>
+                </div>
               </li>
             </ul>
           </template>
@@ -1063,6 +1092,29 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
 .dsp-localnote a {
   color: var(--accent);
   font-weight: 600;
+}
+/* Distinct drill-in affordance on a club-event row → board-by-board picker. */
+.dsp-drill {
+  flex: none;
+  align-self: center;
+  margin: 0 2px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dsp-drill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-weak);
 }
 .dsp-back {
   border: 1px solid var(--line);

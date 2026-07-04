@@ -63,6 +63,8 @@ function itemId(r) {
       return `lib:${r.entryId}`
     case 'clubboard':
       return `cb:${r.origin}:${r.gameId}:${r.boardNumber}`
+    case 'clubgame':
+      return `cg:${r.origin}:${r.gameId}`
     case 'pbn':
       return `pbn:${(r.text || '').length}:${(r.text || '').slice(0, 24)}`
     case 'random':
@@ -83,6 +85,8 @@ function cacheKey(r) {
       return `library:${r.entryId}`
     case 'clubboard':
       return `clubboard:${r.origin}:${r.gameId}:${r.boardNumber}`
+    case 'clubgame':
+      return `clubgame:${r.origin}:${r.gameId}`
     default:
       return null
   }
@@ -93,6 +97,22 @@ function poolSignature(items, drawOrder) {
 }
 
 // ── Set-ref resolution (ref -> ordered { pbn, label }[]) ──────────────────
+
+// Load + parse a club game's normalized boards (shared by clubboard/clubgame).
+async function loadClubGameBoards(r) {
+  if (r.origin === 'local') {
+    throw new Error('Local (browser) club games are not yet wired in the resolver (M2).')
+  }
+  const game = await useClubGames().fetchGame(r.gameId)
+  if (!game || !game.payload) throw new Error('Club game is unavailable.')
+  let normalized
+  try {
+    normalized = JSON.parse(game.payload)
+  } catch {
+    throw new Error('Club game data is corrupt.')
+  }
+  return clubGameBoards(normalized)
+}
 
 async function resolveSetRef(r) {
   const label = labelFor(r)
@@ -113,22 +133,23 @@ async function resolveSetRef(r) {
       return deals.map((d, i) => ({ pbn: dealToMinimalPbn(d, i + 1), label }))
     }
     case 'clubboard': {
-      if (r.origin === 'local') {
-        throw new Error('Local (browser) club games are not yet wired in the resolver (M2).')
-      }
-      const game = await useClubGames().fetchGame(r.gameId)
-      if (!game || !game.payload) throw new Error('Club game is unavailable.')
-      let normalized
-      try {
-        normalized = JSON.parse(game.payload)
-      } catch {
-        throw new Error('Club game data is corrupt.')
-      }
-      const board = clubGameBoards(normalized).find((b) => b.number === r.boardNumber)
+      const boards = await loadClubGameBoards(r)
+      const board = boards.find((b) => b.number === r.boardNumber)
       if (!board) throw new Error(`Board ${r.boardNumber} was not found in that club game.`)
       const pbn = boardToMinimalPbn(board)
       if (!pbn) throw new Error(`Board ${r.boardNumber} is unusable.`)
       return [{ pbn, label }]
+    }
+    case 'clubgame': {
+      // The whole event → every playable board, in order.
+      const boards = await loadClubGameBoards(r)
+      const out = []
+      for (const b of boards) {
+        const pbn = boardToMinimalPbn(b)
+        if (pbn) out.push({ pbn, label: `${label} · Board ${b.number}` })
+      }
+      if (!out.length) throw new Error('That club game has no usable boards.')
+      return out
     }
     case 'pbn': {
       const deals = parsePbn(r.text).filter((d) => d.dealString)

@@ -39,6 +39,8 @@ export function refKey(r) {
       return `sc:${r.repo}:${r.file}:${r.curated ? 'c' : 'p'}`
     case 'clubboard':
       return `cb:${r.origin}:${r.gameId}:${r.boardNumber}`
+    case 'clubgame':
+      return `cg:${r.origin}:${r.gameId}`
     case 'library':
       return `lib:${r.entryId}`
     case 'pbn':
