@@ -1,21 +1,26 @@
 <script setup>
 // Unified deal-source control (deal-source-spec §3/§9, impl-plan §4).
-// Layout-agnostic: this owns the CONTENT (tabs, filter, tree, tray, options,
-// action); the host owns the FRAME (modal / inline / full-screen) and passes a
-// `layout` hint + an `allow` gate. Emits `submit(selection)`; the host wires it
-// to the resolver's nextBoard (stream) or materialize (materialize).
+// Layout-agnostic: this owns the CONTENT (filter, gated tabs, scenario list,
+// selection tray, action); the host owns the FRAME (modal / inline / full) and
+// passes an `allow` gate + a `layout` hint. Emits `submit(selection)`; the host
+// wires it to the resolver's nextBoard (stream) or materialize (materialize).
 //
-// SKELETON (build-order item 3): Scenarios / Curated / Paste PBN / Random are
-// wired (they resolve today); Club games / My library are shown but marked
-// "coming soon" until their backends are wired into the picker.
+// Two selection modes (toggle "Multi" by the filter):
+//  • single (default) — clicking a source resolves immediately (emits submit;
+//    the host closes the panel). No pool, no Deal button.
+//  • multi — check sources into a pool, then Deal.
+//
+// drawOrder is asserted by source kind, not a user control: scenario/curated/
+// random/script → 'random'; everything else (library/clubboard/pbn) → 'sequential'.
+// Mode (bid/play) lives in the containing app, not here.
 
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchScenarioMenu } from '@/utils/pbsScenarios.js'
+import { fetchScenarioMenu, fetchScenarioMeta } from '@/utils/pbsScenarios.js'
 
 const props = defineProps({
   allow: {
     type: Object,
-    default: () => ({ tabs: ['scenarios', 'curated', 'pbn', 'random'], options: ['mode', 'drawOrder', 'fresh'] }),
+    default: () => ({ tabs: ['scenarios', 'curated', 'pbn', 'random'], options: ['fresh'] }),
   },
   layout: { type: String, default: 'compact' }, // 'compact' | 'full'
   mode: { type: String, default: 'stream' }, // 'stream' | 'materialize'
@@ -26,6 +31,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'submit', 'close'])
 
 const ALL_TABS = [
+  { key: 'favorites', label: 'Favorites', icon: '♥' },
+  { key: 'history', label: 'History', icon: '🕐' },
   { key: 'scenarios', label: 'Scenarios' },
   { key: 'curated', label: 'Curated' },
   { key: 'clubgames', label: 'Club games' },
@@ -33,56 +40,79 @@ const ALL_TABS = [
   { key: 'pbn', label: 'Paste PBN' },
   { key: 'random', label: 'Random' },
 ]
-const WIRED = new Set(['scenarios', 'curated', 'pbn', 'random'])
 const visibleTabs = computed(() => ALL_TABS.filter((t) => props.allow.tabs.includes(t.key)))
 const activeTab = ref(visibleTabs.value[0]?.key || 'scenarios')
+const isScenarioTab = computed(() => activeTab.value === 'scenarios' || activeTab.value === 'curated')
 
-// ── Selection state (v-model) ─────────────────────────────────────────────
-const items = ref([...(props.modelValue.items || [])])
-const options = ref({
-  drawOrder: 'sequential',
-  mode: 'bid-and-play',
-  fresh: false,
-  ...(props.modelValue.options || {}),
-})
-watch(
-  [items, options],
-  () => emit('update:modelValue', { items: items.value, options: options.value }),
-  { deep: true },
-)
+// single (default) vs multi selection
+const multi = ref(false)
+// "Fresh deals (generate)" toggle — scenarios only; Filtered = static board set.
+const fresh = ref(false)
+const allowFresh = computed(() => props.allow.options.includes('fresh'))
 
-// ── Scenarios / Curated menu ───────────────────────────────────────────────
+// ── Pool (multi mode only) ─────────────────────────────────────────────────
+const pool = ref([...(props.modelValue.items || [])])
+watch(pool, () => emit('update:modelValue', selectionFrom(pool.value)), { deep: true })
+
+// drawOrder asserted by kind (no user control).
+const RANDOM_KINDS = new Set(['scenario', 'random', 'script'])
+function selectionFrom(items) {
+  const drawOrder = items.length && items.every((r) => RANDOM_KINDS.has(r.kind)) ? 'random' : 'sequential'
+  return { items, options: { drawOrder } }
+}
+
+// Resolve a selection: in single mode fire it now; in multi it goes to the pool.
+function choose(ref_) {
+  const sel = selectionFrom([ref_])
+  emit('update:modelValue', sel)
+  emit('submit', sel)
+}
+
+// ── Scenario / Curated menu + BBA metadata ─────────────────────────────────
 const menu = ref([])
 const menuLoading = ref(false)
 const menuError = ref('')
+const fileMeta = ref({}) // file -> { bbaWorks }
+
 async function loadMenu() {
   menuLoading.value = true
   menuError.value = ''
   try {
     menu.value = await fetchScenarioMenu()
+    loadMeta() // fire-and-forget; colours fill in when it resolves
   } catch (e) {
     menuError.value = e?.message || 'Could not load the scenario menu.'
   } finally {
     menuLoading.value = false
   }
 }
+async function loadMeta() {
+  const files = []
+  for (const node of menu.value) if (node.type === 'section') for (const it of node.items) files.push(it.file)
+  const pairs = await Promise.all(files.map(async (f) => [f, await fetchScenarioMeta(f)]))
+  fileMeta.value = Object.fromEntries(pairs)
+}
 onMounted(() => {
   if (props.allow.tabs.includes('scenarios') || props.allow.tabs.includes('curated')) loadMenu()
 })
 
-function isPicked(file) {
-  return items.value.some((r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === file)
-}
-function toggleScenario(item) {
-  const idx = items.value.findIndex((r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === item.file)
-  if (idx >= 0) items.value.splice(idx, 1)
-  else items.value.push(makeScenarioRef(item))
-}
+// BBA doesn't support this convention → flag it (better with a human partner).
+const bbaUnsupported = (file) => fileMeta.value[file]?.bbaWorks === false
+
 function makeScenarioRef(item) {
-  if (options.value.fresh) return { kind: 'script', repo: 'pbs', file: item.file, label: item.label }
-  const ref_ = { kind: 'scenario', repo: 'pbs', file: item.file, label: item.label }
-  if (activeTab.value === 'curated') ref_.curated = true
-  return ref_
+  if (fresh.value) return { kind: 'script', repo: 'pbs', file: item.file, label: item.label }
+  const r = { kind: 'scenario', repo: 'pbs', file: item.file, label: item.label }
+  if (activeTab.value === 'curated') r.curated = true
+  return r
+}
+function isPicked(file) {
+  return pool.value.some((r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === file)
+}
+function onScenario(item) {
+  if (!multi.value) return choose(makeScenarioRef(item))
+  const idx = pool.value.findIndex((r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === item.file)
+  if (idx >= 0) pool.value.splice(idx, 1)
+  else pool.value.push(makeScenarioRef(item))
 }
 
 // ── Global filter (flat results across the loaded menu) ────────────────────
@@ -101,60 +131,57 @@ const flatResults = computed(() => {
 
 // ── Paste PBN ──────────────────────────────────────────────────────────────
 const pastedPbn = ref('')
-function addPastedPbn() {
+function usePastedPbn() {
   const text = pastedPbn.value.trim()
   if (!text) return
-  items.value.push({ kind: 'pbn', text, label: 'Pasted PBN' })
+  const ref_ = { kind: 'pbn', text, label: 'Pasted PBN' }
+  if (multi.value) pool.value.push(ref_)
+  else choose(ref_)
   pastedPbn.value = ''
 }
 
 // ── Random ──────────────────────────────────────────────────────────────────
-function addRandom() {
-  if (!items.value.some((r) => r.kind === 'random')) items.value.push({ kind: 'random', label: 'Random' })
+function useRandom() {
+  const ref_ = { kind: 'random', label: 'Random' }
+  if (!multi.value) return choose(ref_)
+  if (!pool.value.some((r) => r.kind === 'random')) pool.value.push(ref_)
 }
 
-// ── Tray ────────────────────────────────────────────────────────────────────
+// ── Tray (multi) ─────────────────────────────────────────────────────────────
 function removeItem(i) {
-  items.value.splice(i, 1)
+  pool.value.splice(i, 1)
 }
-function clearItems() {
-  items.value = []
+function clearPool() {
+  pool.value = []
 }
 const trayLabel = (r) => r.label || r.kind
 
-// ── Action ────────────────────────────────────────────────────────────────
-const canSubmit = computed(() => items.value.length > 0)
+const canSubmit = computed(() => pool.value.length > 0)
 function submit() {
   if (!canSubmit.value) return
-  emit('submit', { items: items.value, options: options.value })
+  const sel = selectionFrom(pool.value)
+  emit('update:modelValue', sel)
+  emit('submit', sel)
 }
-
-const showOpt = (k) => props.allow.options.includes(k)
-
-// Segmented options (native <select> popups render detached at the screen
-// bottom on some platforms — inline pills keep everything in-panel).
-const MODES = [
-  { v: 'bid-and-play', label: 'Bid + play' },
-  { v: 'bid-only', label: 'Bid only' },
-  { v: 'play-only', label: 'Play only' },
-]
-const DRAWS = [
-  { v: 'sequential', label: 'Sequential' },
-  { v: 'random', label: 'Random' },
-]
 </script>
 
 <template>
   <div class="dsp" :class="`dsp--${layout}`">
     <header class="dsp-head">
-      <h2>Deal source</h2>
+      <h2>Deal Source</h2>
       <button class="dsp-x" type="button" aria-label="Close" @click="emit('close')">×</button>
     </header>
 
-    <!-- Global filter -->
-    <div class="dsp-filter">
-      <span class="dsp-filter-ico">🔎</span>
-      <input v-model="filter" type="text" placeholder="Filter across everything… e.g. “Transfer”" />
+    <!-- Filter + Multi toggle -->
+    <div class="dsp-controls">
+      <div class="dsp-filter">
+        <span class="dsp-filter-ico">🔎</span>
+        <input v-model="filter" type="text" placeholder="Filter across everything… e.g. “Transfer”" />
+      </div>
+      <label class="dsp-multi" title="Pick several sources into a pool">
+        <input v-model="multi" type="checkbox" />
+        Multi
+      </label>
     </div>
 
     <!-- Tabs -->
@@ -164,10 +191,13 @@ const DRAWS = [
         :key="t.key"
         type="button"
         class="dsp-tab"
-        :class="{ active: activeTab === t.key }"
+        :class="{ active: activeTab === t.key, 'dsp-tab-icon': !!t.icon, 'dsp-tab-heart': t.key === 'favorites' }"
+        :title="t.icon ? t.label : ''"
+        :aria-label="t.label"
         @click="activeTab = t.key"
       >
-        {{ t.label }}
+        <span v-if="t.icon">{{ t.icon }}</span>
+        <template v-else>{{ t.label }}</template>
       </button>
     </nav>
 
@@ -176,28 +206,60 @@ const DRAWS = [
       <!-- Flat filter results -->
       <ul v-if="flatResults" class="dsp-list">
         <li v-if="flatResults.length === 0" class="dsp-empty">No matches in the loaded menus.</li>
-        <li v-for="it in flatResults" :key="it.file" class="dsp-leaf" @click="toggleScenario(it)">
-          <input type="checkbox" :checked="isPicked(it.file)" @click.stop="toggleScenario(it)" />
-          <span class="dsp-leaf-label">{{ it.label }}</span>
-          <span class="dsp-origin">PBS · {{ it.section }}</span>
+        <li v-for="it in flatResults" :key="it.file">
+          <label v-if="multi" class="dsp-leaf" :class="{ unsupported: bbaUnsupported(it.file) }" :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''">
+            <input type="checkbox" :checked="isPicked(it.file)" @change="onScenario(it)" />
+            <span class="dsp-leaf-label">{{ it.label }}</span>
+            <span class="dsp-origin">{{ it.section }}</span>
+          </label>
+          <button v-else type="button" class="dsp-leaf dsp-leaf-btn" :class="{ unsupported: bbaUnsupported(it.file) }" :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''" @click="onScenario(it)">
+            <span class="dsp-leaf-label">{{ it.label }}</span>
+            <span class="dsp-origin">{{ it.section }}</span>
+          </button>
         </li>
       </ul>
 
-      <!-- Scenarios / Curated tree -->
-      <template v-else-if="activeTab === 'scenarios' || activeTab === 'curated'">
-        <p v-if="activeTab === 'curated'" class="dsp-note">Auction-predictable subset (BBA-filtered).</p>
+      <!-- Scenarios / Curated -->
+      <template v-else-if="isScenarioTab">
+        <div class="dsp-subbar">
+          <div v-if="allowFresh" class="dsp-seg">
+            <button type="button" :class="{ active: !fresh }" @click="fresh = false">Filtered</button>
+            <button type="button" :class="{ active: fresh }" @click="fresh = true">Fresh</button>
+          </div>
+          <span class="dsp-subhint">
+            <template v-if="activeTab === 'curated'">Hand-curated coaching set.</template>
+            <template v-else><span class="dsp-swatch"></span> orange = BBA doesn’t know it (better with a human partner)</template>
+          </span>
+        </div>
+
         <p v-if="menuLoading" class="dsp-note">Loading scenarios…</p>
         <p v-else-if="menuError" class="dsp-note dsp-err">{{ menuError }}</p>
         <div v-else class="dsp-tree">
           <template v-for="(node, ni) in menu" :key="ni">
-            <div v-if="node.type === 'major'" class="dsp-major">{{ node.label }}</div>
-            <div v-else class="dsp-section">
+            <div v-if="node.type === 'section'" class="dsp-section">
               <div class="dsp-section-label">{{ node.label }}</div>
               <div class="dsp-section-items">
-                <label v-for="it in node.items" :key="it.file" class="dsp-leaf">
-                  <input type="checkbox" :checked="isPicked(it.file)" @change="toggleScenario(it)" />
-                  <span class="dsp-leaf-label">{{ it.label }}</span>
-                </label>
+                <template v-for="it in node.items" :key="it.file">
+                  <label
+                    v-if="multi"
+                    class="dsp-leaf"
+                    :class="{ unsupported: bbaUnsupported(it.file) }"
+                    :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''"
+                  >
+                    <input type="checkbox" :checked="isPicked(it.file)" @change="onScenario(it)" />
+                    <span class="dsp-leaf-label">{{ it.label }}</span>
+                  </label>
+                  <button
+                    v-else
+                    type="button"
+                    class="dsp-leaf dsp-leaf-btn"
+                    :class="{ unsupported: bbaUnsupported(it.file) }"
+                    :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''"
+                    @click="onScenario(it)"
+                  >
+                    <span class="dsp-leaf-label">{{ it.label }}</span>
+                  </button>
+                </template>
               </div>
             </div>
           </template>
@@ -207,78 +269,44 @@ const DRAWS = [
       <!-- Paste PBN -->
       <template v-else-if="activeTab === 'pbn'">
         <textarea v-model="pastedPbn" class="dsp-ta" placeholder="Paste PBN board(s) here…"></textarea>
-        <button class="dsp-add" type="button" :disabled="!pastedPbn.trim()" @click="addPastedPbn">Add to pool</button>
+        <button class="dsp-add" type="button" :disabled="!pastedPbn.trim()" @click="usePastedPbn">
+          {{ multi ? 'Add to pool' : 'Use this PBN' }}
+        </button>
       </template>
 
       <!-- Random -->
       <template v-else-if="activeTab === 'random'">
         <p class="dsp-note">A freshly shuffled deal each time you draw.</p>
-        <button class="dsp-add" type="button" @click="addRandom">Add Random to pool</button>
+        <button class="dsp-add" type="button" @click="useRandom">
+          {{ multi ? 'Add Random to pool' : 'Use Random' }}
+        </button>
       </template>
 
       <!-- Not-yet-wired tabs -->
       <template v-else>
-        <p class="dsp-note dsp-soon">
-          {{ ALL_TABS.find((t) => t.key === activeTab)?.label }} — coming soon in the picker.
-        </p>
+        <p class="dsp-note dsp-soon">{{ ALL_TABS.find((t) => t.key === activeTab)?.label }} — coming soon in the picker.</p>
       </template>
     </div>
 
-    <!-- Selection tray (the shared spine) -->
-    <div class="dsp-tray">
-      <div class="dsp-tray-head">
-        <span>Selected pool ({{ items.length }})</span>
-        <button v-if="items.length" type="button" class="dsp-clear" @click="clearItems">Clear</button>
-      </div>
-      <div class="dsp-chips">
-        <span v-if="!items.length" class="dsp-chips-empty">Nothing selected yet.</span>
-        <span v-for="(r, i) in items" :key="i" class="dsp-chip" :class="`chip--${r.kind}`">
-          {{ trayLabel(r) }}
-          <button type="button" aria-label="Remove" @click="removeItem(i)">×</button>
-        </span>
-      </div>
-    </div>
-
-    <!-- Options -->
-    <div class="dsp-options">
-      <div v-if="showOpt('mode')" class="dsp-opt">
-        <span class="dsp-opt-label">Mode</span>
-        <div class="dsp-seg">
-          <button
-            v-for="m in MODES"
-            :key="m.v"
-            type="button"
-            :class="{ active: options.mode === m.v }"
-            @click="options.mode = m.v"
-          >
-            {{ m.label }}
-          </button>
+    <!-- Selection tray + action (multi only) -->
+    <template v-if="multi">
+      <div class="dsp-tray">
+        <div class="dsp-tray-head">
+          <span>Selected pool ({{ pool.length }})</span>
+          <button v-if="pool.length" type="button" class="dsp-clear" @click="clearPool">Clear</button>
+        </div>
+        <div class="dsp-chips">
+          <span v-if="!pool.length" class="dsp-chips-empty">Nothing selected yet.</span>
+          <span v-for="(r, i) in pool" :key="i" class="dsp-chip" :class="`chip--${r.kind}`">
+            {{ trayLabel(r) }}
+            <button type="button" aria-label="Remove" @click="removeItem(i)">×</button>
+          </span>
         </div>
       </div>
-      <div v-if="showOpt('drawOrder')" class="dsp-opt">
-        <span class="dsp-opt-label">Draw</span>
-        <div class="dsp-seg">
-          <button
-            v-for="d in DRAWS"
-            :key="d.v"
-            type="button"
-            :class="{ active: options.drawOrder === d.v }"
-            @click="options.drawOrder = d.v"
-          >
-            {{ d.label }}
-          </button>
-        </div>
-      </div>
-      <label v-if="showOpt('fresh')" class="dsp-fresh">
-        <input v-model="options.fresh" type="checkbox" />
-        Fresh deals (generate)
-      </label>
-    </div>
-
-    <!-- Action -->
-    <footer class="dsp-foot">
-      <button class="dsp-action" type="button" :disabled="!canSubmit" @click="submit">{{ actionLabel }}</button>
-    </footer>
+      <footer class="dsp-foot">
+        <button class="dsp-action" type="button" :disabled="!canSubmit" @click="submit">{{ actionLabel }}</button>
+      </footer>
+    </template>
   </div>
 </template>
 
@@ -289,13 +317,15 @@ const DRAWS = [
   --line: #e2e5e9;
   --ink: #1f2933;
   --muted: #6b7480;
+  --warn-bg: #fde2cc;
+  --warn-ink: #7a3a1a;
   display: flex;
   flex-direction: column;
   background: #fff;
   color: var(--ink);
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
-  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
   overflow: hidden;
 }
 .dsp--compact {
@@ -327,11 +357,17 @@ const DRAWS = [
   cursor: pointer;
 }
 
+.dsp-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 16px 8px;
+}
 .dsp-filter {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 12px 16px 8px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -346,6 +382,16 @@ const DRAWS = [
 }
 .dsp-filter-ico {
   opacity: 0.6;
+}
+.dsp-multi {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .dsp-tabs {
@@ -368,50 +414,119 @@ const DRAWS = [
   color: var(--accent);
   background: var(--accent-weak);
 }
+.dsp-tab-icon {
+  padding: 7px 9px;
+  font-size: 15px;
+  line-height: 1;
+}
+.dsp-tab-heart {
+  color: #c2455e;
+}
+.dsp-tab-heart.active {
+  color: #c2455e;
+  background: #fde8ec;
+}
 
 .dsp-body {
   flex: 1 1 auto;
   min-height: 200px;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   background: #fcfdfe;
 }
 
+/* Filtered/Fresh sub-bar */
+.dsp-subbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.dsp-subhint {
+  font-size: 12px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dsp-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--warn-bg);
+}
+
+/* Segmented control */
+.dsp-seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dsp-seg button {
+  border: none;
+  border-right: 1px solid var(--line);
+  background: #fff;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dsp-seg button:last-child {
+  border-right: none;
+}
+.dsp-seg button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Scenario tree — tight rows */
 .dsp-tree {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-.dsp-major {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin-top: 6px;
+  gap: 6px;
 }
 .dsp-section-label {
   font-weight: 600;
-  margin: 4px 0 2px;
+  font-size: 13px;
+  margin: 2px 0 1px;
 }
 .dsp-section-items {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2px 12px;
+  gap: 0 14px;
 }
 .dsp-leaf {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 3px 4px;
-  border-radius: 6px;
+  padding: 1px 5px;
+  border-radius: 5px;
   cursor: pointer;
   font-size: 13px;
+  text-align: left;
 }
 .dsp-leaf:hover {
   background: var(--accent-weak);
+}
+.dsp-leaf-btn {
+  border: none;
+  background: none;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+}
+.dsp-leaf.unsupported {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.dsp-leaf.unsupported:hover {
+  background: #fbcdaa;
 }
 .dsp-leaf-label {
   flex: 1;
@@ -426,7 +541,7 @@ const DRAWS = [
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 .dsp-note {
   color: var(--muted);
@@ -528,54 +643,6 @@ const DRAWS = [
 .chip--script {
   background: #fde8f0;
   color: #b53a6e;
-}
-
-.dsp-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  align-items: center;
-  padding: 10px 16px 12px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.dsp-opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.dsp-opt-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.dsp-seg {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.dsp-seg button {
-  border: none;
-  border-right: 1px solid var(--line);
-  background: #fff;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-}
-.dsp-seg button:last-child {
-  border-right: none;
-}
-.dsp-seg button.active {
-  background: var(--accent);
-  color: #fff;
-}
-.dsp-fresh {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .dsp-foot {

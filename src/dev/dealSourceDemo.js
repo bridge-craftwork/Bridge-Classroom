@@ -5,15 +5,7 @@ import DealSourcePicker from '@/components/dealSource/DealSourcePicker.vue'
 
 const App = {
   setup() {
-    // Pre-populate a mixed pool so the tray + options + action all read populated.
-    const selection = ref({
-      items: [
-        { kind: 'scenario', repo: 'pbs', file: 'Stayman', label: 'Stayman' },
-        { kind: 'scenario', repo: 'pbs', file: 'Jacoby_Transfers', label: 'Jacoby Transfers' },
-        { kind: 'random', label: 'Random' },
-      ],
-      options: { drawOrder: 'sequential', mode: 'bid-and-play', fresh: false },
-    })
+    const selection = ref({ items: [], options: {} })
     return () =>
       h(
         'div',
@@ -28,12 +20,12 @@ const App = {
           modelValue: selection.value,
           'onUpdate:modelValue': (v) => (selection.value = v),
           allow: {
-            tabs: ['scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random'],
-            options: ['mode', 'drawOrder', 'fresh'],
+            tabs: ['favorites', 'history', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random'],
+            options: ['fresh'],
           },
           layout: 'compact',
           actionLabel: 'Deal',
-          onSubmit: (s) => console.log('submit', s),
+          onSubmit: (s) => console.log('submit →', JSON.stringify(s)),
         }),
       )
   },

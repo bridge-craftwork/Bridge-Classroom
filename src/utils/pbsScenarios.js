@@ -10,9 +10,14 @@ export const PBS = {
   RAW_BASE: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main',
   BUTTON_LAYOUT: '/btn/-button-layout-release.txt',
   PBN_DIR: '/pbn',
-  // Prefer the auction-filtered set when present (deals vetted against BBA).
+  // Scenarios draw from the auction-filtered set: a tighter subset of /pbn where
+  // BBA's generated auction matches the scenario's intent. For conventions BBA
+  // doesn't know it equals /pbn (no filtering) — see `bba-works` in fetchScenarioMeta.
   BBA_FILTERED_DIR: '/bba-filtered',
+  // Curated draws from a distinct, hand-curated set (provisional location).
+  COACHING_CURATED_DIR: '/coaching-curated',
   DLR_DIR: '/dlr',
+  BTN_DIR: '/btn',
 }
 
 export function prettifyLabel(file) {
@@ -79,19 +84,39 @@ export async function fetchScenarioMenu() {
   return parseButtonLayout(await resp.text())
 }
 
-// Deals for a scenario: bba-filtered set first, plain pbn as fallback.
+// Deals for a scenario. `curated:true` draws from the distinct coaching-curated
+// set; otherwise from bba-filtered (auction-vetted) with plain /pbn as fallback.
 // Returns parsePbn() deal objects (dealer, vulnerable, dealString, …).
-// `curated:true` forces the auction-filtered set only (no /pbn fallback) —
-// the "Curated" source in the deal-source picker (deal-source-spec D-A).
 export async function fetchScenarioDeals(file, { curated = false } = {}) {
-  const dirs = curated ? [PBS.BBA_FILTERED_DIR] : [PBS.BBA_FILTERED_DIR, PBS.PBN_DIR]
+  const dirs = curated ? [PBS.COACHING_CURATED_DIR] : [PBS.BBA_FILTERED_DIR, PBS.PBN_DIR]
   for (const dir of dirs) {
     const resp = await fetch(`${PBS.RAW_BASE}${dir}/${file}.pbn`)
     if (!resp.ok) continue
     const deals = parsePbn(await resp.text()).filter((d) => d.dealString)
     if (deals.length > 0) return deals
   }
-  throw new Error(curated ? `no curated (bba-filtered) deals for ${file}` : `no PBN deals for ${file}`)
+  throw new Error(curated ? `no curated deals for ${file}` : `no deals for ${file}`)
+}
+
+// Per-scenario metadata from /btn/<file>.btn — currently just the BBA-support
+// flag (`# bba-works: true|false`). Scenarios BBA doesn't fully support play
+// better with a human partner than a BBA bot, so the picker flags them.
+// Optimistic default (bbaWorks:true) on any miss/error. Mirrors
+// BiddingPracticeView's fetchBtnMetadata.
+export async function fetchScenarioMeta(file) {
+  try {
+    const resp = await fetch(`${PBS.RAW_BASE}${PBS.BTN_DIR}/${file}.btn`)
+    if (!resp.ok) return { bbaWorks: true }
+    const text = await resp.text()
+    for (const raw of text.split('\n').slice(0, 40)) {
+      if (!raw.startsWith('#')) continue
+      const m = raw.match(/^#\s*bba-works:\s*(\w+)/i)
+      if (m) return { bbaWorks: m[1].toLowerCase() === 'true' }
+    }
+    return { bbaWorks: true }
+  } catch {
+    return { bbaWorks: true }
+  }
 }
 
 // Raw dealer-script text for a scenario (the /dlr twin of the PBN file).
