@@ -102,6 +102,12 @@
               + Add tables
             </button>
           </span>
+          <span class="tc-goto tc-spawn" title="Testing: open N tabs that each join as a student (allow pop-ups)">
+            <input v-model.number="spawnCount" type="number" min="1" max="16" class="tc-goto-input" :disabled="!shareUrl" />
+            <button class="tc-btn tc-btn-small" :disabled="!shareUrl" @click="spawnStudents">
+              🧪 Spawn students
+            </button>
+          </span>
         </div>
       </div>
 
@@ -290,6 +296,18 @@ function toggleWaitToSeat() {
 }
 function doAddTables() {
   console_.addTables(Math.max(1, Math.min(Number(addCount.value) || 1, 20)))
+}
+
+// Testing: open N tabs that each join as a distinct student (?student=TestN),
+// so you can populate a class and exercise seating/unseating. Reuses a named
+// window per index so re-spawning doesn't pile up tabs. (Allow pop-ups.)
+const spawnCount = ref(4)
+function spawnStudents() {
+  if (!shareUrl.value) return
+  const n = Math.max(1, Math.min(Number(spawnCount.value) || 1, 16))
+  for (let i = 1; i <= n; i++) {
+    window.open(`${shareUrl.value}?student=Test${i}&bot=random`, `bc-test-student-${i}`)
+  }
 }
 
 function tableName(tableId) {

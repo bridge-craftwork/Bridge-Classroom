@@ -257,6 +257,16 @@ async function resolveAndRoute() {
 }
 
 function enterIdentify(myEpoch) {
+  // ?student=Name forces a named-guest join (bypasses teacher recognition), so
+  // a teacher can sit as a student and the "spawn test students" tool can
+  // populate a class. Takes precedence over the teacher-console redirect.
+  const forcedStudent =
+    typeof route.query.student === 'string' && route.query.student.trim()
+  if (forcedStudent) {
+    mode.value = 'identify'
+    doJoin({ guestName: forcedStudent.trim() }, myEpoch)
+    return
+  }
   // Teachers/admins get the console, not a seat: the table service seats a
   // teacher-role ticket as the see-all session controller regardless.
   // Exception: "demo" is the standing dev room, not a session — the service
