@@ -114,6 +114,15 @@
 
       <div class="tv-main">
         <div class="tv-table-wrap">
+          <!-- Idle session: no deal loaded yet. Cover the (placeholder) table
+               until the teacher sends a source (roadmap §Phase 3.1). -->
+          <div v-if="!dealLoaded" class="tv-waiting">
+            <div class="tv-waiting-card">
+              <div class="tv-waiting-spinner"></div>
+              <p class="tv-waiting-title">Waiting for the teacher to deal…</p>
+              <p class="tv-waiting-sub">Your table is ready — the board will appear when the teacher loads a deal.</p>
+            </div>
+          </div>
           <BridgeTable
             :hands="hands"
             :hidden-seats="displayHiddenSeats"
@@ -287,6 +296,7 @@ const {
   nextToAct, hands, handCounts,
   currentTrick, lastFinishedTrick, tricksTaken, seats,
   readySeats, boardComplete, sessionClosed,
+  dealLoaded, setLabel,
   hiddenSeats, clickableSeat,
   isYourBid, lastSuitBid, canDouble, canRedouble,
   errorMessage, undoBy,
@@ -572,10 +582,35 @@ function onReady() {
   align-items: start;
 }
 .tv-table-wrap {
+  position: relative;
   background: #fbfbf8;
   border: 1px solid #e5e5e0;
   border-radius: 10px;
 }
+.tv-waiting {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(251, 251, 248, 0.92);
+  backdrop-filter: blur(2px);
+  border-radius: 10px;
+}
+.tv-waiting-card { text-align: center; max-width: 320px; padding: 20px; }
+.tv-waiting-title { font-size: 17px; font-weight: 700; color: #24435a; margin: 12px 0 4px; }
+.tv-waiting-sub { font-size: 13px; color: #667; margin: 0; }
+.tv-waiting-spinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto;
+  border: 3px solid #d6e3dc;
+  border-top-color: #1d9e75;
+  border-radius: 50%;
+  animation: tv-spin 0.9s linear infinite;
+}
+@keyframes tv-spin { to { transform: rotate(360deg); } }
 .tv-rail { display: flex; flex-direction: column; gap: 12px; }
 .tv-card {
   background: #fff;

@@ -96,6 +96,45 @@ function poolSignature(items, drawOrder) {
   return `${drawOrder}|${items.map(itemId).join(',')}`
 }
 
+// ── Auto-generated set description (roadmap §Phase 3.1) ────────────────────
+// A brief human-readable label for a selection, for the teacher console +
+// server logs. One source → "<Category> - <name>" (Random/Paste stand alone);
+// several → "Mix: a, b[, +N more]".
+function categoryOf(r) {
+  switch (r.kind) {
+    case 'scenario':
+      return r.curated ? 'Curated' : 'Scenarios'
+    case 'script':
+      return 'Scenarios'
+    case 'clubgame':
+    case 'clubboard':
+      return 'Club'
+    case 'library':
+      return 'Library'
+    case 'pbn':
+      return 'Paste'
+    case 'random':
+      return 'Random'
+    default:
+      return 'Deal'
+  }
+}
+
+export function describeSelection(selection) {
+  const items = selection?.items || []
+  if (!items.length) return ''
+  if (items.length === 1) {
+    const r = items[0]
+    const cat = categoryOf(r)
+    // Random/Paste read fine on their own — no "Random - Random".
+    if (r.kind === 'random' || r.kind === 'pbn') return cat
+    return `${cat} - ${r.label || r.kind}`
+  }
+  const names = items.map((r) => r.label || r.kind)
+  const shown = names.slice(0, 3).join(', ')
+  return `Mix: ${shown}${names.length > 3 ? `, +${names.length - 3} more` : ''}`
+}
+
 // ── Set-ref resolution (ref -> ordered { pbn, label }[]) ──────────────────
 
 // Load + parse a club game's normalized boards (shared by clubboard/clubgame).
@@ -284,7 +323,7 @@ export async function materialize(selection) {
   if (!boards.length) throw new Error('The selected source produced no boards.')
 
   const boardsPbn = boards.map((b, i) => renumberBoard(b.pbn, i + 1)).join('\n')
-  return { boardsPbn, count: boards.length }
+  return { boardsPbn, count: boards.length, label: describeSelection(selection) }
 }
 
 // Reset caches + cursors (owner switch, tests).
@@ -295,5 +334,13 @@ export function clearResolverCache() {
 }
 
 export function useDealSourceResolver() {
-  return { refBoards, nextBoard, materialize, isGenerator, makeRandomDealPbn, clearResolverCache }
+  return {
+    refBoards,
+    nextBoard,
+    materialize,
+    describeSelection,
+    isGenerator,
+    makeRandomDealPbn,
+    clearResolverCache,
+  }
 }

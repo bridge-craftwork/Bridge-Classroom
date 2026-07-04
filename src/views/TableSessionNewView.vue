@@ -82,14 +82,15 @@
           teacher role.
         </p>
         <p v-if="!boardCount" class="tn-muted tn-hint">
-          Pick a deal source below to stage the session's boards.
+          Optionally stage boards below — or create the session empty and pick
+          the deal source from the console once students are seated.
         </p>
         <p v-if="errorMessage" class="tn-error">{{ errorMessage }}</p>
 
         <button
           class="tn-btn tn-btn-primary tn-create"
           type="submit"
-          :disabled="creating || !boardCount || (kind === 'teacher_set' && !isTeacher)"
+          :disabled="creating || (kind === 'teacher_set' && !isTeacher)"
         >
           {{ creating ? 'Creating…' : 'Create session' }}
         </button>
@@ -100,7 +101,7 @@
              bounded so the picker scrolls internally instead of pushing the
              page down pages-tall. -->
         <div class="tn-source">
-          <div class="tn-source-label">Deal source</div>
+          <div class="tn-source-label">Deal source <span class="tn-optional">(optional — you can also load it later from the console)</span></div>
           <p v-if="sourceError" class="tn-error">{{ sourceError }}</p>
           <DealSourcePicker
             class="tn-picker"
@@ -339,6 +340,7 @@ onMounted(() => {
   color: #333;
   margin-bottom: 8px;
 }
+.tn-optional { font-weight: 400; font-size: 12px; color: #888; }
 /* Bound the full-layout picker so it scrolls internally, not pages-tall. */
 .tn-source :deep(.tn-picker) {
   max-height: 60vh;

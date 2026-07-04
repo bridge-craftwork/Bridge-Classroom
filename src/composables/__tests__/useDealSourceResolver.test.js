@@ -17,7 +17,7 @@ vi.mock('@/composables/useDealLibrary.js', () => ({ useDealLibrary: () => ({ fet
 vi.mock('@/composables/useClubGames.js', () => ({ useClubGames: () => ({ fetchGame: fetchGameMock }) }))
 
 import {
-  refBoards, nextBoard, materialize, isGenerator,
+  refBoards, nextBoard, materialize, isGenerator, describeSelection,
   makeRandomDealPbn, clearResolverCache,
 } from '../useDealSourceResolver.js'
 import { fetchScenarioDeals, fetchScenarioScript, dealToMinimalPbn } from '@/utils/pbsScenarios.js'
@@ -157,6 +157,40 @@ describe('board→PBN converter parity (guards the known duplication)', () => {
     const viaBoard = boardToMinimalPbn(b)
     const deal = parsePbn(viaBoard).find((d) => d.dealString)
     expect(dealToMinimalPbn(deal)).toBe(viaBoard)
+  })
+})
+
+describe('describeSelection (auto-generated set label)', () => {
+  it('one source → "<Category> - <name>"', () => {
+    expect(describeSelection({ items: [{ kind: 'scenario', repo: 'pbs', file: 'x', label: 'Transfers' }] }))
+      .toBe('Scenarios - Transfers')
+    expect(describeSelection({ items: [{ kind: 'scenario', curated: true, file: 'x', label: 'Keycard' }] }))
+      .toBe('Curated - Keycard')
+    expect(describeSelection({ items: [{ kind: 'clubgame', label: 'Livermore Tue' }] }))
+      .toBe('Club - Livermore Tue')
+    expect(describeSelection({ items: [{ kind: 'library', label: 'Lesson 4' }] }))
+      .toBe('Library - Lesson 4')
+  })
+  it('Random / Paste stand alone (no "Random - Random")', () => {
+    expect(describeSelection({ items: [{ kind: 'random' }] })).toBe('Random')
+    expect(describeSelection({ items: [{ kind: 'pbn', text: '…' }] })).toBe('Paste')
+  })
+  it('several sources → "Mix: a, b[, +N more]"', () => {
+    const items = ['Stayman', 'Keycard'].map((l) => ({ kind: 'scenario', file: l, label: l }))
+    expect(describeSelection({ items })).toBe('Mix: Stayman, Keycard')
+    const many = ['a', 'b', 'c', 'd', 'e'].map((l) => ({ kind: 'scenario', file: l, label: l }))
+    expect(describeSelection({ items: many })).toBe('Mix: a, b, c, +2 more')
+  })
+  it('empty selection → empty string', () => {
+    expect(describeSelection({ items: [] })).toBe('')
+  })
+})
+
+describe('materialize returns the label', () => {
+  it('carries the auto-generated description', async () => {
+    const mat = await materialize({ items: [pbnRef(1, 'Hand A')], options: {} })
+    expect(mat.label).toBe('Paste')
+    expect(mat.count).toBe(1)
   })
 })
 

@@ -225,7 +225,10 @@ pub struct CreateSessionRequest {
     pub classroom_id: Option<String>,
     pub exercise_id: Option<String>,
     /// Raw PBN text; forwarded verbatim to the table service, which parses
-    /// it (bridge-encodings) and owns board validity.
+    /// it (bridge-encodings) and owns board validity. **Optional/empty** →
+    /// the session starts idle (no deal loaded) and the teacher sends a
+    /// source later via the console (`load_boards`, roadmap §Phase 3.1).
+    #[serde(default)]
     pub boards_pbn: String,
     pub table_count: Option<i64>,
     /// Seat-policy JSON, e.g. {"mode":"manual"} or
@@ -267,9 +270,9 @@ pub async fn create_table_session(
             "kind must be 'teacher_set' or 'adhoc'".to_string(),
         ));
     }
-    if req.boards_pbn.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "boards_pbn is required".to_string()));
-    }
+    // boards_pbn may be empty: an idle session (no deal loaded). The teacher
+    // sends a source later from the console (roadmap §Phase 3.1). The table
+    // service accepts an empty board set and starts the rooms idle.
     let table_count = req.table_count.unwrap_or(1);
     if !(1..=20).contains(&table_count) {
         return Err((

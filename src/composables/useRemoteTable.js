@@ -63,6 +63,12 @@ const readySeats = ref([])
 // { open, total } from the boards_open event (null until the teacher opens
 // a round while we're connected — the server doesn't send it on join).
 const boardsOpen = ref(null)
+// Whether a deal set is loaded on this session. false = idle (no deal yet);
+// the table shows a "waiting for the teacher" overlay. Seeded from the
+// welcome's `loaded`; flips true when a board is dealt (board_advanced), and
+// carries the set label/board number for display (roadmap §Phase 3.1).
+const dealLoaded = ref(true)
+const setLabel = ref(null)
 // Result banner from the board_complete event:
 // { boardNo, passedOut, contract: {text, declarer, declarerTricks, made}|null,
 //   tricks: {ns, ew} } — cleared when the board advances.
@@ -388,6 +394,10 @@ function handleMessage(msg) {
       seeAll.value = !!msg.see_all
       yourSeat.value = msg.seat || null
       botMode.value = msg.bot_mode || ''
+      // Idle session (no deal loaded) → show the waiting overlay. Absent
+      // field (demo room) means always-loaded.
+      dealLoaded.value = msg.loaded !== false
+      setLabel.value = msg.set_label || null
       // Seed our own chip from the welcome (the join's seat_update broadcast
       // happens before this connection subscribes). The snapshot's seats map
       // replaces this a frame later.
@@ -430,6 +440,8 @@ function handleMessage(msg) {
           resetBoardState()
           seats.value = keptSeats
           board.value = { number: msg.board_no, dealer: null, vulnerable: 'None' }
+          // A board was dealt → a set is loaded (clears the waiting overlay).
+          dealLoaded.value = true
           break
         }
         case 'board_complete':
@@ -613,6 +625,8 @@ export function useRemoteTable() {
     // session rounds
     readySeats,
     boardsOpen,
+    dealLoaded,
+    setLabel,
     boardComplete,
     sessionClosed,
     // derived

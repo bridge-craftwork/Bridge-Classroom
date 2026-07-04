@@ -10,17 +10,31 @@
 //
 // Singleton pattern (module-level state) per project convention.
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useTableSocket } from './useTableSocket.js'
 
 const socket = useTableSocket()
 
 // The latest lobby frame, parsed:
-// { session_id, boards: {total, open},
+// { session_id, set_label, loaded, boards: {total, open, index},
 //   tables: [{ table_id, board_no, board_index, phase, tricks: {ns, ew},
 //              next_to_act, seats, ready: [] }],
 //   kibitzers: [{ sub, name, table_id }] }
 const lobby = ref(null)
+
+// Loaded-set status for the console header + reconnect: the server carries
+// set_label + the lockstep board index/total in every lobby frame, so this
+// survives a teacher disconnect/reconnect for free (roadmap §Phase 3.1).
+const deck = computed(() => {
+  const l = lobby.value
+  if (!l) return { loaded: false, label: null, board: 0, total: 0 }
+  return {
+    loaded: !!l.loaded,
+    label: l.set_label || null,
+    board: l.boards?.index || 0, // 1-based current board (0 = idle)
+    total: l.boards?.total || 0,
+  }
+})
 // The table the console is currently kibitzing (table_id or null).
 const kibitzTableId = ref(null)
 
@@ -51,9 +65,32 @@ function detach() {
 // All fire-and-forget: state changes come back as lobby frames / events;
 // rejections come back as {t:"error"} frames (surfaced by useRemoteTable).
 
-// Widen the open-board window to `count` (absolute; never narrows).
+// Widen the open-board window to `count` (absolute; never narrows). Adhoc
+// sessions only — teacher_set is lockstep (use load/goto/next/prev below).
 function openBoards(count) {
   return socket.send({ t: 'open_boards', count })
+}
+
+// ── Runtime deal source + lockstep board navigation (roadmap §Phase 3.1) ──
+// All force EVERY table together. The server replies with lobby/board frames.
+
+// Change the deal source: replace the loaded set (materialized PBN) and its
+// label; resets all tables to board 1.
+function loadBoards(boardsPbn, label) {
+  return socket.send({ t: 'load_boards', boards_pbn: boardsPbn, label })
+}
+
+// Jump every table to a 1-based board number (Shark "go to").
+function gotoBoard(index) {
+  return socket.send({ t: 'goto_board', index })
+}
+
+// Advance / back up every table one board (Shark "Next Deal" / redo).
+function nextBoard() {
+  return socket.send({ t: 'next_board' })
+}
+function prevBoard() {
+  return socket.send({ t: 'prev_board' })
 }
 
 // Advance one table to its next board, skipping the ready/open checks.
@@ -88,10 +125,15 @@ function stopKibitz() {
 export function useTeacherConsole() {
   return {
     lobby,
+    deck,
     kibitzTableId,
     attach,
     detach,
     openBoards,
+    loadBoards,
+    gotoBoard,
+    nextBoard,
+    prevBoard,
     forceAdvance,
     assignSeat,
     boot,
