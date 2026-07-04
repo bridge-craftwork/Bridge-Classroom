@@ -93,6 +93,23 @@ function prevBoard() {
   return socket.send({ t: 'prev_board' })
 }
 
+// ── Dynamic tables + lobby (roadmap §Phase 3.2) ────────────────────────────
+
+// Seat every WAITING (non-parked) lobby member onto tables (auto-creating).
+function seatStudents() {
+  return socket.send({ t: 'seat_students' })
+}
+
+// Zoom-style waiting room: arrivals wait in the lobby until Seat students.
+function setWaitToSeat(on) {
+  return socket.send({ t: 'wait_to_seat', on: !!on })
+}
+
+// Add N empty tables (testing: fill with bots when nobody's connecting).
+function addTables(count) {
+  return socket.send({ t: 'add_tables', count })
+}
+
 // Advance one table to its next board, skipping the ready/open checks.
 function forceAdvance(tableId) {
   return socket.send({ t: 'force_advance', table: tableId })
@@ -134,6 +151,9 @@ export function useTeacherConsole() {
     gotoBoard,
     nextBoard,
     prevBoard,
+    seatStudents,
+    setWaitToSeat,
+    addTables,
     forceAdvance,
     assignSeat,
     boot,

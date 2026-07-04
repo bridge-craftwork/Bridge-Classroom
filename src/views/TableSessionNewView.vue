@@ -18,21 +18,21 @@
           the teacher console.
         </p>
 
-        <div class="tn-row">
-          <label class="tn-label tn-inline">
-            Tables
-            <input v-model.number="tableCount" type="number" min="1" max="20" class="tn-num">
-          </label>
+        <label class="tn-label tn-inline">
+          Rounds
+          <select v-model="kind" class="tn-select">
+            <option value="teacher_set">Teacher-run (I drive the boards)</option>
+            <option value="adhoc">Casual (all boards open)</option>
+          </select>
+        </label>
 
-          <label class="tn-label tn-inline">
-            Rounds
-            <select v-model="kind" class="tn-select">
-              <option value="teacher_set">Teacher-run (I drive the boards)</option>
-              <option value="adhoc">Casual (all boards open)</option>
-            </select>
-          </label>
-        </div>
-        <p class="tn-muted tn-hint">Adding/removing tables live from the console is coming next.</p>
+        <label class="tn-label tn-inline tn-tables">
+          Start with
+          <span class="tn-tables-row">
+            <input v-model.number="tableCount" type="number" min="0" max="20" class="tn-num">
+            <span class="tn-muted">tables — leave 0 to let them fill as students arrive (add more anytime from the console).</span>
+          </span>
+        </label>
 
         <p v-if="kind === 'teacher_set' && !isTeacher" class="tn-error">
           Teacher-run sessions need a teacher account — pick "Casual" or ask for
@@ -68,7 +68,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const currentUser = userStore.currentUser
 
-const tableCount = ref(1)
+const tableCount = ref(0)
 const kind = ref('teacher_set')
 const creating = ref(false)
 const errorMessage = ref('')
@@ -100,7 +100,7 @@ async function create() {
       owner_user_id: currentUser.value.id,
       kind: kind.value,
       boards_pbn: '',
-      table_count: tableCount.value || 1,
+      table_count: Math.max(0, Number(tableCount.value) || 0),
       seat_policy: { mode: 'auto', pattern: 'first_free' },
     })
     router.push(`/tables/console/${data.session.id}`)
@@ -134,6 +134,9 @@ onMounted(() => {
 .tn-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; margin: 10px 0; }
 .tn-num { width: 70px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
 .tn-hint { margin: 6px 0; }
+.tn-tables { margin-top: 14px; }
+.tn-tables-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tn-tables-row .tn-muted { max-width: 380px; }
 .tn-select { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
 
 .tn-btn {

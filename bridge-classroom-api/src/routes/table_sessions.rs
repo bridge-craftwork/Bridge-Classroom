@@ -273,11 +273,13 @@ pub async fn create_table_session(
     // boards_pbn may be empty: an idle session (no deal loaded). The teacher
     // sends a source later from the console (roadmap §Phase 3.1). The table
     // service accepts an empty board set and starts the rooms idle.
+    // 0 is allowed: a session can start with no tables (student-fill / the
+    // console's Add tables create them later — roadmap §Phase 3.2).
     let table_count = req.table_count.unwrap_or(1);
-    if !(1..=20).contains(&table_count) {
+    if !(0..=20).contains(&table_count) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "table_count must be between 1 and 20".to_string(),
+            "table_count must be between 0 and 20".to_string(),
         ));
     }
     let seat_policy = match req.seat_policy {

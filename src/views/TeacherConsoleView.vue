@@ -78,6 +78,33 @@
         </div>
       </div>
 
+      <!-- Class management: waiting room + dynamic tables (Shark model) -->
+      <div v-if="lobby" class="tc-class-bar">
+        <div class="tc-class-left">
+          <label class="tc-wait" :title="'Hold arriving students in the lobby until you seat them'">
+            <input type="checkbox" :checked="waitToSeat" @change="toggleWaitToSeat" />
+            Wait to seat
+          </label>
+          <button
+            class="tc-btn tc-btn-primary tc-btn-small"
+            :disabled="!waiting.length || !connected"
+            :title="waiting.length ? 'Seat everyone waiting in the lobby' : 'Nobody is waiting'"
+            @click="console_.seatStudents()"
+          >
+            Seat students<template v-if="waiting.length"> ({{ waiting.length }})</template>
+          </button>
+        </div>
+        <div class="tc-class-right">
+          <span class="tc-muted">{{ lobby.tables.length }} table{{ lobby.tables.length === 1 ? '' : 's' }}</span>
+          <span class="tc-goto">
+            <input v-model.number="addCount" type="number" min="1" max="20" class="tc-goto-input" :disabled="!connected" />
+            <button class="tc-btn tc-btn-small" :disabled="!connected" title="Add empty tables (fill with bots for testing)" @click="doAddTables">
+              + Add tables
+            </button>
+          </span>
+        </div>
+      </div>
+
       <!-- Deal-source picker modal → materialize → load onto all tables -->
       <div v-if="showPicker" class="tc-modal-backdrop" @click.self="showPicker = false">
         <div class="tc-modal-shell">
@@ -146,20 +173,33 @@
 
         </div>
 
-        <!-- Kibitzers roster -->
+        <!-- Lobby roster: waiting (auto-fill eligible) + parked (benched) -->
         <div class="tc-table tc-kibitzers">
           <div class="tc-table-head">
-            <span class="tc-table-name">Kibitzers</span>
-            <span class="tc-tag">{{ lobby.kibitzers.length }}</span>
+            <span class="tc-table-name">Lobby</span>
+            <span class="tc-tag">{{ kibitzers.length }}</span>
           </div>
-          <ul v-if="lobby.kibitzers.length" class="tc-kib-list">
-            <li v-for="k in lobby.kibitzers" :key="k.sub">
-              {{ k.name }} <span class="tc-muted">watching {{ tableName(k.table_id) }}</span>
-            </li>
-          </ul>
-          <p v-else class="tc-muted">Nobody is waiting for a seat.</p>
+          <template v-if="waiting.length">
+            <div class="tc-kib-group">Waiting to seat</div>
+            <ul class="tc-kib-list">
+              <li v-for="k in waiting" :key="k.sub">{{ k.name }}</li>
+            </ul>
+          </template>
+          <template v-if="parked.length">
+            <div class="tc-kib-group">Parked (won't auto-seat)</div>
+            <ul class="tc-kib-list tc-kib-parked">
+              <li v-for="k in parked" :key="k.sub">
+                {{ k.name }} <span class="tc-muted">· {{ tableName(k.table_id) }}</span>
+              </li>
+            </ul>
+          </template>
+          <p v-if="!kibitzers.length" class="tc-muted">Nobody in the lobby yet.</p>
         </div>
       </div>
+
+      <p v-if="lobby && !lobby.tables.length" class="tc-muted tc-empty-note">
+        No tables yet — they'll appear as students file in (or use “Add tables” to make some for testing).
+      </p>
 
       <!-- Kibitz panel: full read-only table view over the same socket -->
       <div v-if="kibitzTableId" class="tc-kibitz-panel">
@@ -237,6 +277,19 @@ function doGoto() {
   const n = Number(gotoInput.value)
   if (!deck.value.loaded || !n) return
   console_.gotoBoard(Math.max(1, Math.min(n, deck.value.total)))
+}
+
+// ── Class management: waiting room + dynamic tables (roadmap §Phase 3.2) ────
+const addCount = ref(1)
+const waitToSeat = computed(() => !!lobby.value?.wait_to_seat)
+const kibitzers = computed(() => lobby.value?.kibitzers || [])
+const waiting = computed(() => kibitzers.value.filter((k) => !k.parked))
+const parked = computed(() => kibitzers.value.filter((k) => k.parked))
+function toggleWaitToSeat() {
+  console_.setWaitToSeat(!waitToSeat.value)
+}
+function doAddTables() {
+  console_.addTables(Math.max(1, Math.min(Number(addCount.value) || 1, 20)))
 }
 
 function tableName(tableId) {
@@ -441,6 +494,25 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   font-size: 13px;
 }
+
+/* Class management bar: waiting room + dynamic tables */
+.tc-class-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  border: 1px solid #e2e6ea;
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.tc-class-left, .tc-class-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tc-wait { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #444; cursor: pointer; }
+.tc-empty-note { margin: 8px 2px; }
+.tc-kib-group { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #99a; margin: 8px 0 2px; }
+.tc-kib-parked li { color: #8a6d1a; }
 
 .tc-modal-backdrop {
   position: fixed;
