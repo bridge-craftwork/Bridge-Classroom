@@ -226,6 +226,63 @@ end session. Shark features to add, roughly in value order:
 | Classroom chat / Talk To | not built | server broadcast + per-table message frames; biggest new surface, do last |
 | Auto-seat dropdown | seat policies exist (manual/one_per_seat/pairs/first_free) | expose as console control instead of create-time-only |
 
+### Phase 3.1 — Runtime deal source + board navigation (Shark model, Rick 2026-07-04)
+
+Supersedes the "Load Deals / Deal Generator" and "Next Deal" rows above. The
+Shark teacher model (screenshot: Load Deals · Deal Generator · Replay Deal ·
+Next Deal · …): the teacher has several tables open with students seated, and
+**changes the deal source and moves the board pointer at any time**. Because a
+teacher can go offline without crashing the tables, all of this state lives
+**server-side** (table service); the console is a stateless remote that issues
+commands over its existing teacher WS (same channel as
+`open_boards`/`assign_seat`/`boot`).
+
+**Confirmed model**
+- A session = N tables + a **server-held loaded board set** + a single
+  **teacher-controlled board pointer**, plus the empty (no-set) state.
+- **Empty sessions are first-class**: a session can be created with **no
+  boards** and have the deal source sent afterward. Seated players see a
+  "waiting for the teacher to load a deal" placeholder; **bots/robots stay off
+  until a set is loaded**.
+- **Lockstep, Shark-style**: `goto/next/prev` force **every** table to the same
+  board index (teacher hard-drive), not a per-table target. (The per-table
+  `ready_next_board` self-advance within the open window is the casual/adhoc
+  model; teacher_set is teacher-driven lockstep.)
+- **Loading a new set resets the pointer to board 1** for all tables.
+
+**New teacher WS commands** (mirror the `sessions.rs`
+open_boards/assign_seat/boot precedent — ws frame + server validation):
+- `load_boards { boards_pbn }` — replace the loaded set. Parse (reject bad PBN
+  with an `error` frame), swap, reset pointer → board 1, re-deal every table.
+  This is **"change deal source"**: the console hosts the `DealSourcePicker`,
+  runs `materialize(selection)` → `boards_pbn`, sends it here. `kind:'random'`
+  and dealer scripts can also send `boards_pbn` (materialized client-side).
+- `goto_board { index }` — force all tables to board `index` (clamped 1..N).
+- `next_board` / `prev_board` — pointer ± 1 (prev = Shark "Replay/redo" at the
+  set level; the existing per-board Replay stays a table action).
+
+**State change (table service, `sessions.rs`)**
+- Today: `boards: Vec<BoardSetup>` fixed at create + `open_boards: AtomicUsize`,
+  monotonically non-decreasing ("never narrows"). This window model is replaced
+  for teacher_set by a **mutable board set** + a **teacher pointer** that can move
+  both ways and jump. `open_boards`/`ready_next_board` remain the adhoc path.
+- `boards` becomes swappable (behind a lock) so `load_boards` can replace it.
+- Rooms gain a **no-board idle** state for the empty session.
+
+**Build order (multi-repo; table-service first — everything hangs off it)**
+1. **bridge-table-service**: empty/idle session state; `load_boards` (swap +
+   reset + re-deal); `goto/next/prev` pointer with lockstep broadcast; unit
+   tests (load resets to 1; goto clamps; prev works; idle room deals nothing;
+   bots gated off while idle).
+2. **bridge-classroom-api** (`table_sessions.rs`): relax `boards_pbn is
+   required` so creation can be empty; the source arrives later over the console
+   socket (PBN rides the teacher WS — no new proxy).
+3. **frontend**: session creation (`TableSessionNewView`) — picker becomes an
+   **optional preload** (empty create allowed). Teacher **console** — host
+   `DealSourcePicker` behind a "Deal source / Load Deals" button (→ materialize
+   → `load_boards`) + **Next / Redo / Go-to** board controls, matching the Shark
+   panel. Console already has the command channel (`useTeacherConsole`).
+
 ## Phase 4 — Bot/board options (Shark "Add tables" dialog)
 
 Per-table/per-session toggles at creation (and later live): bot strength
