@@ -83,6 +83,43 @@ function clearFilter() {
   filter.value = ''
 }
 
+// ── Settings: manifest tier (Beta layout / Test mode) — persisted locally ────
+// The two toggles are orthogonal → 4 manifest tiers (PBS #167). Default: off/off.
+const SETTINGS_KEY = 'dsp-settings'
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')
+    return { betaLayout: !!s.betaLayout, testMode: !!s.testMode }
+  } catch {
+    return { betaLayout: false, testMode: false }
+  }
+}
+const settings = ref(loadSettings())
+const showSettings = ref(false)
+const manifestTier = computed(() => {
+  const b = settings.value.betaLayout
+  const t = settings.value.testMode
+  if (b && t) return 'test'
+  if (b) return 'beta'
+  if (t) return 'release-test'
+  return 'release'
+})
+watch(
+  settings,
+  (s) => {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+    } catch { /* ignore */ }
+  },
+  { deep: true },
+)
+// Changing the tier reloads the Scenarios menu (curated is unaffected).
+watch(manifestTier, () => {
+  scenarioMenu.value = []
+  fileMeta.value = {}
+  if (props.allow.tabs.includes('scenarios') || filter.value) loadScenarioMenu()
+})
+
 // ── Pool (multi mode only) ─────────────────────────────────────────────────
 const pool = ref([...(props.modelValue.items || [])])
 watch(pool, () => emit('update:modelValue', selectionFrom(pool.value)), { deep: true })
@@ -123,7 +160,7 @@ async function loadScenarioMenu() {
   try {
     // One manifest fetch (PBS #167): layout tree + names/bba-works/tooltips,
     // so the whole Scenarios tab is ready at once (no async fill-in).
-    const { sections, meta } = await fetchScenarioManifest()
+    const { sections, meta } = await fetchScenarioManifest(manifestTier.value)
     fileMeta.value = meta
     scenarioMenu.value = sections
   } catch (e) {
@@ -146,7 +183,10 @@ function ensureMenu(tab) {
   if (tab === 'clubgames' && props.allow.tabs.includes('clubgames')) ensureClub()
 }
 onMounted(() => ensureMenu(activeTab.value))
-watch(activeTab, (t) => ensureMenu(t))
+watch(activeTab, (t) => {
+  showSettings.value = false
+  ensureMenu(t)
+})
 // The filter searches across menus, so load both once the user starts filtering.
 watch(filter, (q) => {
   if (!q) return
@@ -329,6 +369,12 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
 
 <template>
   <div class="dsp" :class="`dsp--${layout}`">
+    <!-- One heart shape for both states: fill (favorited) vs outline (not) is CSS. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="dsp-heart-sym" viewBox="0 0 24 24">
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+      </symbol>
+    </svg>
     <header class="dsp-head">
       <h2>Deal Source</h2>
       <button class="dsp-x" type="button" aria-label="Close" @click="emit('close')">×</button>
@@ -362,6 +408,26 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
         <span v-if="t.icon">{{ t.icon }}</span>
         <template v-else>{{ t.label }}</template>
       </button>
+
+      <!-- Settings (far right): manifest tier via Beta / Test toggles -->
+      <div class="dsp-settings-wrap">
+        <button
+          type="button"
+          class="dsp-tab dsp-tab-icon dsp-gear"
+          :class="{ active: showSettings }"
+          title="Settings"
+          aria-label="Settings"
+          @click="showSettings = !showSettings"
+        >
+          ⚙
+        </button>
+        <div v-if="showSettings" class="dsp-settings-pop">
+          <div class="dsp-settings-title">Scenario source</div>
+          <label class="dsp-setting"><input v-model="settings.betaLayout" type="checkbox" /> Beta layout</label>
+          <label class="dsp-setting"><input v-model="settings.testMode" type="checkbox" /> Test mode</label>
+          <div class="dsp-setting-note">Using <b>{{ manifestTier }}</b> manifest.</div>
+        </div>
+      </div>
     </nav>
 
     <!-- Body -->
@@ -394,7 +460,7 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
               :title="isFavorite(favRefFor(it, it.curated)) ? 'Remove favorite' : 'Add favorite'"
               @click.stop="toggleFavorite(favRefFor(it, it.curated))"
             >
-              {{ isFavorite(favRefFor(it, it.curated)) ? '♥' : '♡' }}
+              <svg class="dsp-heart"><use href="#dsp-heart-sym" /></svg>
             </button>
           </div>
         </li>
@@ -440,7 +506,7 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
                     :title="isFavorite(favRefFor(it, activeTab === 'curated')) ? 'Remove favorite' : 'Add favorite'"
                     @click.stop="toggleFavorite(favRefFor(it, activeTab === 'curated'))"
                   >
-                    {{ isFavorite(favRefFor(it, activeTab === 'curated')) ? '♥' : '♡' }}
+                    <svg class="dsp-heart"><use href="#dsp-heart-sym" /></svg>
                   </button>
                 </div>
               </div>
@@ -480,11 +546,11 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
                   </span>
                 </span>
               </component>
-              <button type="button" class="dsp-star on" title="Remove favorite" @click.stop="toggleFavorite(r)">♥</button>
+              <button type="button" class="dsp-star on" title="Remove favorite" @click.stop="toggleFavorite(r)"><svg class="dsp-heart"><use href="#dsp-heart-sym" /></svg></button>
             </div>
           </li>
         </ul>
-        <p v-else class="dsp-note">No favorites yet — tap the ♡ on any scenario to save it here.</p>
+        <p v-else class="dsp-note">No favorites yet — tap a scenario's heart to save it here.</p>
       </template>
 
       <!-- History (local) -->
@@ -505,7 +571,7 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
                   </span>
                 </span>
               </component>
-              <button type="button" class="dsp-star" :class="{ on: isFavorite(r) }" :title="isFavorite(r) ? 'Remove favorite' : 'Add favorite'" @click.stop="toggleFavorite(r)">{{ isFavorite(r) ? '♥' : '♡' }}</button>
+              <button type="button" class="dsp-star" :class="{ on: isFavorite(r) }" :title="isFavorite(r) ? 'Remove favorite' : 'Add favorite'" @click.stop="toggleFavorite(r)"><svg class="dsp-heart"><use href="#dsp-heart-sym" /></svg></button>
             </div>
           </li>
         </ul>
@@ -725,6 +791,49 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
   color: #c2455e;
   background: #fde8ec;
 }
+.dsp-settings-wrap {
+  position: relative;
+  margin-left: auto; /* push the gear to the far right of the tab bar */
+}
+.dsp-gear {
+  color: var(--muted);
+}
+.dsp-settings-pop {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  margin-top: 4px;
+  min-width: 184px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dsp-settings-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.dsp-setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dsp-setting-note {
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
 
 .dsp-body {
   flex: 1 1 auto;
@@ -841,19 +950,31 @@ const isClubPicked = (b) => pool.value.some((r) => sameRef(r, clubRef(b)))
 }
 .dsp-star {
   flex: none;
+  display: inline-flex;
+  align-items: center;
   border: none;
   background: none;
-  color: #cbd0d6;
-  font-size: 14px;
-  line-height: 1;
   padding: 2px 4px;
   cursor: pointer;
 }
-.dsp-star.on {
-  color: #c2455e;
+/* Same heart shape for both states — outline when not favorited, filled when on. */
+.dsp-heart {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: none;
+  stroke: #c3c8cf;
+  stroke-width: 2;
 }
-.dsp-star:hover {
-  color: #c2455e;
+.dsp-star:hover .dsp-heart {
+  stroke: #c2455e;
+}
+.dsp-star.on .dsp-heart {
+  fill: #c2455e;
+  stroke: none;
+}
+.dsp-star.on:hover .dsp-heart {
+  fill: #a5384f;
 }
 .dsp-origin {
   font-size: 11px;
