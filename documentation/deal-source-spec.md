@@ -128,10 +128,21 @@ A tab sheet (like today's `DealSourceModal`) with a **global filter** on top:
   `BiddingPracticeView` currently inlines against `pbsScenarios` — one path.
 
 ### 4.2 Curated Collections (PBS curated) — multi-select
-- Same tree, but resolves from PBS **`/bba-filtered`** (the auction-predictable
-  subset) instead of `/pbn`. Modeled as `SourceRef{kind:'scenario', curated:true}`.
+- **Folders (D-A revised, Rick 2026-07-04 — supersedes "curated=bba-filtered"):**
+  - **Scenarios** resolve from **`/bba-filtered`** — the auction-vetted *subset of
+    `/pbn`* where BBA's generated auction matches the scenario's intent. For
+    conventions BBA doesn't know it equals `/pbn` (just a tighter set), so
+    `/pbn` stays a safety fallback.
+  - **Curated** resolves from a **distinct** set, **`/coaching-curated`** (provisional
+    location — may move to its own folder). Modeled as `SourceRef{kind:'scenario',
+    curated:true}`; the resolver maps `curated:true` → coaching-curated only.
+- **BBA-support coloring** (like `#/bidding-practice`): a scenario's `/btn/<file>.btn`
+  carries `# bba-works: true|false`; false → the leaf is flagged orange ("BBA
+  doesn't know it — better with a human partner than a BBA bot"). Optimistic default
+  true. Via `pbsScenarios.fetchScenarioMeta()`.
 - Open question (Q1): separate tab, or a **"curated only" toggle** on the Scenarios
-  tab? A toggle is less duplication; a tab is more discoverable. Lean: toggle.
+  tab? Currently a **separate tab** (Scenarios | Curated), since they now draw from
+  genuinely different folders.
 
 ### 4.3 Club games (DB or browser) — drill to boards, multi-select boards
 - **No collection-level multi-select** (Rick): you don't pool whole games. You

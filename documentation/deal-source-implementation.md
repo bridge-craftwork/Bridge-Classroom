@@ -210,10 +210,22 @@ None block build-order item 1.
      expands downward (no jump).
    - **D-E — NO collapsible sections** (Rick): people were confused by hidden
      elements behind click-to-open headers. Rely on the **scroll region + live
-     filter** instead — flat and always-visible. (Follow-up: strip the now-false
-     "(CLICK HEADERS TO OPEN/CLOSE)" text from the PBS major label on render.)
-   - Remaining: wire Club games / My library tabs (currently "coming soon"), a
-     `full` layout variant, and a component test.
+     filter** instead — flat and always-visible. (Done: the PBS major label is no
+     longer rendered, so the false "(click headers…)" text is gone.)
+   - **Feedback round 2 (Rick 2026-07-04), all shipped:** title "Deal Source";
+     **single vs multi** selection via a "Multi" toggle by the filter (single =
+     click-resolves-immediately, no pool/Deal; default single); **Mode removed**
+     (belongs to the host); **Draw removed** — drawOrder asserted by kind
+     (scenario/curated/random/script → random, else sequential); **Fresh** moved to
+     a `[Filtered|Fresh]` segmented control atop Scenarios/Curated; ~50% tighter
+     rows; **BBA-support coloring** (orange when `# bba-works:false`); **folders
+     fixed** — Scenarios→`/bba-filtered`, Curated→`/coaching-curated` (D-A revised,
+     supersedes the old curated=bba-filtered); added **♥ Favorites** + **🕐 History**
+     icon tabs (backends TBD — placeholders).
+   - Remaining: **tab-row wraps to 2 lines at 560px with 8 tabs** — decide space
+     treatment (shorten Club/Library/Paste labels, or make more tabs icon-only).
+     Wire Favorites/History/Club-games/My-library backends. `full` layout variant +
+     a component test.
 4. **Retrofit** the three consumers (§5), in that order — this changes production
    views (incl. the D-B random→sequential default in Practice), so it wants review
    before/after, not an unattended rewrite.
