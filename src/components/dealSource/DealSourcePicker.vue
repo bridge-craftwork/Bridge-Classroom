@@ -15,7 +15,7 @@
 // Mode (bid/play) lives in the containing app, not here.
 
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchScenarioMenu, fetchCuratedMenu, fetchScenarioMeta } from '@/utils/pbsScenarios.js'
+import { fetchScenarioManifest, fetchCuratedMenu } from '@/utils/pbsScenarios.js'
 import { useDealSourceMemory, refKey } from '@/composables/useDealSourceMemory.js'
 import { useClubGames } from '@/composables/useClubGames.js'
 import { clubGameBoards } from '@/utils/normalizedDeal.js'
@@ -121,8 +121,11 @@ async function loadScenarioMenu() {
   menuLoading.value = true
   menuError.value = ''
   try {
-    scenarioMenu.value = await fetchScenarioMenu()
-    loadMeta() // fire-and-forget; names/colours/tooltips fill in when it resolves
+    // One manifest fetch (PBS #167): layout tree + names/bba-works/tooltips,
+    // so the whole Scenarios tab is ready at once (no async fill-in).
+    const { sections, meta } = await fetchScenarioManifest()
+    fileMeta.value = meta
+    scenarioMenu.value = sections
   } catch (e) {
     menuError.value = e?.message || 'Could not load the scenario menu.'
   } finally {
@@ -136,12 +139,6 @@ async function loadCuratedMenu() {
   } catch (e) {
     if (activeTab.value === 'curated') menuError.value = e?.message || 'Could not load the curated menu.'
   }
-}
-async function loadMeta() {
-  const files = []
-  for (const node of scenarioMenu.value) if (node.type === 'section') for (const it of node.items) files.push(it.file)
-  const pairs = await Promise.all(files.map(async (f) => [f, await fetchScenarioMeta(f)]))
-  fileMeta.value = Object.fromEntries(pairs)
 }
 function ensureMenu(tab) {
   if (tab === 'scenarios' && props.allow.tabs.includes('scenarios')) loadScenarioMenu()

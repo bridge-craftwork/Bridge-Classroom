@@ -7,8 +7,13 @@
 import { parsePbn } from './pbnParser.js'
 
 export const PBS = {
-  RAW_BASE: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main',
+  // Canonical repo since the move to the bridge-craftwork org (PBS #166; the old
+  // ADavidBailey URLs still redirect).
+  RAW_BASE: 'https://raw.githubusercontent.com/bridge-craftwork/Practice-Bidding-Scenarios/main',
   BUTTON_LAYOUT: '/btn/-button-layout-release.txt',
+  // One pre-built menu manifest replaces the layout parse + ~300 per-scenario
+  // fetches (PBS #167): layout tree + per-scenario buttonText/bbaWorks/chat.
+  MANIFEST_DIR: '/manifest',
   PBN_DIR: '/pbn',
   // Scenarios draw from the auction-filtered set: a tighter subset of /pbn where
   // BBA's generated auction matches the scenario's intent. For conventions BBA
@@ -87,6 +92,54 @@ export async function fetchScenarioMenu() {
   const resp = await fetch(PBS.RAW_BASE + PBS.BUTTON_LAYOUT)
   if (!resp.ok) throw new Error(`menu fetch failed (${resp.status})`)
   return parseButtonLayout(await resp.text())
+}
+
+// PBS chat blocks use literal "\n" tokens (not real newlines), fullwidth commas,
+// and !C/!D/!H/!S suit codes. Return a clean multi-line tooltip (title first).
+function parseChat(chat) {
+  if (!chat) return ''
+  const lines = String(chat)
+    .replace(/，/g, ',')
+    .split(/\\n|\n/)
+    .map((l) => suitSymbols(l.trim()))
+    .filter(Boolean)
+  return lines.map((l) => (l.startsWith('---') ? l.replace(/^-+\s*/, '') : l)).join('\n')
+}
+
+// The pre-built menu manifest (PBS #167): the whole Scenarios menu in ONE fetch
+// — the ordered layout tree AND per-scenario metadata (name/bba-works/tooltip) —
+// replacing fetchScenarioMenu + the ~100 per-.btn fetchScenarioMeta calls.
+// tier: 'release' (public) | 'beta' | 'test'. Returns { sections, meta } where
+// `sections` matches the button-layout shape and `meta` is keyed by file.
+export async function fetchScenarioManifest(tier = 'release') {
+  const resp = await fetch(`${PBS.RAW_BASE}${PBS.MANIFEST_DIR}/manifest-${tier}.json`)
+  if (!resp.ok) throw new Error(`manifest fetch failed (${resp.status})`)
+  const m = await resp.json()
+  const scenarios = m.scenarios || {}
+  const meta = {}
+  for (const [name, sc] of Object.entries(scenarios)) {
+    meta[name] = {
+      buttonText: suitSymbols(sc.buttonText || prettifyLabel(name)),
+      bbaWorks: sc.bbaWorks !== false,
+      gibWorks: sc.gibWorks !== false,
+      description: parseChat(sc.chat),
+    }
+  }
+  const sections = []
+  let cur = null
+  for (const node of m.layout || []) {
+    if (node.type === 'section') {
+      cur = { type: 'section', label: node.title, items: [] }
+      sections.push(cur)
+    } else if (node.type === 'row' && cur) {
+      for (const b of node.buttons || []) {
+        const sc = scenarios[b.name]
+        if (!sc || sc.missing) continue // referenced by layout but no .pbs — skip
+        cur.items.push({ file: b.name, label: meta[b.name].buttonText })
+      }
+    }
+  }
+  return { sections, meta }
 }
 
 // The curated menu is its own manifest (coaching-curated/toc.json) — a distinct,
