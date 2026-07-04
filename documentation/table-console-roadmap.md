@@ -330,17 +330,40 @@ console; deal source removed from creation (loaded on the console); console got 
 "Open next board" removed, and the idle-board leak fixed (MiniTable `loaded` prop
 hides the placeholder cards, shows "no deal"). Tables count still at creation.
 
-**Still to build (the real refactor):**
-- **table-service:** `rooms` must become **mutable** — allow `table_count: 0`,
-  add `add_tables{count}` / `remove_table{table}` teacher commands, and an
-  **auto-fill** seat policy that creates/removes tables as students arrive/leave.
-  This is the concurrency-sensitive part: `rooms` is a fixed `Vec` assumed
-  everywhere (place/lobby/try_advance/assign_seat/find_seated, kibitzer
-  `room_idx`); moving to a mutable, id-keyed collection (not index-keyed) is the
-  crux. New tables inherit the current board (or placeholder if idle).
-- **Mac API:** `table_count: 0` allowed.
-- **console:** Add Tables (+count), remove-table, a seating-policy control, and
-  auto-fill toggle — all on the main view; creation becomes just "Start session".
+**Refined model (Rick 2026-07-04, from years of Shark use):**
+- **Student-fill is the primary flow** — in Shark he *never* explicitly creates
+  tables; they materialize as students file in. Shark's "must create table 1
+  before you can set the source" is an artificial constraint (implementation
+  showing through) we should NOT copy. So: the **deal source is settable on a
+  0-table session**; tables auto-create on student arrival and inherit the
+  current board.
+- **"Create N tables" is a *testing* affordance** — fill tables with bots when
+  you can't wait for people to connect. Keep it, but it's not the main path.
+- **Lobby / wait-to-seat (Zoom model):** students **connect into a lobby**
+  (waiting room) and a **"Seat students"** action (or auto-seat) moves them onto
+  tables. A **"wait to seat"** toggle holds them until the teacher is ready
+  (Zoom's "let people in" vs auto-admit). Decouples *connected* from *seated* —
+  the lobby (kibitzers) infrastructure already half-supports this.
+- **Pre-class availability:** activate a session ~30 min early so students
+  connect and wait (no billing here, unlike Shark). Fixes today's rough
+  hand-off — teacher starts the session post-lecture, students race to connect
+  and must retry until a table exists. A session should be joinable-and-waiting
+  before the teacher "starts" seating.
+- **Placeholder hand = one full suit per seat** — DONE (`placeholder_board`,
+  table-service 5c03a77), so an idle deal never looks real.
+
+**The real refactor (still to build):**
+- **table-service:** `rooms` becomes **mutable + id-keyed** (not the fixed,
+  index-keyed `Vec` assumed across place/lobby/try_advance/assign_seat/
+  find_seated + kibitzer `room_idx`). Allow `table_count: 0`; auto-create a table
+  when a seated arrival needs one (seat policy = table shape, e.g. "2 per table
+  NS"); auto-remove an empty table; `seat_students` (drain lobby → seats) and a
+  `wait_to_seat` session flag; `add_tables{n}`/`remove_table` for the testing
+  path. New tables inherit the current board (or placeholder if idle).
+- **Mac API:** `table_count: 0` allowed; maybe a pre-class "scheduled/open"
+  state.
+- **console:** "Seat students" + wait-to-seat toggle + seating-policy control +
+  (testing) Add Tables; creation shrinks to just "Start session".
 
 ## Phase 4 — Bot/board options (Shark "Add tables" dialog)
 
