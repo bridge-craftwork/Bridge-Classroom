@@ -24,6 +24,11 @@ export function prettifyLabel(file) {
   return file.replace(/_/g, ' ').replace(/-/g, ' ').trim()
 }
 
+// Suit tokens used in .btn chat/names: !C !D !H !S → ♣ ♦ ♥ ♠
+export function suitSymbols(s) {
+  return (s || '').replace(/!C/g, '♣').replace(/!D/g, '♦').replace(/!H/g, '♥').replace(/!S/g, '♠')
+}
+
 function parseCell(cell) {
   if (cell.startsWith('(') && cell.endsWith(')')) {
     cell = cell.slice(1, -1).split(',')[0].trim()
@@ -84,6 +89,24 @@ export async function fetchScenarioMenu() {
   return parseButtonLayout(await resp.text())
 }
 
+// The curated menu is its own manifest (coaching-curated/toc.json) — a distinct,
+// much smaller hand-picked set with built-in display names + descriptions.
+// Normalized to the same section shape as the button layout.
+export async function fetchCuratedMenu() {
+  const resp = await fetch(`${PBS.RAW_BASE}${PBS.COACHING_CURATED_DIR}/toc.json`)
+  if (!resp.ok) throw new Error(`curated menu fetch failed (${resp.status})`)
+  const toc = await resp.json()
+  return (toc.categories || []).map((cat) => ({
+    type: 'section',
+    label: cat.name,
+    items: (cat.lessons || []).map((l) => ({
+      file: l.id,
+      label: suitSymbols(l.name || prettifyLabel(l.id)),
+      description: suitSymbols(l.description || ''),
+    })),
+  }))
+}
+
 // Deals for a scenario. `curated:true` draws from the distinct coaching-curated
 // set; otherwise from bba-filtered (auction-vetted) with plain /pbn as fallback.
 // Returns parsePbn() deal objects (dealer, vulnerable, dealString, …).
@@ -106,19 +129,32 @@ export async function fetchScenarioDeals(file, { curated = false } = {}) {
 export async function fetchScenarioMeta(file) {
   try {
     const resp = await fetch(`${PBS.RAW_BASE}${PBS.BTN_DIR}/${file}.btn`)
-    if (!resp.ok) return { bbaWorks: true, buttonText: null }
+    if (!resp.ok) return { bbaWorks: true, buttonText: null, title: null, description: null }
     const text = await resp.text()
-    const meta = { bbaWorks: true, buttonText: null }
+    const meta = { bbaWorks: true, buttonText: null, title: null, description: null }
     for (const raw of text.split('\n').slice(0, 40)) {
       if (!raw.startsWith('#')) continue
       const bba = raw.match(/^#\s*bba-works:\s*(\w+)/i)
       if (bba) meta.bbaWorks = bba[1].toLowerCase() === 'true'
       const btn = raw.match(/^#\s*button-text:\s*(.+?)\s*$/i)
-      if (btn) meta.buttonText = btn[1]
+      if (btn) meta.buttonText = suitSymbols(btn[1])
+    }
+    // Tooltip: the /*@chat … @chat*/ block. First `--- Title` line is the title,
+    // the rest is the body. Same source as the BBO extension's tooltips.
+    const chat = text.match(/\/\*@chat\s*([\s\S]*?)@chat\*\//)
+    if (chat) {
+      const body = []
+      for (const raw of chat[1].trim().split('\n')) {
+        const l = suitSymbols(raw.trim())
+        if (!l) continue
+        if (l.startsWith('---')) meta.title = l.replace(/^-+\s*/, '')
+        else body.push(l)
+      }
+      meta.description = [meta.title, ...body].filter(Boolean).join('\n')
     }
     return meta
   } catch {
-    return { bbaWorks: true, buttonText: null }
+    return { bbaWorks: true, buttonText: null, title: null, description: null }
   }
 }
 

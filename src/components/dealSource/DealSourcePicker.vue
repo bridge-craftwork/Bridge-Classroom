@@ -15,7 +15,7 @@
 // Mode (bid/play) lives in the containing app, not here.
 
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchScenarioMenu, fetchScenarioMeta } from '@/utils/pbsScenarios.js'
+import { fetchScenarioMenu, fetchCuratedMenu, fetchScenarioMeta } from '@/utils/pbsScenarios.js'
 
 const props = defineProps({
   allow: {
@@ -66,6 +66,12 @@ const multi = ref(false)
 // "Fresh deals (generate)" toggle — scenarios only; Filtered = static board set.
 const fresh = ref(false)
 const allowFresh = computed(() => props.allow.options.includes('fresh'))
+// Global filter text (searches across menus).
+const filter = ref('')
+const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, '')
+function clearFilter() {
+  filter.value = ''
+}
 
 // ── Pool (multi mode only) ─────────────────────────────────────────────────
 const pool = ref([...(props.modelValue.items || [])])
@@ -85,70 +91,112 @@ function choose(ref_) {
   emit('submit', sel)
 }
 
-// ── Scenario / Curated menu + BBA metadata ─────────────────────────────────
-const menu = ref([])
+// ── Scenario (button-layout) + Curated (toc.json) menus ────────────────────
+// Two distinct sources: Scenarios = the full bba-filtered set (button layout,
+// names/tooltips from each .btn); Curated = a much smaller hand-picked set with
+// its own manifest (coaching-curated/toc.json), names + descriptions built in.
+const scenarioMenu = ref([])
+const curatedMenu = ref([])
 const menuLoading = ref(false)
 const menuError = ref('')
-const fileMeta = ref({}) // file -> { bbaWorks }
+const fileMeta = ref({}) // scenario file -> { bbaWorks, buttonText, title, description }
 
-async function loadMenu() {
+const activeMenu = computed(() => (activeTab.value === 'curated' ? curatedMenu.value : scenarioMenu.value))
+const activeLoading = computed(() => menuLoading.value)
+const activeError = computed(() => menuError.value)
+
+async function loadScenarioMenu() {
+  if (scenarioMenu.value.length || menuLoading.value) return
   menuLoading.value = true
   menuError.value = ''
   try {
-    menu.value = await fetchScenarioMenu()
-    loadMeta() // fire-and-forget; colours fill in when it resolves
+    scenarioMenu.value = await fetchScenarioMenu()
+    loadMeta() // fire-and-forget; names/colours/tooltips fill in when it resolves
   } catch (e) {
     menuError.value = e?.message || 'Could not load the scenario menu.'
   } finally {
     menuLoading.value = false
   }
 }
+async function loadCuratedMenu() {
+  if (curatedMenu.value.length) return
+  try {
+    curatedMenu.value = await fetchCuratedMenu()
+  } catch (e) {
+    if (activeTab.value === 'curated') menuError.value = e?.message || 'Could not load the curated menu.'
+  }
+}
 async function loadMeta() {
   const files = []
-  for (const node of menu.value) if (node.type === 'section') for (const it of node.items) files.push(it.file)
+  for (const node of scenarioMenu.value) if (node.type === 'section') for (const it of node.items) files.push(it.file)
   const pairs = await Promise.all(files.map(async (f) => [f, await fetchScenarioMeta(f)]))
   fileMeta.value = Object.fromEntries(pairs)
 }
-onMounted(() => {
-  if (props.allow.tabs.includes('scenarios') || props.allow.tabs.includes('curated')) loadMenu()
+function ensureMenu(tab) {
+  if (tab === 'scenarios' && props.allow.tabs.includes('scenarios')) loadScenarioMenu()
+  if (tab === 'curated' && props.allow.tabs.includes('curated')) loadCuratedMenu()
+}
+onMounted(() => ensureMenu(activeTab.value))
+watch(activeTab, (t) => ensureMenu(t))
+// The filter searches across menus, so load both once the user starts filtering.
+watch(filter, (q) => {
+  if (!q) return
+  if (props.allow.tabs.includes('scenarios')) loadScenarioMenu()
+  if (props.allow.tabs.includes('curated')) loadCuratedMenu()
 })
 
 // BBA doesn't support this convention → flag it (better with a human partner).
+// (Scenarios only; curated items aren't in fileMeta.)
 const bbaUnsupported = (file) => fileMeta.value[file]?.bbaWorks === false
-// Authoritative display name from the .btn `# button-text:`, falling back to the
-// menu label (prettified filename) until the metadata resolves.
+// Display name: .btn button-text (scenarios) or toc name (curated), falling back
+// to the menu label until metadata resolves. Tooltip: the harvested description.
 const displayLabel = (it) => fileMeta.value[it.file]?.buttonText || it.label
+const descFor = (it) => fileMeta.value[it.file]?.description || it.description || ''
 
-function makeScenarioRef(item) {
+function makeRef(item, curated) {
   const label = displayLabel(item)
-  if (fresh.value) return { kind: 'script', repo: 'pbs', file: item.file, label }
+  if (fresh.value && !curated) return { kind: 'script', repo: 'pbs', file: item.file, label }
   const r = { kind: 'scenario', repo: 'pbs', file: item.file, label }
-  if (activeTab.value === 'curated') r.curated = true
+  if (curated) r.curated = true
   return r
 }
-function isPicked(file) {
-  return pool.value.some((r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === file)
+function isPicked(file, curated) {
+  return pool.value.some(
+    (r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === file && !!r.curated === !!curated,
+  )
 }
-function onScenario(item) {
-  if (!multi.value) return choose(makeScenarioRef(item))
-  const idx = pool.value.findIndex((r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === item.file)
+function onPick(item, curated) {
+  const ref_ = makeRef(item, curated)
+  if (!multi.value) return choose(ref_)
+  const idx = pool.value.findIndex(
+    (r) => (r.kind === 'scenario' || r.kind === 'script') && r.file === item.file && !!r.curated === !!curated,
+  )
   if (idx >= 0) pool.value.splice(idx, 1)
-  else pool.value.push(makeScenarioRef(item))
+  else pool.value.push(ref_)
 }
 
-// ── Global filter (flat results across the loaded menu) ────────────────────
-const filter = ref('')
-const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, '')
+// ── Global filter — flat results across both menus, de-duped, with context ──
 const flatResults = computed(() => {
   const q = norm(filter.value)
   if (!q) return null
   const out = []
-  for (const node of menu.value) {
-    if (node.type !== 'section') continue
-    for (const it of node.items) {
-      if (norm(it.label).includes(q) || norm(displayLabel(it)).includes(q)) out.push({ ...it, section: node.label })
+  const seen = new Set()
+  const scan = (menu, curated) => {
+    for (const node of menu) {
+      if (node.type !== 'section') continue
+      for (const it of node.items) {
+        const label = displayLabel(it)
+        const desc = descFor(it)
+        if (!(norm(label).includes(q) || norm(it.label).includes(q) || norm(desc).includes(q))) continue
+        const key = (curated ? 'c:' : 's:') + it.file
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push({ file: it.file, label, description: desc, section: node.label, curated })
+      }
     }
   }
+  scan(scenarioMenu.value, false)
+  scan(curatedMenu.value, true)
   return out
 })
 
@@ -200,6 +248,7 @@ function submit() {
       <div class="dsp-filter">
         <span class="dsp-filter-ico">🔎</span>
         <input v-model="filter" type="text" placeholder="Filter across everything… e.g. “Transfer”" />
+        <button v-if="filter" class="dsp-filter-x" type="button" aria-label="Clear filter" @click="clearFilter">×</button>
       </div>
       <label class="dsp-multi" title="Pick several sources into a pool">
         <input v-model="multi" type="checkbox" />
@@ -226,39 +275,47 @@ function submit() {
 
     <!-- Body -->
     <div class="dsp-body">
-      <!-- Flat filter results -->
+      <!-- Flat filter results — two-line rows give context to same-named scenarios -->
       <ul v-if="flatResults" class="dsp-list">
-        <li v-if="flatResults.length === 0" class="dsp-empty">No matches in the loaded menus.</li>
-        <li v-for="it in flatResults" :key="it.file">
-          <label v-if="multi" class="dsp-leaf" :class="{ unsupported: bbaUnsupported(it.file) }" :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''">
-            <input type="checkbox" :checked="isPicked(it.file)" @change="onScenario(it)" />
-            <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
-            <span class="dsp-origin">{{ it.section }}</span>
-          </label>
-          <button v-else type="button" class="dsp-leaf dsp-leaf-btn" :class="{ unsupported: bbaUnsupported(it.file) }" :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''" @click="onScenario(it)">
-            <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
-            <span class="dsp-origin">{{ it.section }}</span>
-          </button>
+        <li v-if="flatResults.length === 0" class="dsp-empty">No matches.</li>
+        <li v-for="it in flatResults" :key="(it.curated ? 'c:' : 's:') + it.file">
+          <component
+            :is="multi ? 'label' : 'button'"
+            :type="multi ? undefined : 'button'"
+            class="dsp-result"
+            :class="{ unsupported: !it.curated && bbaUnsupported(it.file) }"
+            :title="it.description || ''"
+            @click="!multi && onPick(it, it.curated)"
+          >
+            <input v-if="multi" type="checkbox" :checked="isPicked(it.file, it.curated)" @change="onPick(it, it.curated)" />
+            <span class="dsp-result-main">
+              <span class="dsp-result-top">
+                <span class="dsp-result-label">{{ it.label }}</span>
+                <span class="dsp-origin">{{ it.curated ? 'Curated' : 'Scenarios' }} · {{ it.section }}</span>
+              </span>
+              <span v-if="it.description" class="dsp-result-desc">{{ it.description }}</span>
+            </span>
+          </component>
         </li>
       </ul>
 
       <!-- Scenarios / Curated -->
       <template v-else-if="isScenarioTab">
         <div class="dsp-subbar">
-          <div v-if="allowFresh" class="dsp-seg">
+          <div v-if="allowFresh && activeTab === 'scenarios'" class="dsp-seg">
             <button type="button" :class="{ active: !fresh }" @click="fresh = false">Filtered</button>
             <button type="button" :class="{ active: fresh }" @click="fresh = true">Fresh</button>
           </div>
           <span class="dsp-subhint">
-            <template v-if="activeTab === 'curated'">Hand-curated coaching set.</template>
+            <template v-if="activeTab === 'curated'">Hand-curated coaching set — smaller and vetted.</template>
             <template v-else><span class="dsp-swatch"></span> orange = BBA doesn’t know it (better with a human partner)</template>
           </span>
         </div>
 
-        <p v-if="menuLoading" class="dsp-note">Loading scenarios…</p>
-        <p v-else-if="menuError" class="dsp-note dsp-err">{{ menuError }}</p>
+        <p v-if="activeError" class="dsp-note dsp-err">{{ activeError }}</p>
+        <p v-else-if="!activeMenu.length" class="dsp-note">Loading…</p>
         <div v-else class="dsp-tree">
-          <template v-for="(node, ni) in menu" :key="ni">
+          <template v-for="(node, ni) in activeMenu" :key="ni">
             <div v-if="node.type === 'section'" class="dsp-section">
               <div class="dsp-section-label">{{ node.label }}</div>
               <div class="dsp-section-items">
@@ -266,19 +323,19 @@ function submit() {
                   <label
                     v-if="multi"
                     class="dsp-leaf"
-                    :class="{ unsupported: bbaUnsupported(it.file) }"
-                    :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''"
+                    :class="{ unsupported: activeTab !== 'curated' && bbaUnsupported(it.file) }"
+                    :title="descFor(it)"
                   >
-                    <input type="checkbox" :checked="isPicked(it.file)" @change="onScenario(it)" />
+                    <input type="checkbox" :checked="isPicked(it.file, activeTab === 'curated')" @change="onPick(it, activeTab === 'curated')" />
                     <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
                   </label>
                   <button
                     v-else
                     type="button"
                     class="dsp-leaf dsp-leaf-btn"
-                    :class="{ unsupported: bbaUnsupported(it.file) }"
-                    :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''"
-                    @click="onScenario(it)"
+                    :class="{ unsupported: activeTab !== 'curated' && bbaUnsupported(it.file) }"
+                    :title="descFor(it)"
+                    @click="onPick(it, activeTab === 'curated')"
                   >
                     <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
                   </button>
@@ -405,6 +462,18 @@ function submit() {
 }
 .dsp-filter-ico {
   opacity: 0.6;
+}
+.dsp-filter-x {
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--muted);
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
 }
 .dsp-multi {
   display: flex;
@@ -564,7 +633,61 @@ function submit() {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+}
+/* Two-line result rows: name + origin on top, description below. */
+.dsp-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.dsp-result:hover {
+  background: var(--accent-weak);
+}
+.dsp-result.unsupported {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.dsp-result.unsupported:hover {
+  background: #fbcdaa;
+}
+.dsp-result input {
+  margin-top: 3px;
+}
+.dsp-result-main {
+  flex: 1;
+  min-width: 0;
+}
+.dsp-result-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dsp-result-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.dsp-result-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.dsp-result.unsupported .dsp-result-desc {
+  color: #9a5a37;
 }
 .dsp-note {
   color: var(--muted);
