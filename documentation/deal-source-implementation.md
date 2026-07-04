@@ -237,12 +237,16 @@ None block build-order item 1.
        body; `!C/!D/!H/!S` → ♣♦♥♠) via `fetchScenarioMeta().description`.
      - **Filter** = two-line results (name + description + "Origin · Section"),
        de-duped by file, matches name OR description, across both menus. Clear "×".
-   - Remaining: wire Favorites/History/Club-games/My-library backends; `full`
-     layout variant; a component test. **Manifest incoming** — PBS issue #167 will
-     ship a `manifest.json` (button-layout + per-scenario button-text/bba-works/chat)
-     to replace the ~100 per-`.btn` fetches; collapse `fetchScenarioMenu` +
-     `fetchScenarioMeta` into one `fetchManifest()` when it lands (keep the per-`.btn`
-     path as fallback). See memory `reference_pbs_manifest_issue`.
+   - **Favorites + History (local)** shipped — `useDealSourceMemory` (localStorage);
+     ♥ toggle on rows; History auto-records picks. **Club/Library tabs wired**
+     (parity): My library reuses `DealLibraryPicker`; Club games drills to boards
+     (`clubboard` refs). Both gate on `owner`; unregistered → register note.
+   - **Manifest shipped + integrated (PBS #167):** `fetchScenarioManifest()` builds
+     the Scenarios tab from one `manifest/manifest-release.json` fetch (layout +
+     buttonText/bbaWorks/chat) — replaced `fetchScenarioMenu` + ~100 `fetchScenarioMeta`.
+     **Repo moved to bridge-craftwork org (PBS #166):** `PBS.RAW_BASE` repointed.
+   - Remaining: `full` layout variant; a component test; verify Club/Library tabs
+     against a live logged-in session.
 4. **Retrofit** the three consumers (§5), in that order — this changes production
    views (incl. the D-B random→sequential default in Practice), so it wants review
    before/after, not an unattended rewrite.
