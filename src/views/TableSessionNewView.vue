@@ -28,42 +28,31 @@
 
       <!-- The form -->
       <form v-else @submit.prevent="create">
-        <!-- Library-driven session creation: pull a saved class set into
-             the PBN box instead of pasting/uploading (teacher/admin). -->
-        <div v-if="isTeacher" class="tn-lib">
-          <button type="button" class="tn-btn tn-btn-sm" @click="showLibrary = !showLibrary">
-            📚 {{ showLibrary ? 'Hide my library' : 'Load from my library' }}
-          </button>
-          <div v-if="showLibrary" class="tn-lib-panel">
-            <DealLibraryPicker
-              :owner="currentUser.id"
-              :busy-id="libBusyId"
-              @select="loadFromLibrary"
-            />
+        <!-- Deal source: build the session's board set with the unified picker
+             (scenarios, curated, club events, library, paste/upload, random).
+             "Add to session" materializes the pool into boards_pbn. -->
+        <div class="tn-source">
+          <DealSourcePicker
+            layout="full"
+            mode="materialize"
+            :allow="allow"
+            :owner="currentUser.id"
+            :show-close="false"
+            action-label="Add to session"
+            @submit="onPickSource"
+          />
+          <p v-if="sourceError" class="tn-error">{{ sourceError }}</p>
+          <div v-if="boardCount" class="tn-staged">
+            <span class="tn-staged-ok">
+              ✓ {{ boardCount }} board{{ boardCount === 1 ? '' : 's' }} staged<template v-if="stagedLabel"> — {{ stagedLabel }}</template>
+            </span>
+            <button type="button" class="tn-btn tn-btn-sm" @click="clearStaged">Clear</button>
           </div>
         </div>
 
-        <label class="tn-label">
-          Boards (PBN)
-          <textarea
-            v-model="pbn"
-            class="tn-pbn"
-            rows="8"
-            placeholder='Paste PBN here — e.g.
-[Board "1"]
-[Dealer "N"]
-[Vulnerable "None"]
-[Deal "N:K843.T542.J6.863 AQJ7.K.Q75.AT942 962.AJ7.KT82.J75 T5.Q9863.A943.KQ"]'
-          ></textarea>
-        </label>
-        <div class="tn-row tn-upload-row">
-          <input ref="fileInput" type="file" accept=".pbn,.txt" class="tn-file" @change="onFile">
-          <span v-if="fileName" class="tn-muted">{{ fileName }}</span>
-        </div>
-
-        <!-- Save the current boards as a reusable library file (materialized
+        <!-- Save the staged boards as a reusable library file (materialized
              copy) so they're one click away next time. -->
-        <div v-if="isTeacher && pbn.trim()" class="tn-row tn-save-lib">
+        <div v-if="isTeacher && boardCount" class="tn-row tn-save-lib">
           <input v-model="saveName" class="tn-save-name" placeholder="Save these boards as…">
           <button
             type="button"
@@ -110,7 +99,7 @@
         <button
           class="tn-btn tn-btn-primary tn-create"
           type="submit"
-          :disabled="creating || !pbn.trim() || (kind === 'teacher_set' && !isTeacher)"
+          :disabled="creating || !boardCount || (kind === 'teacher_set' && !isTeacher)"
         >
           {{ creating ? 'Creating…' : 'Create session' }}
         </button>
@@ -128,7 +117,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useDealLibrary } from '../composables/useDealLibrary.js'
-import DealLibraryPicker from '../components/table/DealLibraryPicker.vue'
+import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
+import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import { API_URL } from '../utils/apiUrl.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
@@ -143,19 +133,22 @@ const SEAT_POLICIES = {
 const router = useRouter()
 const userStore = useUserStore()
 const currentUser = userStore.currentUser
-const { fetchEntry, createEntry } = useDealLibrary()
+const { createEntry } = useDealLibrary()
+const { materialize } = useDealSourceResolver()
 
-const pbn = ref('')
-const fileName = ref('')
 const tableCount = ref(1)
 const seatPolicyKey = ref('first_free')
 const kind = ref('teacher_set')
 const creating = ref(false)
 const errorMessage = ref('')
 
-// Deal-library integration
-const showLibrary = ref(false)
-const libBusyId = ref('')
+// Staged board set — accumulated multi-board PBN materialized from the picker.
+const boardsPbn = ref('')
+const boardCount = ref(0)
+const stagedSources = ref([])
+const sourceError = ref('')
+
+// Deal-library integration (save the staged set back as a reusable file)
 const saveName = ref('')
 const saving = ref(false)
 const saveMsg = ref('')
@@ -168,37 +161,65 @@ const isTeacher = computed(() =>
   currentUser.value &&
   (currentUser.value.role === 'teacher' || currentUser.value.role === 'admin'))
 
-function onFile(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  fileName.value = file.name
-  const reader = new FileReader()
-  reader.onload = () => { pbn.value = String(reader.result || '') }
-  reader.readAsText(file)
+// Session creation gets every source (spec §6): library is teacher-gated,
+// club games need a signed-in owner; the rest are always available.
+const allow = computed(() => ({
+  tabs: [
+    'favorites', 'scenarios', 'curated', 'clubgames',
+    ...(isTeacher.value ? ['library'] : []),
+    'pbn', 'random', 'history',
+  ],
+  options: ['fresh'],
+}))
+
+const stagedLabel = computed(() => {
+  const s = stagedSources.value
+  if (!s.length) return ''
+  const shown = s.slice(0, 3).join(', ')
+  return s.length > 3 ? `${shown}, +${s.length - 3} more` : shown
+})
+
+// Renumber [Board "N"] tags sequentially across the whole staged set so an
+// appended pool stays a well-formed multi-board file.
+function renumber(pbnText) {
+  let n = 0
+  return pbnText.replace(/\[Board "[^"]*"\]/g, () => `[Board "${++n}"]`)
 }
 
-// Pull a saved library file's materialized PBN into the boards box.
-async function loadFromLibrary(entry) {
-  libBusyId.value = entry.id
-  const detail = await fetchEntry(entry.id)
-  libBusyId.value = ''
-  if (detail && detail.payload) {
-    pbn.value = detail.payload
-    fileName.value = entry.name
-    showLibrary.value = false
+// "Add to session": materialize the picker's selection into boards and append
+// them to the staged set (single-click adds one source's boards; Multi adds a
+// whole pool).
+async function onPickSource(selection) {
+  sourceError.value = ''
+  try {
+    const { boardsPbn: chunk, count } = await materialize(selection)
+    boardsPbn.value = renumber(
+      boardsPbn.value ? `${boardsPbn.value.trimEnd()}\n${chunk}` : chunk,
+    )
+    boardCount.value += count
+    const labels = (selection.items || []).map((i) => i.label || i.kind)
+    stagedSources.value = [...stagedSources.value, ...labels]
+  } catch (err) {
+    sourceError.value = err.message || 'Could not load those boards.'
   }
 }
 
-// Save the current boards as a reusable library file (kind=file).
+function clearStaged() {
+  boardsPbn.value = ''
+  boardCount.value = 0
+  stagedSources.value = []
+}
+
+// Save the staged boards as a reusable library file (kind=file).
 async function saveToLibrary() {
-  if (!saveName.value.trim() || !pbn.value.trim()) return
+  if (!saveName.value.trim() || !boardsPbn.value.trim()) return
   saving.value = true
   saveMsg.value = ''
   const res = await createEntry({
     owner: currentUser.value.id,
     kind: 'file',
     name: saveName.value.trim(),
-    payload: pbn.value,
+    payload: boardsPbn.value,
   })
   saving.value = false
   if (res.success) {
@@ -230,7 +251,7 @@ async function create() {
     const data = await apiPost('/table-sessions', {
       owner_user_id: currentUser.value.id,
       kind: kind.value,
-      boards_pbn: pbn.value,
+      boards_pbn: boardsPbn.value,
       table_count: tableCount.value || 1,
       seat_policy: SEAT_POLICIES[seatPolicyKey.value],
     })
@@ -275,8 +296,7 @@ function openConsole() {
 function resetForm() {
   created.value = null
   shareUrl.value = ''
-  pbn.value = ''
-  fileName.value = ''
+  clearStaged()
 }
 
 onMounted(() => {
@@ -299,21 +319,22 @@ onMounted(() => {
 
 .tn-label { display: block; font-size: 14px; font-weight: 600; color: #333; margin-bottom: 10px; }
 .tn-inline { display: flex; flex-direction: column; gap: 4px; }
-.tn-pbn {
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 4px;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 13px;
-  font-weight: 400;
-}
 .tn-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; margin: 10px 0; }
-.tn-upload-row { align-items: center; margin-top: 0; }
-.tn-file { font-size: 13px; }
 .tn-num { width: 70px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+
+.tn-source { margin-bottom: 16px; }
+.tn-staged {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid #cfe8d9;
+  border-radius: 8px;
+  background: #f1faf5;
+}
+.tn-staged-ok { color: #1b5e20; font-weight: 600; font-size: 14px; }
 .tn-select { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
 
 .tn-btn {
@@ -347,14 +368,6 @@ onMounted(() => {
 .tn-actions { display: flex; gap: 10px; margin-top: 14px; }
 
 .tn-btn-sm { padding: 6px 12px; font-size: 13px; }
-.tn-lib { margin-bottom: 12px; }
-.tn-lib-panel {
-  margin-top: 8px;
-  padding: 10px 12px;
-  border: 1px solid #e2e6ea;
-  border-radius: 8px;
-  background: #fafbfc;
-}
 .tn-save-lib { align-items: center; margin-top: 8px; }
 .tn-save-name {
   flex: 1;

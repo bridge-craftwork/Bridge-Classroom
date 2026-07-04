@@ -30,6 +30,8 @@ const props = defineProps({
   mode: { type: String, default: 'stream' }, // 'stream' | 'materialize'
   owner: { type: String, default: null },
   actionLabel: { type: String, default: 'Deal' },
+  // Modal hosts show the × (emits 'close'); inline/embedded hosts hide it.
+  showClose: { type: Boolean, default: true },
   modelValue: { type: Object, default: () => ({ items: [], options: {} }) },
   // Where unregistered users go to save Favorites/History/Club/Library to their
   // account. Host-provided; the notes hide their link when it's not set.
@@ -249,8 +251,17 @@ const flatResults = computed(() => {
   return out
 })
 
-// ── Paste PBN ──────────────────────────────────────────────────────────────
+// ── Paste PBN (+ file upload) ────────────────────────────────────────────────
 const pastedPbn = ref('')
+function onPbnFile(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    pastedPbn.value = String(reader.result || '')
+  }
+  reader.readAsText(file)
+}
 function usePastedPbn() {
   const text = pastedPbn.value.trim()
   if (!text) return
@@ -388,7 +399,7 @@ const isGamePicked = (g) => pool.value.some((r) => sameRef(r, clubGameRef(g)))
     </svg>
     <header class="dsp-head">
       <h2>Deal Source</h2>
-      <button class="dsp-x" type="button" aria-label="Close" @click="emit('close')">×</button>
+      <button v-if="showClose" class="dsp-x" type="button" aria-label="Close" @click="emit('close')">×</button>
     </header>
 
     <!-- Filter + Multi toggle -->
@@ -526,12 +537,15 @@ const isGamePicked = (g) => pool.value.some((r) => sameRef(r, clubGameRef(g)))
         </div>
       </template>
 
-      <!-- Paste PBN -->
+      <!-- Paste PBN / upload a .pbn file -->
       <template v-else-if="activeTab === 'pbn'">
         <textarea v-model="pastedPbn" class="dsp-ta" placeholder="Paste PBN board(s) here…"></textarea>
-        <button class="dsp-add" type="button" :disabled="!pastedPbn.trim()" @click="usePastedPbn">
-          {{ multi ? 'Add to pool' : 'Use this PBN' }}
-        </button>
+        <div class="dsp-pbn-row">
+          <input type="file" accept=".pbn,.txt" class="dsp-file" @change="onPbnFile" />
+          <button class="dsp-add" type="button" :disabled="!pastedPbn.trim()" @click="usePastedPbn">
+            {{ multi ? 'Add to pool' : 'Use this PBN' }}
+          </button>
+        </div>
       </template>
 
       <!-- Random -->
@@ -1149,6 +1163,20 @@ const isGamePicked = (g) => pool.value.some((r) => sameRef(r, clubGameRef(g)))
   font-family: ui-monospace, monospace;
   font-size: 12px;
   resize: vertical;
+}
+.dsp-pbn-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.dsp-file {
+  font-size: 12px;
+  color: var(--muted);
+}
+.dsp-pbn-row .dsp-add {
+  margin-top: 0;
 }
 .dsp-add {
   margin-top: 8px;
