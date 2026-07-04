@@ -16,6 +16,7 @@
 
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchScenarioMenu, fetchCuratedMenu, fetchScenarioMeta } from '@/utils/pbsScenarios.js'
+import { useDealSourceMemory, refKey } from '@/composables/useDealSourceMemory.js'
 
 const props = defineProps({
   allow: {
@@ -27,8 +28,14 @@ const props = defineProps({
   owner: { type: String, default: null },
   actionLabel: { type: String, default: 'Deal' },
   modelValue: { type: Object, default: () => ({ items: [], options: {} }) },
+  // Where unregistered users go to save Favorites/History/Club/Library to their
+  // account. Host-provided; the notes hide their link when it's not set.
+  registerUrl: { type: String, default: null },
 })
 const emit = defineEmits(['update:modelValue', 'submit', 'close'])
+
+// Local-only memory (Favorites + History), localStorage-backed.
+const { favorites, history, isFavorite, toggleFavorite, recordHistory, clearHistory } = useDealSourceMemory()
 
 const ALL_TABS = [
   { key: 'favorites', label: 'Favorites', icon: '♥' },
@@ -87,6 +94,7 @@ function selectionFrom(items) {
 // Resolve a selection: in single mode fire it now; in multi it goes to the pool.
 function choose(ref_) {
   const sel = selectionFrom([ref_])
+  recordHistory([ref_])
   emit('update:modelValue', sel)
   emit('submit', sel)
 }
@@ -231,8 +239,40 @@ const canSubmit = computed(() => pool.value.length > 0)
 function submit() {
   if (!canSubmit.value) return
   const sel = selectionFrom(pool.value)
+  recordHistory(pool.value)
   emit('update:modelValue', sel)
   emit('submit', sel)
+}
+
+// ── Favorites / History helpers ─────────────────────────────────────────────
+// Favorite the scenario itself (not its fresh/script variant).
+const favRefFor = (it, curated) => ({
+  kind: 'scenario',
+  repo: 'pbs',
+  file: it.file,
+  label: displayLabel(it),
+  ...(curated ? { curated: true } : {}),
+})
+const sameRef = (a, b) => refKey(a) === refKey(b)
+function pickRef(r) {
+  if (!multi.value) return choose(r)
+  if (!pool.value.some((x) => sameRef(x, r))) pool.value.push({ ...r })
+}
+function refTag(r) {
+  switch (r.kind) {
+    case 'scenario':
+      return r.curated ? 'Curated' : 'Scenario'
+    case 'random':
+      return 'Random'
+    case 'pbn':
+      return 'PBN'
+    case 'clubboard':
+      return 'Club board'
+    case 'library':
+      return 'Library'
+    default:
+      return r.kind
+  }
 }
 </script>
 
@@ -279,23 +319,33 @@ function submit() {
       <ul v-if="flatResults" class="dsp-list">
         <li v-if="flatResults.length === 0" class="dsp-empty">No matches.</li>
         <li v-for="it in flatResults" :key="(it.curated ? 'c:' : 's:') + it.file">
-          <component
-            :is="multi ? 'label' : 'button'"
-            :type="multi ? undefined : 'button'"
-            class="dsp-result"
-            :class="{ unsupported: !it.curated && bbaUnsupported(it.file) }"
-            :title="it.description || ''"
-            @click="!multi && onPick(it, it.curated)"
-          >
-            <input v-if="multi" type="checkbox" :checked="isPicked(it.file, it.curated)" @change="onPick(it, it.curated)" />
-            <span class="dsp-result-main">
-              <span class="dsp-result-top">
-                <span class="dsp-result-label">{{ it.label }}</span>
-                <span class="dsp-origin">{{ it.curated ? 'Curated' : 'Scenarios' }} · {{ it.section }}</span>
+          <div class="dsp-result-row" :class="{ unsupported: !it.curated && bbaUnsupported(it.file) }">
+            <component
+              :is="multi ? 'label' : 'button'"
+              :type="multi ? undefined : 'button'"
+              class="dsp-result dsp-hit"
+              :title="it.description || ''"
+              @click="!multi && onPick(it, it.curated)"
+            >
+              <input v-if="multi" type="checkbox" :checked="isPicked(it.file, it.curated)" @change="onPick(it, it.curated)" />
+              <span class="dsp-result-main">
+                <span class="dsp-result-top">
+                  <span class="dsp-result-label">{{ it.label }}</span>
+                  <span class="dsp-origin">{{ it.curated ? 'Curated' : 'Scenarios' }} · {{ it.section }}</span>
+                </span>
+                <span v-if="it.description" class="dsp-result-desc">{{ it.description }}</span>
               </span>
-              <span v-if="it.description" class="dsp-result-desc">{{ it.description }}</span>
-            </span>
-          </component>
+            </component>
+            <button
+              type="button"
+              class="dsp-star"
+              :class="{ on: isFavorite(favRefFor(it, it.curated)) }"
+              :title="isFavorite(favRefFor(it, it.curated)) ? 'Remove favorite' : 'Add favorite'"
+              @click.stop="toggleFavorite(favRefFor(it, it.curated))"
+            >
+              {{ isFavorite(favRefFor(it, it.curated)) ? '♥' : '♡' }}
+            </button>
+          </div>
         </li>
       </ul>
 
@@ -319,27 +369,29 @@ function submit() {
             <div v-if="node.type === 'section'" class="dsp-section">
               <div class="dsp-section-label">{{ node.label }}</div>
               <div class="dsp-section-items">
-                <template v-for="it in node.items" :key="it.file">
-                  <label
-                    v-if="multi"
-                    class="dsp-leaf"
-                    :class="{ unsupported: activeTab !== 'curated' && bbaUnsupported(it.file) }"
-                    :title="descFor(it)"
-                  >
+                <div
+                  v-for="it in node.items"
+                  :key="it.file"
+                  class="dsp-leaf"
+                  :class="{ unsupported: activeTab !== 'curated' && bbaUnsupported(it.file) }"
+                >
+                  <label v-if="multi" class="dsp-hit" :title="descFor(it)">
                     <input type="checkbox" :checked="isPicked(it.file, activeTab === 'curated')" @change="onPick(it, activeTab === 'curated')" />
                     <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
                   </label>
-                  <button
-                    v-else
-                    type="button"
-                    class="dsp-leaf dsp-leaf-btn"
-                    :class="{ unsupported: activeTab !== 'curated' && bbaUnsupported(it.file) }"
-                    :title="descFor(it)"
-                    @click="onPick(it, activeTab === 'curated')"
-                  >
+                  <button v-else type="button" class="dsp-hit" :title="descFor(it)" @click="onPick(it, activeTab === 'curated')">
                     <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
                   </button>
-                </template>
+                  <button
+                    type="button"
+                    class="dsp-star"
+                    :class="{ on: isFavorite(favRefFor(it, activeTab === 'curated')) }"
+                    :title="isFavorite(favRefFor(it, activeTab === 'curated')) ? 'Remove favorite' : 'Add favorite'"
+                    @click.stop="toggleFavorite(favRefFor(it, activeTab === 'curated'))"
+                  >
+                    {{ isFavorite(favRefFor(it, activeTab === 'curated')) ? '♥' : '♡' }}
+                  </button>
+                </div>
               </div>
             </div>
           </template>
@@ -362,7 +414,63 @@ function submit() {
         </button>
       </template>
 
-      <!-- Not-yet-wired tabs -->
+      <!-- Favorites (local) -->
+      <template v-else-if="activeTab === 'favorites'">
+        <p class="dsp-localnote">♥ Saved on this device &amp; browser only — not synced to your account.</p>
+        <ul v-if="favorites.length" class="dsp-list">
+          <li v-for="(r, i) in favorites" :key="i">
+            <div class="dsp-result-row">
+              <component :is="multi ? 'label' : 'button'" :type="multi ? undefined : 'button'" class="dsp-result dsp-hit" @click="!multi && pickRef(r)">
+                <input v-if="multi" type="checkbox" :checked="pool.some((x) => sameRef(x, r))" @change="pickRef(r)" />
+                <span class="dsp-result-main">
+                  <span class="dsp-result-top">
+                    <span class="dsp-result-label">{{ r.label || r.kind }}</span>
+                    <span class="dsp-origin">{{ refTag(r) }}</span>
+                  </span>
+                </span>
+              </component>
+              <button type="button" class="dsp-star on" title="Remove favorite" @click.stop="toggleFavorite(r)">♥</button>
+            </div>
+          </li>
+        </ul>
+        <p v-else class="dsp-note">No favorites yet — tap the ♡ on any scenario to save it here.</p>
+      </template>
+
+      <!-- History (local) -->
+      <template v-else-if="activeTab === 'history'">
+        <div class="dsp-subbar">
+          <span class="dsp-subhint">🕐 Recent picks — this device &amp; browser only.</span>
+          <button v-if="history.length" type="button" class="dsp-clear" @click="clearHistory">Clear</button>
+        </div>
+        <ul v-if="history.length" class="dsp-list">
+          <li v-for="(r, i) in history" :key="i">
+            <div class="dsp-result-row">
+              <component :is="multi ? 'label' : 'button'" :type="multi ? undefined : 'button'" class="dsp-result dsp-hit" @click="!multi && pickRef(r)">
+                <input v-if="multi" type="checkbox" :checked="pool.some((x) => sameRef(x, r))" @change="pickRef(r)" />
+                <span class="dsp-result-main">
+                  <span class="dsp-result-top">
+                    <span class="dsp-result-label">{{ r.label || r.kind }}</span>
+                    <span class="dsp-origin">{{ refTag(r) }}</span>
+                  </span>
+                </span>
+              </component>
+              <button type="button" class="dsp-star" :class="{ on: isFavorite(r) }" :title="isFavorite(r) ? 'Remove favorite' : 'Add favorite'" @click.stop="toggleFavorite(r)">{{ isFavorite(r) ? '♥' : '♡' }}</button>
+            </div>
+          </li>
+        </ul>
+        <p v-else class="dsp-note">No history yet — your recent picks will appear here.</p>
+      </template>
+
+      <!-- Club games / My library — local (IndexedDB) for unregistered users -->
+      <template v-else-if="activeTab === 'clubgames' || activeTab === 'library'">
+        <p class="dsp-localnote">
+          Stored on this device &amp; browser (unregistered).
+          <a v-if="registerUrl" :href="registerUrl" target="_blank" rel="noopener">Register</a><template v-if="registerUrl"> to save these to your account and use them on any device.</template>
+        </p>
+        <p class="dsp-note dsp-soon">{{ ALL_TABS.find((t) => t.key === activeTab)?.label }} — coming soon in the picker.</p>
+      </template>
+
+      <!-- Fallback -->
       <template v-else>
         <p class="dsp-note dsp-soon">{{ ALL_TABS.find((t) => t.key === activeTab)?.label }} — coming soon in the picker.</p>
       </template>
@@ -596,22 +704,13 @@ function submit() {
 .dsp-leaf {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 1px 5px;
+  gap: 2px;
+  padding: 0 2px;
   border-radius: 5px;
-  cursor: pointer;
   font-size: 13px;
-  text-align: left;
 }
 .dsp-leaf:hover {
   background: var(--accent-weak);
-}
-.dsp-leaf-btn {
-  border: none;
-  background: none;
-  width: 100%;
-  color: inherit;
-  font: inherit;
 }
 .dsp-leaf.unsupported {
   background: var(--warn-bg);
@@ -620,8 +719,42 @@ function submit() {
 .dsp-leaf.unsupported:hover {
   background: #fbcdaa;
 }
+/* Clickable selection area of a row (label/button), star sits beside it. */
+.dsp-hit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 1px 3px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .dsp-leaf-label {
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dsp-star {
+  flex: none;
+  border: none;
+  background: none;
+  color: #cbd0d6;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.dsp-star.on {
+  color: #c2455e;
+}
+.dsp-star:hover {
+  color: #c2455e;
 }
 .dsp-origin {
   font-size: 11px;
@@ -636,11 +769,30 @@ function submit() {
   gap: 2px;
 }
 /* Two-line result rows: name + origin on top, description below. */
+.dsp-result-row {
+  display: flex;
+  align-items: flex-start;
+  border-radius: 6px;
+}
+.dsp-result-row:hover {
+  background: var(--accent-weak);
+}
+.dsp-result-row.unsupported {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.dsp-result-row.unsupported:hover {
+  background: #fbcdaa;
+}
+.dsp-result-row .dsp-star {
+  margin-top: 5px;
+}
 .dsp-result {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  width: 100%;
   padding: 5px 6px;
   border: none;
   background: none;
@@ -649,16 +801,6 @@ function submit() {
   text-align: left;
   font: inherit;
   color: inherit;
-}
-.dsp-result:hover {
-  background: var(--accent-weak);
-}
-.dsp-result.unsupported {
-  background: var(--warn-bg);
-  color: var(--warn-ink);
-}
-.dsp-result.unsupported:hover {
-  background: #fbcdaa;
 }
 .dsp-result input {
   margin-top: 3px;
@@ -686,8 +828,21 @@ function submit() {
   text-overflow: ellipsis;
   margin-top: 1px;
 }
-.dsp-result.unsupported .dsp-result-desc {
+.dsp-result-row.unsupported .dsp-result-desc {
   color: #9a5a37;
+}
+.dsp-localnote {
+  font-size: 12px;
+  color: var(--muted);
+  background: #f5f6f8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0 0 10px;
+}
+.dsp-localnote a {
+  color: var(--accent);
+  font-weight: 600;
 }
 .dsp-note {
   color: var(--muted);

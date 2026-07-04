@@ -25,6 +25,7 @@ const App = {
           },
           layout: 'compact',
           actionLabel: 'Deal',
+          registerUrl: 'https://bridge-classroom.com/#/register',
           onSubmit: (s) => console.log('submit →', JSON.stringify(s)),
         }),
       )
