@@ -238,8 +238,11 @@ None block build-order item 1.
      - **Filter** = two-line results (name + description + "Origin · Section"),
        de-duped by file, matches name OR description, across both menus. Clear "×".
    - Remaining: wire Favorites/History/Club-games/My-library backends; `full`
-     layout variant; a component test; consider a static `bba-works`/`button-text`
-     manifest to avoid ~100 per-`.btn` fetches on the Scenarios tab.
+     layout variant; a component test. **Manifest incoming** — PBS issue #167 will
+     ship a `manifest.json` (button-layout + per-scenario button-text/bba-works/chat)
+     to replace the ~100 per-`.btn` fetches; collapse `fetchScenarioMenu` +
+     `fetchScenarioMeta` into one `fetchManifest()` when it lands (keep the per-`.btn`
+     path as fallback). See memory `reference_pbs_manifest_issue`.
 4. **Retrofit** the three consumers (§5), in that order — this changes production
    views (incl. the D-B random→sequential default in Practice), so it wants review
    before/after, not an unattended rewrite.
