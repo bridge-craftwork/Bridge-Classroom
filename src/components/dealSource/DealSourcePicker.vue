@@ -130,6 +130,18 @@ function submit() {
 }
 
 const showOpt = (k) => props.allow.options.includes(k)
+
+// Segmented options (native <select> popups render detached at the screen
+// bottom on some platforms — inline pills keep everything in-panel).
+const MODES = [
+  { v: 'bid-and-play', label: 'Bid + play' },
+  { v: 'bid-only', label: 'Bid only' },
+  { v: 'play-only', label: 'Play only' },
+]
+const DRAWS = [
+  { v: 'sequential', label: 'Sequential' },
+  { v: 'random', label: 'Random' },
+]
 </script>
 
 <template>
@@ -229,21 +241,34 @@ const showOpt = (k) => props.allow.options.includes(k)
 
     <!-- Options -->
     <div class="dsp-options">
-      <label v-if="showOpt('mode')">
-        Mode
-        <select v-model="options.mode">
-          <option value="bid-and-play">Bid + play</option>
-          <option value="bid-only">Bid only</option>
-          <option value="play-only">Play only</option>
-        </select>
-      </label>
-      <label v-if="showOpt('drawOrder')">
-        Draw
-        <select v-model="options.drawOrder">
-          <option value="sequential">Sequential</option>
-          <option value="random">Random</option>
-        </select>
-      </label>
+      <div v-if="showOpt('mode')" class="dsp-opt">
+        <span class="dsp-opt-label">Mode</span>
+        <div class="dsp-seg">
+          <button
+            v-for="m in MODES"
+            :key="m.v"
+            type="button"
+            :class="{ active: options.mode === m.v }"
+            @click="options.mode = m.v"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+      </div>
+      <div v-if="showOpt('drawOrder')" class="dsp-opt">
+        <span class="dsp-opt-label">Draw</span>
+        <div class="dsp-seg">
+          <button
+            v-for="d in DRAWS"
+            :key="d.v"
+            type="button"
+            :class="{ active: options.drawOrder === d.v }"
+            @click="options.drawOrder = d.v"
+          >
+            {{ d.label }}
+          </button>
+        </div>
+      </div>
       <label v-if="showOpt('fresh')" class="dsp-fresh">
         <input v-model="options.fresh" type="checkbox" />
         Fresh deals (generate)
@@ -345,9 +370,8 @@ const showOpt = (k) => props.allow.options.includes(k)
 }
 
 .dsp-body {
-  flex: 1;
-  min-height: 180px;
-  max-height: 40vh;
+  flex: 1 1 auto;
+  min-height: 200px;
   overflow-y: auto;
   padding: 12px 16px;
   border-top: 1px solid var(--line);
@@ -509,17 +533,44 @@ const showOpt = (k) => props.allow.options.includes(k)
 .dsp-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px 16px;
   align-items: center;
-  padding: 4px 16px 12px;
+  padding: 10px 16px 12px;
   font-size: 13px;
   color: var(--muted);
 }
-.dsp-options select {
-  margin-left: 6px;
-  padding: 4px 6px;
+.dsp-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dsp-opt-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.dsp-seg {
+  display: inline-flex;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dsp-seg button {
+  border: none;
+  border-right: 1px solid var(--line);
+  background: #fff;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dsp-seg button:last-child {
+  border-right: none;
+}
+.dsp-seg button.active {
+  background: var(--accent);
+  color: #fff;
 }
 .dsp-fresh {
   display: flex;

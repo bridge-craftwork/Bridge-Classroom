@@ -18,8 +18,11 @@ const App = {
       h(
         'div',
         {
+          // Top-anchored (not vertically centered) so the tab row stays put and
+          // the body expands downward as tabs change — mirrors how a real modal
+          // host should anchor the picker.
           style:
-            'min-height:100vh;background:#eef1f4;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box',
+            'min-height:100vh;background:#eef1f4;display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;box-sizing:border-box',
         },
         h(DealSourcePicker, {
           modelValue: selection.value,
