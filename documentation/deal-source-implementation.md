@@ -204,10 +204,16 @@ None block build-order item 1.
 3. 🚧 **`DealSourcePicker.vue`** — compact-modal **skeleton DONE (2026-07-03)**:
    filter, gated tabs, live PBS scenario tree (multi-select), Curated, Paste PBN,
    Random, selection tray, options, action. Preview harness at
-   `deal-source-demo.html` (`npm run dev` → `/deal-source-demo.html`). Remaining:
-   wire Club games / My library tabs (currently "coming soon"), collapsible
-   sections (PBS majors say "click to open/close"), a `full` layout variant, and
-   a component test. **Awaiting Rick's UX review of the skeleton before more UI.**
+   `deal-source-demo.html` (`npm run dev` → `/deal-source-demo.html`).
+   - **Reviewed by Rick 2026-07-03:** options are inline segmented pills (no native
+     `<select>` popup); panel is top-anchored so the tab row stays put and the body
+     expands downward (no jump).
+   - **D-E — NO collapsible sections** (Rick): people were confused by hidden
+     elements behind click-to-open headers. Rely on the **scroll region + live
+     filter** instead — flat and always-visible. (Follow-up: strip the now-false
+     "(CLICK HEADERS TO OPEN/CLOSE)" text from the PBS major label on render.)
+   - Remaining: wire Club games / My library tabs (currently "coming soon"), a
+     `full` layout variant, and a component test.
 4. **Retrofit** the three consumers (§5), in that order — this changes production
    views (incl. the D-B random→sequential default in Practice), so it wants review
    before/after, not an unattended rewrite.
