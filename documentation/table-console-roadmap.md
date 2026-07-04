@@ -352,7 +352,34 @@ hides the placeholder cards, shows "no deal"). Tables count still at creation.
 - **Placeholder hand = one full suit per seat** — DONE (`placeholder_board`,
   table-service 5c03a77), so an idle deal never looks real.
 
+**Come-and-go + sticky lobby (Rick 2026-07-04 — bake into the refactor):**
+- `wait_to_seat` is a **toggle** now (scheduling a session for a time = future
+  nice-to-have, not built).
+- **A participant in the lobby is never auto-seated** — whether they arrived
+  under wait_to_seat, or were *moved/dragged/booted* to the lobby. They stay
+  until explicitly seated (`seat_students` or a per-student assign). This is the
+  key to parking someone who walked away and keeping their table moving under
+  bot takeover; a reconnect must NOT re-grab a seat. (Today's "returning
+  kibitzer keeps their table" already does this — preserve it.)
+- **Two lobby sub-states (Rick 2026-07-04):** the lobby splits into
+  **waiting** (auto-fill eligible — `seat_students` / auto-fill seats these) and
+  a **timeout corner / parked** (explicitly benched — NEVER auto-seated until
+  dragged back). So a kibitzer carries a `parked` flag: arrivals under
+  wait_to_seat are *waiting*; drag-to-lobby / boot makes them *parked*.
+- **Drag-and-drop** (players between tables; drag-to-lobby → bot takes the seat)
+  is future, but the model must allow a student to come and go freely, so the
+  refactor shouldn't hard-couple seat ↔ connection.
+- **Disconnect → bot → reclaim already works** (zombie-seat policy,
+  `rooms.rs`: `TAKEOVER_AFTER` / `seat_bot_controlled` — a dropped human keeps
+  the seat binding, a bot drives after the grace period, reconnect reclaims the
+  exact seat instantly; BBO-style). **Future extension:** the same for an
+  **AFK-but-still-connected** player — idle-too-long → bot takes over, the seat
+  is held, the next human action reclaims it (a new idle trigger alongside the
+  disconnect trigger).
+
 **The real refactor (still to build):**
+- **Scope now = append-only dynamic rooms** (grow; removal/auto-remove-empty
+  deferred with drag-drop, so kibitzer `room_idx` stays stable for this pass).
 - **table-service:** `rooms` becomes **mutable + id-keyed** (not the fixed,
   index-keyed `Vec` assumed across place/lobby/try_advance/assign_seat/
   find_seated + kibitzer `room_idx`). Allow `table_count: 0`; auto-create a table
