@@ -222,10 +222,24 @@ None block build-order item 1.
      fixed** — Scenarios→`/bba-filtered`, Curated→`/coaching-curated` (D-A revised,
      supersedes the old curated=bba-filtered); added **♥ Favorites** + **🕐 History**
      icon tabs (backends TBD — placeholders).
-   - Remaining: **tab-row wraps to 2 lines at 560px with 8 tabs** — decide space
-     treatment (shorten Club/Library/Paste labels, or make more tabs icon-only).
-     Wire Favorites/History/Club-games/My-library backends. `full` layout variant +
-     a component test.
+   - **Feedback round 3 (Rick 2026-07-04), shipped:** display names from `.btn`
+     `# button-text:` (fallback to prettified filename); **remember last tab** in
+     localStorage (`dsp-active-tab`), default Scenarios; Favorites ♥ far left,
+     History 🕐 far right; shortened Club/Library/Paste so 8 tabs fit one row.
+   - **Feedback round 4 (Rick 2026-07-04), shipped — data-layer facts to keep:**
+     - **Curated ≠ Scenarios.** Curated renders from its OWN manifest
+       `coaching-curated/toc.json` (`fetchCuratedMenu()`) — 69 vetted lessons with
+       built-in names + descriptions (incl. Play-of-the-Hand categories). `# curate:`
+       in `.btn` is NOT a reliable membership marker (Two_Over_One has none but is
+       curated), so the manifest is the source of truth. Scenarios stay on the
+       button-layout + `bba-filtered`.
+     - **Tooltips** harvested from each `.btn` `/*@chat*/` block (title `--- …` +
+       body; `!C/!D/!H/!S` → ♣♦♥♠) via `fetchScenarioMeta().description`.
+     - **Filter** = two-line results (name + description + "Origin · Section"),
+       de-duped by file, matches name OR description, across both menus. Clear "×".
+   - Remaining: wire Favorites/History/Club-games/My-library backends; `full`
+     layout variant; a component test; consider a static `bba-works`/`button-text`
+     manifest to avoid ~100 per-`.btn` fetches on the Scenarios tab.
 4. **Retrofit** the three consumers (§5), in that order — this changes production
    views (incl. the D-B random→sequential default in Practice), so it wants review
    before/after, not an unattended rewrite.
