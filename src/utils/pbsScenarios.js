@@ -98,24 +98,27 @@ export async function fetchScenarioDeals(file, { curated = false } = {}) {
   throw new Error(curated ? `no curated deals for ${file}` : `no deals for ${file}`)
 }
 
-// Per-scenario metadata from /btn/<file>.btn — currently just the BBA-support
-// flag (`# bba-works: true|false`). Scenarios BBA doesn't fully support play
-// better with a human partner than a BBA bot, so the picker flags them.
-// Optimistic default (bbaWorks:true) on any miss/error. Mirrors
-// BiddingPracticeView's fetchBtnMetadata.
+// Per-scenario metadata from /btn/<file>.btn — the authoritative display name
+// (`# button-text:`) and the BBA-support flag (`# bba-works: true|false`).
+// Scenarios BBA doesn't fully support play better with a human partner than a
+// BBA bot, so the picker flags them. Optimistic default (bbaWorks:true,
+// buttonText:null) on any miss/error. Mirrors BiddingPracticeView's fetchBtnMetadata.
 export async function fetchScenarioMeta(file) {
   try {
     const resp = await fetch(`${PBS.RAW_BASE}${PBS.BTN_DIR}/${file}.btn`)
-    if (!resp.ok) return { bbaWorks: true }
+    if (!resp.ok) return { bbaWorks: true, buttonText: null }
     const text = await resp.text()
+    const meta = { bbaWorks: true, buttonText: null }
     for (const raw of text.split('\n').slice(0, 40)) {
       if (!raw.startsWith('#')) continue
-      const m = raw.match(/^#\s*bba-works:\s*(\w+)/i)
-      if (m) return { bbaWorks: m[1].toLowerCase() === 'true' }
+      const bba = raw.match(/^#\s*bba-works:\s*(\w+)/i)
+      if (bba) meta.bbaWorks = bba[1].toLowerCase() === 'true'
+      const btn = raw.match(/^#\s*button-text:\s*(.+?)\s*$/i)
+      if (btn) meta.buttonText = btn[1]
     }
-    return { bbaWorks: true }
+    return meta
   } catch {
-    return { bbaWorks: true }
+    return { bbaWorks: true, buttonText: null }
   }
 }
 

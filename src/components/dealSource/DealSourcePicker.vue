@@ -32,16 +32,33 @@ const emit = defineEmits(['update:modelValue', 'submit', 'close'])
 
 const ALL_TABS = [
   { key: 'favorites', label: 'Favorites', icon: '♥' },
-  { key: 'history', label: 'History', icon: '🕐' },
   { key: 'scenarios', label: 'Scenarios' },
   { key: 'curated', label: 'Curated' },
   { key: 'clubgames', label: 'Club' },
   { key: 'library', label: 'Library' },
   { key: 'pbn', label: 'Paste' },
   { key: 'random', label: 'Random' },
+  { key: 'history', label: 'History', icon: '🕐' },
 ]
 const visibleTabs = computed(() => ALL_TABS.filter((t) => props.allow.tabs.includes(t.key)))
-const activeTab = ref(visibleTabs.value[0]?.key || 'scenarios')
+
+// Remember the last-used tab across invocations (only restore if still allowed).
+const TAB_KEY = 'dsp-active-tab'
+function initialTab() {
+  try {
+    const saved = localStorage.getItem(TAB_KEY)
+    if (saved && visibleTabs.value.some((t) => t.key === saved)) return saved
+  } catch { /* ignore */ }
+  // No saved tab → default to Scenarios (not the leftmost, which is Favorites).
+  if (visibleTabs.value.some((t) => t.key === 'scenarios')) return 'scenarios'
+  return visibleTabs.value[0]?.key || 'scenarios'
+}
+const activeTab = ref(initialTab())
+watch(activeTab, (t) => {
+  try {
+    localStorage.setItem(TAB_KEY, t)
+  } catch { /* ignore */ }
+})
 const isScenarioTab = computed(() => activeTab.value === 'scenarios' || activeTab.value === 'curated')
 
 // single (default) vs multi selection
@@ -98,10 +115,14 @@ onMounted(() => {
 
 // BBA doesn't support this convention → flag it (better with a human partner).
 const bbaUnsupported = (file) => fileMeta.value[file]?.bbaWorks === false
+// Authoritative display name from the .btn `# button-text:`, falling back to the
+// menu label (prettified filename) until the metadata resolves.
+const displayLabel = (it) => fileMeta.value[it.file]?.buttonText || it.label
 
 function makeScenarioRef(item) {
-  if (fresh.value) return { kind: 'script', repo: 'pbs', file: item.file, label: item.label }
-  const r = { kind: 'scenario', repo: 'pbs', file: item.file, label: item.label }
+  const label = displayLabel(item)
+  if (fresh.value) return { kind: 'script', repo: 'pbs', file: item.file, label }
+  const r = { kind: 'scenario', repo: 'pbs', file: item.file, label }
   if (activeTab.value === 'curated') r.curated = true
   return r
 }
@@ -124,7 +145,9 @@ const flatResults = computed(() => {
   const out = []
   for (const node of menu.value) {
     if (node.type !== 'section') continue
-    for (const it of node.items) if (norm(it.label).includes(q)) out.push({ ...it, section: node.label })
+    for (const it of node.items) {
+      if (norm(it.label).includes(q) || norm(displayLabel(it)).includes(q)) out.push({ ...it, section: node.label })
+    }
   }
   return out
 })
@@ -209,11 +232,11 @@ function submit() {
         <li v-for="it in flatResults" :key="it.file">
           <label v-if="multi" class="dsp-leaf" :class="{ unsupported: bbaUnsupported(it.file) }" :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''">
             <input type="checkbox" :checked="isPicked(it.file)" @change="onScenario(it)" />
-            <span class="dsp-leaf-label">{{ it.label }}</span>
+            <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
             <span class="dsp-origin">{{ it.section }}</span>
           </label>
           <button v-else type="button" class="dsp-leaf dsp-leaf-btn" :class="{ unsupported: bbaUnsupported(it.file) }" :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''" @click="onScenario(it)">
-            <span class="dsp-leaf-label">{{ it.label }}</span>
+            <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
             <span class="dsp-origin">{{ it.section }}</span>
           </button>
         </li>
@@ -247,7 +270,7 @@ function submit() {
                     :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''"
                   >
                     <input type="checkbox" :checked="isPicked(it.file)" @change="onScenario(it)" />
-                    <span class="dsp-leaf-label">{{ it.label }}</span>
+                    <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
                   </label>
                   <button
                     v-else
@@ -257,7 +280,7 @@ function submit() {
                     :title="bbaUnsupported(it.file) ? 'BBA does not fully support this convention' : ''"
                     @click="onScenario(it)"
                   >
-                    <span class="dsp-leaf-label">{{ it.label }}</span>
+                    <span class="dsp-leaf-label">{{ displayLabel(it) }}</span>
                   </button>
                 </template>
               </div>

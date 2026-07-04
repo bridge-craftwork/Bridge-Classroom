@@ -20,7 +20,7 @@ const App = {
           modelValue: selection.value,
           'onUpdate:modelValue': (v) => (selection.value = v),
           allow: {
-            tabs: ['favorites', 'history', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random'],
+            tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
             options: ['fresh'],
           },
           layout: 'compact',
