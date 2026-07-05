@@ -165,6 +165,10 @@ function openSocket(myEpoch) {
     // Optional bot selector (?bot=random on the table route). The server
     // confirms the active mode via `bot_mode` in the welcome frame.
     if (identity?.bot) hello.bot = identity.bot
+    // Host-as-player: the session owner joins SEATED (plays) instead of as the
+    // see-all controller. The server keeps the host-control frames tied to the
+    // owner sub, so a seated host still drives the deal source / seating.
+    if (identity?.asPlayer) hello.as_player = true
     ws.send(JSON.stringify(hello))
     recordFrame('out', { ...hello, ticket: '<ticket>' })
     status.value = 'connected'
@@ -256,10 +260,10 @@ function handlePageUnload() {
 
 // Connect (or switch) to a table session. Exactly one of userId / guestName.
 // `bot` optionally selects the server's bot backend (e.g. 'random').
-async function connect({ sessionId, userId = null, guestName = null, bot = null }) {
+async function connect({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false }) {
   disconnect()
   const myEpoch = ++epoch
-  identity = { sessionId, userId, guestName, bot }
+  identity = { sessionId, userId, guestName, bot, asPlayer }
   // pagehide covers mobile Safari / bfcache where beforeunload doesn't fire.
   window.addEventListener('beforeunload', handlePageUnload)
   window.addEventListener('pagehide', handlePageUnload)

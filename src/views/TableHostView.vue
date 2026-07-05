@@ -22,14 +22,14 @@
       <button class="th-btn th-btn-primary" @click="ensureSession">Try again</button>
     </div>
 
-    <!-- The host surface -->
+    <!-- The host surface: a slim host strip over the seated player table. -->
     <main v-else class="th-main">
-      <!-- Control strip: deal source + invite + end. No multi-table chrome. -->
+      <!-- Host strip: deal source + invite + test players + end. The host is a
+           seated player (as_player), so the table itself is the TableView below. -->
       <div class="th-controls">
         <button class="th-btn th-btn-primary" :disabled="!connected" @click="showPicker = true">
           Deal source&hellip;
         </button>
-        <span v-if="deck?.label" class="th-deck">{{ deck.label }} &middot; {{ deck.total }} board{{ deck.total === 1 ? '' : 's' }}</span>
 
         <div class="th-invite">
           <button class="th-btn" :disabled="!shareUrl" :title="shareUrl || 'Generating your link…'" @click="copyShareUrl">
@@ -48,22 +48,9 @@
 
       <p v-if="loadError" class="th-error th-inline">{{ loadError }}</p>
 
-      <!-- The one table -->
-      <div class="th-table-wrap">
-        <MiniTable
-          v-if="table1"
-          :t="table1"
-          name="Your table"
-          :loaded="!!deck?.loaded"
-        />
-        <div v-else class="th-empty">
-          <p>Your table is being created&hellip;</p>
-        </div>
-        <p class="th-hint">
-          Share the invite link and players drop into the open seats automatically.
-          Empty seats play as bots. Pick a deal source to start a board.
-        </p>
-      </div>
+      <!-- The seated player table (the host plays their own hand). Empty seats
+           are bots; invitees drop into open seats. -->
+      <TableView @exit="onExitTable" />
     </main>
 
     <!-- Deal-source picker modal (materialize the whole set onto the table) -->
@@ -98,7 +85,7 @@ import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
-import MiniTable from '../components/table/MiniTable.vue'
+import TableView from './TableView.vue'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
 
@@ -108,20 +95,21 @@ const router = useRouter()
 const userStore = useUserStore()
 const currentUser = userStore.currentUser
 const table = useRemoteTable()
+// The console composable is used ONLY to send the host-control frames
+// (load_boards) — they ride the same useTableSocket singleton the seated player
+// connection uses, and the server accepts them from the owner sub. The host is
+// a seated PLAYER (as_player), so there's no lobby/deck feed here (that's the
+// teacher console's see-all path).
 const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
 
 const { connectionStatus, sessionClosed } = table
-const { lobby, deck } = console_
 
 const connected = computed(() => connectionStatus.value === 'connected')
 const sessionId = ref(null)
 const hasSession = computed(() => !!sessionId.value && !sessionClosed.value)
 const resolving = ref(true)
 const startError = ref('')
-
-// Single table → the first (only) table in the lobby feed.
-const table1 = computed(() => lobby.value?.tables?.[0] || null)
 
 const pickerAllow = {
   tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
@@ -207,8 +195,9 @@ async function ensureSession() {
     if (!id) id = await createSession()
     if (!id) throw new Error('Could not start your table.')
     sessionId.value = id
-    console_.attach()
-    table.join({ sessionId: id, userId: currentUser.value.id })
+    // Join SEATED (as_player) so the host plays their own hand — while still
+    // holding the host-control frames (deal source / seating) from the seat.
+    table.join({ sessionId: id, userId: currentUser.value.id, asPlayer: true })
   } catch (e) {
     startError.value = e?.message || 'Could not set up your table.'
   } finally {
@@ -249,6 +238,12 @@ function teardown() {
   console_.detach()
   table.leave()
   sessionId.value = null
+}
+
+// TableView's "back to lobby" (shown when the session ends) → home.
+function onExitTable() {
+  teardown()
+  router.push('/')
 }
 
 onMounted(() => {
@@ -304,7 +299,6 @@ onBeforeUnmount(teardown)
   border-radius: 10px;
   padding: 12px 14px;
 }
-.th-deck { font-size: 12px; color: #666; }
 .th-spawn { display: flex; align-items: center; gap: 6px; }
 .th-num {
   width: 48px;
@@ -324,16 +318,6 @@ onBeforeUnmount(teardown)
   background: #fafbfc;
   color: #444;
 }
-
-.th-table-wrap {
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-.th-empty { color: #888; padding: 40px; text-align: center; }
-.th-hint { color: #777; font-size: 13px; max-width: 560px; text-align: center; line-height: 1.5; }
 
 .th-btn {
   padding: 6px 14px;
