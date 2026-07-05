@@ -12,67 +12,14 @@
           <div v-if="dealErrorHint" class="bp-error-hint">{{ dealErrorHint }}</div>
         </div>
 
-        <!-- Priming state (no deal yet): the full table chrome, inert, with the
-             Deal source button spotlighted. Gives a beginner the shape of what's
-             about to happen instead of a bare "click this button". -->
-        <template v-if="!currentDeal && !EMBEDDED">
-          <div class="bp-scenario-bar">
-            <div>
-              <div class="bp-scenario-name">No deal yet</div>
-              <div class="bp-scenario-meta">
-                You sit South; three BBA bots fill the other seats.
-              </div>
-              <div class="bp-scenario-meta">Pick a deal source to start bidding.</div>
-            </div>
-            <div class="bp-scenario-actions">
-              <button
-                v-if="!drawing"
-                class="bp-btn bp-btn-primary bp-btn-attn"
-                @click="showPicker = true"
-              >Deal source&hellip;</button>
-              <span v-else class="bp-loading">Dealing&hellip;</span>
-            </div>
-          </div>
-
-          <div class="bp-table-wrap">
-            <div class="bp-ph-hand">
-              <div class="bp-ph-seat">South</div>
-              <div class="bp-ph-suits">
-                <div class="bp-ph-suit"><span class="bp-ph-blk">&spades;</span> &mdash;</div>
-                <div class="bp-ph-suit"><span class="bp-ph-red">&hearts;</span> &mdash;</div>
-                <div class="bp-ph-suit"><span class="bp-ph-red">&diams;</span> &mdash;</div>
-                <div class="bp-ph-suit"><span class="bp-ph-blk">&clubs;</span> &mdash;</div>
-              </div>
-              <div class="bp-ph-note">Your hand will appear here</div>
-            </div>
-
-            <div class="bp-right-rail">
-              <div class="bp-card">
-                <h3>Auction</h3>
-                <AuctionTable
-                  :bids="[]"
-                  dealer="S"
-                  :current-bid-index="0"
-                  :wrong-bid-indices="[]"
-                  :show-turn-indicator="false"
-                  :meanings="[]"
-                  :diverged-bids="{}"
-                  :allow-divergence-toggle="false"
-                />
-              </div>
-              <div class="bp-card">
-                <h3>Your bid</h3>
-                <div class="bp-disabled" aria-hidden="true">
-                  <BiddingBox />
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <template v-if="currentDeal">
-          <div class="bp-scenario-bar">
-            <div>
+        <!-- Control strip — shown for the whole session (non-embedded), and in
+             embedded mode once a deal is up. Bot + toggles are usable before a
+             deal source is picked; deal-dependent buttons (Next deal / Restart /
+             Description) stay greyed until a deal loads, and the Deal source
+             button is spotlighted while there's no deal yet. -->
+        <div v-if="currentDeal || !EMBEDDED" class="bp-scenario-bar">
+          <div>
+            <template v-if="currentDeal">
               <div class="bp-scenario-name">{{ currentScenarioLabel }}</div>
               <div class="bp-scenario-meta">
                 Deal {{ dealsDrawn }} &middot;
@@ -84,29 +31,70 @@
               <div v-if="poolSummary" class="bp-scenario-meta">
                 Source: {{ poolSummary }}
               </div>
+            </template>
+            <template v-else>
+              <div class="bp-scenario-name">No deal yet</div>
+              <div class="bp-scenario-meta">You sit South; three BBA bots fill the other seats.</div>
+              <div class="bp-scenario-meta">Pick a deal source to start bidding.</div>
+            </template>
+          </div>
+          <div class="bp-scenario-actions">
+            <label v-if="!EMBEDDED" class="bp-rotate-toggle">
+              <input type="checkbox" v-model="rotateDeals">
+              Rotate randomly
+            </label>
+            <label v-if="!EMBEDDED" class="bp-rotate-toggle">
+              <input type="checkbox" v-model="playCardplay">
+              Play the hand after bidding
+            </label>
+            <label v-if="!EMBEDDED && playCardplay" class="bp-bot-label">
+              Bot:
+              <select class="bp-bot-select" v-model="cardplayBotName">
+                <option v-for="b in availableBots" :key="b" :value="b">{{ b }}</option>
+              </select>
+            </label>
+            <button
+              v-if="!EMBEDDED"
+              class="bp-btn"
+              :class="!currentDeal ? 'bp-btn-primary bp-btn-attn' : ''"
+              :disabled="drawing"
+              title="Choose where deals come from"
+              @click="showPicker = true"
+            >Deal source&hellip;</button>
+            <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
+            <button class="bp-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading">Restart this deal</button>
+            <button v-if="!EMBEDDED" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
+          </div>
+        </div>
+
+        <!-- Priming table skeleton (no deal yet): a placeholder hand + inert
+             auction/bidding box so the beginner sees the shape of the table. -->
+        <div v-if="!currentDeal && !EMBEDDED" class="bp-table-wrap">
+          <div class="bp-ph-hand">
+            <div class="bp-ph-seat">South</div>
+            <div class="bp-ph-suits">
+              <div class="bp-ph-suit"><span class="bp-ph-blk">&spades;</span> &mdash;</div>
+              <div class="bp-ph-suit"><span class="bp-ph-red">&hearts;</span> &mdash;</div>
+              <div class="bp-ph-suit"><span class="bp-ph-red">&diams;</span> &mdash;</div>
+              <div class="bp-ph-suit"><span class="bp-ph-blk">&clubs;</span> &mdash;</div>
             </div>
-            <div class="bp-scenario-actions">
-              <label v-if="!EMBEDDED" class="bp-rotate-toggle">
-                <input type="checkbox" v-model="rotateDeals">
-                Rotate randomly
-              </label>
-              <label v-if="!EMBEDDED" class="bp-rotate-toggle">
-                <input type="checkbox" v-model="playCardplay">
-                Play the hand after bidding
-              </label>
-              <label v-if="!EMBEDDED && playCardplay" class="bp-bot-label">
-                Bot:
-                <select class="bp-bot-select" v-model="cardplayBotName">
-                  <option v-for="b in availableBots" :key="b" :value="b">{{ b }}</option>
-                </select>
-              </label>
-              <button v-if="!EMBEDDED" class="bp-btn" @click="showPicker = true" title="Change where deals come from">Deal source&hellip;</button>
-              <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
-              <button class="bp-btn" @click="resetAuction" :disabled="auctionLoading">Restart this deal</button>
-              <button v-if="!EMBEDDED && scenarioChat" class="bp-btn" @click="showScenarioChat = true" title="Show the scenario description">Description</button>
+            <div class="bp-ph-note">{{ drawing ? 'Dealing…' : 'Your hand will appear here' }}</div>
+          </div>
+          <div class="bp-right-rail">
+            <div class="bp-card">
+              <h3>Auction</h3>
+              <AuctionTable :bids="[]" dealer="S" :current-bid-index="0" :wrong-bid-indices="[]" :show-turn-indicator="false" :meanings="[]" :diverged-bids="{}" :allow-divergence-toggle="false" />
+            </div>
+            <div class="bp-card">
+              <h3>Your bid</h3>
+              <div class="bp-disabled" aria-hidden="true">
+                <BiddingBox />
+              </div>
             </div>
           </div>
+        </div>
 
+        <template v-if="currentDeal">
           <div v-if="EMBEDDED && !auctionComplete" class="bp-embedded-bidding">
             <div class="bp-side-col">
               <div class="bp-card">
@@ -1695,6 +1683,11 @@ async function onUserBid(bid) {
   cursor: pointer;
 }
 .bp-btn:hover { border-color: #888; }
+.bp-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.bp-btn:disabled:hover { border-color: #ccc; }
 .bp-btn-primary { background: #1D9E75; color: #fff; border-color: #1D9E75; }
 .bp-btn-primary:hover { background: #167a5a; border-color: #167a5a; }
 
