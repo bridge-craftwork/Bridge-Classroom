@@ -7,17 +7,68 @@
 
     <div class="bp-main">
       <main class="bp-stage">
-        <div v-if="!currentDeal && !drawing" class="bp-empty">
-          <p>Pick a deal source to start bidding.</p>
-          <button class="bp-btn bp-btn-primary" @click="showPicker = true">Choose deal source&hellip;</button>
-          <small>(You sit South. Three BBA bots fill the other seats.)</small>
-        </div>
-        <div v-if="drawing && !currentDeal" class="bp-empty">Drawing a deal&hellip;</div>
-
         <div v-if="dealError" class="bp-error-box">
           <strong>Error:</strong> {{ dealError }}
           <div v-if="dealErrorHint" class="bp-error-hint">{{ dealErrorHint }}</div>
         </div>
+
+        <!-- Priming state (no deal yet): the full table chrome, inert, with the
+             Deal source button spotlighted. Gives a beginner the shape of what's
+             about to happen instead of a bare "click this button". -->
+        <template v-if="!currentDeal && !EMBEDDED">
+          <div class="bp-scenario-bar">
+            <div>
+              <div class="bp-scenario-name">No deal yet</div>
+              <div class="bp-scenario-meta">
+                You sit South; three BBA bots fill the other seats.
+              </div>
+              <div class="bp-scenario-meta">Pick a deal source to start bidding.</div>
+            </div>
+            <div class="bp-scenario-actions">
+              <button
+                v-if="!drawing"
+                class="bp-btn bp-btn-primary bp-btn-attn"
+                @click="showPicker = true"
+              >Deal source&hellip;</button>
+              <span v-else class="bp-loading">Dealing&hellip;</span>
+            </div>
+          </div>
+
+          <div class="bp-table-wrap">
+            <div class="bp-ph-hand">
+              <div class="bp-ph-seat">South</div>
+              <div class="bp-ph-suits">
+                <div class="bp-ph-suit"><span class="bp-ph-blk">&spades;</span> &mdash;</div>
+                <div class="bp-ph-suit"><span class="bp-ph-red">&hearts;</span> &mdash;</div>
+                <div class="bp-ph-suit"><span class="bp-ph-red">&diams;</span> &mdash;</div>
+                <div class="bp-ph-suit"><span class="bp-ph-blk">&clubs;</span> &mdash;</div>
+              </div>
+              <div class="bp-ph-note">Your hand will appear here</div>
+            </div>
+
+            <div class="bp-right-rail">
+              <div class="bp-card">
+                <h3>Auction</h3>
+                <AuctionTable
+                  :bids="[]"
+                  dealer="S"
+                  :current-bid-index="0"
+                  :wrong-bid-indices="[]"
+                  :show-turn-indicator="false"
+                  :meanings="[]"
+                  :diverged-bids="{}"
+                  :allow-divergence-toggle="false"
+                />
+              </div>
+              <div class="bp-card">
+                <h3>Your bid</h3>
+                <div class="bp-disabled" aria-hidden="true">
+                  <BiddingBox />
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <template v-if="currentDeal">
           <div class="bp-scenario-bar">
@@ -1559,17 +1610,55 @@ async function onUserBid(bid) {
 .bp-cardplay-result .bp-down { color: #d32f2f; font-weight: 600; }
 
 /* Stage states */
-.bp-empty {
-  color: #888;
-  font-size: 14px;
-  padding: 60px 20px;
-  text-align: center;
+/* Priming state — placeholder hand + spotlighted Deal source button. */
+.bp-btn-attn {
+  background: #1D9E75;
+  color: #fff;
+  border-color: #1D9E75;
+  animation: bp-attn-pulse 1.8s ease-out infinite;
+}
+.bp-btn-attn:hover { background: #167a5a; border-color: #167a5a; }
+@keyframes bp-attn-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.45); }
+  70%  { box-shadow: 0 0 0 10px rgba(29, 158, 117, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bp-btn-attn { animation: none; }
+}
+
+.bp-ph-hand {
+  justify-self: center;
+  align-self: start;
+  min-width: 200px;
+  background: #fff;
+  border: 0.5px solid #ddd;
+  border-radius: 10px;
+  padding: 18px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
-.bp-empty p { margin: 0; }
+.bp-ph-seat { font-size: 16px; font-weight: 700; color: #444; }
+.bp-ph-suits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 20px;
+  letter-spacing: 3px;
+  color: #cbcbcb;
+}
+.bp-ph-red { color: #e6b3b3; }
+.bp-ph-blk { color: #b0b0b0; }
+.bp-ph-note { font-size: 12px; color: #aaa; margin-top: 6px; }
+
+/* Inert clone of the bidding box (and any wrapped control). */
+.bp-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(0.35);
+}
 .bp-error-box {
   color: #b00;
   font-size: 13px;
