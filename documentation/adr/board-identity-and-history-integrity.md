@@ -191,13 +191,11 @@ Each issue contains:
 
 ---
 
-## 8. Deleting the Practice-Bidding-Scenarios observations
+## 8. Flagging the existing Practice-Bidding-Scenarios observations as prerelease
 
-Once `collection_id` is recorded, David's development-era observations are deleted by **`WHERE collection_id = 'practice-bidding-scenarios'`** (retiring the fragile `uncategorized/` skill-path heuristic).
+David's development-era observations are **not deleted** — they are set to **`prerelease = 1`** (identified by `collection_id = 'practice-bidding-scenarios'`, i.e. the current `uncategorized/` set). They keep their beta history, navigation icons, and drill-down, but are excluded from mastery and platform statistics like any prerelease board (§6.5). This also preserves the beta testers' own progress-through-the-set history.
 
-Footprint verified before deletion: of ~496 observations on David's content, the vast majority are Bailey/dev/test accounts; the **non-developer** footprint is 32 observations across 4 accounts, of which only a single observation belongs to a genuine outside learner (the rest are a family tester, a collaborator, and a test account). `ThirdHand` is **Baker Bridge**, not David's, and is kept.
-
-**Sequencing matters:** add the collection key → delete David's content → remap David's skill paths. Remapping first would erase the `uncategorized` discriminator that currently separates the collections, and would not by itself fix the `(subfolder, number)` collision.
+**Sequencing matters:** backfill `collection_id` + `prerelease` from the `uncategorized` heuristic **first** → *then* remap David's skill paths. Once `collection_id` and `prerelease` are set they become the durable discriminators, so the later skill-path remap is safe and no longer depends on the `uncategorized` marker.
 
 ---
 
@@ -205,7 +203,7 @@ Footprint verified before deletion: of ~496 observations on David's content, the
 
 1. **Agree the contract in writing** (§10). Includes the slug set and the token's role (opaque to BC).
 2. **Add `collection_id` to board identity** — schema, backfill `exercise_boards` blanks, add `observations.collection`, fold into the mastery key and `exercise_boards` PK/index.
-3. **Delete** the Practice-Bidding-Scenarios observations by `collection_id`.
+3. **Flag** the Practice-Bidding-Scenarios observations `prerelease = 1` by `collection_id` (not deleted — see §8).
 4. **Remap** David's skill paths (no `uncategorized`).
 5. **Producer stamps** `ready` + board-version token going forward; David's content records as `prerelease` until promoted.
 6. **Ship the app change** — `prerelease` flag set at the writer, `collection` + token recorded per observation, mastery/platform-stat exclusion of `prerelease` (§6.5), triangle marker in the strip/grid, exercise-creation guard.

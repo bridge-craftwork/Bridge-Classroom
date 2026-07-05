@@ -48,7 +48,7 @@ Checking this against the actual Bridge Classroom implementation changed the pic
 - `collection_id` must be backfilled where absent (e.g. the 103 blank `exercise_boards` rows) before it can join the keys.
 - The board-version token is **producer-asserted, not consumer-derived**: the change-over-time signal is only as complete as the producer's re-stamping discipline. It is evidence, not enforcement — the guarantee is the behavioral contract (ready ⇒ fix-in-place or same-identity similar replacement; no renumbering).
 - Renumbering ready boards requires explicit coordination; position is the key.
-- Existing Baker observations already contain the full played deal, so no back-history is at risk. David's Practice-Bidding-Scenarios observations are deleted later (post-agreement) by `collection_id`; the non-developer footprint there is negligible (≈ one genuine outside learner).
+- Existing Baker observations already contain the full played deal, so no back-history is at risk. David's Practice-Bidding-Scenarios observations are **not deleted** — they are flagged `prerelease = 1` (by `collection_id`), so beta history/navigation survive while mastery and platform stats ignore them.
 - The prerelease exclusion is a small, enumerable seam, not a scattered filter: all mastery derives from the `board_status` rollup (so one flag on that rollup, filtered by ~two mastery reads, covers it), every other raw-`observations` aggregate is exercise-scoped (and prerelease boards can't be assigned, so they self-exclude), and platform stats add an explicit `prerelease = 0` filter. Navigation, history, and drill-down read unfiltered. See the spec's "Prerelease observations — the exclusion seam."
 
 ## Reconciliation with deal-hash-identity-plan.md
