@@ -2,33 +2,17 @@
   <div class="bp-app" :class="{ embedded: EMBEDDED }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
-      <button class="bp-nav-toggle" @click="sidebarOpen = !sidebarOpen" :title="sidebarOpen ? 'Hide scenario menu' : 'Show scenario menu'">
-        {{ sidebarOpen ? '⟨ Hide scenarios' : '☰ Scenarios' }}
+      <button class="bp-nav-toggle" @click="showPicker = true" title="Choose where deals come from">
+        ☰ Deal source&hellip;
       </button>
       <a class="bp-nav-back" href="/">&larr; All tools</a>
     </nav>
 
-    <div class="bp-main" :class="{ 'sidebar-closed': !sidebarOpen }">
-      <aside v-if="!EMBEDDED" class="bp-sidebar" :class="{ open: sidebarOpen }">
-        <!-- Unified deal-source picker (deal-source unification #3). It owns all
-             selection UI (scenarios/curated/club/library/paste/random/fresh);
-             single-click fires @submit, multi builds a pool then Deal. -->
-        <DealSourcePicker
-          class="bp-picker"
-          layout="full"
-          mode="stream"
-          :allow="pickerAllow"
-          :owner="ownerId"
-          :show-close="false"
-          action-label="Deal"
-          v-model="selection"
-          @submit="onPickerSubmit"
-        />
-      </aside>
-
-      <main class="bp-stage" :class="{ dimmed: sidebarOpen && !EMBEDDED }">
+    <div class="bp-main">
+      <main class="bp-stage">
         <div v-if="!currentDeal && !dealError && !drawing" class="bp-empty">
-          Pick a deal source to start bidding.<br>
+          <p>Pick a deal source to start bidding.</p>
+          <button class="bp-btn bp-btn-primary" @click="showPicker = true">Choose deal source&hellip;</button>
           <small>(You sit South. Three BBA bots fill the other seats.)</small>
         </div>
         <div v-if="drawing && !currentDeal" class="bp-empty">Drawing a deal&hellip;</div>
@@ -68,6 +52,7 @@
                   <option v-for="b in availableBots" :key="b" :value="b">{{ b }}</option>
                 </select>
               </label>
+              <button v-if="!EMBEDDED" class="bp-btn" @click="showPicker = true" title="Change where deals come from">Deal source&hellip;</button>
               <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
               <button class="bp-btn" @click="resetAuction" :disabled="auctionLoading">Restart this deal</button>
               <button v-if="!EMBEDDED && scenarioChat" class="bp-btn" @click="showScenarioChat = true" title="Show the scenario description">Description</button>
@@ -308,6 +293,24 @@
       </main>
     </div>
 
+    <!-- Deal-source picker modal (mirrors the teacher console): the "Deal
+         source…" button opens it; it self-sizes for all 8 tabs; a single-click
+         (or multi + Deal) draws and closes it, freeing the screen for the table. -->
+    <div v-if="showPicker && !EMBEDDED" class="bp-picker-backdrop" @click.self="showPicker = false">
+      <div class="bp-picker-shell">
+        <DealSourcePicker
+          layout="compact"
+          mode="stream"
+          :allow="pickerAllow"
+          :owner="ownerId"
+          action-label="Deal"
+          v-model="selection"
+          @submit="onPickerSubmit"
+          @close="showPicker = false"
+        />
+      </div>
+    </div>
+
     <!-- Scenario chat — sizable, draggable popup of the .btn @chat -->
     <ScenarioChatPopup
       :visible="showScenarioChat && !!scenarioChat"
@@ -389,38 +392,16 @@ function postEmbedded(msg) {
 }
 
 // ── State ─────────────────────────────────────────────────────────────
-// The current logged-in user (if any) unlocks the picker's Club/Library tabs;
-// this standalone view works fine anonymously (those tabs show a register note).
+// The picker lives in a modal (opened by the "Deal source…" button), so it has
+// room for all 8 tabs — Club/Library included. `owner` (the logged-in user, if
+// any) makes those tabs functional; anonymous users see a register note.
 const { currentUser } = useUserStore()
 const ownerId = computed(() => currentUser.value?.id || null)
-const pickerAllow = computed(() => ({
-  tabs: [
-    'favorites',
-    'scenarios',
-    'curated',
-    ...(currentUser.value ? ['clubgames'] : []),
-    ...(currentUser.value && ['teacher', 'admin'].includes(currentUser.value.role) ? ['library'] : []),
-    'pbn',
-    'random',
-    'history',
-  ],
+const showPicker = ref(false)
+const pickerAllow = {
+  tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
   options: ['fresh'],
-}))
-
-const isNarrow = () => typeof window !== 'undefined'
-  && window.matchMedia('(max-width: 1100px)').matches
-// Sidebar visibility — persisted across reloads so a student who hides it
-// once stays hidden. Default visible (the student needs to pick a scenario
-// to get going).
-const SIDEBAR_KEY = 'bp.sidebarOpen'
-const sidebarOpen = ref(
-  typeof localStorage !== 'undefined' && localStorage.getItem(SIDEBAR_KEY) != null
-    ? localStorage.getItem(SIDEBAR_KEY) === '1'
-    : !isNarrow()
-)
-watch(sidebarOpen, (v) => {
-  try { localStorage.setItem(SIDEBAR_KEY, v ? '1' : '0') } catch {}
-})
+}
 
 // The deal-source selection (deal-source-spec §2.2 — { items, options }), driven
 // by the picker and persisted so a returning student keeps their pool. The board
@@ -1041,10 +1022,10 @@ async function showChatForScenario(file) {
 }
 
 // The picker emits a selection (single-click fires immediately; multi fires on
-// "Deal"). Stick it as the sticky source and draw the first board.
+// "Deal"). Stick it as the sticky source, close the modal, and draw the board.
 async function onPickerSubmit(sel) {
   selection.value = sel
-  if (isNarrow()) sidebarOpen.value = false
+  showPicker.value = false
   await drawNextBoard()
 }
 
@@ -1386,36 +1367,11 @@ async function onUserBid(bid) {
   cursor: pointer;
 }
 
+/* The deal source now lives in a modal (opened by the "Deal source…" button),
+   so the main area is a single full-width stage — max room for the table. */
 .bp-main {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
   min-height: 0;
   position: relative;
-}
-/* Sidebar hidden — table area takes the full width. The toggle button in
-   the nav brings the sidebar back. */
-.bp-main.sidebar-closed {
-  grid-template-columns: minmax(0, 1fr);
-}
-.bp-main.sidebar-closed .bp-sidebar {
-  display: none;
-}
-/* The sidebar hosts the shared DealSourcePicker (layout="full"). It owns its
-   own scroll region, so the aside just caps the height and flattens the
-   picker's card frame (no double border/shadow inside the rail). */
-.bp-sidebar {
-  background: #fff;
-  border-right: 0.5px solid #ddd;
-  overflow: hidden;
-  display: flex;
-  min-height: 0;
-}
-.bp-sidebar :deep(.bp-picker) {
-  width: 100%;
-  height: 100%;
-  max-height: none;
-  border-radius: 0;
-  box-shadow: none;
 }
 .bp-stage {
   padding: 24px;
@@ -1425,11 +1381,26 @@ async function onUserBid(bid) {
   align-items: center;
   gap: 18px;
 }
+
+/* Deal-source picker modal (mirrors the teacher console's tc-modal-*). The
+   compact picker self-sizes (min(560px,94vw)); the backdrop just centers it. */
+.bp-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4vh 16px;
+  box-sizing: border-box;
+  z-index: 60;
+}
+.bp-picker-shell {
+  display: flex;
+  flex-direction: column;
+}
+
 @media (max-width: 1100px) {
-  .bp-main { grid-template-columns: minmax(0, 1fr); }
-  .bp-sidebar { display: none; }
-  .bp-sidebar.open { display: flex; }
-  .bp-stage.dimmed { display: none; }
   .bp-stage { padding: 14px; gap: 12px; }
 }
 
@@ -1599,7 +1570,17 @@ async function onUserBid(bid) {
 .bp-cardplay-result .bp-down { color: #d32f2f; font-weight: 600; }
 
 /* Stage states */
-.bp-empty { color: #888; font-size: 14px; padding: 60px 20px; text-align: center; }
+.bp-empty {
+  color: #888;
+  font-size: 14px;
+  padding: 60px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.bp-empty p { margin: 0; }
 .bp-error-box {
   color: #b00;
   font-size: 13px;
