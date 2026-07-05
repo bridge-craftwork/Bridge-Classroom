@@ -78,7 +78,7 @@
 // Slice 1 (this file): create/resume an adhoc 1-table session, connect as owner,
 // show the table, pick a deal source, and hand out the invite link. Seat
 // drag-and-drop + the host taking a seat to play come in a later slice.
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
@@ -110,6 +110,8 @@ const sessionId = ref(null)
 const hasSession = computed(() => !!sessionId.value && !sessionClosed.value)
 const resolving = ref(true)
 const startError = ref('')
+const ending = ref(false) // host clicked "End table" (vs an unexpected close)
+let recoveredOnce = false
 
 const pickerAllow = {
   tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
@@ -178,14 +180,17 @@ async function onLoadSource(selection) {
 // ── Session lifecycle ───────────────────────────────────────────────────────
 // Resume the owner's open session if there is one, else create a casual
 // single-table session. The Mac API enforces one open session per owner.
-async function ensureSession() {
+// `forceCreate` skips the resume (used by the recovery watcher when a resumed
+// session turns out to be gone — e.g. the table-service restarted and dropped
+// its in-memory sessions while the DB still lists it open).
+async function ensureSession({ forceCreate = false } = {}) {
   if (!currentUser.value) { resolving.value = false; return }
   resolving.value = true
   startError.value = ''
   try {
-    const code = await fetchHostCode()
+    const code = await fetchHostCode() // also populates the invite link
     let id = null
-    if (code) {
+    if (!forceCreate && code) {
       try {
         const res = await fetch(`${API_URL}/play/${code}`)
         const data = await res.json()
@@ -204,6 +209,19 @@ async function ensureSession() {
     resolving.value = false
   }
 }
+
+// A resumed session can be dead on the service (restart drops in-memory
+// sessions; the DB still shows it open) → the join returns unknown_session and
+// useRemoteTable flips sessionClosed. A host always wants a table, so instead of
+// the dead "Session ended" screen, silently start a fresh one (once). An
+// explicit End (ending=true) is left alone.
+watch(sessionClosed, (closed) => {
+  if (!closed || ending.value || recoveredOnce) return
+  recoveredOnce = true
+  resolving.value = true
+  teardown()
+  ensureSession({ forceCreate: true })
+})
 
 async function createSession() {
   const res = await fetch(`${API_URL}/table-sessions`, {
@@ -224,6 +242,7 @@ async function createSession() {
 
 async function endSession() {
   if (!window.confirm('End this table for everyone?')) return
+  ending.value = true
   try {
     await fetch(
       `${API_URL}/table-sessions/${sessionId.value}?owner_user_id=${encodeURIComponent(currentUser.value.id)}`,
