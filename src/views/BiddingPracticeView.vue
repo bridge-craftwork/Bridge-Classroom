@@ -289,33 +289,11 @@
                   total {{ fmtMs(cardplay.botStats.value.total) }}
                 </div>
 
-                <div v-if="ddRows" class="bp-dd-label">Double-dummy tricks</div>
-                <table v-if="ddRows" class="bp-dd-table">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th class="bp-black">&clubs;</th>
-                      <th class="bp-red">&diams;</th>
-                      <th class="bp-red">&hearts;</th>
-                      <th class="bp-black">&spades;</th>
-                      <th>NT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in ddRows" :key="row.seat">
-                      <td class="bp-dd-seat">{{ row.seat }}</td>
-                      <td
-                        v-for="(c, i) in row.cells"
-                        :key="i"
-                        :class="{
-                          'bp-dd-contract': c.isContract,
-                          'bp-dd-match': c.isContract && !hadDivergence,
-                          'bp-dd-diverged': c.isContract && hadDivergence,
-                        }"
-                      >{{ c.tricks }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+                <DoubleDummyTable
+                  :ddtricks="doubleDummy"
+                  :final-contract="finalContract"
+                  :diverged="hadDivergence"
+                />
 
                 <div class="bp-contract-actions">
                   <button v-if="EMBEDDED" class="bp-btn bp-btn-primary" @click="done">Done</button>
@@ -366,6 +344,7 @@ import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import ScenarioChatPopup from '../components/ScenarioChatPopup.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
+import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import { formatBid } from '../utils/cardFormatting.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
 import { getBot, listBots } from '../utils/cardplayBots.js'
@@ -373,12 +352,15 @@ import { warmBen } from '../utils/benClient.js'
 import { nextBoard, describeSelection } from '../composables/useDealSourceResolver.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
 import { useUserStore } from '../composables/useUserStore.js'
+import { fetchAuction } from '../utils/bbaClient.js'
+import { SEAT_ORDER, seatAtIndex, isAuctionOver, lastSuitBid } from '../utils/handAnalysis.js'
+import { useHandAnalysis } from '../composables/useHandAnalysis.js'
 
 // ── Config ────────────────────────────────────────────────────────────
-// PBS deal/menu fetching now lives in the resolver + pbsScenarios.js (already
-// repointed to the bridge-craftwork org); this view only talks to BBA directly.
+// PBS deal/menu fetching lives in the resolver + pbsScenarios.js; the BBA and
+// double-dummy calls live in bbaClient.js / ddsClient.js. This view only keeps
+// the one policy value it owns.
 const CONFIG = {
-  BBA_URL: 'https://bba.harmonicsystems.com',
   // Default convention card for the embedded host AND for non-scenario deal
   // sources (Random / Paste / Library / Club), where there's no scenario name
   // to hand BBA — we still want a BBA "expected auction" to diff against.
@@ -623,7 +605,6 @@ const originalExpectedAuction = ref([])
 const originalMeanings = ref([])
 const conventionsUsed = ref(null)
 const meanings = ref([])
-const doubleDummy = ref(null)
 const bids = ref([])
 // Map idx → { user, bba } for every position where the user diverged from
 // BBA's expected bid. Both bids are kept so the cell can show them stacked
@@ -632,13 +613,13 @@ const bids = ref([])
 const divergedBids = ref({})
 const auctionLoading = ref(false)
 
+// Engine-agnostic post-hand overlay: final contract + double-dummy. On the
+// server single-table host view later, the same composable renders the same
+// overlay from that engine's auction/deal.
+const analysis = useHandAnalysis({ bids, dealer: () => currentDeal.value?.dealer })
+const { finalContract, doubleDummy, loadDoubleDummy } = analysis
+
 // ── Derived ───────────────────────────────────────────────────────────
-const SEAT_ORDER = ['N', 'E', 'S', 'W']
-
-function seatAtIndex(dealer, idx) {
-  return SEAT_ORDER[(SEAT_ORDER.indexOf(dealer) + idx) % 4]
-}
-
 const auctionComplete = computed(() => currentDeal.value && isAuctionOver(bids.value))
 const currentSeat = computed(() => {
   if (!currentDeal.value) return null
@@ -700,11 +681,6 @@ const canRedouble = computed(() => {
   return (trailing.length % 2) === 1
 })
 
-const finalContract = computed(() => {
-  if (!currentDeal.value) return { contract: '', declarer: null }
-  return determineContract(bids.value, currentDeal.value.dealer) || { contract: '', declarer: null }
-})
-
 const summary = computed(() => {
   if (!auctionComplete.value) return ''
   const n = Object.keys(divergedBids.value).length
@@ -750,76 +726,8 @@ const cardplayResult = computed(() => {
   return { took, needed, made: needed != null && took >= needed }
 })
 
-const ddRows = computed(() => {
-  if (!doubleDummy.value) return null
-  const seats = ['N', 'S', 'E', 'W']
-  const colSuitIdx = [4, 3, 2, 1, 0] // display order ♣ ♦ ♥ ♠ NT
-  const colStrain = ['C', 'D', 'H', 'S', 'NT']
-  const fc = finalContract.value
-  const declarerIdx = fc && fc.declarer ? seats.indexOf(fc.declarer) : -1
-  let contractStrainIdx = -1
-  if (fc && fc.contract && fc.contract !== 'Pass') {
-    const m = fc.contract.match(/^\d([CDHSN]T?)(X{0,2})$/)
-    if (m) {
-      const strain = m[1] === 'N' ? 'NT' : m[1]
-      contractStrainIdx = colStrain.indexOf(strain)
-    }
-  }
-  return seats.map((seat, si) => ({
-    seat,
-    cells: colSuitIdx.map((j, ci) => ({
-      tricks: ddTrickAt(doubleDummy.value, si, j),
-      isContract: si === declarerIdx && ci === contractStrainIdx,
-    })),
-  }))
-})
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function isAuctionOver(arr) {
-  if (arr.length < 4) return false
-  const last3 = arr.slice(-3)
-  if (last3.every(b => b === 'Pass')) {
-    const hasBid = arr.slice(0, -3).some(b => b !== 'Pass')
-    if (hasBid) return true
-    if (arr.length === 4 && arr.every(b => b === 'Pass')) return true
-  }
-  return false
-}
-
-function lastSuitBid(arr) {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (arr[i] !== 'Pass' && arr[i] !== 'X' && arr[i] !== 'XX') return arr[i]
-  }
-  return null
-}
-
-function determineContract(arr, dealer) {
-  if (!isAuctionOver(arr)) return null
-  if (arr.every(b => b === 'Pass')) return { contract: 'Pass', declarer: null }
-  const last = lastSuitBid(arr)
-  if (!last) return { contract: 'Pass', declarer: null }
-  let dbl = ''
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (arr[i] === 'XX') { dbl = 'XX'; break }
-    if (arr[i] === 'X') { dbl = 'X'; break }
-    if (arr[i] !== 'Pass') break
-  }
-  const strain = last.replace(/^\d/, '')
-  const lastIdx = arr.lastIndexOf(last)
-  const lastSeat = seatAtIndex(dealer, lastIdx)
-  const winningSide = (lastSeat === 'N' || lastSeat === 'S') ? ['N', 'S'] : ['E', 'W']
-  for (let i = 0; i < arr.length; i++) {
-    const b = arr[i]
-    if (b === 'Pass' || b === 'X' || b === 'XX') continue
-    const bStrain = b.replace(/^\d/, '')
-    const seat = seatAtIndex(dealer, i)
-    if (bStrain === strain && winningSide.includes(seat)) {
-      return { contract: last + dbl, declarer: seat }
-    }
-  }
-  return { contract: last + dbl, declarer: lastSeat }
-}
-
 function vulForSide(side) {
   const v = currentDeal.value?.vulnerable || 'None'
   if (v === 'Both' || v === 'All') return true
@@ -887,79 +795,22 @@ function parseDealHandsForBridgeTable(deal) {
   return result
 }
 
-function handsToPbnString(hands) {
-  return SEAT_ORDER.map(seat => {
-    const h = hands[seat]
-    return [h.spades, h.hearts, h.diamonds, h.clubs].map(arr => arr.join('')).join('.')
-  }).join(' ')
-}
-
 // Display name for a scenario file (used for the chat popup title).
 function prettifyLabel(file) {
   return file.replace(/_/g, ' ').trim()
 }
 
 // ── External services ─────────────────────────────────────────────────
-async function generateAuction(deal, scenarioName, auctionPrefix = null) {
-  const vul = deal.vulnerable === 'All' ? 'Both' : deal.vulnerable
-  const body = {
-    deal: {
-      pbn: 'N:' + handsToPbnString(deal.hands),
-      dealer: deal.dealer,
-      vulnerability: vul,
-      scoring: 'MP',
-    },
-  }
-  if (EMBEDDED) {
-    body.conventions = embeddedParams.cards
-  } else if (scenarioName) {
-    body.scenario = scenarioName
-  } else {
-    // Non-scenario source (Random / Paste / Library / Club): no convention
-    // scenario to name, so bid with the default 2/1 card. The student still
-    // gets a BBA "expected auction" to diff against.
-    body.conventions = { ns: CONFIG.DEFAULT_CARD, ew: CONFIG.DEFAULT_CARD }
-  }
-  if (auctionPrefix && auctionPrefix.length > 0) {
-    body.auctionPrefix = auctionPrefix
-  }
-  const resp = await fetch(CONFIG.BBA_URL + '/api/auction/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!resp.ok) {
-    let err = `HTTP ${resp.status}`
-    try { const j = await resp.json(); if (j.error) err = j.error } catch {}
-    throw new Error(err)
-  }
-  const j = await resp.json()
-  if (!j.success) throw new Error(j.error || 'BBA returned success=false')
-  return {
-    auction: j.auction,
-    meanings: j.meanings || [],
-    conventionsUsed: j.conventionsUsed || null,
-  }
-}
-
-async function fetchDoubleDummy(deal) {
-  const pbn = ('N:' + handsToPbnString(deal.hands)).replace(/ /g, 'x')
-  const vul = deal.vulnerable === 'Both' ? 'All' : deal.vulnerable
-  const url = `https://dds.bridgewebs.com/cgi-bin/bsol2/ddummy?request=m&dealstr=${encodeURIComponent(pbn)}&vul=${vul}&club=bridgeclassroom`
-  const resp = await fetch(url)
-  if (!resp.ok) return null
-  const text = await resp.text()
-  const json = JSON.parse(text.trim())
-  if (!json.sess || !json.sess.ddtricks || json.sess.ddtricks.length < 20) return null
-  return json.sess.ddtricks
-}
-
-function ddTrickAt(ddtricks, seatIdx, suitIdx) {
-  const ch = ddtricks[seatIdx * 5 + suitIdx]
-  if (ch >= '0' && ch <= '9') return parseInt(ch, 10)
-  if (ch >= 'a' && ch <= 'd') return 10 + ch.charCodeAt(0) - 'a'.charCodeAt(0)
-  if (ch >= 'A' && ch <= 'D') return 10 + ch.charCodeAt(0) - 'A'.charCodeAt(0)
-  return 0
+// Thin wrapper over the shared BBA client: pick the system (the embedded host's
+// explicit cards, the scenario's name, or the default card for non-scenario
+// sources) and let bbaClient build/send the request. Double-dummy is fetched via
+// the analysis composable (ddsClient under the hood).
+function generateAuction(deal, scenarioName, auctionPrefix = null) {
+  const opts = { deal, auctionPrefix }
+  if (EMBEDDED) opts.conventions = embeddedParams.cards
+  else if (scenarioName) opts.scenario = scenarioName
+  else opts.conventions = { ns: CONFIG.DEFAULT_CARD, ew: CONFIG.DEFAULT_CARD }
+  return fetchAuction(opts)
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -1124,13 +975,11 @@ async function loadDeal(deal) {
   divergedBids.value = {}
   expectedAuction.value = []
   auctionLoading.value = true
-  doubleDummy.value = null
   cardplay.reset()
 
   const dealRef = currentDeal.value
-  fetchDoubleDummy(dealRef).then(dd => {
-    if (currentDeal.value === dealRef) doubleDummy.value = dd
-  }).catch(() => {})
+  // Double-dummy is best-effort + latest-wins (the composable guards staleness).
+  loadDoubleDummy(dealRef)
 
   try {
     const result = await generateAuction(dealRef, currentScenario.value)
@@ -1755,46 +1604,9 @@ async function onUserBid(bid) {
 .bp-contract-line { font-size: 18px; font-weight: 500; }
 .bp-contract-meta { font-size: 13px; color: #666; }
 .bp-contract-actions { display: flex; gap: 8px; margin-top: 10px; }
-.bp-red { color: #d32f2f; }
 
-/* Suit colors in the contract panel.
-   - DD-table th has its own grey color rule; bump specificity so the
-     bp-red/bp-black overrides win.
-   - formatBid() emits <span class="red|black">…</span> for the final
-     contract; :deep() pierces scoped styles to colour those spans. */
-.bp-dd-table th.bp-red { color: #d32f2f; }
-.bp-dd-table th.bp-black { color: #1a1a1a; }
+/* formatBid() emits <span class="red|black">…</span> for the final contract;
+   :deep() pierces scoped styles to colour those spans. */
 .bp-contract :deep(.red) { color: #d32f2f; }
 .bp-contract :deep(.black) { color: #1a1a1a; }
-
-.bp-dd-label {
-  font-size: 11px;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 10px;
-}
-.bp-dd-table {
-  border-collapse: collapse;
-  margin-top: 6px;
-  font-size: 13px;
-}
-.bp-dd-table th,
-.bp-dd-table td {
-  border: 0.5px solid #ddd;
-  padding: 4px 10px;
-  text-align: center;
-}
-.bp-dd-table th { background: #f3f3f0; color: #666; font-weight: 600; }
-.bp-dd-seat { background: #f3f3f0; font-weight: 600; }
-.bp-dd-contract.bp-dd-match {
-  background: #d4edda;
-  color: #155724;
-  font-weight: 700;
-}
-.bp-dd-contract.bp-dd-diverged {
-  background: #fbd6e5;
-  color: #88224a;
-  font-weight: 700;
-}
 </style>
