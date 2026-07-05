@@ -351,9 +351,6 @@ import { getBot, listBots } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
 import { useUserStore } from '../composables/useUserStore.js'
-import { fetchAuction } from '../utils/bbaClient.js'
-import { seatAtIndex, isAuctionOver, lastSuitBid } from '../utils/handAnalysis.js'
-import { useHandAnalysis } from '../composables/useHandAnalysis.js'
 import { useLocalEngine } from '../composables/engines/localEngine.js'
 
 // ── Config ────────────────────────────────────────────────────────────
@@ -421,25 +418,12 @@ const pickerAllow = {
   options: ['fresh'],
 }
 
-// The board-manager engine (P3). LocalEngine owns the deal source (selection +
-// persistence + draw + PBN parse); the auction/cardplay orchestration still
-// lives in this view (extraction slice 1b). `selection` is v-modelled by the
-// picker; `poolSummary` reads the engine's describeSelection.
-const engine = useLocalEngine()
-const { selection, hasSelection } = engine
-const poolSummary = engine.sourceSummary
-
-// currentScenario = the PBS scenario FILE the current board came from, handed to
-// BBA so it bids that convention's expected auction. '' for non-scenario sources
-// (Random / Paste / Library / Club) — generateAuction then falls back to the
-// default convention card. currentScenarioLabel is the display name.
-const currentScenario = ref('')
-const currentScenarioLabel = ref('')
-const currentDeal = ref(null)
-const dealsDrawn = ref(0)
-const drawing = ref(false)
-const dealError = ref('')
-const dealErrorHint = ref('')
+// The board-manager engine (P3, LocalEngine) is created below — after cardplay,
+// since it takes cardplay.reset via the onResetPlay config. It owns the deal
+// source (selection/draw/parse) AND the auction/board flow (currentDeal, bids,
+// BBA expected auction, divergence, double-dummy). This view keeps cardplay,
+// presentation, prefs, the picker, narrative, and the embedded shell.
+const drawing = ref(false) // "dealing…" spinner between a draw and the load
 
 // Scenario-chat popup: the .btn @chat for the open scenario, shown auto-on-open
 // and reopenable from the scenario bar. { title, text } or null.
@@ -582,38 +566,28 @@ const cardplayHidePlayed = computed(() => {
   return !cardplayShowPlayed.value
 })
 
-const expectedAuction = ref([])
-// Snapshot of BBA's original (no-prefix) auction & meanings at deal load time,
-// used to restore the auction on Restart after the user has driven divergent
-// re-requests that overwrote expectedAuction.
-const originalExpectedAuction = ref([])
-const originalMeanings = ref([])
-const conventionsUsed = ref(null)
-const meanings = ref([])
-const bids = ref([])
-// Map idx → { user, bba } for every position where the user diverged from
-// BBA's expected bid. Both bids are kept so the cell can show them stacked
-// and the user can toggle which is "live" — toggling re-requests the auction
-// from BBA with auctionPrefix so the bots actually respond to the new bid.
-const divergedBids = ref({})
-const auctionLoading = ref(false)
-
-// Engine-agnostic post-hand overlay: final contract + double-dummy. On the
-// server single-table host view later, the same composable renders the same
-// overlay from that engine's auction/deal.
-const analysis = useHandAnalysis({ bids, dealer: () => currentDeal.value?.dealer })
-const { finalContract, doubleDummy, loadDoubleDummy } = analysis
-
-// ── Derived ───────────────────────────────────────────────────────────
-const auctionComplete = computed(() => currentDeal.value && isAuctionOver(bids.value))
-const currentSeat = computed(() => {
-  if (!currentDeal.value) return null
-  return seatAtIndex(currentDeal.value.dealer, bids.value.length)
+// ── The board-manager engine (LocalEngine) ─────────────────────────────
+// Owns the deal source + the auction/board flow. The view injects its seat,
+// embedded mode, the rotate pref, and onResetPlay (clear the cardplay engine on
+// a new board / restart) — cardplay itself stays in this view for now.
+const engine = useLocalEngine({
+  yourSeat: STUDENT_SEAT,
+  embedded: EMBEDDED,
+  embeddedCards: embeddedParams?.cards || null,
+  rotate: () => rotateDeals.value,
+  onResetPlay: () => cardplay.reset(),
 })
-const lastNonPassNonDouble = computed(() => lastSuitBid(bids.value))
-const wrongIndicesArray = computed(() => Object.keys(divergedBids.value).map(Number))
-const hadDivergence = computed(() => Object.keys(divergedBids.value).length > 0)
+const {
+  selection, hasSelection, sourceSummary: poolSummary,
+  currentDeal, dealsDrawn, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
+  bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
+  finalContract, doubleDummy,
+  auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
+  summary, canDouble, canRedouble,
+  loadDeal, onUserBid, toggleDivergedBid, resetAuction,
+} = engine
 
+// ── Derived (view-side: presentation over the engine + cardplay + prefs) ─
 const visibleHands = computed(() => {
   if (!currentDeal.value) return { N: null, E: null, S: null, W: null }
   // During cardplay, defer to the engine for which seats are visible — but
@@ -642,35 +616,6 @@ const hiddenSeats = computed(() => {
   }
   if (auctionComplete.value) return []
   return ['N', 'E', 'S', 'W'].filter(s => s !== STUDENT_SEAT)
-})
-
-const canDouble = computed(() => {
-  const trailing = []
-  for (let i = bids.value.length - 1; i >= 0; i--) {
-    if (bids.value[i] === 'Pass') trailing.push('Pass')
-    else { trailing.push(bids.value[i]); break }
-  }
-  const lastNonPass = trailing[trailing.length - 1]
-  if (!lastNonPass || lastNonPass === 'Pass') return false
-  if (lastNonPass === 'X' || lastNonPass === 'XX') return false
-  return (trailing.length % 2) === 1
-})
-const canRedouble = computed(() => {
-  const trailing = []
-  for (let i = bids.value.length - 1; i >= 0; i--) {
-    if (bids.value[i] === 'Pass') trailing.push('Pass')
-    else { trailing.push(bids.value[i]); break }
-  }
-  const lastNonPass = trailing[trailing.length - 1]
-  if (lastNonPass !== 'X') return false
-  return (trailing.length % 2) === 1
-})
-
-const summary = computed(() => {
-  if (!auctionComplete.value) return ''
-  const n = Object.keys(divergedBids.value).length
-  if (n === 0) return 'You matched the BBA all the way through.'
-  return `${n} of your bids differed from the BBA — see the divergent cells above.`
 })
 
 // Cardplay phase derived from auction + toggle + cardplay engine state.
@@ -733,23 +678,9 @@ function fmtMs(ms) {
   return `${(ms / 1000).toFixed(0)}s`
 }
 
-// ── PBN parsing (multi-deal) ──────────────────────────────────────────
 // Display name for a scenario file (used for the chat popup title).
 function prettifyLabel(file) {
   return file.replace(/_/g, ' ').trim()
-}
-
-// ── External services ─────────────────────────────────────────────────
-// Thin wrapper over the shared BBA client: pick the system (the embedded host's
-// explicit cards, the scenario's name, or the default card for non-scenario
-// sources) and let bbaClient build/send the request. Double-dummy is fetched via
-// the analysis composable (ddsClient under the hood).
-function generateAuction(deal, scenarioName, auctionPrefix = null) {
-  const opts = { deal, auctionPrefix }
-  if (EMBEDDED) opts.conventions = embeddedParams.cards
-  else if (scenarioName) opts.scenario = scenarioName
-  else opts.conventions = { ns: CONFIG.DEFAULT_CARD, ew: CONFIG.DEFAULT_CARD }
-  return fetchAuction(opts)
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -774,11 +705,9 @@ async function loadEmbeddedDeal() {
       vulnerable: embeddedParams.vul || 'None',
     })
     if (!deal) throw new Error('Invalid PBN deal string (expected "N:hand hand hand hand")')
-    // Embedded uses explicit conventions (embeddedParams.cards), not a scenario
-    // name, so currentScenario stays ''. generateAuction branches on EMBEDDED.
-    currentScenario.value = ''
-    currentScenarioLabel.value = 'Replay'
-    await loadDeal(deal)
+    // Embedded uses explicit conventions (embeddedCards), not a scenario name,
+    // so scenario stays '' (the engine's generateAuction branches on embedded).
+    await loadDeal(deal, { scenario: '', label: 'Replay' })
   } catch (err) {
     dealError.value = 'Could not load embedded deal: ' + err.message
   }
@@ -875,9 +804,7 @@ async function drawNextBoard() {
     drawing.value = false
     return
   }
-  currentScenario.value = drawn.scenarioFile
-  currentScenarioLabel.value = drawn.label
-  await loadDeal(drawn.deal)
+  await loadDeal(drawn.deal, { scenario: drawn.scenarioFile, label: drawn.label })
   drawing.value = false
   // Auto-show the scenario chat when a NEW scenario opens (not on same-scenario
   // next-deals, non-scenario sources, or embedded single-deal mode).
@@ -890,121 +817,10 @@ async function drawNextBoard() {
   }
 }
 
-async function loadDeal(deal) {
-  dealError.value = ''
-  dealErrorHint.value = ''
-  // 50% chance of 180° rotation when the toggle is on — standalone only; embedded
-  // must keep the deal in its actual compass frame (the host's studentSeat/DD
-  // table assume it).
-  if (!EMBEDDED && rotateDeals.value && Math.random() < 0.5) {
-    deal = rotateDeal(deal)
-  }
-  currentDeal.value = deal
-  dealsDrawn.value += 1
-  bids.value = []
-  divergedBids.value = {}
-  expectedAuction.value = []
-  auctionLoading.value = true
-  cardplay.reset()
-
-  const dealRef = currentDeal.value
-  // Double-dummy is best-effort + latest-wins (the composable guards staleness).
-  loadDoubleDummy(dealRef)
-
-  try {
-    const result = await generateAuction(dealRef, currentScenario.value)
-    // §C3: a newer loadDeal may have swapped the deal while BBA was
-    // responding. Abandon this stale result rather than overwriting the
-    // current deal's auction/meanings (matches the doubleDummy guard above).
-    if (currentDeal.value !== dealRef) return
-    expectedAuction.value = result.auction
-    originalExpectedAuction.value = result.auction
-    conventionsUsed.value = result.conventionsUsed || null
-    meanings.value = result.meanings || []
-    originalMeanings.value = result.meanings || []
-    await playToHumanTurn(dealRef)
-  } catch (err) {
-    if (currentDeal.value !== dealRef) return  // stale error from an abandoned load
-    dealError.value = 'BBA error: ' + err.message
-    if (err.message.includes('Failed to fetch') || err.message.includes('CORS')) {
-      dealErrorHint.value = 'Likely a CORS issue — the BBA server must allow this origin.'
-    }
-  } finally {
-    // Only the load that still owns the current deal clears the spinner, so a
-    // stale loader can't turn off the newer load's loading state.
-    if (currentDeal.value === dealRef) auctionLoading.value = false
-  }
-}
-
 // "Next deal" — draw the next board from the current selection (a fresh board
 // from the same pool; scenario/curated/random draw randomly, others sequential).
 async function newDeal() {
   await drawNextBoard()
-}
-
-// Rotate a deal 180°: N↔S, E↔W. Dealer and vulnerability flip with the seats.
-function rotateDeal(deal) {
-  return {
-    ...deal,
-    dealer: { N: 'S', S: 'N', E: 'W', W: 'E' }[deal.dealer] || deal.dealer,
-    vulnerable: deal.vulnerable === 'NS' ? 'EW'
-              : deal.vulnerable === 'EW' ? 'NS'
-              : deal.vulnerable,
-    hands: {
-      N: deal.hands.S,
-      S: deal.hands.N,
-      E: deal.hands.W,
-      W: deal.hands.E,
-    },
-  }
-}
-
-// Swap which bid is "live" at a diverged index. Truncates the auction to
-// just past the toggle point and re-requests from BBA with auctionPrefix so
-// the bots actually respond to the new bid sequence. Any later divergences
-// in the prior context are dropped (their auction context no longer exists).
-async function toggleDivergedBid(idx) {
-  if (auctionLoading.value) return
-  const div = divergedBids.value[idx]
-  if (!div) return
-  const currentLive = bids.value[idx]
-  const otherBid = currentLive === div.user ? div.bba : div.user
-
-  // Truncate bids to the position right after the toggled cell.
-  bids.value = bids.value.slice(0, idx).concat([otherBid])
-
-  // Drop any divergences after this point — the auction beyond is being replaced.
-  const newDivs = {}
-  for (const [k, v] of Object.entries(divergedBids.value)) {
-    if (Number(k) <= idx) newDivs[k] = v
-  }
-  divergedBids.value = newDivs
-
-  // Ask BBA to continue the auction from the new prefix.
-  auctionLoading.value = true
-  try {
-    const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
-    expectedAuction.value = result.auction
-    meanings.value = result.meanings || []
-    if (result.conventionsUsed) conventionsUsed.value = result.conventionsUsed
-    await playToHumanTurn()
-  } catch (err) {
-    dealError.value = 'BBA error on toggle: ' + err.message
-  } finally {
-    auctionLoading.value = false
-  }
-}
-
-async function resetAuction() {
-  if (!currentDeal.value) return
-  bids.value = []
-  divergedBids.value = {}
-  cardplay.reset()
-  // Restore BBA's original (no-prefix) auction so the user starts from a
-  // clean slate even after divergent re-requests overwrote expectedAuction.
-  expectedAuction.value = originalExpectedAuction.value
-  meanings.value = originalMeanings.value
-  await playToHumanTurn()
 }
 
 // Cardplay click handler — routes user clicks on S or N (dummy) into the
@@ -1041,48 +857,6 @@ async function restartCardplay() {
   })
 }
 
-async function playToHumanTurn(dealRef = currentDeal.value) {
-  while (!isAuctionOver(bids.value) && bids.value.length < expectedAuction.value.length) {
-    const seat = seatAtIndex(currentDeal.value.dealer, bids.value.length)
-    if (seat === STUDENT_SEAT) break
-    const bid = expectedAuction.value[bids.value.length]
-    await sleep(300)
-    // §C3: bail if the deal was switched during the pause, so we don't inject
-    // stale auto-bids (computed against the old dealer) into the new auction.
-    if (currentDeal.value !== dealRef) return
-    bids.value.push(bid)
-  }
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
-
-async function onUserBid(bid) {
-  if (!currentDeal.value) return
-  const idx = bids.value.length
-  const expected = expectedAuction.value[idx]
-  if (expected && bid !== expected) {
-    // User diverged. Record both bids, use the USER'S bid as the live one,
-    // and re-request from BBA with auctionPrefix so the bots actually
-    // respond to this sequence rather than BBA's predicted continuation.
-    // Toggling later flips back to BBA's bid (also via re-request).
-    divergedBids.value = { ...divergedBids.value, [idx]: { user: bid, bba: expected } }
-    bids.value.push(bid)
-    auctionLoading.value = true
-    try {
-      const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
-      expectedAuction.value = result.auction
-      meanings.value = result.meanings || []
-      if (result.conventionsUsed) conventionsUsed.value = result.conventionsUsed
-    } catch (err) {
-      dealError.value = 'BBA error on divergence: ' + err.message
-    } finally {
-      auctionLoading.value = false
-    }
-  } else {
-    bids.value.push(bid)
-  }
-  await playToHumanTurn()
-}
 </script>
 
 <style scoped>

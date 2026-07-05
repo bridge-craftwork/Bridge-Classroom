@@ -2,30 +2,33 @@
 // tableEngine.js). Rich solo analysis (double-dummy, BBA expected-auction +
 // divergence, narrative), BBA-scripted bots, no seats/invite/multi-human.
 //
-// STATUS (foundation): the LOCAL-ONLY analysis hooks are implemented for real
-// here — these are the beneficial features we want to surface through the
-// interface. The shared game-flow (reactive board/auction/hands state + bid/
-// play/nextBoard) still lives inside BiddingPracticeView.vue; extracting it into
-// this engine is the next step (its `parsePBN` + `loadDeal` + `playToHumanTurn`
-// + `useCardPlay` wiring + interactive divergence move here). Until then those
-// fields/actions are placeholders so the contract is complete and the view
-// refactor can proceed incrementally.
+// Owns the board manager: the deal source (selection + persistence + draw +
+// PBN parse) AND the auction/board orchestration (currentDeal, bids, BBA
+// expected auction, interactive divergence, double-dummy). Cardplay still lives
+// in the view (BiddingPracticeView) for now — the only coupling is that a new
+// board / reset must clear the cardplay engine, which the view injects via the
+// `onResetPlay` config callback, and the view starts cardplay off `auctionComplete`.
 //
-// SEAT-AGNOSTIC: `yourSeat` is a real ref (defaults to South today, but the
-// "human is always South" restriction is being removed — do not hardcode it).
+// SEAT-AGNOSTIC: the human's seat is `config.yourSeat` (any of N/E/S/W), never
+// assumed South. The "human is always South" restriction is being removed — the
+// caller passes the seat; this engine only references `yourSeat`.
+//
+// Config: { yourSeat='S', embedded=false, embeddedCards=null,
+//           rotate=()=>false, onResetPlay=()=>{} }
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { LOCAL_CAPABILITIES } from './tableEngine.js'
-import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
+import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchScenarioMeta } from '../../utils/pbsScenarios.js'
+import { seatAtIndex, isAuctionOver, lastSuitBid } from '../../utils/handAnalysis.js'
 import { nextBoard as resolverNextBoard, describeSelection } from '../useDealSourceResolver.js'
+import { useHandAnalysis } from '../useHandAnalysis.js'
 import { parsePbnDeals, makeDeal } from '../../utils/pbnDeal.js'
 
 // Default convention card for non-scenario sources (Random/Paste/Library/Club).
 const DEFAULT_CARD = '21GF-DEFAULT'
 
-// The deal-source selection persists so a returning student keeps their pool.
 const SELECTION_KEY = 'bp.selection'
 function loadSelection() {
   try {
@@ -38,38 +41,236 @@ function loadSelection() {
   return { items: [], options: {} }
 }
 
-export function useLocalEngine() {
-  // ── Reactive game state — TODO: populate from the extracted local flow ────
-  const yourSeat = ref('S') // seat-agnostic; South is only today's default
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)) }
 
-  // ── Deal source (the engine owns the source + draw + parse) ────────────
+export function useLocalEngine(config = {}) {
+  const yourSeat = ref(config.yourSeat || 'S') // seat-agnostic (South today)
+  const embedded = !!config.embedded
+  const embeddedCards = config.embeddedCards || null
+  const rotate = typeof config.rotate === 'function' ? config.rotate : () => false
+  const onResetPlay = typeof config.onResetPlay === 'function' ? config.onResetPlay : () => {}
+
+  // ── Deal source ───────────────────────────────────────────────────────
   const selection = ref(loadSelection())
-  watch(selection, (s) => {
-    try { localStorage.setItem(SELECTION_KEY, JSON.stringify(s)) } catch { /* ignore */ }
-  }, { deep: true })
+  let _persistTimer = null
+  function persist() {
+    try { localStorage.setItem(SELECTION_KEY, JSON.stringify(selection.value)) } catch { /* ignore */ }
+  }
   const hasSelection = computed(() => (selection.value?.items?.length || 0) > 0)
   const sourceSummary = computed(() =>
     (selection.value?.items?.length || 0) > 1 ? describeSelection(selection.value) : '',
   )
 
+  // ── Board + auction state ─────────────────────────────────────────────
+  const currentDeal = ref(null)
+  const dealsDrawn = ref(0)
+  const currentScenario = ref('') // PBS scenario FILE (for BBA), '' = non-scenario
+  const currentScenarioLabel = ref('')
+  const dealError = ref('')
+  const dealErrorHint = ref('')
+
+  const expectedAuction = ref([])
+  const originalExpectedAuction = ref([])
+  const originalMeanings = ref([])
+  const conventionsUsed = ref(null)
+  const meanings = ref([])
+  const bids = ref([])
+  const divergedBids = ref({})
+  const auctionLoading = ref(false)
+
+  // Contract + double-dummy overlay (engine-agnostic composable).
+  const analysis = useHandAnalysis({ bids, dealer: () => currentDeal.value?.dealer })
+  const { finalContract, doubleDummy, loadDoubleDummy } = analysis
+
+  // ── Derived ───────────────────────────────────────────────────────────
+  const auctionComplete = computed(() => currentDeal.value && isAuctionOver(bids.value))
+  const currentSeat = computed(() =>
+    currentDeal.value ? seatAtIndex(currentDeal.value.dealer, bids.value.length) : null,
+  )
+  const lastNonPassNonDouble = computed(() => lastSuitBid(bids.value))
+  const wrongIndicesArray = computed(() => Object.keys(divergedBids.value).map(Number))
+  const hadDivergence = computed(() => Object.keys(divergedBids.value).length > 0)
+  const summary = computed(() => {
+    if (!auctionComplete.value) return ''
+    const n = Object.keys(divergedBids.value).length
+    if (n === 0) return 'You matched the BBA all the way through.'
+    return `${n} of your bids differed from the BBA — see the divergent cells above.`
+  })
+  const canDouble = computed(() => {
+    const trailing = []
+    for (let i = bids.value.length - 1; i >= 0; i--) {
+      if (bids.value[i] === 'Pass') trailing.push('Pass')
+      else { trailing.push(bids.value[i]); break }
+    }
+    const lastNonPass = trailing[trailing.length - 1]
+    if (!lastNonPass || lastNonPass === 'Pass') return false
+    if (lastNonPass === 'X' || lastNonPass === 'XX') return false
+    return (trailing.length % 2) === 1
+  })
+  const canRedouble = computed(() => {
+    const trailing = []
+    for (let i = bids.value.length - 1; i >= 0; i--) {
+      if (bids.value[i] === 'Pass') trailing.push('Pass')
+      else { trailing.push(bids.value[i]); break }
+    }
+    const lastNonPass = trailing[trailing.length - 1]
+    if (lastNonPass !== 'X') return false
+    return (trailing.length % 2) === 1
+  })
+
+  // ── BBA client (scenario name, or default card for non-scenario sources) ─
+  function generateAuction(deal, scenarioName, auctionPrefix = null) {
+    const opts = { deal, auctionPrefix }
+    if (embedded) opts.conventions = embeddedCards
+    else if (scenarioName) opts.scenario = scenarioName
+    else opts.conventions = { ns: DEFAULT_CARD, ew: DEFAULT_CARD }
+    return fetchAuction(opts)
+  }
+
+  // Auto-bid the non-human seats up to the human's turn, from BBA's expected
+  // auction. §C3: bail if the deal was swapped mid-pause.
+  async function playToHumanTurn(dealRef = currentDeal.value) {
+    while (!isAuctionOver(bids.value) && bids.value.length < expectedAuction.value.length) {
+      const seat = seatAtIndex(currentDeal.value.dealer, bids.value.length)
+      if (seat === yourSeat.value) break
+      const bid = expectedAuction.value[bids.value.length]
+      await sleep(300)
+      if (currentDeal.value !== dealRef) return
+      bids.value.push(bid)
+    }
+  }
+
+  // Rotate a deal 180°: N↔S, E↔W. Dealer + vulnerability flip with the seats.
+  function rotateDeal(deal) {
+    return {
+      ...deal,
+      dealer: { N: 'S', S: 'N', E: 'W', W: 'E' }[deal.dealer] || deal.dealer,
+      vulnerable: deal.vulnerable === 'NS' ? 'EW' : deal.vulnerable === 'EW' ? 'NS' : deal.vulnerable,
+      hands: { N: deal.hands.S, S: deal.hands.N, E: deal.hands.W, W: deal.hands.E },
+    }
+  }
+
+  // Load a deal into the auction flow: reset state, fetch DD + BBA expected
+  // auction, and auto-bid to the human's turn. `scenario` names the PBS file
+  // (for BBA); `label` is the display name. Staleness-guarded (latest wins).
+  async function loadDeal(deal, { scenario = '', label = '' } = {}) {
+    currentScenario.value = scenario
+    currentScenarioLabel.value = label
+    dealError.value = ''
+    dealErrorHint.value = ''
+    // 50% chance of 180° rotation when enabled — standalone only; embedded keeps
+    // the deal's actual compass frame (the host's studentSeat/DD table assume it).
+    if (!embedded && rotate() && Math.random() < 0.5) deal = rotateDeal(deal)
+    currentDeal.value = deal
+    dealsDrawn.value += 1
+    bids.value = []
+    divergedBids.value = {}
+    expectedAuction.value = []
+    auctionLoading.value = true
+    onResetPlay()
+
+    const dealRef = currentDeal.value
+    loadDoubleDummy(dealRef) // best-effort, latest-wins
+
+    try {
+      const result = await generateAuction(dealRef, currentScenario.value)
+      if (currentDeal.value !== dealRef) return // stale — a newer load took over
+      expectedAuction.value = result.auction
+      originalExpectedAuction.value = result.auction
+      conventionsUsed.value = result.conventionsUsed || null
+      meanings.value = result.meanings || []
+      originalMeanings.value = result.meanings || []
+      await playToHumanTurn(dealRef)
+    } catch (err) {
+      if (currentDeal.value !== dealRef) return
+      dealError.value = 'BBA error: ' + err.message
+      if (err.message.includes('Failed to fetch') || err.message.includes('CORS')) {
+        dealErrorHint.value = 'Likely a CORS issue — the BBA server must allow this origin.'
+      }
+    } finally {
+      if (currentDeal.value === dealRef) auctionLoading.value = false
+    }
+  }
+
+  // A human bid. On divergence from BBA's expected bid, record both and
+  // re-request from BBA with the new prefix so bots respond to this sequence.
+  async function onUserBid(bid) {
+    if (!currentDeal.value) return
+    const idx = bids.value.length
+    const expected = expectedAuction.value[idx]
+    if (expected && bid !== expected) {
+      divergedBids.value = { ...divergedBids.value, [idx]: { user: bid, bba: expected } }
+      bids.value.push(bid)
+      auctionLoading.value = true
+      try {
+        const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
+        expectedAuction.value = result.auction
+        meanings.value = result.meanings || []
+        if (result.conventionsUsed) conventionsUsed.value = result.conventionsUsed
+      } catch (err) {
+        dealError.value = 'BBA error on divergence: ' + err.message
+      } finally {
+        auctionLoading.value = false
+      }
+    } else {
+      bids.value.push(bid)
+    }
+    await playToHumanTurn()
+  }
+
+  // Flip which bid is "live" at a diverged index; re-request the continuation.
+  async function toggleDivergedBid(idx) {
+    if (auctionLoading.value) return
+    const div = divergedBids.value[idx]
+    if (!div) return
+    const currentLive = bids.value[idx]
+    const otherBid = currentLive === div.user ? div.bba : div.user
+    bids.value = bids.value.slice(0, idx).concat([otherBid])
+    const newDivs = {}
+    for (const [k, v] of Object.entries(divergedBids.value)) {
+      if (Number(k) <= idx) newDivs[k] = v
+    }
+    divergedBids.value = newDivs
+    auctionLoading.value = true
+    try {
+      const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
+      expectedAuction.value = result.auction
+      meanings.value = result.meanings || []
+      if (result.conventionsUsed) conventionsUsed.value = result.conventionsUsed
+      await playToHumanTurn()
+    } catch (err) {
+      dealError.value = 'BBA error on toggle: ' + err.message
+    } finally {
+      auctionLoading.value = false
+    }
+  }
+
+  // Restart the current board's auction from BBA's original (no-prefix) line.
+  async function resetAuction() {
+    if (!currentDeal.value) return
+    bids.value = []
+    divergedBids.value = {}
+    onResetPlay()
+    expectedAuction.value = originalExpectedAuction.value
+    meanings.value = originalMeanings.value
+    await playToHumanTurn()
+  }
+
   return {
     capabilities: LOCAL_CAPABILITIES,
     yourSeat,
+
+    // deal source
     selection,
     hasSelection,
     sourceSummary,
-
-    // Parse an explicit PBN deal string into a deal object (embedded ?pbn=).
     parseDeal(dealString, opts) { return makeDeal(dealString, opts) },
-
-    // Set/replace the deal source (stream: one board drawn per nextBoard()).
     loadSource(sel) {
       selection.value = sel
+      clearTimeout(_persistTimer)
+      _persistTimer = setTimeout(persist, 0)
       return { ok: true }
     },
-    // Draw the next board from the current selection, parsed and attributed:
-    //   { deal, scenarioFile, label }  — scenarioFile is '' for non-scenario
-    //   sources (Random/Paste/Library/Club); the caller hands it to BBA.
     async nextBoard() {
       if (!hasSelection.value) return { ok: false, reason: 'no deal source' }
       const drawn = await resolverNextBoard(selection.value)
@@ -80,14 +281,40 @@ export function useLocalEngine() {
       return { ok: true, deal: deals[0], scenarioFile, label: drawn.label || describeSelection(selection.value) || 'Deal' }
     },
 
-    // ── Analysis hooks — the local-only features, implemented for real ─────
-    // Double-dummy trick table (bridgewebs solver; our own service later).
+    // board + auction state
+    currentDeal,
+    dealsDrawn,
+    currentScenario,
+    currentScenarioLabel,
+    dealError,
+    dealErrorHint,
+    bids,
+    expectedAuction,
+    meanings,
+    conventionsUsed,
+    divergedBids,
+    auctionLoading,
+    finalContract,
+    doubleDummy,
+    // derived
+    auctionComplete,
+    currentSeat,
+    lastNonPassNonDouble,
+    wrongIndicesArray,
+    hadDivergence,
+    summary,
+    canDouble,
+    canRedouble,
+    // actions
+    loadDeal,
+    onUserBid,
+    toggleDivergedBid,
+    resetAuction,
+
+    // ── Analysis hooks (also usable directly by other engines/views) ───────
     async getDoubleDummy(deal) {
       try { return await fetchDoubleDummy(deal) } catch { return null }
     },
-    // BBA "expected auction" to diff the human's bids against. `scenario` names
-    // the convention system; falls back to the default card for non-scenario
-    // sources. `auctionPrefix` re-requests a continuation (change-of-bid).
     async getExpectedAuction(deal, { scenario = null, conventions = null, auctionPrefix = null } = {}) {
       try {
         const opts = { deal, auctionPrefix }
@@ -97,23 +324,16 @@ export function useLocalEngine() {
         return await fetchAuction(opts)
       } catch { return null }
     },
-    // Authored scenario narrative (.btn @chat), for the description popup.
     async getNarrative(scenarioFile) {
       if (!scenarioFile) return null
       const meta = await fetchScenarioMeta(scenarioFile)
       return meta?.description ? { title: scenarioFile.replace(/_/g, ' ').trim(), text: meta.description } : null
     },
 
-    // ── Multiplayer — unsupported locally (capabilities say so) ────────────
+    // multiplayer — unsupported locally (capabilities say so)
     invite() { return null },
     assignSeat() { return { ok: false, reason: 'local table has no seats' } },
     boot() { return { ok: false, reason: 'local table has no seats' } },
-
-    // ── Play actions — TODO: extract from BiddingPracticeView ──────────────
-    bid() { return { ok: false, reason: 'not wired yet (extraction pending)' } },
-    play() { return { ok: false, reason: 'not wired yet (extraction pending)' } },
-    undo() { return { ok: false, reason: 'not wired yet (extraction pending)' } },
-    ready() { return { ok: true } },
     leave() {},
   }
 }
