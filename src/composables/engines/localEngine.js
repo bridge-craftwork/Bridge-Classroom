@@ -14,35 +14,70 @@
 // SEAT-AGNOSTIC: `yourSeat` is a real ref (defaults to South today, but the
 // "human is always South" restriction is being removed — do not hardcode it).
 
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { LOCAL_CAPABILITIES } from './tableEngine.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
 import { fetchScenarioMeta } from '../../utils/pbsScenarios.js'
-import { nextBoard as resolverNextBoard } from '../useDealSourceResolver.js'
+import { nextBoard as resolverNextBoard, describeSelection } from '../useDealSourceResolver.js'
+import { parsePbnDeals, makeDeal } from '../../utils/pbnDeal.js'
 
 // Default convention card for non-scenario sources (Random/Paste/Library/Club).
 const DEFAULT_CARD = '21GF-DEFAULT'
 
+// The deal-source selection persists so a returning student keeps their pool.
+const SELECTION_KEY = 'bp.selection'
+function loadSelection() {
+  try {
+    const raw = localStorage.getItem(SELECTION_KEY)
+    if (raw) {
+      const s = JSON.parse(raw)
+      if (s && Array.isArray(s.items)) return s
+    }
+  } catch { /* private mode etc. */ }
+  return { items: [], options: {} }
+}
+
 export function useLocalEngine() {
   // ── Reactive game state — TODO: populate from the extracted local flow ────
   const yourSeat = ref('S') // seat-agnostic; South is only today's default
-  const selection = ref({ items: [], options: {} })
+
+  // ── Deal source (the engine owns the source + draw + parse) ────────────
+  const selection = ref(loadSelection())
+  watch(selection, (s) => {
+    try { localStorage.setItem(SELECTION_KEY, JSON.stringify(s)) } catch { /* ignore */ }
+  }, { deep: true })
+  const hasSelection = computed(() => (selection.value?.items?.length || 0) > 0)
+  const sourceSummary = computed(() =>
+    (selection.value?.items?.length || 0) > 1 ? describeSelection(selection.value) : '',
+  )
 
   return {
     capabilities: LOCAL_CAPABILITIES,
     yourSeat,
+    selection,
+    hasSelection,
+    sourceSummary,
 
-    // ── Deal source (stream one board at a time) ──────────────────────────
-    async loadSource(sel) {
+    // Parse an explicit PBN deal string into a deal object (embedded ?pbn=).
+    parseDeal(dealString, opts) { return makeDeal(dealString, opts) },
+
+    // Set/replace the deal source (stream: one board drawn per nextBoard()).
+    loadSource(sel) {
       selection.value = sel
       return { ok: true }
     },
-    // Draw the next board from the current selection. Returns the raw board;
-    // TODO: parse + load into the (to-be-extracted) local state machine.
+    // Draw the next board from the current selection, parsed and attributed:
+    //   { deal, scenarioFile, label }  — scenarioFile is '' for non-scenario
+    //   sources (Random/Paste/Library/Club); the caller hands it to BBA.
     async nextBoard() {
-      if (!selection.value.items?.length) return { ok: false, reason: 'no source' }
-      return { ok: true, board: await resolverNextBoard(selection.value) }
+      if (!hasSelection.value) return { ok: false, reason: 'no deal source' }
+      const drawn = await resolverNextBoard(selection.value)
+      const deals = parsePbnDeals(drawn.pbn)
+      if (!deals.length) return { ok: false, reason: 'drawn board could not be parsed' }
+      const r = drawn.ref
+      const scenarioFile = r && (r.kind === 'scenario' || r.kind === 'script') ? r.file : ''
+      return { ok: true, deal: deals[0], scenarioFile, label: drawn.label || describeSelection(selection.value) || 'Deal' }
     },
 
     // ── Analysis hooks — the local-only features, implemented for real ─────

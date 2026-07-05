@@ -349,12 +349,12 @@ import { formatBid } from '../utils/cardFormatting.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
 import { getBot, listBots } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
-import { nextBoard, describeSelection } from '../composables/useDealSourceResolver.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { fetchAuction } from '../utils/bbaClient.js'
-import { SEAT_ORDER, seatAtIndex, isAuctionOver, lastSuitBid } from '../utils/handAnalysis.js'
+import { seatAtIndex, isAuctionOver, lastSuitBid } from '../utils/handAnalysis.js'
 import { useHandAnalysis } from '../composables/useHandAnalysis.js'
+import { useLocalEngine } from '../composables/engines/localEngine.js'
 
 // ── Config ────────────────────────────────────────────────────────────
 // PBS deal/menu fetching lives in the resolver + pbsScenarios.js; the BBA and
@@ -421,28 +421,13 @@ const pickerAllow = {
   options: ['fresh'],
 }
 
-// The deal-source selection (deal-source-spec §2.2 — { items, options }), driven
-// by the picker and persisted so a returning student keeps their pool. The board
-// stream comes from the shared resolver's nextBoard(selection).
-const SELECTION_KEY = 'bp.selection'
-function loadSelection() {
-  try {
-    const raw = localStorage.getItem(SELECTION_KEY)
-    if (raw) {
-      const s = JSON.parse(raw)
-      if (s && Array.isArray(s.items)) return s
-    }
-  } catch { /* private mode etc. */ }
-  return { items: [], options: {} }
-}
-const selection = ref(loadSelection())
-watch(selection, (s) => {
-  try { localStorage.setItem(SELECTION_KEY, JSON.stringify(s)) } catch { /* ignore */ }
-}, { deep: true })
-const hasSelection = computed(() => (selection.value?.items?.length || 0) > 0)
-const poolSummary = computed(() =>
-  (selection.value?.items?.length || 0) > 1 ? describeSelection(selection.value) : ''
-)
+// The board-manager engine (P3). LocalEngine owns the deal source (selection +
+// persistence + draw + PBN parse); the auction/cardplay orchestration still
+// lives in this view (extraction slice 1b). `selection` is v-modelled by the
+// picker; `poolSummary` reads the engine's describeSelection.
+const engine = useLocalEngine()
+const { selection, hasSelection } = engine
+const poolSummary = engine.sourceSummary
 
 // currentScenario = the PBS scenario FILE the current board came from, handed to
 // BBA so it bids that convention's expected auction. '' for non-scenario sources
@@ -749,52 +734,6 @@ function fmtMs(ms) {
 }
 
 // ── PBN parsing (multi-deal) ──────────────────────────────────────────
-function parsePBN(text) {
-  const deals = []
-  const tagRe = /\[(\w+)\s+"([^"]*)"\]/g
-  const blocks = text.split(/\n\s*\n/)
-  for (const block of blocks) {
-    const tags = {}
-    let m
-    tagRe.lastIndex = 0
-    while ((m = tagRe.exec(block)) !== null) tags[m[1]] = m[2]
-    if (!tags.Deal) continue
-    const hands = parseDealHandsForBridgeTable(tags.Deal)
-    if (!hands) continue
-    deals.push({
-      board: tags.Board || '?',
-      dealer: tags.Dealer || 'N',
-      vulnerable: tags.Vulnerable || 'None',
-      hands,
-      pbn: tags.Deal,
-    })
-  }
-  return deals
-}
-
-// HandDisplay expects { spades: [], hearts: [], diamonds: [], clubs: [] } per seat.
-function parseDealHandsForBridgeTable(deal) {
-  const m = deal.match(/^([NESW]):(.+)$/)
-  if (!m) return null
-  const start = m[1]
-  const startIdx = SEAT_ORDER.indexOf(start)
-  const hands = m[2].trim().split(/\s+/)
-  if (hands.length !== 4) return null
-  const result = {}
-  for (let i = 0; i < 4; i++) {
-    const seat = SEAT_ORDER[(startIdx + i) % 4]
-    const suits = hands[i].split('.')
-    if (suits.length !== 4) return null
-    result[seat] = {
-      spades: [...suits[0]],
-      hearts: [...suits[1]],
-      diamonds: [...suits[2]],
-      clubs: [...suits[3]],
-    }
-  }
-  return result
-}
-
 // Display name for a scenario file (used for the chat popup title).
 function prettifyLabel(file) {
   return file.replace(/_/g, ' ').trim()
@@ -830,15 +769,11 @@ onMounted(async () => {
 
 async function loadEmbeddedDeal() {
   try {
-    const hands = parseDealHandsForBridgeTable(embeddedParams.pbn)
-    if (!hands) throw new Error('Invalid PBN deal string (expected "N:hand hand hand hand")')
-    const deal = {
-      board: '?',
+    const deal = engine.parseDeal(embeddedParams.pbn, {
       dealer: embeddedParams.dealer || 'N',
       vulnerable: embeddedParams.vul || 'None',
-      hands,
-      pbn: embeddedParams.pbn,
-    }
+    })
+    if (!deal) throw new Error('Invalid PBN deal string (expected "N:hand hand hand hand")')
     // Embedded uses explicit conventions (embeddedParams.cards), not a scenario
     // name, so currentScenario stays ''. generateAuction branches on EMBEDDED.
     currentScenario.value = ''
@@ -914,14 +849,14 @@ async function showChatForScenario(file) {
 // The picker emits a selection (single-click fires immediately; multi fires on
 // "Deal"). Stick it as the sticky source, close the modal, and draw the board.
 async function onPickerSubmit(sel) {
-  selection.value = sel
+  engine.loadSource(sel)
   showPicker.value = false
   await drawNextBoard()
 }
 
-// Draw ONE board from the current selection via the shared resolver, parse it
-// with the existing engine, and load it. Used by the picker submit AND the
-// "Next deal →" button (D-B: sequential draw by default, per the resolver).
+// Draw ONE board from the current selection via the engine (which owns the
+// source + draw + PBN parse), then load it into the auction/cardplay flow. Used
+// by the picker submit AND the "Next deal →" button.
 async function drawNextBoard() {
   if (!hasSelection.value) return
   dealError.value = ''
@@ -929,32 +864,27 @@ async function drawNextBoard() {
   drawing.value = true
   let drawn
   try {
-    drawn = await nextBoard(selection.value)
+    drawn = await engine.nextBoard()
   } catch (err) {
     dealError.value = 'Could not draw a deal: ' + err.message
     drawing.value = false
     return
   }
-  const deals = parsePBN(drawn.pbn)
-  if (!deals.length) {
-    dealError.value = 'The drawn board could not be parsed.'
+  if (!drawn.ok) {
+    dealError.value = 'The drawn board could not be loaded.'
     drawing.value = false
     return
   }
-  // Attribute the board to its scenario file (for BBA) when it came from one.
-  const srcRef = drawn.ref
-  const scenarioFile =
-    srcRef && (srcRef.kind === 'scenario' || srcRef.kind === 'script') ? srcRef.file : ''
-  currentScenario.value = scenarioFile
-  currentScenarioLabel.value = drawn.label || describeSelection(selection.value) || 'Deal'
-  await loadDeal(deals[0])
+  currentScenario.value = drawn.scenarioFile
+  currentScenarioLabel.value = drawn.label
+  await loadDeal(drawn.deal)
   drawing.value = false
   // Auto-show the scenario chat when a NEW scenario opens (not on same-scenario
   // next-deals, non-scenario sources, or embedded single-deal mode).
-  if (scenarioFile && scenarioFile !== lastChatScenario && !EMBEDDED) {
-    lastChatScenario = scenarioFile
-    showChatForScenario(scenarioFile)
-  } else if (!scenarioFile) {
+  if (drawn.scenarioFile && drawn.scenarioFile !== lastChatScenario && !EMBEDDED) {
+    lastChatScenario = drawn.scenarioFile
+    showChatForScenario(drawn.scenarioFile)
+  } else if (!drawn.scenarioFile) {
     lastChatScenario = ''
     scenarioChat.value = null
   }
