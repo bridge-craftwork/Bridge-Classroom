@@ -336,18 +336,25 @@ describe('useObservationStore', () => {
       expect(store.hasPendingObservations.value).toBe(true)
     })
 
-    it('should compute needsTeacherKey correctly', () => {
+    it('should compute hasUnencryptedObservations correctly', () => {
       const store = useObservationStore()
       store.reset()
 
-      expect(store.needsTeacherKey.value).toBe(false)
+      expect(store.hasUnencryptedObservations.value).toBe(false)
 
+      // An encrypted entry does not flag as unencrypted
       store.pendingObservations.value.push({
-        metadata: { observation_id: 'test' },
-        needsTeacherKey: true
+        metadata: { observation_id: 'enc' },
+        encrypted: true
       })
+      expect(store.hasUnencryptedObservations.value).toBe(false)
 
-      expect(store.needsTeacherKey.value).toBe(true)
+      // A pending entry without encryption does
+      store.pendingObservations.value.push({
+        metadata: { observation_id: 'plain' },
+        encrypted: false
+      })
+      expect(store.hasUnencryptedObservations.value).toBe(true)
     })
   })
 

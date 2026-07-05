@@ -268,7 +268,7 @@ async function buildPool(items) {
     if (isGenerator(r)) {
       pool.push({ type: 'gen', ref: r })
     } else {
-      for (const b of await refBoards(r)) pool.push({ type: 'board', board: b })
+      for (const b of await refBoards(r)) pool.push({ type: 'board', board: b, ref: r })
     }
   }
   return pool
@@ -293,8 +293,13 @@ export async function nextBoard(selection) {
     cursors.value = { ...cursors.value, [sig]: idx + 1 }
   }
 
+  // Each draw carries its originating SourceRef so stream consumers can attribute
+  // the board to its source (e.g. the local practice table needs the scenario
+  // `file` to ask BBA for that convention's expected auction).
   const slot = pool[idx]
-  return slot.type === 'board' ? slot.board : generateOne(slot.ref, { seed })
+  if (slot.type === 'board') return { ...slot.board, ref: slot.ref }
+  const gen = await generateOne(slot.ref, { seed })
+  return { ...gen, ref: slot.ref }
 }
 
 // Renumber a single-board PBN so a concatenated multi-board file is well-formed.

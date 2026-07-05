@@ -10,80 +10,47 @@
 
     <div class="bp-main" :class="{ 'sidebar-closed': !sidebarOpen }">
       <aside v-if="!EMBEDDED" class="bp-sidebar" :class="{ open: sidebarOpen }">
-        <div v-if="selectedScenarios.size > 0" class="bp-selection-summary">
-          <div class="bp-selection-count">
-            {{ selectedScenarios.size }} scenario{{ selectedScenarios.size === 1 ? '' : 's' }} selected
-          </div>
-          <button class="bp-selection-clear" @click="clearSelection">Clear</button>
-        </div>
-        <div v-if="menuLoading" class="bp-menu-loading">Loading scenarios&hellip;</div>
-        <div v-else-if="menuError" class="bp-menu-loading bp-error">{{ menuError }}</div>
-        <div v-else>
-          <div v-for="(node, idx) in menuTree" :key="idx">
-            <div v-if="node.type === 'major'" class="bp-menu-major">{{ node.label }}</div>
-            <div v-else-if="node.type === 'section'">
-              <div
-                class="bp-menu-section"
-                :class="{ open: openSections[node.label] }"
-                @click="toggleSection(node.label)"
-              >
-                <span>{{ node.label }}</span>
-                <span class="bp-chevron">&#9656;</span>
-              </div>
-              <div v-if="openSections[node.label]" class="bp-menu-rows">
-                <div
-                  v-for="(row, ri) in node.rows"
-                  :key="ri"
-                  class="bp-menu-row"
-                  :style="{ gridTemplateColumns: 'repeat(' + row.length + ', 1fr)' }"
-                >
-                  <div
-                    v-for="(cell, ci) in row"
-                    :key="ci"
-                    class="bp-menu-cell"
-                    :class="{
-                      clickable: !!cell,
-                      empty: !cell,
-                      selected: cell && selectedScenarios.has(cell.file),
-                      active: cell && cell.file === currentScenario,
-                      unsupported: cell && btnMetadata[cell.file] && btnMetadata[cell.file].bbaWorks === false,
-                    }"
-                    :title="cell && btnMetadata[cell.file] && btnMetadata[cell.file].bbaWorks === false ? 'BBA does not fully support this convention' : ''"
-                    @click="cell && toggleScenario(cell.file)"
-                  >
-                    <span v-if="cell">{{ cell.label }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- Unified deal-source picker (deal-source unification #3). It owns all
+             selection UI (scenarios/curated/club/library/paste/random/fresh);
+             single-click fires @submit, multi builds a pool then Deal. -->
+        <DealSourcePicker
+          class="bp-picker"
+          layout="full"
+          mode="stream"
+          :allow="pickerAllow"
+          :owner="ownerId"
+          :show-close="false"
+          action-label="Deal"
+          v-model="selection"
+          @submit="onPickerSubmit"
+        />
       </aside>
 
       <main class="bp-stage" :class="{ dimmed: sidebarOpen && !EMBEDDED }">
-        <div v-if="!currentScenario && !menuLoading" class="bp-empty">
-          Pick a scenario from the menu to start bidding.<br>
+        <div v-if="!currentDeal && !dealError && !drawing" class="bp-empty">
+          Pick a deal source to start bidding.<br>
           <small>(You sit South. Three BBA bots fill the other seats.)</small>
         </div>
+        <div v-if="drawing && !currentDeal" class="bp-empty">Drawing a deal&hellip;</div>
 
         <div v-if="dealError" class="bp-error-box">
           <strong>Error:</strong> {{ dealError }}
           <div v-if="dealErrorHint" class="bp-error-hint">{{ dealErrorHint }}</div>
         </div>
 
-        <template v-if="currentScenario && currentDeal">
+        <template v-if="currentDeal">
           <div class="bp-scenario-bar">
             <div>
               <div class="bp-scenario-name">{{ currentScenarioLabel }}</div>
               <div class="bp-scenario-meta">
-                Deal {{ dealIndex + 1 }} of {{ totalDeals }} &middot;
+                Deal {{ dealsDrawn }} &middot;
                 Dealer {{ currentDeal.dealer }} &middot; Vul {{ currentDeal.vulnerable }}
               </div>
               <div v-if="conventionsUsed" class="bp-scenario-meta">
                 CC &middot; NS: {{ conventionsUsed.ns }} &middot; EW: {{ conventionsUsed.ew }}
               </div>
-              <div v-if="selectedScenarios.size > 1" class="bp-scenario-meta">
-                Drawing from: {{ poolLabels }}
+              <div v-if="poolSummary" class="bp-scenario-meta">
+                Source: {{ poolSummary }}
               </div>
             </div>
             <div class="bp-scenario-actions">
@@ -101,7 +68,7 @@
                   <option v-for="b in availableBots" :key="b" :value="b">{{ b }}</option>
                 </select>
               </label>
-              <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="auctionLoading || selectedScenarios.size === 0">Next deal &rarr;</button>
+              <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
               <button class="bp-btn" @click="resetAuction" :disabled="auctionLoading">Restart this deal</button>
               <button v-if="!EMBEDDED && scenarioChat" class="bp-btn" @click="showScenarioChat = true" title="Show the scenario description">Description</button>
             </div>
@@ -352,29 +319,30 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import HandDisplay from '../components/HandDisplay.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import ScenarioChatPopup from '../components/ScenarioChatPopup.vue'
+import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import { formatBid } from '../utils/cardFormatting.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
 import { getBot, listBots } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
+import { nextBoard, describeSelection } from '../composables/useDealSourceResolver.js'
+import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
+import { useUserStore } from '../composables/useUserStore.js'
 
 // ── Config ────────────────────────────────────────────────────────────
+// PBS deal/menu fetching now lives in the resolver + pbsScenarios.js (already
+// repointed to the bridge-craftwork org); this view only talks to BBA directly.
 const CONFIG = {
   BBA_URL: 'https://bba.harmonicsystems.com',
-  PBS_RAW_BASE: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main',
-  BUTTON_LAYOUT: '/btn/-button-layout-release.txt',
-  PBN_DIR: '/pbn',
-  // For bba-works=true scenarios, prefer this auction-filtered set
-  // (deals that pass both the dealer-script filter and the .pbn-side
-  // auction filter that runs after BBA bids each hand).
-  BBA_FILTERED_DIR: '/bba-filtered',
-  // Default convention card when an embedded host doesn't supply one.
+  // Default convention card for the embedded host AND for non-scenario deal
+  // sources (Random / Paste / Library / Club), where there's no scenario name
+  // to hand BBA — we still want a BBA "expected auction" to diff against.
   DEFAULT_CARD: '21GF-DEFAULT',
 }
 
@@ -421,10 +389,23 @@ function postEmbedded(msg) {
 }
 
 // ── State ─────────────────────────────────────────────────────────────
-const menuTree = ref([])
-const menuLoading = ref(true)
-const menuError = ref('')
-const openSections = reactive({})
+// The current logged-in user (if any) unlocks the picker's Club/Library tabs;
+// this standalone view works fine anonymously (those tabs show a register note).
+const { currentUser } = useUserStore()
+const ownerId = computed(() => currentUser.value?.id || null)
+const pickerAllow = computed(() => ({
+  tabs: [
+    'favorites',
+    'scenarios',
+    'curated',
+    ...(currentUser.value ? ['clubgames'] : []),
+    ...(currentUser.value && ['teacher', 'admin'].includes(currentUser.value.role) ? ['library'] : []),
+    'pbn',
+    'random',
+    'history',
+  ],
+  options: ['fresh'],
+}))
 
 const isNarrow = () => typeof window !== 'undefined'
   && window.matchMedia('(max-width: 1100px)').matches
@@ -441,15 +422,38 @@ watch(sidebarOpen, (v) => {
   try { localStorage.setItem(SIDEBAR_KEY, v ? '1' : '0') } catch {}
 })
 
-// Selected scenario set (multi-select). currentScenario tracks which scenario
-// the LOADED deal came from (for display + "next from same set" logic).
-const selectedScenarios = ref(new Set())
-const dealsByScenario = ref({})  // file -> parsed deals[]
+// The deal-source selection (deal-source-spec §2.2 — { items, options }), driven
+// by the picker and persisted so a returning student keeps their pool. The board
+// stream comes from the shared resolver's nextBoard(selection).
+const SELECTION_KEY = 'bp.selection'
+function loadSelection() {
+  try {
+    const raw = localStorage.getItem(SELECTION_KEY)
+    if (raw) {
+      const s = JSON.parse(raw)
+      if (s && Array.isArray(s.items)) return s
+    }
+  } catch { /* private mode etc. */ }
+  return { items: [], options: {} }
+}
+const selection = ref(loadSelection())
+watch(selection, (s) => {
+  try { localStorage.setItem(SELECTION_KEY, JSON.stringify(s)) } catch { /* ignore */ }
+}, { deep: true })
+const hasSelection = computed(() => (selection.value?.items?.length || 0) > 0)
+const poolSummary = computed(() =>
+  (selection.value?.items?.length || 0) > 1 ? describeSelection(selection.value) : ''
+)
+
+// currentScenario = the PBS scenario FILE the current board came from, handed to
+// BBA so it bids that convention's expected auction. '' for non-scenario sources
+// (Random / Paste / Library / Club) — generateAuction then falls back to the
+// default convention card. currentScenarioLabel is the display name.
 const currentScenario = ref('')
 const currentScenarioLabel = ref('')
-const dealsForScenario = ref([])
-const dealIndex = ref(0)
 const currentDeal = ref(null)
+const dealsDrawn = ref(0)
+const drawing = ref(false)
 const dealError = ref('')
 const dealErrorHint = ref('')
 
@@ -457,6 +461,8 @@ const dealErrorHint = ref('')
 // and reopenable from the scenario bar. { title, text } or null.
 const scenarioChat = ref(null)
 const showScenarioChat = ref(false)
+const chatCache = ref({})       // scenario file -> fetchScenarioMeta result
+let lastChatScenario = ''       // avoids re-popping chat on same-scenario next-deals
 
 // Persist the rotate-randomly preference across reloads.
 const ROTATE_KEY = 'bp.rotateDeals'
@@ -613,7 +619,6 @@ function seatAtIndex(dealer, idx) {
   return SEAT_ORDER[(SEAT_ORDER.indexOf(dealer) + idx) % 4]
 }
 
-const totalDeals = computed(() => dealsForScenario.value.length)
 const auctionComplete = computed(() => currentDeal.value && isAuctionOver(bids.value))
 const currentSeat = computed(() => {
   if (!currentDeal.value) return null
@@ -622,7 +627,6 @@ const currentSeat = computed(() => {
 const lastNonPassNonDouble = computed(() => lastSuitBid(bids.value))
 const wrongIndicesArray = computed(() => Object.keys(divergedBids.value).map(Number))
 const hadDivergence = computed(() => Object.keys(divergedBids.value).length > 0)
-const poolLabels = computed(() => [...selectedScenarios.value].map(prettifyLabel).join(', '))
 
 const visibleHands = computed(() => {
   if (!currentDeal.value) return { N: null, E: null, S: null, W: null }
@@ -870,60 +874,7 @@ function handsToPbnString(hands) {
   }).join(' ')
 }
 
-// ── Layout (sidebar menu) parser ──────────────────────────────────────
-function parseLayout(text) {
-  const tree = []
-  const lines = text.split('\n')
-  let currentSection = null
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, '')
-    if (!line) continue
-    if (line.startsWith('#')) continue
-    if (line.startsWith('[Major]')) {
-      tree.push({ type: 'major', label: line.substring('[Major]'.length).trim() })
-      currentSection = null
-      continue
-    }
-    if (line.startsWith('[Section]')) {
-      currentSection = { type: 'section', label: line.substring('[Section]'.length).trim(), rows: [] }
-      tree.push(currentSection)
-      continue
-    }
-    if (line.startsWith('[Action]')) continue
-    if (!currentSection) continue
-    const row = parseRow(line)
-    if (row.length > 0) {
-      while (row.length < 2) row.push(null)
-      currentSection.rows.push(row)
-    }
-  }
-  return tree
-}
-
-function parseRow(line) {
-  const cells = []
-  let depth = 0
-  let buf = ''
-  for (const ch of line) {
-    if (ch === '(') { depth++; buf += ch }
-    else if (ch === ')') { depth--; buf += ch }
-    else if (ch === ',' && depth === 0) { cells.push(buf.trim()); buf = '' }
-    else { buf += ch }
-  }
-  if (buf.trim()) cells.push(buf.trim())
-  return cells.map(parseCell)
-}
-
-function parseCell(cell) {
-  if (cell.startsWith('(') && cell.endsWith(')')) {
-    cell = cell.slice(1, -1).split(',')[0].trim()
-  }
-  if (cell === '---' || !cell) return null
-  const file = cell.replace(/:[a-zA-Z]+/g, '').replace(/:\d+%/g, '').trim()
-  if (!file) return null
-  return { file, label: prettifyLabel(file) }
-}
-
+// Display name for a scenario file (used for the chat popup title).
 function prettifyLabel(file) {
   return file.replace(/_/g, ' ').trim()
 }
@@ -941,8 +892,13 @@ async function generateAuction(deal, scenarioName, auctionPrefix = null) {
   }
   if (EMBEDDED) {
     body.conventions = embeddedParams.cards
-  } else {
+  } else if (scenarioName) {
     body.scenario = scenarioName
+  } else {
+    // Non-scenario source (Random / Paste / Library / Club): no convention
+    // scenario to name, so bid with the default 2/1 card. The student still
+    // gets a BBA "expected auction" to diff against.
+    body.conventions = { ns: CONFIG.DEFAULT_CARD, ew: CONFIG.DEFAULT_CARD }
   }
   if (auctionPrefix && auctionPrefix.length > 0) {
     body.auctionPrefix = auctionPrefix
@@ -993,26 +949,12 @@ onMounted(async () => {
   maybeWarmBen()
 
   if (EMBEDDED) {
-    menuLoading.value = false
     postEmbedded({ type: 'bridge-classroom:ready' })
     await loadEmbeddedDeal()
     return
   }
-  try {
-    const resp = await fetch(CONFIG.PBS_RAW_BASE + CONFIG.BUTTON_LAYOUT)
-    if (!resp.ok) throw new Error(`Layout HTTP ${resp.status}`)
-    const text = await resp.text()
-    menuTree.value = parseLayout(text)
-    const firstSection = menuTree.value.find(n => n.type === 'section')
-    if (firstSection) {
-      openSections[firstSection.label] = true
-      ensureBtnMetadataForSection(firstSection)
-    }
-  } catch (err) {
-    menuError.value = 'Could not load scenario menu: ' + err.message
-  } finally {
-    menuLoading.value = false
-  }
+  // Non-embedded: the picker (in the sidebar) drives selection; the first board
+  // is drawn when the student picks a source. Nothing to preload here.
 })
 
 async function loadEmbeddedDeal() {
@@ -1026,10 +968,11 @@ async function loadEmbeddedDeal() {
       hands,
       pbn: embeddedParams.pbn,
     }
-    currentScenario.value = '__embedded__'
+    // Embedded uses explicit conventions (embeddedParams.cards), not a scenario
+    // name, so currentScenario stays ''. generateAuction branches on EMBEDDED.
+    currentScenario.value = ''
     currentScenarioLabel.value = 'Replay'
-    dealsForScenario.value = [deal]
-    await loadDealAt(0)
+    await loadDeal(deal)
   } catch (err) {
     dealError.value = 'Could not load embedded deal: ' + err.message
   }
@@ -1081,69 +1024,15 @@ watch(dealError, (msg) => {
   if (EMBEDDED && msg) postEmbedded({ type: 'bridge-classroom:error', message: msg })
 })
 
-function toggleSection(label) {
-  openSections[label] = !openSections[label]
-  if (openSections[label]) {
-    const section = menuTree.value.find(n => n.type === 'section' && n.label === label)
-    if (section) ensureBtnMetadataForSection(section)
-  }
-}
-
-// Per-scenario .btn metadata (currently just the bba-works flag).
-// Lazy-fetched per section on expand and cached for the session.
-const btnMetadata = ref({})
-
-function ensureBtnMetadataForSection(section) {
-  const files = section.rows.flat().filter(c => c).map(c => c.file)
-  const toFetch = files.filter(f => !(f in btnMetadata.value))
-  if (toFetch.length === 0) return
-  // Optimistically mark in-flight so we don't re-fetch on rapid toggle.
-  const next = { ...btnMetadata.value }
-  for (const f of toFetch) next[f] = { bbaWorks: true, _loading: true }
-  btnMetadata.value = next
-  Promise.all(toFetch.map(fetchBtnMetadata)).then(results => {
-    const merged = { ...btnMetadata.value }
-    for (let i = 0; i < toFetch.length; i++) merged[toFetch[i]] = results[i]
-    btnMetadata.value = merged
-  })
-}
-
-async function fetchBtnMetadata(file) {
-  try {
-    const resp = await fetch(`${CONFIG.PBS_RAW_BASE}/btn/${file}.btn`)
-    if (!resp.ok) return { bbaWorks: true, chat: null } // assume supported on fetch failure
-    const text = await resp.text()
-    const meta = { bbaWorks: true, chat: extractChat(text) }
-    // Metadata lives in leading "# key: value" comment lines.
-    for (const raw of text.split('\n').slice(0, 40)) {
-      if (!raw.startsWith('#')) continue
-      const m = raw.match(/^#\s*bba-works:\s*(\w+)/i)
-      if (m) {
-        meta.bbaWorks = m[1].toLowerCase() === 'true'
-        break
-      }
-    }
-    return meta
-  } catch {
-    return { bbaWorks: true, chat: null }
-  }
-}
-
-// Pull the scenario "chat" out of a .btn — the /*@chat ... @chat*/ block.
-function extractChat(btnText) {
-  const m = btnText.match(/\/\*@chat\s*([\s\S]*?)@chat\*\//)
-  return m ? m[1].trim() : null
-}
-
-// Show the scenario's @chat popup (fetch the .btn if not cached yet).
+// Show the scenario's @chat popup (fetch the .btn metadata if not cached yet).
 async function showChatForScenario(file) {
-  let meta = btnMetadata.value[file]
-  if (!meta || meta._loading || meta.chat === undefined) {
-    meta = await fetchBtnMetadata(file)
-    btnMetadata.value = { ...btnMetadata.value, [file]: meta }
+  let meta = chatCache.value[file]
+  if (!meta) {
+    meta = await fetchScenarioMeta(file)
+    chatCache.value = { ...chatCache.value, [file]: meta }
   }
-  if (meta?.chat) {
-    scenarioChat.value = { title: prettifyLabel(file), text: meta.chat }
+  if (meta?.description) {
+    scenarioChat.value = { title: prettifyLabel(file), text: meta.description }
     showScenarioChat.value = true
   } else {
     scenarioChat.value = null
@@ -1151,109 +1040,66 @@ async function showChatForScenario(file) {
   }
 }
 
-// Toggle a scenario in the multi-select set.
-// Adding when set was empty (or nothing loaded) auto-loads a deal from it.
-// Removing the currently-loaded scenario advances to a different one in the set.
-async function toggleScenario(file) {
-  const newSet = new Set(selectedScenarios.value)
-  if (newSet.has(file)) {
-    newSet.delete(file)
-    selectedScenarios.value = newSet
-    if (currentScenario.value === file) {
-      if (newSet.size > 0) {
-        const next = pickRandomFromSet(newSet)
-        await loadFromScenario(next)
-      } else {
-        currentScenario.value = ''
-        currentScenarioLabel.value = ''
-        currentDeal.value = null
-        dealsForScenario.value = []
-      }
-    }
-  } else {
-    newSet.add(file)
-    selectedScenarios.value = newSet
-    if (!currentScenario.value || !currentDeal.value) {
-      await loadFromScenario(file)
-    }
-  }
-  if (isNarrow() && currentDeal.value) sidebarOpen.value = false
+// The picker emits a selection (single-click fires immediately; multi fires on
+// "Deal"). Stick it as the sticky source and draw the first board.
+async function onPickerSubmit(sel) {
+  selection.value = sel
+  if (isNarrow()) sidebarOpen.value = false
+  await drawNextBoard()
 }
 
-function pickRandomFromSet(set) {
-  const arr = [...set]
-  return arr[Math.floor(Math.random() * arr.length)]
-}
-
-async function clearSelection() {
-  selectedScenarios.value = new Set()
-  currentScenario.value = ''
-  currentScenarioLabel.value = ''
-  currentDeal.value = null
-  dealsForScenario.value = []
-}
-
-// Fetch + cache the PBN for a scenario, then load a random deal from it.
-async function loadFromScenario(file) {
-  const isNewScenario = file !== currentScenario.value
-  currentScenario.value = file
-  currentScenarioLabel.value = prettifyLabel(file)
+// Draw ONE board from the current selection via the shared resolver, parse it
+// with the existing engine, and load it. Used by the picker submit AND the
+// "Next deal →" button (D-B: sequential draw by default, per the resolver).
+async function drawNextBoard() {
+  if (!hasSelection.value) return
   dealError.value = ''
   dealErrorHint.value = ''
-  let deals = dealsByScenario.value[file]
-  if (!deals) {
-    try {
-      deals = await fetchScenarioDeals(file)
-      if (deals.length === 0) throw new Error('No deals in PBN file')
-      dealsByScenario.value = { ...dealsByScenario.value, [file]: deals }
-    } catch (err) {
-      dealError.value = 'Could not load scenario PBN: ' + err.message
-      dealErrorHint.value = 'Some scenarios in the menu may not have BBA-compatible PBN files.'
-      return
-    }
+  drawing.value = true
+  let drawn
+  try {
+    drawn = await nextBoard(selection.value)
+  } catch (err) {
+    dealError.value = 'Could not draw a deal: ' + err.message
+    drawing.value = false
+    return
   }
-  dealsForScenario.value = deals
-  await loadDealAt(Math.floor(Math.random() * deals.length))
-  // Auto-show the scenario chat when a NEW scenario is opened (not on every
-  // "next deal" within the same scenario, and not in embedded single-deal mode).
-  if (isNewScenario && !EMBEDDED) showChatForScenario(file)
+  const deals = parsePBN(drawn.pbn)
+  if (!deals.length) {
+    dealError.value = 'The drawn board could not be parsed.'
+    drawing.value = false
+    return
+  }
+  // Attribute the board to its scenario file (for BBA) when it came from one.
+  const srcRef = drawn.ref
+  const scenarioFile =
+    srcRef && (srcRef.kind === 'scenario' || srcRef.kind === 'script') ? srcRef.file : ''
+  currentScenario.value = scenarioFile
+  currentScenarioLabel.value = drawn.label || describeSelection(selection.value) || 'Deal'
+  await loadDeal(deals[0])
+  drawing.value = false
+  // Auto-show the scenario chat when a NEW scenario opens (not on same-scenario
+  // next-deals, non-scenario sources, or embedded single-deal mode).
+  if (scenarioFile && scenarioFile !== lastChatScenario && !EMBEDDED) {
+    lastChatScenario = scenarioFile
+    showChatForScenario(scenarioFile)
+  } else if (!scenarioFile) {
+    lastChatScenario = ''
+    scenarioChat.value = null
+  }
 }
 
-// For BBA-supported scenarios, prefer /bba-filtered/ — those PBNs apply
-// David's auction-side filter on top of the dealer-script filter, so the
-// remaining deals are ones BBA actually bids in the intended sequence.
-// Fall through to the unfiltered /pbn/ on miss or for non-BBA scenarios.
-async function fetchScenarioDeals(file) {
-  const meta = btnMetadata.value[file]
-  const bbaWorks = !meta || meta.bbaWorks !== false
-  if (bbaWorks) {
-    try {
-      const resp = await fetch(`${CONFIG.PBS_RAW_BASE}${CONFIG.BBA_FILTERED_DIR}/${file}.pbn`)
-      if (resp.ok) {
-        const text = await resp.text()
-        const deals = parsePBN(text)
-        if (deals.length > 0) return deals
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-  const resp = await fetch(`${CONFIG.PBS_RAW_BASE}${CONFIG.PBN_DIR}/${file}.pbn`)
-  if (!resp.ok) throw new Error(`PBN HTTP ${resp.status}`)
-  const text = await resp.text()
-  return parsePBN(text)
-}
-
-async function loadDealAt(idx) {
+async function loadDeal(deal) {
   dealError.value = ''
   dealErrorHint.value = ''
-  dealIndex.value = idx
-  let deal = dealsForScenario.value[idx]
-  // 50% chance of 180° rotation when the toggle is on.
-  if (rotateDeals.value && Math.random() < 0.5) {
+  // 50% chance of 180° rotation when the toggle is on — standalone only; embedded
+  // must keep the deal in its actual compass frame (the host's studentSeat/DD
+  // table assume it).
+  if (!EMBEDDED && rotateDeals.value && Math.random() < 0.5) {
     deal = rotateDeal(deal)
   }
   currentDeal.value = deal
+  dealsDrawn.value += 1
   bids.value = []
   divergedBids.value = {}
   expectedAuction.value = []
@@ -1268,7 +1114,7 @@ async function loadDealAt(idx) {
 
   try {
     const result = await generateAuction(dealRef, currentScenario.value)
-    // §C3: a newer loadDealAt may have swapped the deal while BBA was
+    // §C3: a newer loadDeal may have swapped the deal while BBA was
     // responding. Abandon this stale result rather than overwriting the
     // current deal's auction/meanings (matches the doubleDummy guard above).
     if (currentDeal.value !== dealRef) return
@@ -1291,12 +1137,10 @@ async function loadDealAt(idx) {
   }
 }
 
-// "Next deal" — pick a random scenario from the selected set, then a random
-// deal from that scenario's PBN. Falls back to the current scenario if only one.
+// "Next deal" — draw the next board from the current selection (a fresh board
+// from the same pool; scenario/curated/random draw randomly, others sequential).
 async function newDeal() {
-  if (selectedScenarios.value.size === 0) return
-  const file = pickRandomFromSet(selectedScenarios.value)
-  await loadFromScenario(file)
+  await drawNextBoard()
 }
 
 // Rotate a deal 180°: N↔S, E↔W. Dealer and vulnerability flip with the seats.
@@ -1544,7 +1388,7 @@ async function onUserBid(bid) {
 
 .bp-main {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 360px minmax(0, 1fr);
   min-height: 0;
   position: relative;
 }
@@ -1556,11 +1400,22 @@ async function onUserBid(bid) {
 .bp-main.sidebar-closed .bp-sidebar {
   display: none;
 }
+/* The sidebar hosts the shared DealSourcePicker (layout="full"). It owns its
+   own scroll region, so the aside just caps the height and flattens the
+   picker's card frame (no double border/shadow inside the rail). */
 .bp-sidebar {
   background: #fff;
   border-right: 0.5px solid #ddd;
-  overflow-y: auto;
-  padding: 14px 0;
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+.bp-sidebar :deep(.bp-picker) {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 .bp-stage {
   padding: 24px;
@@ -1573,83 +1428,11 @@ async function onUserBid(bid) {
 @media (max-width: 1100px) {
   .bp-main { grid-template-columns: minmax(0, 1fr); }
   .bp-sidebar { display: none; }
-  .bp-sidebar.open { display: block; }
+  .bp-sidebar.open { display: flex; }
   .bp-stage.dimmed { display: none; }
   .bp-stage { padding: 14px; gap: 12px; }
 }
 
-/* Sidebar / scenario menu */
-.bp-menu-loading { padding: 14px 16px; font-size: 12px; color: #888; }
-.bp-error { color: #b00; }
-.bp-menu-major {
-  padding: 8px 16px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #856404;
-  background: #FFF8DC;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.bp-menu-section {
-  padding: 7px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #1f4d72;
-  background: #d9edf7;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 0.5px solid #b8dbe9;
-}
-.bp-menu-section:hover { background: #c8e2f0; }
-.bp-chevron { font-size: 10px; color: #666; transition: transform 0.15s; }
-.bp-menu-section.open .bp-chevron { transform: rotate(90deg); }
-.bp-menu-rows { background: #fff; }
-.bp-menu-row { display: grid; }
-.bp-menu-cell {
-  padding: 6px 6px;
-  font-size: 12px;
-  color: #333;
-  text-align: center;
-  line-height: 1.2;
-  background: #fff;
-  border: 0.5px solid #ccc;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: -0.5px 0 0 -0.5px;
-}
-.bp-menu-cell.clickable { cursor: pointer; }
-.bp-menu-cell.clickable:hover { background: #f5fafd; color: #1D9E75; }
-.bp-menu-cell.unsupported { background: #fde2cc; color: #7a3a1a; }
-.bp-menu-cell.unsupported.clickable:hover { background: #fbcdaa; color: #5a2810; }
-.bp-menu-cell.selected { background: #e1f5ee; color: #0f6e56; font-weight: 500; }
-.bp-menu-cell.active { background: #c1ead7; color: #0f6e56; font-weight: 600; outline: 1.5px solid #1D9E75; outline-offset: -1.5px; }
-.bp-menu-cell.empty { background: #f7f7f5; }
-
-.bp-selection-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  background: #f0fdf6;
-  border-bottom: 0.5px solid #c8e8d6;
-  font-size: 12px;
-}
-.bp-selection-count { color: #0f6e56; font-weight: 500; }
-.bp-selection-clear {
-  background: none;
-  border: 1px solid #1D9E75;
-  color: #1D9E75;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-}
-.bp-selection-clear:hover { background: #1D9E75; color: #fff; }
 
 .bp-rotate-toggle {
   display: flex;

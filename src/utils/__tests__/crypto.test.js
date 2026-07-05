@@ -1,19 +1,15 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
-  generateKeyPair,
-  exportKey,
-  importKey,
-  generateSymmetricKey,
-  encryptWithSymmetricKey,
-  decryptWithSymmetricKey,
-  wrapSymmetricKey,
-  unwrapSymmetricKey,
+  generateSecretKey,
+  importSecretKey,
   encryptObservation,
   decryptObservation,
-  generateExportedKeyPair,
+  generateViewerKeyPair,
+  createSharingGrant,
+  decryptSharingGrant,
   createKeyBackup,
   validateKeyBackup,
-  validateKeyPair,
+  validateSecretKey,
   arrayBufferToBase64,
   base64ToArrayBuffer
 } from '../crypto.js'
@@ -37,249 +33,180 @@ describe('crypto utilities', () => {
     })
   })
 
-  describe('generateKeyPair', () => {
-    it('generates a valid RSA keypair', async () => {
-      const keyPair = await generateKeyPair()
+  describe('generateSecretKey / importSecretKey', () => {
+    it('generates a base64-encoded 256-bit AES key', async () => {
+      const secretKey = await generateSecretKey()
 
-      expect(keyPair).toHaveProperty('publicKey')
-      expect(keyPair).toHaveProperty('privateKey')
-      expect(keyPair.publicKey.type).toBe('public')
-      expect(keyPair.privateKey.type).toBe('private')
-    })
-  })
-
-  describe('exportKey / importKey', () => {
-    it('exports and imports public key', async () => {
-      const keyPair = await generateKeyPair()
-      const exported = await exportKey(keyPair.publicKey, true)
-
-      expect(typeof exported).toBe('string')
-      expect(exported.length).toBeGreaterThan(100)
-
-      const imported = await importKey(exported, true)
-      expect(imported.type).toBe('public')
+      expect(typeof secretKey).toBe('string')
+      // 32 raw bytes (256 bits) → base64 length 44 (incl. padding)
+      const raw = new Uint8Array(base64ToArrayBuffer(secretKey))
+      expect(raw.length).toBe(32)
     })
 
-    it('exports and imports private key', async () => {
-      const keyPair = await generateKeyPair()
-      const exported = await exportKey(keyPair.privateKey, false)
-
-      expect(typeof exported).toBe('string')
-      expect(exported.length).toBeGreaterThan(100)
-
-      const imported = await importKey(exported, false)
-      expect(imported.type).toBe('private')
-    })
-  })
-
-  describe('generateSymmetricKey', () => {
-    it('generates AES-GCM key', async () => {
-      const key = await generateSymmetricKey()
+    it('imports the generated key as an AES-GCM CryptoKey', async () => {
+      const secretKey = await generateSecretKey()
+      const key = await importSecretKey(secretKey)
 
       expect(key.type).toBe('secret')
       expect(key.algorithm.name).toBe('AES-GCM')
     })
-  })
 
-  describe('symmetric encryption', () => {
-    it('encrypts and decrypts string data', async () => {
-      const key = await generateSymmetricKey()
-      const plaintext = 'Hello, World!'
+    it('produces distinct keys on each call', async () => {
+      const a = await generateSecretKey()
+      const b = await generateSecretKey()
 
-      const { ciphertext, iv } = await encryptWithSymmetricKey(plaintext, key)
-      const decrypted = await decryptWithSymmetricKey(ciphertext, iv, key)
-
-      expect(decrypted).toBe(plaintext)
-    })
-
-    it('encrypts and decrypts JSON data', async () => {
-      const key = await generateSymmetricKey()
-      const data = { name: 'Test', value: 42, nested: { arr: [1, 2, 3] } }
-
-      const { ciphertext, iv } = await encryptWithSymmetricKey(JSON.stringify(data), key)
-      const decrypted = await decryptWithSymmetricKey(ciphertext, iv, key)
-
-      expect(JSON.parse(decrypted)).toEqual(data)
-    })
-
-    it('produces different ciphertext each time (random IV)', async () => {
-      const key = await generateSymmetricKey()
-      const plaintext = 'Same message'
-
-      const result1 = await encryptWithSymmetricKey(plaintext, key)
-      const result2 = await encryptWithSymmetricKey(plaintext, key)
-
-      expect(result1.ciphertext).not.toBe(result2.ciphertext)
-      expect(result1.iv).not.toBe(result2.iv)
-    })
-  })
-
-  describe('key wrapping', () => {
-    it('wraps and unwraps symmetric key with RSA', async () => {
-      const rsaKeyPair = await generateKeyPair()
-      const symmetricKey = await generateSymmetricKey()
-
-      const wrapped = await wrapSymmetricKey(symmetricKey, rsaKeyPair.publicKey)
-      expect(typeof wrapped).toBe('string')
-
-      const unwrapped = await unwrapSymmetricKey(wrapped, rsaKeyPair.privateKey)
-      expect(unwrapped.type).toBe('secret')
-
-      // Verify unwrapped key works
-      const plaintext = 'Test data'
-      const { ciphertext, iv } = await encryptWithSymmetricKey(plaintext, symmetricKey)
-      const decrypted = await decryptWithSymmetricKey(ciphertext, iv, unwrapped)
-
-      expect(decrypted).toBe(plaintext)
+      expect(a).not.toBe(b)
     })
   })
 
   describe('observation encryption', () => {
-    let studentKeyPair
-    let teacherKeyPair
-
-    beforeAll(async () => {
-      studentKeyPair = await generateKeyPair()
-      teacherKeyPair = await generateKeyPair()
-    })
-
-    it('encrypts observation for both student and teacher', async () => {
-      const observation = {
-        user_id: 'test-user',
-        timestamp: new Date().toISOString(),
-        deal: { name: 'Test Deal' },
-        result: { correct: true }
-      }
-
-      const encrypted = await encryptObservation(
-        observation,
-        studentKeyPair.publicKey,
-        teacherKeyPair.publicKey
-      )
-
-      expect(encrypted).toHaveProperty('encrypted_data')
-      expect(encrypted).toHaveProperty('iv')
-      expect(encrypted).toHaveProperty('student_key_blob')
-      expect(encrypted).toHaveProperty('teacher_key_blob')
-    })
-
-    it('student can decrypt their own observation', async () => {
+    it('encrypts and decrypts an observation object round-trip', async () => {
+      const secretKey = await generateSecretKey()
       const observation = {
         user_id: 'student-123',
         skill_path: 'bidding_conventions/stayman',
-        correct: false
+        correct: false,
+        nested: { arr: [1, 2, 3], flag: true }
       }
 
-      const encrypted = await encryptObservation(
-        observation,
-        studentKeyPair.publicKey,
-        teacherKeyPair.publicKey
-      )
+      const { encrypted_data, iv } = await encryptObservation(observation, secretKey)
 
-      const decrypted = await decryptObservation(
-        encrypted,
-        studentKeyPair.privateKey,
-        false
-      )
+      expect(typeof encrypted_data).toBe('string')
+      expect(typeof iv).toBe('string')
 
+      const decrypted = await decryptObservation(encrypted_data, iv, secretKey)
       expect(decrypted).toEqual(observation)
     })
 
-    it('teacher can decrypt student observation', async () => {
-      const observation = {
-        user_id: 'student-456',
-        skill_path: 'bidding_conventions/transfers',
-        correct: true
-      }
+    it('produces a random IV and different ciphertext each time', async () => {
+      const secretKey = await generateSecretKey()
+      const observation = { same: 'message' }
 
-      const encrypted = await encryptObservation(
-        observation,
-        studentKeyPair.publicKey,
-        teacherKeyPair.publicKey
-      )
+      const first = await encryptObservation(observation, secretKey)
+      const second = await encryptObservation(observation, secretKey)
 
-      const decrypted = await decryptObservation(
-        encrypted,
-        teacherKeyPair.privateKey,
-        true
-      )
+      expect(first.iv).not.toBe(second.iv)
+      expect(first.encrypted_data).not.toBe(second.encrypted_data)
+    })
 
-      expect(decrypted).toEqual(observation)
+    it('fails to decrypt with the wrong key', async () => {
+      const secretKey = await generateSecretKey()
+      const wrongKey = await generateSecretKey()
+      const { encrypted_data, iv } = await encryptObservation({ x: 1 }, secretKey)
+
+      await expect(
+        decryptObservation(encrypted_data, iv, wrongKey)
+      ).rejects.toThrow()
     })
   })
 
-  describe('generateExportedKeyPair', () => {
-    it('returns base64-encoded public and private keys', async () => {
-      const { publicKey, privateKey } = await generateExportedKeyPair()
+  describe('sharing grants (viewer keypair round-trip)', () => {
+    it('generates a base64 viewer keypair', async () => {
+      const { publicKey, privateKey } = await generateViewerKeyPair()
 
       expect(typeof publicKey).toBe('string')
       expect(typeof privateKey).toBe('string')
       expect(publicKey.length).toBeGreaterThan(100)
       expect(privateKey.length).toBeGreaterThan(100)
     })
+
+    it('creates and decrypts a sharing grant to recover the secret key', async () => {
+      const secretKey = await generateSecretKey()
+      const { publicKey, privateKey } = await generateViewerKeyPair()
+
+      const grant = await createSharingGrant(secretKey, publicKey)
+      expect(typeof grant).toBe('string')
+
+      const recovered = await decryptSharingGrant(grant, privateKey)
+      expect(recovered).toBe(secretKey)
+    })
+
+    it('a viewer with the recovered key can decrypt an observation', async () => {
+      const secretKey = await generateSecretKey()
+      const { publicKey, privateKey } = await generateViewerKeyPair()
+      const observation = { user_id: 'student-456', correct: true }
+
+      const { encrypted_data, iv } = await encryptObservation(observation, secretKey)
+      const grant = await createSharingGrant(secretKey, publicKey)
+      const recoveredKey = await decryptSharingGrant(grant, privateKey)
+
+      const decrypted = await decryptObservation(encrypted_data, iv, recoveredKey)
+      expect(decrypted).toEqual(observation)
+    })
   })
 
   describe('createKeyBackup', () => {
-    it('creates valid backup object', () => {
+    it('creates a valid v2.0 backup object', () => {
       const user = {
         id: 'user-123',
         firstName: 'Margaret',
         lastName: 'Thompson',
-        publicKey: 'base64-public-key',
-        privateKey: 'base64-private-key'
+        email: 'margaret@example.com',
+        secretKey: 'base64-secret-key'
       }
 
       const backup = createKeyBackup(user)
 
       expect(backup.bridge_practice_backup).toBe(true)
-      expect(backup.version).toBe('1.0')
+      expect(backup.version).toBe('2.0')
       expect(backup.user_id).toBe('user-123')
       expect(backup.name).toBe('Margaret Thompson')
-      expect(backup.public_key).toBe('base64-public-key')
-      expect(backup.private_key).toBe('base64-private-key')
+      expect(backup.email).toBe('margaret@example.com')
+      expect(backup.secret_key).toBe('base64-secret-key')
       expect(backup.note).toContain('Keep this file safe')
+    })
+
+    it('round-trips: a real backup validates', async () => {
+      const secretKey = await generateSecretKey()
+      const backup = createKeyBackup({
+        id: 'user-xyz',
+        firstName: 'Real',
+        lastName: 'User',
+        email: 'real@example.com',
+        secretKey
+      })
+
+      expect(validateKeyBackup(backup).valid).toBe(true)
     })
   })
 
   describe('validateKeyBackup', () => {
-    it('validates correct backup', () => {
+    it('validates a correct v2.0 backup', () => {
       const backup = {
         bridge_practice_backup: true,
-        version: '1.0',
+        version: '2.0',
         user_id: 'user-123',
-        public_key: 'key-data',
-        private_key: 'key-data'
+        secret_key: 'key-data'
       }
 
-      const result = validateKeyBackup(backup)
-
-      expect(result.valid).toBe(true)
+      expect(validateKeyBackup(backup)).toEqual({ valid: true })
     })
 
-    it('rejects non-backup object', () => {
+    it('rejects a non-backup object', () => {
       const result = validateKeyBackup({ some: 'data' })
 
       expect(result.valid).toBe(false)
       expect(result.error).toContain('Not a Bridge Practice backup')
     })
 
-    it('rejects backup without keys', () => {
+    it('rejects a v2.0 backup missing the secret key', () => {
       const backup = {
         bridge_practice_backup: true,
+        version: '2.0',
         user_id: 'user-123'
       }
 
       const result = validateKeyBackup(backup)
 
       expect(result.valid).toBe(false)
-      expect(result.error).toContain('missing key data')
+      expect(result.error).toContain('missing secret key')
     })
 
-    it('rejects backup without user_id', () => {
+    it('rejects a v2.0 backup missing user_id', () => {
       const backup = {
         bridge_practice_backup: true,
-        public_key: 'key',
-        private_key: 'key'
+        version: '2.0',
+        secret_key: 'key-data'
       }
 
       const result = validateKeyBackup(backup)
@@ -288,32 +215,38 @@ describe('crypto utilities', () => {
       expect(result.error).toContain('missing user ID')
     })
 
+    it('rejects legacy v1.0 backups', () => {
+      const backup = {
+        bridge_practice_backup: true,
+        version: '1.0',
+        user_id: 'user-123',
+        public_key: 'k',
+        private_key: 'k'
+      }
+
+      const result = validateKeyBackup(backup)
+
+      expect(result.valid).toBe(false)
+      expect(result.error).toContain('Legacy backup format')
+    })
+
     it('rejects null/undefined', () => {
       expect(validateKeyBackup(null).valid).toBe(false)
       expect(validateKeyBackup(undefined).valid).toBe(false)
     })
   })
 
-  describe('validateKeyPair', () => {
-    it('validates working keypair', async () => {
-      const { publicKey, privateKey } = await generateExportedKeyPair()
+  describe('validateSecretKey', () => {
+    it('validates a working secret key', async () => {
+      const secretKey = await generateSecretKey()
 
-      const isValid = await validateKeyPair(publicKey, privateKey)
+      const isValid = await validateSecretKey(secretKey)
 
       expect(isValid).toBe(true)
     })
 
-    it('rejects invalid keys', async () => {
-      const isValid = await validateKeyPair('invalid', 'keys')
-
-      expect(isValid).toBe(false)
-    })
-
-    it('rejects mismatched keys', async () => {
-      const keyPair1 = await generateExportedKeyPair()
-      const keyPair2 = await generateExportedKeyPair()
-
-      const isValid = await validateKeyPair(keyPair1.publicKey, keyPair2.privateKey)
+    it('rejects a garbage key', async () => {
+      const isValid = await validateSecretKey('not-a-real-key')
 
       expect(isValid).toBe(false)
     })

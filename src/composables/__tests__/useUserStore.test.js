@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useUserStore } from '../useUserStore.js'
 
 describe('useUserStore', () => {
@@ -15,6 +15,7 @@ describe('useUserStore', () => {
       const user = await store.createUser({
         firstName: 'Margaret',
         lastName: 'Thompson',
+        email: 'margaret@example.com',
         classrooms: ['tuesday-am'],
         dataConsent: true
       })
@@ -27,18 +28,18 @@ describe('useUserStore', () => {
       expect(user.createdAt).toBeDefined()
     })
 
-    it('generates cryptographic keys', async () => {
+    it('generates a cryptographic secret key', async () => {
       const store = useUserStore()
 
       const user = await store.createUser({
         firstName: 'Margaret',
-        lastName: 'Thompson'
+        lastName: 'Thompson',
+        email: 'margaret@example.com'
       })
 
-      expect(user.publicKey).toBeDefined()
-      expect(user.privateKey).toBeDefined()
-      expect(typeof user.publicKey).toBe('string')
-      expect(typeof user.privateKey).toBe('string')
+      expect(user.secretKey).toBeDefined()
+      expect(typeof user.secretKey).toBe('string')
+      expect(user.secretKey.length).toBeGreaterThan(0)
     })
 
     it('trims whitespace from names', async () => {
@@ -47,6 +48,7 @@ describe('useUserStore', () => {
       const user = await store.createUser({
         firstName: '  Margaret  ',
         lastName: '  Thompson  ',
+        email: 'margaret@example.com',
         classrooms: []
       })
 
@@ -59,7 +61,8 @@ describe('useUserStore', () => {
 
       const user = await store.createUser({
         firstName: 'Margaret',
-        lastName: 'Thompson'
+        lastName: 'Thompson',
+        email: 'margaret@example.com'
       })
 
       expect(store.currentUserId.value).toBe(user.id)
@@ -71,7 +74,8 @@ describe('useUserStore', () => {
 
       const user = await store.createUser({
         firstName: 'Test',
-        lastName: 'User'
+        lastName: 'User',
+        email: 'test@example.com'
       })
 
       expect(user.dataConsent).toBe(true)
@@ -82,7 +86,8 @@ describe('useUserStore', () => {
 
       const user = await store.createUser({
         firstName: 'Test',
-        lastName: 'User'
+        lastName: 'User',
+        email: 'test@example.com'
       })
 
       expect(user.classrooms).toEqual([])
@@ -94,7 +99,8 @@ describe('useUserStore', () => {
       const store = useUserStore()
       const user = await store.createUser({
         firstName: 'Margaret',
-        lastName: 'Thompson'
+        lastName: 'Thompson',
+        email: 'margaret@example.com'
       })
 
       store.updateUser(user.id, {
@@ -111,12 +117,20 @@ describe('useUserStore', () => {
       const store = useUserStore()
       const user = await store.createUser({
         firstName: 'Test',
-        lastName: 'User'
+        lastName: 'User',
+        email: 'test@example.com'
       })
       const originalUpdatedAt = user.updatedAt
 
-      // Wait a bit to ensure timestamp difference
-      store.updateUser(user.id, { firstName: 'Updated' })
+      // Advance the clock so the new ISO timestamp is guaranteed to differ
+      // (createUser and updateUser can otherwise land in the same millisecond).
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(Date.parse(originalUpdatedAt) + 1000))
+      try {
+        store.updateUser(user.id, { firstName: 'Updated' })
+      } finally {
+        vi.useRealTimers()
+      }
 
       expect(store.currentUser.value.updatedAt).not.toBe(originalUpdatedAt)
     })
@@ -135,7 +149,8 @@ describe('useUserStore', () => {
       const store = useUserStore()
       const user = await store.createUser({
         firstName: 'Test',
-        lastName: 'User'
+        lastName: 'User',
+        email: 'test@example.com'
       })
 
       const result = store.deleteUser(user.id)
@@ -148,11 +163,13 @@ describe('useUserStore', () => {
       const store = useUserStore()
       const user1 = await store.createUser({
         firstName: 'User',
-        lastName: 'One'
+        lastName: 'One',
+        email: 'one@example.com'
       })
       const user2 = await store.createUser({
         firstName: 'User',
-        lastName: 'Two'
+        lastName: 'Two',
+        email: 'two@example.com'
       })
 
       // Current user is user2
@@ -178,11 +195,13 @@ describe('useUserStore', () => {
       const store = useUserStore()
       const user1 = await store.createUser({
         firstName: 'User',
-        lastName: 'One'
+        lastName: 'One',
+        email: 'one@example.com'
       })
       const user2 = await store.createUser({
         firstName: 'User',
-        lastName: 'Two'
+        lastName: 'Two',
+        email: 'two@example.com'
       })
 
       store.switchUser(user1.id)
@@ -205,7 +224,8 @@ describe('useUserStore', () => {
       const store = useUserStore()
       const user = await store.createUser({
         firstName: 'Margaret',
-        lastName: 'Thompson'
+        lastName: 'Thompson',
+        email: 'margaret@example.com'
       })
 
       const found = store.findUserByName('margaret', 'THOMPSON')
@@ -217,7 +237,8 @@ describe('useUserStore', () => {
       const store = useUserStore()
       await store.createUser({
         firstName: 'Margaret',
-        lastName: 'Thompson'
+        lastName: 'Thompson',
+        email: 'margaret@example.com'
       })
 
       const found = store.findUserByName('Robert', 'Thompson')
@@ -229,8 +250,8 @@ describe('useUserStore', () => {
   describe('computed properties', () => {
     it('allUsers returns array of all users', async () => {
       const store = useUserStore()
-      await store.createUser({ firstName: 'User', lastName: 'One' })
-      await store.createUser({ firstName: 'User', lastName: 'Two' })
+      await store.createUser({ firstName: 'User', lastName: 'One', email: 'one@example.com' })
+      await store.createUser({ firstName: 'User', lastName: 'Two', email: 'two@example.com' })
 
       expect(store.allUsers.value).toHaveLength(2)
     })
@@ -240,7 +261,7 @@ describe('useUserStore', () => {
 
       expect(store.hasUsers.value).toBe(false)
 
-      await store.createUser({ firstName: 'Test', lastName: 'User' })
+      await store.createUser({ firstName: 'Test', lastName: 'User', email: 'test@example.com' })
 
       expect(store.hasUsers.value).toBe(true)
     })
@@ -250,8 +271,8 @@ describe('useUserStore', () => {
 
       expect(store.userCount.value).toBe(0)
 
-      await store.createUser({ firstName: 'User', lastName: 'One' })
-      await store.createUser({ firstName: 'User', lastName: 'Two' })
+      await store.createUser({ firstName: 'User', lastName: 'One', email: 'one@example.com' })
+      await store.createUser({ firstName: 'User', lastName: 'Two', email: 'two@example.com' })
 
       expect(store.userCount.value).toBe(2)
     })
@@ -261,7 +282,7 @@ describe('useUserStore', () => {
 
       expect(store.isAuthenticated.value).toBe(false)
 
-      await store.createUser({ firstName: 'Test', lastName: 'User' })
+      await store.createUser({ firstName: 'Test', lastName: 'User', email: 'test@example.com' })
 
       expect(store.isAuthenticated.value).toBe(true)
     })
@@ -273,6 +294,7 @@ describe('useUserStore', () => {
       await store1.createUser({
         firstName: 'Margaret',
         lastName: 'Thompson',
+        email: 'margaret@example.com',
         classrooms: ['tuesday-am']
       })
 

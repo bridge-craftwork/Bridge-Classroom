@@ -442,6 +442,36 @@ Automate the "scan for who bid/played differently" that Rick does by eye:
   cardplay — so the teacher knows who to help (often a Zoom side-conversation
   with the stuck player). A time-since-last-action signal per seat/table.
 
+### 5d. Board narrative / lesson analysis in the console (Rick 2026-07-04)
+
+Many lesson hands carry an authored **narrative** — the lesson analysis. Rick
+currently keeps a **PDF open beside Shark** to read it while a hand runs; Shark
+only shows the first couple of lines. The console should **display the board's
+narrative when the PBN carries one**, with **basic HTML formatting** (`<b>`, etc.).
+
+Findings (code-grounded 2026-07-04):
+- **Where it lives:** the `{ … }` comment block after a board's tags in the PBN
+  (Baker lesson format). It interleaves prose (with `<b>` HTML and `\S \H \D \C`
+  suit escapes) with `[show …]` / `[BID …]` / `[NEXT]` directives. PBS generated
+  scenario deals typically have none; this is authored Baker/lesson content.
+- **Already parsed:** `parsePbn` (`src/utils/pbnParser.js`) captures it as
+  `deal.commentary` via `formatCommentary`, which joins the parts and runs
+  `replaceSuitSymbols` (so `\S`→♠ etc. is done). It does **not** strip the inline
+  `[…]` directive tokens — a console "analysis" view wants a prose-only extract
+  (drop `[show]`/`[BID]`/`[NEXT]`, keep `<b>`+text) rendered as HTML (allowlist
+  basic tags; the text is authored/trusted, but sanitize to be safe).
+- **The blocker (data flow):** the console loads boards via
+  `materialize(selection)` → `refBoards` → **`dealToMinimalPbn`, which strips the
+  `{ }` block** — only Board/Dealer/Vulnerable/Deal survive, so the narrative
+  never reaches the table today. To show it we must **preserve the narrative
+  through the pipeline**. Options: (A) resolver keeps a per-board `narrative`
+  sidecar from `deal.commentary` and the console displays it client-side (no
+  server change — cleanest for a console-only display); (B) carry an optional
+  `description`/`narrative` field on the deal frame through the table service so
+  the player view can show it too; (C) keep the full `{ }` block in the
+  materialized `boardsPbn` and pass it through. **Recommend A** for the console
+  drill-in; revisit B if the player view should show it as well.
+
 ## Design rules
 
 - Diagnostics = URL parameter, read-only, available to anyone (it shows
