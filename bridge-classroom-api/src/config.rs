@@ -95,8 +95,12 @@ impl Config {
         let github_issues_token = env::var("GITHUB_ISSUES_TOKEN")
             .ok()
             .filter(|s| !s.trim().is_empty());
+        // Default to the org-owned slug. The repo moved from ADavidBailey into
+        // the bridge-craftwork org (2026-06-29); a create-issue POST does not
+        // follow GitHub's redirect from the old slug, so the default must be the
+        // current owner. GITHUB_ISSUES_REPO can still override this.
         let github_issues_repo = env::var("GITHUB_ISSUES_REPO")
-            .unwrap_or_else(|_| "ADavidBailey/Practice-Bidding-Scenarios".to_string());
+            .unwrap_or_else(|_| "bridge-craftwork/Practice-Bidding-Scenarios".to_string());
 
         // Treat an empty TABLE_TICKET_SECRET the same as unset.
         let table_ticket_secret = env::var("TABLE_TICKET_SECRET")
