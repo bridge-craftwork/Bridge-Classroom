@@ -6,6 +6,7 @@ const JoinClassroomView = () => import('../views/JoinClassroomView.vue')
 const BiddingPracticeView = () => import('../views/BiddingPracticeView.vue')
 const TableLobbyView = () => import('../views/TableLobbyView.vue')
 const TeacherConsoleView = () => import('../views/TeacherConsoleView.vue')
+const TableHostView = () => import('../views/TableHostView.vue')
 
 const routes = [
   {
@@ -49,6 +50,14 @@ const routes = [
     path: '/tables/console/:sessionId?',
     name: 'tables-console',
     component: TeacherConsoleView
+  },
+  {
+    // Single-table "host a table" surface for any signed-in user (non-teacher
+    // friendly): one casual table, invite link, deal source — no multi-table
+    // console chrome. The owner is the see-all controller server-side.
+    path: '/tables/host',
+    name: 'tables-host',
+    component: TableHostView
   },
   {
     // Catch-all: the main app layout handles lobby/collection/practice
