@@ -3,7 +3,8 @@
 //   • LocalEngine  — in-browser: BBA-scripted bots, client double-dummy + BBA
 //                    divergence overlay, no seats/invite. Solo, snappy, offline.
 //   • ServerEngine — the bridge-table-service: real seats, invite, multi-human,
-//                    server bots; analysis overlays not yet server-side.
+//                    server bots; double-dummy overlay at board-complete
+//                    (client-computed today), other analysis overlays local-only.
 //
 // A view consumes `engine.*` reactive state + actions, and reads
 // `engine.capabilities` to show/hide features. The DIFF of the two capability
@@ -47,9 +48,15 @@ export const LOCAL_CAPABILITIES = Object.freeze({
   dealSource: 'stream',
 })
 
-/** ServerEngine: real multiplayer, analysis overlays not yet server-side. */
+/**
+ * ServerEngine: real multiplayer. `doubleDummy` is available — computed
+ * client-side at board-complete (the server un-redacts the full deal for
+ * review, so no cheating), swappable to server-computes-once-and-broadcast
+ * later WITHOUT touching the view. The remaining analysis overlays
+ * (bbaExpectedAuction, divergence, narrative) are still local-only.
+ */
 export const SERVER_CAPABILITIES = Object.freeze({
-  doubleDummy: false,
+  doubleDummy: true,
   bbaExpectedAuction: false,
   divergence: false,
   narrative: false,

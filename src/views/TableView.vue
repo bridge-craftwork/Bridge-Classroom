@@ -218,6 +218,14 @@
               Tricks <strong>NS {{ tricksTaken.NS }} · EW {{ tricksTaken.EW }}</strong>
             </div>
 
+            <!-- Double-dummy review grid — the deal is fully revealed now.
+                 Self-hides until the client-side solve returns. -->
+            <DoubleDummyTable
+              v-if="capabilities.doubleDummy"
+              :ddtricks="doubleDummy"
+              :final-contract="ddFinalContract"
+            />
+
             <!-- Session rounds: ready-up gate (session tables only) -->
             <template v-if="sessionId && yourSeat">
               <button
@@ -267,8 +275,10 @@ import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
+import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import { useDealSource } from '../composables/useDealSource.js'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
+import { useServerEngine } from '../composables/engines/serverEngine.js'
 import { SUIT_SYMBOLS } from '../utils/cardFormatting.js'
 
 const SEAT_ORDER = ['N', 'E', 'S', 'W']
@@ -309,6 +319,40 @@ const {
   isYourBid, lastSuitBid, canDouble, canRedouble,
   errorMessage, undoBy,
 } = table
+
+// ── Double-dummy review overlay (via the TableEngine analysis hook) ─────
+// The ServerEngine's getDoubleDummy computes client-side; we only ever call
+// it at board-complete, when the server has un-redacted all four hands for
+// review (so nothing here reveals more than the server already did). Behind
+// the engine interface, so a future server-computes-and-broadcast swap is
+// contained to serverEngine.js — this view is untouched.
+const engine = useServerEngine()
+const { capabilities } = engine
+
+const doubleDummy = ref(null)
+let ddToken = 0
+
+// All four hands present → the deal is fully revealed (post-review snapshot).
+const fullDealRevealed = computed(() => SEAT_ORDER.every(s => !!hands.value[s]))
+
+// finalContract for the DD grid's contract-cell highlight; the server's
+// contract.text ("4SX", "3NT") is exactly what buildDdRows parses.
+const ddFinalContract = computed(() =>
+  contract.value?.text
+    ? { contract: contract.value.text, declarer: declarer.value }
+    : { contract: '', declarer: null })
+
+watch([() => phase.value, fullDealRevealed], async ([ph, revealed]) => {
+  if (!(capabilities.doubleDummy && ph === 'complete' && revealed)) {
+    doubleDummy.value = null
+    ddToken++ // invalidate any in-flight fetch
+    return
+  }
+  if (doubleDummy.value) return // already loaded for this completed board
+  const token = ++ddToken
+  const dd = await engine.getDoubleDummy({ hands: hands.value, vulnerable: vulnerable.value })
+  if (token === ddToken) doubleDummy.value = dd
+})
 
 // ── Teacher hand-visibility toggle ─────────────────────────────────────
 // The server sends teachers unredacted hands (see-all) even when seated at

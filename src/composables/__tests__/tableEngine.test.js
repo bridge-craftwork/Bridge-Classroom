@@ -7,9 +7,11 @@ import {
 
 describe('tableEngine capabilities', () => {
   it('server is missing exactly the local-only analysis features (the backlog)', () => {
-    // What the server would need to match the local experience.
+    // What the server would need to match the local experience. doubleDummy
+    // is now delivered on the server table too (client-computed at review),
+    // so it's no longer a gap — the backlog is the remaining three overlays.
     expect(capabilityGaps(LOCAL_CAPABILITIES, SERVER_CAPABILITIES).sort()).toEqual(
-      ['bbaExpectedAuction', 'divergence', 'doubleDummy', 'narrative'].sort(),
+      ['bbaExpectedAuction', 'divergence', 'narrative'].sort(),
     )
   })
 
