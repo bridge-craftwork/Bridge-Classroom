@@ -2,15 +2,12 @@
   <div class="bp-app" :class="{ embedded: EMBEDDED }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
-      <button class="bp-nav-toggle" @click="showPicker = true" title="Choose where deals come from">
-        ☰ Deal source&hellip;
-      </button>
       <a class="bp-nav-back" href="/">&larr; All tools</a>
     </nav>
 
     <div class="bp-main">
       <main class="bp-stage">
-        <div v-if="!currentDeal && !dealError && !drawing" class="bp-empty">
+        <div v-if="!currentDeal && !drawing" class="bp-empty">
           <p>Pick a deal source to start bidding.</p>
           <button class="bp-btn bp-btn-primary" @click="showPicker = true">Choose deal source&hellip;</button>
           <small>(You sit South. Three BBA bots fill the other seats.)</small>
@@ -464,8 +461,11 @@ const AUTOPLAY_SINGLETONS_KEY = 'bp.cardplayAutoplaySingletons'
 const playCardplay = ref(
   typeof localStorage !== 'undefined' && localStorage.getItem(PLAY_KEY) === '1'
 )
+// Default to BEN now that it's tuned for latency (speed_TF2 config: ~5.6s
+// opening lead, ~0.9s thereafter). `random` stays in the dropdown as a
+// dev/offline fallback. Existing users keep whatever they've picked before.
 const cardplayBotName = ref(
-  (typeof localStorage !== 'undefined' && localStorage.getItem(BOT_KEY)) || 'random'
+  (typeof localStorage !== 'undefined' && localStorage.getItem(BOT_KEY)) || 'ben'
 )
 // Teaching toggles — both default OFF.
 //   showPlayed: keep played cards visible (strike-through) instead of removing them.
@@ -1355,17 +1355,6 @@ async function onUserBid(bid) {
 .bp-logo .suit { color: #1D9E75; margin-right: 6px; }
 .bp-nav-back { font-size: 12px; color: #666; text-decoration: none; }
 .bp-nav-back:hover { color: #222; }
-.bp-nav-toggle {
-  display: inline-block;
-  font-size: 13px;
-  color: #1D9E75;
-  background: none;
-  border: 1px solid #1D9E75;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-weight: 500;
-  cursor: pointer;
-}
 
 /* The deal source now lives in a modal (opened by the "Deal source…" button),
    so the main area is a single full-width stage — max room for the table. */
