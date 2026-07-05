@@ -17,13 +17,30 @@
     <meta property="og:url" content="https://bridge-classroom.com" />
     <script data-goatcounter="https://bridge-classroom.goatcounter.com/count"
             async src="//gc.zgo.at/count.js"></script>
-    <!-- The #app fallback below is SEO/no-JS text that Vue replaces on mount.
-         Hide it so it doesn't flash in the top-left before the app renders. -->
-    <style>.app-prerender { display: none; }</style>
+    <!-- The #app fallback below is SEO / no-JS / security-scanner content that
+         Vue replaces on mount. Keep it VISIBLE and crawlable (hiding it with
+         display:none reads as cloaking to scanners), but style it as a clean
+         centered splash so it no longer flashes as raw text in the top-left. -->
+    <style>
+      .app-prerender {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 6px;
+        padding: 24px;
+        font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+        color: #24435a;
+      }
+      .app-prerender h1 { margin: 0; font-size: 30px; font-weight: 700; }
+      .app-prerender p { margin: 2px 0; max-width: 440px; font-size: 14px; color: #667; }
+    </style>
   </head>
   <body>
     <div id="app">
-      <div class="app-prerender" aria-hidden="true">
+      <div class="app-prerender">
         <header>
           <h1>Bridge Classroom</h1>
           <p>An educational platform for learning and practicing the card game of bridge.</p>
