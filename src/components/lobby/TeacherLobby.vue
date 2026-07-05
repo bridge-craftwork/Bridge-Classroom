@@ -23,10 +23,10 @@
             <div class="section-actions">
               <a
                 class="action-btn tables-link"
-                href="#/tables/new"
+                href="#/tables/console"
                 title="Host live multiplayer tables — students join via your permanent /play link"
               >
-                ♠ New Table Session
+                ♠ Table Console
               </a>
               <button class="action-btn create" @click="showCreateModal = true">
                 + New Classroom

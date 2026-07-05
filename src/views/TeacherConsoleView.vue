@@ -7,35 +7,49 @@
         <a href="#/">main app</a> and sign in first.</p>
     </div>
 
-    <!-- Session over -->
-    <div v-else-if="sessionClosed" class="tc-card tc-gate">
-      <h2>Session ended</h2>
-      <p>This table session is closed.</p>
-      <button class="tc-btn tc-btn-primary" @click="router.push('/tables/new')">
-        Start a new session
-      </button>
-    </div>
-
     <template v-else>
-      <!-- Header -->
+      <!-- Header: Start / End / Copy class link, state-driven -->
       <div class="tc-header">
         <div class="tc-header-left">
           <h2 class="tc-title">Teacher console</h2>
-          <span class="tc-conn" :class="'tc-conn-' + connectionStatus">{{ connectionStatus }}</span>
+          <span v-if="hasSession" class="tc-conn" :class="'tc-conn-' + connectionStatus">{{ connectionStatus }}</span>
         </div>
         <div class="tc-header-right">
+          <button class="tc-btn tc-btn-primary" :disabled="hasSession || starting" @click="startSession">
+            {{ starting ? 'Starting…' : 'Start session' }}
+          </button>
+          <button class="tc-btn tc-btn-danger" :disabled="!hasSession" @click="endSession">
+            End session
+          </button>
           <button
             class="tc-btn"
-            :disabled="!shareUrl"
-            :title="shareUrl || 'Generating your class link…'"
+            :disabled="!hasSession || !shareUrl"
+            :title="shareUrl || 'Start a session to get your class link'"
             @click="copyShareUrl"
           >
             {{ copied ? 'Link copied ✓' : '🔗 Copy class link' }}
           </button>
-          <button class="tc-btn tc-btn-danger" @click="endSession">End session</button>
         </div>
       </div>
 
+      <!-- No open session → Start home state -->
+      <div v-if="!hasSession" class="tc-card tc-start">
+        <p v-if="resolving" class="tc-muted">Checking for an open class…</p>
+        <template v-else>
+          <h3>No class in session</h3>
+          <p class="tc-muted">
+            Start a session, then share the class link. Tables appear as students
+            arrive — or add them yourself for testing.
+          </p>
+          <button class="tc-btn tc-btn-primary tc-start-btn" :disabled="starting" @click="startSession">
+            {{ starting ? 'Starting…' : 'Start session' }}
+          </button>
+          <p v-if="startError" class="tc-error">{{ startError }}</p>
+        </template>
+      </div>
+
+      <!-- Live session -->
+      <template v-else>
       <p v-if="!lobby" class="tc-muted">Connecting to the session…</p>
 
       <!-- Deal source + lockstep board navigation (Shark control panel) -->
@@ -250,6 +264,7 @@
         </div>
         <TableView @exit="stopWatching" />
       </div>
+      </template>
     </template>
   </div>
 </template>
@@ -303,7 +318,13 @@ const BOT_MODES = [
 
 const connected = computed(() => connectionStatus.value === 'connected')
 
-const sessionId = computed(() => route.params.sessionId)
+// The console IS the teacher home: it holds an open session or offers Start.
+const sessionId = ref(route.params.sessionId || null)
+const starting = ref(false)
+const startError = ref('')
+const resolving = ref(true) // true until we've checked for an existing session
+// A live session (has an id and hasn't been closed) drives the header buttons.
+const hasSession = computed(() => !!sessionId.value && !sessionClosed.value)
 const menu = ref(null) // { tableId, seat } — the open seat-action menu
 
 // ── Runtime deal source + lockstep board nav (roadmap §Phase 3.1) ──────────
@@ -403,8 +424,8 @@ function stopWatching() {
 // always resolving to their open session — copyable straight from the console.
 const shareUrl = ref('')
 const copied = ref(false)
-async function ensureShareUrl() {
-  if (!currentUser.value) return
+async function fetchHostCode() {
+  if (!currentUser.value) return null
   try {
     const res = await fetch(`${API_URL}/users/${currentUser.value.id}/host-code`, {
       method: 'POST',
@@ -413,10 +434,12 @@ async function ensureShareUrl() {
     const data = await res.json()
     if (data.code) {
       shareUrl.value = `${window.location.origin}${window.location.pathname}#/play/${data.code}`
+      return data.code
     }
   } catch {
-    /* best-effort; the button just stays disabled */
+    /* best-effort; Copy link just stays disabled */
   }
+  return null
 }
 async function copyShareUrl() {
   if (!shareUrl.value) return
@@ -431,6 +454,53 @@ async function copyShareUrl() {
   }
 }
 
+// On landing without a session id, look up the teacher's own open session
+// (via their evergreen host code) and enter it; otherwise show Start.
+async function resolveMySession() {
+  resolving.value = true
+  const code = await fetchHostCode()
+  try {
+    if (code) {
+      const res = await fetch(`${API_URL}/play/${code}`)
+      const data = await res.json()
+      if (data?.session?.id) setSession(data.session.id)
+    }
+  } catch {
+    /* no open session → Start state */
+  } finally {
+    resolving.value = false
+  }
+}
+
+// Start a fresh class: an empty (0-table) session — tables fill as students
+// arrive (or via Add tables), boards load from the picker.
+async function startSession() {
+  if (starting.value || !currentUser.value) return
+  starting.value = true
+  startError.value = ''
+  try {
+    const res = await fetch(`${API_URL}/table-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({
+        owner_user_id: currentUser.value.id,
+        kind: 'teacher_set',
+        boards_pbn: '',
+        table_count: 0,
+        seat_policy: { mode: 'auto', pattern: 'first_free' },
+      }),
+    })
+    if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`)
+    const data = await res.json()
+    if (data?.session?.id) setSession(data.session.id)
+    else throw new Error('No session returned.')
+  } catch (e) {
+    startError.value = e?.message || 'Could not start the session.'
+  } finally {
+    starting.value = false
+  }
+}
+
 async function endSession() {
   if (!window.confirm('End this session for everyone?')) return
   try {
@@ -438,11 +508,26 @@ async function endSession() {
       `${API_URL}/table-sessions/${sessionId.value}?owner_user_id=${encodeURIComponent(currentUser.value.id)}`,
       { method: 'DELETE', headers: { 'x-api-key': API_KEY } }
     )
-    // The service broadcasts session_closed; the WS layer flips
-    // sessionClosed and this view shows its end card.
   } catch {
-    // Best-effort; the lobby frame / closed event tells the real story.
+    /* best-effort; the closed event / clearSession below handles the UI */
   }
+  clearSession()
+}
+
+// Enter a session (from Start / resolve / route): bind the id, reflect it in
+// the URL, and connect.
+function setSession(id) {
+  sessionId.value = id
+  if (route.params.sessionId !== id) router.replace(`/tables/console/${id}`)
+  joinSession()
+}
+// Leave the current session → back to the Start home state.
+function clearSession() {
+  menu.value = null
+  console_.detach()
+  table.leave()
+  sessionId.value = null
+  if (route.params.sessionId) router.replace('/tables/console')
 }
 
 function joinSession() {
@@ -454,20 +539,29 @@ function joinSession() {
   table.join({ sessionId: sessionId.value, userId: currentUser.value.id, bot })
 }
 
-// Route changes reuse this component (old console → new console): rebuild
-// the connection for the new session id.
-watch(sessionId, (id, old) => {
-  if (id === old) return
-  menu.value = null
-  console_.detach() // clears the stale lobby frame + kibitz selection
-  table.leave() // also resets sessionClosed from a previous session
-  joinSession()
+// Server-ended (or ended elsewhere): fall back to the Start home state.
+watch(sessionClosed, (closed) => {
+  if (closed) clearSession()
 })
+
+// A /play redirect (or navigation) can change the route's session id while the
+// component is reused — pick it up.
+watch(
+  () => route.params.sessionId,
+  (id) => {
+    if (id && id !== sessionId.value) setSession(id)
+  }
+)
 
 onMounted(() => {
   userStore.initialize()
-  joinSession()
-  ensureShareUrl()
+  if (sessionId.value) {
+    fetchHostCode()
+    joinSession()
+    resolving.value = false
+  } else {
+    resolveMySession()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -494,6 +588,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 .tc-gate { text-align: center; }
+.tc-start { text-align: center; max-width: 520px; }
+.tc-start h3 { margin: 0 0 8px; font-size: 20px; }
+.tc-start-btn { margin-top: 12px; padding: 10px 22px; font-size: 15px; }
+.tc-error { color: #c62828; font-size: 14px; margin-top: 10px; }
 
 .tc-header {
   display: flex;

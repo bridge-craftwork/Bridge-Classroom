@@ -5,7 +5,6 @@ import ConventionCardView from '../views/ConventionCardView.vue'
 const JoinClassroomView = () => import('../views/JoinClassroomView.vue')
 const BiddingPracticeView = () => import('../views/BiddingPracticeView.vue')
 const TableLobbyView = () => import('../views/TableLobbyView.vue')
-const TableSessionNewView = () => import('../views/TableSessionNewView.vue')
 const TeacherConsoleView = () => import('../views/TeacherConsoleView.vue')
 
 const routes = [
@@ -39,14 +38,15 @@ const routes = [
     component: TableLobbyView
   },
   {
-    // Teacher: create a table session (paste PBN, tables, seat policy).
+    // Legacy create page → the console is now the teacher home (it starts a
+    // session itself). Redirect any old links.
     path: '/tables/new',
-    name: 'tables-new',
-    component: TableSessionNewView
+    redirect: '/tables/console'
   },
   {
-    // Teacher: live console for an open session (grid, seating, rounds).
-    path: '/tables/console/:sessionId',
+    // Teacher home + live console. No :sessionId → it resolves the teacher's
+    // open session or offers Start; with an id → joins that session.
+    path: '/tables/console/:sessionId?',
     name: 'tables-console',
     component: TeacherConsoleView
   },
