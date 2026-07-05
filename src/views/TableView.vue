@@ -166,16 +166,23 @@
             Play-only board — the auction is bid automatically…
           </div>
 
-          <div v-else-if="isYourBid" class="tv-card">
-            <h3>Your bid</h3>
+          <!-- Seated player: the bidding box stays visible the whole auction —
+               active on your turn, greyed (with a note) when it's someone else's. -->
+          <div v-else-if="phase === 'bidding' && yourSeat" class="tv-card">
+            <h3>{{ isYourBid ? 'Your bid' : 'Bidding' }}</h3>
             <BiddingBox
               :last-bid="lastSuitBid"
               :can-double="canDouble"
               :can-redouble="canRedouble"
+              :disabled="!isYourBid"
               @bid="onBid"
             />
+            <div v-if="!isYourBid && nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
+              Waiting for {{ turnLabel }}…
+            </div>
           </div>
 
+          <!-- Kibitzer / not seated -->
           <div v-else-if="phase === 'bidding' && nextToAct" class="tv-card tv-waiting">
             Waiting for {{ turnLabel }}…
           </div>
@@ -620,6 +627,7 @@ function onReady() {
 }
 .tv-card h3 { margin: 0 0 8px; font-size: 15px; color: #333; }
 .tv-waiting { color: #666; font-style: italic; }
+.tv-bid-waiting { text-align: center; margin-top: 8px; }
 
 .tv-center { text-align: center; color: #555; font-size: 14px; }
 .tv-center-line { margin: 2px 0; }

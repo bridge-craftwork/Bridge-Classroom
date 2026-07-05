@@ -1,5 +1,5 @@
 <template>
-  <div class="bidding-box">
+  <div class="bidding-box" :class="{ disabled }">
     <div class="bid-section">
       <!-- Level buttons -->
       <div class="levels">
@@ -78,6 +78,12 @@ const props = defineProps({
   canRedouble: {
     type: Boolean,
     default: false
+  },
+  // Greyed + non-interactive when it's not this player's turn (the box stays
+  // visible so the UI doesn't collapse to a "waiting" message).
+  disabled: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -137,6 +143,12 @@ function makeBid(level, strain) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Not this player's turn: same layout, greyed and non-interactive. */
+.bidding-box.disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .bid-section {
