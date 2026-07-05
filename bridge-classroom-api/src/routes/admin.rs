@@ -163,8 +163,11 @@ pub async fn admin_stats(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // Platform usage metrics exclude prerelease (beta) observations — we don't
+    // count beta/test plays toward active users, observation totals, or popular
+    // lessons. See documentation/adr/ (§6.5).
     let active_7d: CountRow = sqlx::query_as(
-        "SELECT COUNT(DISTINCT user_id) as count FROM observations WHERE timestamp >= ?",
+        "SELECT COUNT(DISTINCT user_id) as count FROM observations WHERE timestamp >= ? AND prerelease = 0",
     )
     .bind(&seven_days_ago)
     .fetch_one(&state.db)
@@ -172,21 +175,21 @@ pub async fn admin_stats(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let obs_count_7d: CountRow =
-        sqlx::query_as("SELECT COUNT(*) as count FROM observations WHERE timestamp >= ?")
+        sqlx::query_as("SELECT COUNT(*) as count FROM observations WHERE timestamp >= ? AND prerelease = 0")
             .bind(&seven_days_ago)
             .fetch_one(&state.db)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let active_today: CountRow = sqlx::query_as(
-        "SELECT COUNT(DISTINCT user_id) as count FROM observations WHERE timestamp >= ?",
+        "SELECT COUNT(DISTINCT user_id) as count FROM observations WHERE timestamp >= ? AND prerelease = 0",
     )
     .bind(&today_start)
     .fetch_one(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let total_obs: CountRow = sqlx::query_as("SELECT COUNT(*) as count FROM observations")
+    let total_obs: CountRow = sqlx::query_as("SELECT COUNT(*) as count FROM observations WHERE prerelease = 0")
         .fetch_one(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -210,7 +213,7 @@ pub async fn admin_stats(
             COUNT(DISTINCT user_id) as unique_users,
             ROUND(AVG(CASE WHEN correct THEN 100.0 ELSE 0.0 END)) as accuracy_pct
         FROM observations
-        WHERE deal_subfolder IS NOT NULL AND deal_subfolder != ''
+        WHERE deal_subfolder IS NOT NULL AND deal_subfolder != '' AND prerelease = 0
         GROUP BY deal_subfolder
         ORDER BY play_count DESC
         LIMIT 20

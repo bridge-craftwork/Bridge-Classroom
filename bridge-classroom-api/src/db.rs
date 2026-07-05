@@ -661,6 +661,51 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         tracing::info!("Added board_result column to observations table");
     }
 
+    // ---- collection_id + prerelease on observations (ADR-0001) ----
+    // Board identity gains a collection dimension (subfolder names collide
+    // across collections), and prerelease-flagged observations (beta boards)
+    // are recorded but excluded from mastery and platform statistics.
+    // See documentation/adr/. `board_version_token` and the board_status-side
+    // work land in a later slice.
+    add_column_if_missing(pool, "observations", "collection_id", "TEXT").await?;
+    add_column_if_missing(pool, "observations", "prerelease", "INTEGER NOT NULL DEFAULT 0").await?;
+
+    // One-time backfill of existing rows, classified by the current skill_path
+    // taxonomy: David's Practice-Bidding-Scenarios content is the
+    // `uncategorized/*` set (prerelease beta); everything else is Baker Bridge.
+    // Idempotent — only touches rows not yet classified (collection_id IS NULL),
+    // so any rows the write path hasn't tagged yet are healed on the next boot
+    // until the frontend supplies real values.
+    let unclassified: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM observations WHERE collection_id IS NULL"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    if unclassified > 0 {
+        sqlx::query(
+            r#"
+            UPDATE observations
+            SET collection_id = CASE
+                    WHEN skill_path LIKE 'uncategorized/%' THEN 'practice-bidding-scenarios'
+                    ELSE 'baker-bridge'
+                END,
+                prerelease = CASE
+                    WHEN skill_path LIKE 'uncategorized/%' THEN 1
+                    ELSE 0
+                END
+            WHERE collection_id IS NULL
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+        tracing::info!(
+            "Backfilled collection_id + prerelease on {} observation rows",
+            unclassified
+        );
+    }
+
     // ---- Board status table ----
     sqlx::query(
         r#"
