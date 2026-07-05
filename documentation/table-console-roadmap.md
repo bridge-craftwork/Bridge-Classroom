@@ -399,6 +399,49 @@ Per-table/per-session toggles at creation (and later live): bot strength
 auction, bidding systems. Most map to a per-room options struct the server
 already half-has (`BotMode`); add fields as features land.
 
+## Phase 5 — Teacher monitoring & analysis (wish-list, Rick 2026-07-04)
+
+Not scheduled — captured for later. All are teacher-console *visualization* aids
+to replace the by-eye scanning Rick does today on Shark.
+
+### 5a. Drill-in (Watching a table) — richer cardplay history
+
+The full kibitz view of one table should show the play story at a glance, not
+just the current trick:
+
+- **Player names, not compass labels** — show the seated player's name at the
+  top of each hand (as the MiniTable thumbnails already do), instead of
+  North/East/South/West.
+- **A cardplay-history view is required regardless** — a readable trick-by-trick
+  record of the play (leader, each seat's card, the winner) must be available
+  on its own. The color scheme below is an *enhancement* of it, not a
+  prerequisite.
+- **Play history by color/fade (enhancement)** — render each played card tinted
+  by **trick number**, fading as the hand progresses (early tricks bold → late
+  tricks faint). A **box around the opening lead**. Experiment: a couple of
+  tricks in is easy to read; a full 13 is the interesting stretch goal.
+- **Trick winners** — an indicator on which card won each trick.
+- **Double-dummy errors** — flag plays that were DD-suboptimal (needs a
+  double-dummy solver in the loop — the biggest dependency here).
+
+### 5b. Multi-table monitor — divergence indicators
+
+Automate the "scan for who bid/played differently" that Rick does by eye:
+
+- **Diverged from the embedded PBN** — colour a table when its **auction**
+  diverges from the PBN's authored auction (if the board carries one), and when
+  its **cardplay** diverges from the embedded line (usually just the opening
+  lead). Depends on the PBN carrying the authored auction/play (Baker-Bridge
+  directives).
+- **Diverged from other tables** — highlight where a table's auction or cardplay
+  differs from its peers (cross-table diff of the lobby feed).
+
+### 5c. Stall indicators (both views)
+
+- Flag a hand that has **stalled** — no action for a while in the auction or the
+  cardplay — so the teacher knows who to help (often a Zoom side-conversation
+  with the stuck player). A time-since-last-action signal per seat/table.
+
 ## Design rules
 
 - Diagnostics = URL parameter, read-only, available to anyone (it shows
