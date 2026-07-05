@@ -14,17 +14,14 @@
           <h2 class="tc-title">Teacher console</h2>
           <span v-if="hasSession" class="tc-conn" :class="'tc-conn-' + connectionStatus">{{ connectionStatus }}</span>
         </div>
-        <div class="tc-header-right">
-          <button class="tc-btn tc-btn-primary" :disabled="hasSession || starting" @click="startSession">
-            {{ starting ? 'Starting…' : 'Start session' }}
-          </button>
-          <button class="tc-btn tc-btn-danger" :disabled="!hasSession" @click="endSession">
-            End session
-          </button>
+        <!-- Header actions only once a class is live; the Start button lives in
+             the no-session card below (so there's just one Start). -->
+        <div v-if="hasSession" class="tc-header-right">
+          <button class="tc-btn tc-btn-danger" @click="endSession">End session</button>
           <button
             class="tc-btn"
-            :disabled="!hasSession || !shareUrl"
-            :title="shareUrl || 'Start a session to get your class link'"
+            :disabled="!shareUrl"
+            :title="shareUrl || 'Generating your class link…'"
             @click="copyShareUrl"
           >
             {{ copied ? 'Link copied ✓' : '🔗 Copy class link' }}

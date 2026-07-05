@@ -17,19 +17,24 @@
     <meta property="og:url" content="https://bridge-classroom.com" />
     <script data-goatcounter="https://bridge-classroom.goatcounter.com/count"
             async src="//gc.zgo.at/count.js"></script>
+    <!-- The #app fallback below is SEO/no-JS text that Vue replaces on mount.
+         Hide it so it doesn't flash in the top-left before the app renders. -->
+    <style>.app-prerender { display: none; }</style>
   </head>
   <body>
     <div id="app">
-      <header>
-        <h1>Bridge Classroom</h1>
-        <p>An educational platform for learning and practicing the card game of bridge.</p>
-      </header>
-      <main>
-        <p>Bridge Classroom helps bridge teachers create online classrooms and assignments.
-           Students practice bidding scenarios and improve their game at their own pace.</p>
-        <p>This is a card game education site. No financial information is collected.
-           No software downloads are required.</p>
-      </main>
+      <div class="app-prerender" aria-hidden="true">
+        <header>
+          <h1>Bridge Classroom</h1>
+          <p>An educational platform for learning and practicing the card game of bridge.</p>
+        </header>
+        <main>
+          <p>Bridge Classroom helps bridge teachers create online classrooms and assignments.
+             Students practice bidding scenarios and improve their game at their own pace.</p>
+          <p>This is a card game education site. No financial information is collected.
+             No software downloads are required.</p>
+        </main>
+      </div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>
