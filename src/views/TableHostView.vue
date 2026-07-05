@@ -38,6 +38,11 @@
           <input v-if="shareUrl" class="th-invite-url" :value="shareUrl" readonly @focus="$event.target.select()">
         </div>
 
+        <label class="th-spawn" title="Open N tabs that each join as a test player (allow pop-ups)">
+          <input v-model.number="spawnCount" type="number" min="1" max="3" class="th-num" :disabled="!shareUrl">
+          <button class="th-btn" :disabled="!shareUrl" @click="spawnPlayers">🧪 Test players</button>
+        </label>
+
         <button class="th-btn th-btn-danger" :disabled="!hasSession" @click="endSession">End table</button>
       </div>
 
@@ -95,6 +100,7 @@ import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import MiniTable from '../components/table/MiniTable.vue'
 import { API_URL } from '../utils/apiUrl.js'
+import { testStudentName } from '../utils/testStudents.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 
@@ -152,6 +158,20 @@ async function copyShareUrl() {
     setTimeout(() => { copied.value = false }, 2000)
   } catch {
     /* clipboard unavailable */
+  }
+}
+
+// ── Testing: spawn a few player tabs ────────────────────────────────────────
+// Each opens the invite link with ?student=<name>, which forces a named-guest
+// (player) join — bypassing the owner/teacher recognition that would otherwise
+// send you to the console. Bots fill any seats you don't spawn.
+const spawnCount = ref(3)
+function spawnPlayers() {
+  if (!shareUrl.value) return
+  const n = Math.max(1, Math.min(Number(spawnCount.value) || 1, 3))
+  for (let i = 1; i <= n; i++) {
+    const name = encodeURIComponent(testStudentName(i))
+    window.open(`${shareUrl.value}?student=${name}&bot=random`, `bc-test-player-${i}`)
   }
 }
 
@@ -285,6 +305,14 @@ onBeforeUnmount(teardown)
   padding: 12px 14px;
 }
 .th-deck { font-size: 12px; color: #666; }
+.th-spawn { display: flex; align-items: center; gap: 6px; }
+.th-num {
+  width: 48px;
+  padding: 5px 6px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+}
 .th-invite { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .th-invite-url {
   width: 260px;

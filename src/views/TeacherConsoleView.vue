@@ -284,6 +284,7 @@ import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { API_URL } from '../utils/apiUrl.js'
+import { testStudentName } from '../utils/testStudents.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 const SEAT_ORDER = ['N', 'E', 'S', 'W']
@@ -363,23 +364,6 @@ function toggleWaitToSeat() {
 }
 function doAddTables() {
   console_.addTables(Math.max(1, Math.min(Number(addCount.value) || 1, 20)))
-}
-
-// Test-student display names, assigned by spawn position — friendlier than
-// "Test 1/2/3…" when eyeballing a populated class. Four themed sets of eight,
-// then a plain "Test <n>" for anything past them.
-const TEST_STUDENT_NAMES = [
-  // Snow White & the seven dwarves
-  'Snow White', 'Doc', 'Grumpy', 'Happy', 'Sleepy', 'Bashful', 'Sneezy', 'Dopey',
-  // Santa's reindeer
-  'Dasher', 'Dancer', 'Prancer', 'Vixen', 'Comet', 'Cupid', 'Donner', 'Blitzen',
-  // Stars of Orion (Meissa added as the 8th — Rick's list had seven)
-  'Rigel', 'Bellatrix', 'Mintaka', 'Alnilam', 'Alnitak', 'Saiph', 'Betelgeuse', 'Meissa',
-  // Wine (grape) varieties
-  'Chardonnay', 'Syrah', 'Petit Verdot', 'Malbec', 'Merlot', 'Grenache', 'Sangiovese', 'Riesling',
-]
-function testStudentName(i) {
-  return TEST_STUDENT_NAMES[i - 1] || `Test ${i}`
 }
 
 // Testing: open N tabs that each join as a distinct student (?student=<name>),
