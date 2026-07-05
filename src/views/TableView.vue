@@ -114,17 +114,10 @@
 
       <div class="tv-main">
         <div class="tv-table-wrap">
-          <!-- Idle session: no deal loaded yet. Cover the (placeholder) table
-               until the teacher sends a source (roadmap §Phase 3.1). -->
-          <div v-if="!dealLoaded" class="tv-waiting">
-            <div class="tv-waiting-card">
-              <div class="tv-waiting-spinner"></div>
-              <p class="tv-waiting-title">Waiting for the teacher to deal…</p>
-              <p class="tv-waiting-sub">Your table is ready — the board will appear when the teacher loads a deal.</p>
-            </div>
-          </div>
+          <!-- The table is ALWAYS shown (stable view). No deal yet → empty
+               hands + a quiet center note; never the placeholder cards. -->
           <BridgeTable
-            :hands="hands"
+            :hands="displayHands"
             :hidden-seats="displayHiddenSeats"
             :show-hcp="false"
             :clickable-seat="clickableSeat"
@@ -133,7 +126,7 @@
           >
             <template #center>
               <TrickArea
-                v-if="phase === 'play' || phase === 'complete'"
+                v-if="dealLoaded && (phase === 'play' || phase === 'complete')"
                 :current-trick="currentTrick"
                 :last-finished-trick="lastFinishedTrick"
                 :tricks-taken="tricksTaken"
@@ -141,6 +134,10 @@
                 :bot-loading="botThinking"
                 bot-name="Bot"
               />
+              <div v-else-if="!dealLoaded" class="tv-center tv-center-wait">
+                <div class="tv-center-title">Waiting for the first deal</div>
+                <div class="tv-center-sub">The board appears when the teacher loads a deal.</div>
+              </div>
               <div v-else class="tv-center">
                 <div class="tv-center-line">Dealer {{ dealer || '—' }}</div>
                 <div class="tv-center-line">
@@ -162,32 +159,36 @@
             />
           </div>
 
-          <div v-if="phase === 'bidding' && boardMode === 'play-only'" class="tv-card tv-waiting">
+          <div v-if="dealLoaded && phase === 'bidding' && boardMode === 'play-only'" class="tv-card tv-waiting">
             Play-only board — the auction is bid automatically…
           </div>
 
-          <!-- Seated player: the bidding box stays visible the whole auction —
-               active on your turn, greyed (with a note) when it's someone else's. -->
-          <div v-else-if="phase === 'bidding' && yourSeat" class="tv-card">
-            <h3>{{ isYourBid ? 'Your bid' : 'Bidding' }}</h3>
+          <!-- Seated player: the bidding box stays visible the whole time —
+               active on your turn, greyed (with a note) otherwise or before the
+               first deal. So the student's view never collapses. -->
+          <div v-else-if="yourSeat && (!dealLoaded || phase === 'bidding')" class="tv-card">
+            <h3>{{ myTurnToBid ? 'Your bid' : 'Bidding' }}</h3>
             <BiddingBox
               :last-bid="lastSuitBid"
               :can-double="canDouble"
               :can-redouble="canRedouble"
-              :disabled="!isYourBid"
+              :disabled="!myTurnToBid"
               @bid="onBid"
             />
-            <div v-if="!isYourBid && nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
+            <div v-if="!dealLoaded" class="tv-status-line tv-waiting tv-bid-waiting">
+              Waiting for the first deal…
+            </div>
+            <div v-else-if="!myTurnToBid && nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
               Waiting for {{ turnLabel }}…
             </div>
           </div>
 
           <!-- Kibitzer / not seated -->
-          <div v-else-if="phase === 'bidding' && nextToAct" class="tv-card tv-waiting">
+          <div v-else-if="dealLoaded && phase === 'bidding' && nextToAct" class="tv-card tv-waiting">
             Waiting for {{ turnLabel }}…
           </div>
 
-          <div v-if="phase === 'play'" class="tv-card">
+          <div v-if="dealLoaded && phase === 'play'" class="tv-card">
             <h3>Play</h3>
             <div class="tv-status-line">
               Tricks <strong>NS {{ tricksTaken.NS }} · EW {{ tricksTaken.EW }}</strong>
@@ -203,7 +204,7 @@
             </div>
           </div>
 
-          <div v-if="phase === 'complete'" class="tv-card">
+          <div v-if="dealLoaded && phase === 'complete'" class="tv-card">
             <h3>Result</h3>
             <div class="tv-status-line tv-result-line">
               <span v-if="resultBanner" v-html="resultBanner"></span>
@@ -348,6 +349,12 @@ watch([() => connectionStatus.value, () => yourSeat.value], () => {
 
 // What BridgeTable actually hides: the server's redaction, plus — in "My
 // view" — every hand a normal player at this seat couldn't see.
+// Before the first deal, show empty hands (never the placeholder cards).
+const displayHands = computed(() =>
+  dealLoaded.value ? hands.value : { N: null, E: null, S: null, W: null })
+// It's your turn to bid only once a real deal is loaded.
+const myTurnToBid = computed(() => dealLoaded.value && isYourBid.value)
+
 const displayHiddenSeats = computed(() => {
   if (!canToggleHands.value || showAllHands.value || phase.value === 'complete') {
     return hiddenSeats.value
@@ -594,31 +601,10 @@ function onReady() {
   border: 1px solid #e5e5e0;
   border-radius: 10px;
 }
-.tv-waiting {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(251, 251, 248, 0.92);
-  backdrop-filter: blur(2px);
-  border-radius: 10px;
-}
-.tv-waiting-card { text-align: center; max-width: 320px; padding: 20px; }
-.tv-waiting-title { font-size: 17px; font-weight: 700; color: #24435a; margin: 12px 0 4px; }
-.tv-waiting-sub { font-size: 13px; color: #667; margin: 0; }
-.tv-waiting-spinner {
-  width: 34px;
-  height: 34px;
-  margin: 0 auto;
-  border: 3px solid #d6e3dc;
-  border-top-color: #1d9e75;
-  border-radius: 50%;
-  animation: tv-spin 0.9s linear infinite;
-}
-@keyframes tv-spin { to { transform: rotate(360deg); } }
 .tv-rail { display: flex; flex-direction: column; gap: 12px; }
+.tv-center-wait { text-align: center; }
+.tv-center-title { font-weight: 700; color: #24435a; font-size: 14px; }
+.tv-center-sub { font-size: 11.5px; color: #8a97a3; margin-top: 3px; max-width: 180px; }
 .tv-card {
   background: #fff;
   border: 1px solid #ddd;

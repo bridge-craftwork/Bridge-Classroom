@@ -63,11 +63,9 @@ const readySeats = ref([])
 // { open, total } from the boards_open event (null until the teacher opens
 // a round while we're connected — the server doesn't send it on join).
 const boardsOpen = ref(null)
-// Whether a deal set is loaded on this session. false = idle (no deal yet);
-// the table shows a "waiting for the teacher" overlay. Seeded from the
-// welcome's `loaded`; flips true when a board is dealt (board_advanced), and
-// carries the set label/board number for display (roadmap §Phase 3.1).
-const dealLoaded = ref(true)
+// The loaded set label from the welcome (roadmap §Phase 3.1). `dealLoaded` is
+// derived from the board number below (placeholder board = 0, real ≥ 1), so it
+// can never desync from what's actually on the table.
 const setLabel = ref(null)
 // Result banner from the board_complete event:
 // { boardNo, passedOut, contract: {text, declarer, declarerTricks, made}|null,
@@ -182,6 +180,9 @@ function showError(msg) {
 const dealer = computed(() => board.value?.dealer || null)
 const vulnerable = computed(() => board.value?.vulnerable || 'None')
 const boardNumber = computed(() => board.value?.number ?? null)
+// A real deal is loaded iff the board number is ≥ 1. The idle "no deal"
+// placeholder board is number 0, so this is always in sync with the table.
+const dealLoaded = computed(() => boardNumber.value != null && boardNumber.value > 0)
 const declarer = computed(() => contract.value?.declarer || null)
 const dummySeat = computed(() => (declarer.value ? partnerOf(declarer.value) : null))
 
@@ -396,7 +397,6 @@ function handleMessage(msg) {
       botMode.value = msg.bot_mode || ''
       // Idle session (no deal loaded) → show the waiting overlay. Absent
       // field (demo room) means always-loaded.
-      dealLoaded.value = msg.loaded !== false
       setLabel.value = msg.set_label || null
       // Seed our own chip from the welcome (the join's seat_update broadcast
       // happens before this connection subscribes). The snapshot's seats map
@@ -440,8 +440,6 @@ function handleMessage(msg) {
           resetBoardState()
           seats.value = keptSeats
           board.value = { number: msg.board_no, dealer: null, vulnerable: 'None' }
-          // A board was dealt → a set is loaded (clears the waiting overlay).
-          dealLoaded.value = true
           break
         }
         case 'board_complete':
