@@ -276,7 +276,7 @@
             </div>
 
             <!-- Display-only commentary (no interactive steps) -->
-            <div v-else-if="currentDeal?.commentary" class="display-commentary" v-html="colorizeSuits(flowText(stripControlDirectives(currentDeal.commentary)))">
+            <div v-if="!practice.hasSteps.value && !isDeclarerPlay && currentDeal?.commentary" class="display-commentary" v-html="colorizeSuits(flowText(stripControlDirectives(currentDeal.commentary)))">
             </div>
             <!-- Display-only completion: Next Deal button -->
             <div v-if="!practice.hasSteps.value && !isDeclarerPlay && practice.isComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
