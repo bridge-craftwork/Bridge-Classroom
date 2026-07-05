@@ -511,11 +511,11 @@ async function endSession() {
   clearSession()
 }
 
-// Enter a session (from Start / resolve / route): bind the id, reflect it in
-// the URL, and connect.
+// Enter a session (from Start / resolve / route): bind the id and connect. The
+// URL stays the stable `/tables/console` home (no session id) so it's
+// bookmarkable across sessions — the console resolves the open session itself.
 function setSession(id) {
   sessionId.value = id
-  if (route.params.sessionId !== id) router.replace(`/tables/console/${id}`)
   joinSession()
 }
 // Leave the current session → back to the Start home state.

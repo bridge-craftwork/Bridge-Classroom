@@ -275,7 +275,9 @@ function enterIdentify(myEpoch) {
   // take a seat there like anyone else.
   if (currentUser.value && sessionInfo.value?.id && sessionInfo.value.id !== 'demo' &&
       (currentUser.value.role === 'teacher' || currentUser.value.role === 'admin')) {
-    router.replace(`/tables/console/${sessionInfo.value.id}`)
+    // The stable console home (no session id) — it resolves the teacher's open
+    // session itself, so the address bar stays bookmarkable across sessions.
+    router.replace('/tables/console')
     return
   }
   mode.value = 'identify'
