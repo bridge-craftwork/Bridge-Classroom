@@ -22,6 +22,26 @@ export const SUIT_COLORS = {
 
 export const SUIT_ORDER = ['spades', 'hearts', 'diamonds', 'clubs']
 
+// Bridge display order for ranks within a suit: high to low.
+export const RANK_ORDER = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
+
+/**
+ * Sort a suit's cards into bridge display order (A→2), tolerant of source order.
+ * Some deal sources (e.g. BBO save/replay via ?pbn=) send suits low-to-high, so
+ * the display layer normalizes rather than trusting the source to pre-order.
+ * Accepts 'T' or '10' for the ten; unknown ranks sort to the end.
+ * @param {string[]} cards e.g. ['4','8','J','A'] → ['A','J','8','4']
+ * @returns {string[]} a new, sorted array
+ */
+export function sortSuitDescending(cards) {
+  const rankIndex = (c) => {
+    const r = String(c).toUpperCase() === '10' ? 'T' : String(c).toUpperCase()
+    const i = RANK_ORDER.indexOf(r)
+    return i === -1 ? RANK_ORDER.length : i
+  }
+  return [...(cards || [])].sort((a, b) => rankIndex(a) - rankIndex(b))
+}
+
 /**
  * Convert card character to display value
  * @param {string} card Single character (A, K, Q, J, T, 9-2)

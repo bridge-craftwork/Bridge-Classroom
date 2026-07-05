@@ -19,7 +19,7 @@
             <!-- Clickable mode: render each card as a separate clickable span -->
             <span v-if="clickable" class="cards clickable-cards">
               <span
-                v-for="card in hand[suit]"
+                v-for="card in orderedHand[suit]"
                 :key="card"
                 :class="isCardPlayed(suit, card) ? 'card-played' : 'card-clickable'"
                 @click="!isCardPlayed(suit, card) && $emit('card-click', { suit: suitLetter(suit), rank: card })"
@@ -28,7 +28,7 @@
             <!-- Non-clickable mode: individual spans when there are played cards -->
             <span v-else-if="hasPlayedCards" class="cards">
               <span
-                v-for="card in hand[suit]"
+                v-for="card in orderedHand[suit]"
                 :key="card"
                 :class="{ 'card-played': isCardPlayed(suit, card) }"
               >{{ formatCard(card) }}</span>
@@ -57,7 +57,8 @@ import {
   getSuitClass,
   formatCard,
   countHCP,
-  getSeatName
+  getSeatName,
+  sortSuitDescending
 } from '../utils/cardFormatting.js'
 
 const props = defineProps({
@@ -113,6 +114,16 @@ defineEmits(['card-click'])
 
 const suits = SUIT_ORDER
 
+// Cards ordered for display (A→2 per suit) regardless of the source's order —
+// so a deal loaded low-to-high (e.g. BBO save/replay ?pbn=) still shows right.
+// Display-only: HCP/length/played-card logic all key off rank, not position.
+const orderedHand = computed(() => {
+  if (!props.hand) return props.hand
+  const out = {}
+  for (const suit of suits) out[suit] = sortSuitDescending(props.hand[suit] || [])
+  return out
+})
+
 const seatName = computed(() => getSeatName(props.seat))
 
 const hcp = computed(() => countHCP(props.hand))
@@ -157,9 +168,9 @@ function suitLetter(suit) {
 }
 
 function formatSuitCards(suit) {
-  if (!props.hand || !props.hand[suit]) return '—'
-  const cards = props.hand[suit]
-  if (cards.length === 0) return '—'
+  if (!props.hand) return '—'
+  const cards = orderedHand.value[suit]
+  if (!cards || cards.length === 0) return '—'
   return cards.map(formatCard).join(' ')
 }
 
