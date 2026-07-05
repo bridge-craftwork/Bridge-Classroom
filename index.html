@@ -19,23 +19,18 @@
             async src="//gc.zgo.at/count.js"></script>
     <!-- The #app fallback below is SEO / no-JS / security-scanner content that
          Vue replaces on mount. Keep it VISIBLE and crawlable (hiding it with
-         display:none reads as cloaking to scanners), but style it as a clean
-         centered splash so it no longer flashes as raw text in the top-left. -->
+         display:none reads as cloaking to scanners), but make it inconspicuous:
+         match the app background (no white→app color jump) and render it small
+         and muted, so the split-second before Vue mounts is barely noticeable. -->
     <style>
+      html, body { margin: 0; background: #f5f3ef; }
       .app-prerender {
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        gap: 6px;
-        padding: 24px;
+        padding: 16px 18px;
         font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
-        color: #24435a;
+        color: #a8a49b;
       }
-      .app-prerender h1 { margin: 0; font-size: 30px; font-weight: 700; }
-      .app-prerender p { margin: 2px 0; max-width: 440px; font-size: 14px; color: #667; }
+      .app-prerender h1 { margin: 0 0 3px; font-size: 15px; font-weight: 600; }
+      .app-prerender p { margin: 0; max-width: 480px; font-size: 12px; line-height: 1.4; }
     </style>
   </head>
   <body>
