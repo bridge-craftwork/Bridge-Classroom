@@ -64,6 +64,12 @@
         />
       </div>
     </div>
+
+    <!-- Optional SE-corner content (e.g. a post-hand analysis grid). Sits in the
+         empty bottom-right cell: same row as South, same column as East. -->
+    <div v-if="$slots.corner" class="position corner-se">
+      <slot name="corner"></slot>
+    </div>
   </div>
 </template>
 
@@ -163,6 +169,15 @@ defineEmits(['card-click'])
 
 .south-row {
   grid-row: 3;
+}
+
+/* SE corner: the empty bottom-right cell (South's row, East's column). South
+   spans the full row but its hand is centered, so this cell is visually free. */
+.corner-se {
+  grid-column: 3;
+  grid-row: 3;
+  justify-self: start;
+  align-self: start;
 }
 
 /* Compact mode for desktop two-column layout */

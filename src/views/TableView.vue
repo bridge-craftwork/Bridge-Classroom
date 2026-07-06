@@ -145,6 +145,13 @@
                 </div>
               </div>
             </template>
+
+            <!-- Double-dummy review grid tucks into the empty SE corner (same
+                 row as South, same column as East). Self-hides until the deal
+                 is revealed at board-complete and the client-side solve lands. -->
+            <template v-if="capabilities.doubleDummy" #corner>
+              <DoubleDummyTable :ddtricks="doubleDummy" :final-contract="ddFinalContract" />
+            </template>
           </BridgeTable>
         </div>
 
@@ -217,14 +224,6 @@
             <div class="tv-status-line">
               Tricks <strong>NS {{ tricksTaken.NS }} · EW {{ tricksTaken.EW }}</strong>
             </div>
-
-            <!-- Double-dummy review grid — the deal is fully revealed now.
-                 Self-hides until the client-side solve returns. -->
-            <DoubleDummyTable
-              v-if="capabilities.doubleDummy"
-              :ddtricks="doubleDummy"
-              :final-contract="ddFinalContract"
-            />
 
             <!-- Session rounds: ready-up gate (session tables only) -->
             <template v-if="sessionId && yourSeat">
