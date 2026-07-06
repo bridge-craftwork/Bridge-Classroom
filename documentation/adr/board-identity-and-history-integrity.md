@@ -2,7 +2,9 @@
 
 **Bridge Classroom ↔ bridge-craftwork deal repositories**
 Companion specification to [ADR-0001](./0001-positional-board-identity.md).
-Status: Draft for review — 2026-07-05 (Rick + David)
+Status: Accepted — 2026-07-05, accepted 2026-07-06 (Rick + David). Slices 1–2 deployed; remainder per the [implementation plan](./implementation-plan.md).
+
+**Terminology (canonical):** the producer-facing release flag is **`stable`** (`%bridge-classroom-stable:` / `[Stable "…"]`); the consumer stores **`prerelease` = `NOT stable`**. The word *ready* used in earlier drafts is retired. See §4.1 for how this board-level release flag differs from the collection-level `report` flag.
 
 ---
 
@@ -11,8 +13,8 @@ Status: Draft for review — 2026-07-05 (Rick + David)
 - Board identity is **positional**: `(collection_id, deal_subfolder, deal_number)`. Content is never a key.
 - Observations are **self-contained** — they embed the deal that was played — so a board changing later cannot corrupt history. There is no re-fetch and no display-time verification.
 - The producer stamps a **rotation-independent board-version token** in the PBN. Bridge Classroom records it in the clear and echoes it into "Report a Problem". BC never computes, verifies, or compares it.
-- Not-ready boards still **record** observations, flagged **`prerelease`** — excluded from mastery and platform stats, kept for the student's history/navigation/drill-down (shown as a triangle), never assignable. A replacement for a ready board must itself be ready.
-- Every board maps to a **real skill path** (no `uncategorized`).
+- Not-stable boards still **record** observations, flagged **`prerelease`** — excluded from mastery and platform stats, kept for the student's history/navigation/drill-down (shown as a triangle), never assignable. A replacement for a stable board must itself be stable.
+- Every **stable** board maps to a **real skill path** (`uncategorized` is allowed only while prerelease; the requirement binds at promotion).
 
 ---
 
@@ -78,24 +80,46 @@ A short slug string — `baker-bridge`, `pbs-coaching` — matching the existing
 
 ---
 
-## 4. Board lifecycle: the `ready` flag
+## 4. Board lifecycle: the `stable` flag
 
-Each board carries a readiness flag in its PBN record.
+Each board carries a release flag — **`stable`** — in its PBN record.
 
 | State | Meaning | Engine behavior | GUI behavior |
 |---|---|---|---|
-| absent / `ready=false` | Prerelease / beta | Fully playable; observations **recorded and flagged `prerelease`**, with the board-version token; **excluded from mastery and platform stats**; not selectable into exercises | Visible with a "scenario under development" warning; history shown with a **triangle** marker; navigable and drill-down-able |
-| `ready=true` | Released; promoted by the producer | Observations recorded normally, with the board-version token; counted toward mastery | Normal display (circle marker) |
+| absent / `stable=false` | Prerelease / beta | Fully playable; observations **recorded and flagged `prerelease`**, with the board-version token; **excluded from mastery and platform stats**; not selectable into exercises | Visible with a "scenario under development" warning; history shown with a **triangle** marker; navigable and drill-down-able |
+| `stable=true` | Stable; promoted by the producer | Observations recorded normally, with the board-version token; counted toward mastery | Normal display (circle marker) |
 
 Rules:
 
-- **Default is not-ready.** A freshly generated set is prerelease until promoted. Forgetting the flag can never let beta content reach mastery or platform statistics — only the student's own private history.
-- **Granularity:** file-level default with per-board override.
-- **Exercises may only include ready boards.** Exercise creation refuses not-ready boards.
-- **A replacement for a ready board must itself be `ready=true`.** This is the producer's obligation (C3/C4). It keeps every position an exercise or assignment references continuously live and closes the hole where a swapped-in prerelease board would silently drop student work. (It supersedes any notion of a replacement "re-entering alpha" at a promoted position.)
-- **Post-promotion edits are allowed but visible.** Editing a ready board is not forbidden — history survives revisions — but the producer's CI should warn when a ready board's content changes, so it is deliberate.
+- **Default is not-stable.** A freshly generated set is prerelease until promoted. Forgetting the flag can never let beta content reach mastery or platform statistics — only the student's own private history.
+- **Granularity:** file-level default (`%bridge-classroom-stable:`) with per-board override (`[Stable "…"]`).
+- **Exercises may only include stable boards.** Exercise creation refuses not-stable boards.
+- **A replacement for a stable board must itself be `stable=true`.** This is the producer's obligation (C3/C4). It keeps every position an exercise or assignment references continuously live and closes the hole where a swapped-in prerelease board would silently drop student work. (It supersedes any notion of a replacement "re-entering alpha" at a promoted position.)
+- **Post-promotion edits are allowed but visible.** Editing a stable board is not forbidden — history survives revisions — but the producer's CI should warn when a stable board's content changes, so it is deliberate.
 
-Recording is now **unconditional**; readiness only decides the value of the `prerelease` flag, set at the one observation write choke point ([`recordObservation`](../../src/composables/useObservationStore.js), verified to be the sole writer). The exclusion of prerelease observations from higher-level functions is described in §6.5.
+Recording is now **unconditional**; the `stable` flag only decides the value of the `prerelease` flag, set at the one observation write choke point ([`recordObservation`](../../src/composables/useObservationStore.js), verified to be the sole writer). The exclusion of prerelease observations from higher-level functions is described in §6.5.
+
+### 4.1 Scope summary: three independent flags
+
+Three distinct flags at three scopes govern this area. They are **independent** and must not be conflated:
+
+| # | Scope | Flag | Owner / carrier | Governs |
+|---|---|---|---|---|
+| 1 | **File** | `%bridge-classroom-stable: true\|false` | Producer, in the PBN header comment | Default release status for every board in the file |
+| 2 | **Board** | `[Stable "true"\|"false"]` | Producer, per-board PBN tag | Per-board override of the file default |
+| 3 | **Collection** | `report` (`true`/`false`/absent) + `reportRepo` | **Bridge Classroom**, in `COLLECTIONS[]` config ([`useAppConfig.js`](../../src/composables/useAppConfig.js)) — **not** a PBN carrier | Whether the **Report-a-Problem** button appears |
+
+Flags **1 + 2** are the *release status* pair: the board-level tag overrides the file-level default, producing `deal.stable`, from which the consumer derives `prerelease = NOT stable`. This pair drives **GUI board-status display** (triangle vs. circle, "under development" warning) and **how far an observation propagates** (prerelease is kept for the student's own history but excluded from mastery and platform stats).
+
+Flag **3** is a *different concern at a different scope* — it governs only the **Report-a-Problem button**, and it lives in Bridge Classroom's own collection config, not in producer PBNs. Its resolution ([`reportEnabled`](../../src/views/MainLayout.vue)):
+
+1. The collection must have a **`reportRepo`** (otherwise there is nowhere to file → button hidden). This is the base gate.
+2. Then the collection's **`report`** property is a three-state override:
+   - `true` → force the button **on** for every board in the collection, *regardless of release status*.
+   - `false` → force it **off** (kill switch).
+   - **absent → fall back to the board's release status** (`deal.stable` from flags 1 + 2). So a stable board is reportable and a prerelease board is not, unless the collection overrides.
+
+The fallback in step 3 is the **only** coupling between the collection-level `report` flag and the board-level `stable` flag; otherwise they are orthogonal. See [report-a-problem.md](../report-a-problem.md) for the full reporting design.
 
 ---
 
@@ -139,7 +163,7 @@ At the single write choke point ([`recordObservation`](../../src/composables/use
 
 1. `collection` (§3),
 2. the board-version token (§5),
-3. `prerelease` — set to the inverse of the board's `ready` state (`prerelease = 1` for a not-ready/beta board).
+3. `prerelease` — set to the inverse of the board's `stable` state (`prerelease = 1` for a not-stable/beta board).
 
 ### 6.2 Teacher drill-down
 
@@ -149,7 +173,7 @@ Renders **from the stored observation** (which contains the deal). No re-fetch, 
 
 - Reference boards by identity `(collection_id, subfolder, number)` only.
 - A same-identity replacement is used transparently; no notification.
-- Exercise creation rejects boards that are not `ready`.
+- Exercise creation rejects boards that are not `stable`.
 
 ### 6.4 Mastery
 
@@ -166,7 +190,7 @@ The seam, therefore:
 
 | Touch point | Change |
 |---|---|
-| `observations.prerelease` (new column) | Backfill Baker = 0 / David = 1 (`UPDATE observations SET prerelease = (skill_path LIKE 'uncategorized/%')`, later keyed on `collection_id`); going forward set from the board's `ready` state at write time (§6.1). |
+| `observations.prerelease` (new column) | Backfill Baker = 0 / David = 1 (`UPDATE observations SET prerelease = (skill_path LIKE 'uncategorized/%')`, later keyed on `collection_id`); going forward set from the board's `stable` state at write time (§6.1). |
 | `board_status.prerelease` (new column) | `recompute_board_history` / `recompute_assignment_boards` still compute the beta board's row (so it stays navigable) but stamp `prerelease = 1`. |
 | Mastery reads of `board_status` | Add `WHERE prerelease = 0` in the two derived reads — `lesson_mastery.rs` and `student_summaries.rs`. |
 | Platform stats | Add `AND prerelease = 0` to the admin metrics that read raw observations (popular lessons, total/active counts in [admin.rs](../../bridge-classroom-api/src/routes/admin.rs)) — we do **not** count beta/test observations in popular-lessons and the like. |
@@ -183,7 +207,7 @@ Not touched (and correctly so): assignment progress/completion, teacher-dashboar
 
 - Stamp `[BoardVersionToken "…"]` on every board — the rotation-canonical `sha256(deal + "|" + auction)` of §5.2, recomputed each build, never trusted from source. For Baker Bridge this is a **new post-`CSVtoPBN` step** (that pipeline emits no hash today).
 - Declare stability: `%bridge-classroom-stable: true|false` at the file level (the default), with a per-board `[Stable "true"|"false"]` override.
-- Ensure every board carries a real `[SkillPath "…"]` (no `uncategorized`); mint new paths as needed.
+- Ensure every **stable** board carries a real `[SkillPath "…"]`; mint new paths as needed. `uncategorized` is acceptable only while a board is prerelease — assign the real path **before** promoting to `stable=true` (skill path feeds only mastery, which prerelease is excluded from).
 - (Collection is **not** a producer concern — BC sources it from its own config; see §3.2.)
 - **Warn** (not fail) when a stable board's `[BoardVersionToken]` changes, so post-promotion edits are deliberate.
 
@@ -197,14 +221,14 @@ Each issue contains:
 
 ### 7.3 PBN carriers (the tagging terms)
 
-Vocabulary note: the producer-facing readiness flag is **stability**; the consumer stores `prerelease = NOT stable`.
+Vocabulary note: the producer-facing release flag is **`stable`** (earlier drafts called it *ready* — retired); the consumer stores `prerelease = NOT stable`.
 
 | Level | Carrier | Value | Consumer column |
 |---|---|---|---|
 | File (header `%` comment) | `%bridge-classroom-stable:` | `true` / `false` (absent ⇒ not stable) | `observations.prerelease = NOT stable` |
 | Board (`[Tag]`) | `[Stable "true"\|"false"]` | per-board override of the file default | `observations.prerelease` |
 | Board (`[Tag]`) | `[BoardVersionToken "…"]` | rotation-canonical `sha256(deal+auction)`, lowercase hex (§5.2) | `observations.board_version_token` |
-| Board (`[Tag]`) | `[SkillPath "…"]` | existing; must be a real path, no `uncategorized` | `observations.skill_path` |
+| Board (`[Tag]`) | `[SkillPath "…"]` | existing; must be a real path once `stable=true` (`uncategorized` allowed only while prerelease) | `observations.skill_path` |
 
 **`collection_id` is not a PBN carrier** — BC sources it from its own collection config (`COLLECTIONS[].id`: `baker-bridge`, `pbs-coaching`), stamped from the active collection at write time (§3.2).
 
@@ -225,8 +249,8 @@ David's development-era observations are **not deleted** — they are set to **`
 1. **Agree the contract in writing** (§10). Includes the slug set and the token's role (opaque to BC).
 2. **Add `collection_id` to board identity** — schema, backfill `exercise_boards` blanks, add `observations.collection`, fold into the mastery key and `exercise_boards` PK/index.
 3. **Flag** the Practice-Bidding-Scenarios observations `prerelease = 1` by `collection_id` (not deleted — see §8).
-4. **Remap** David's skill paths (no `uncategorized`).
-5. **Producer stamps** `ready` + board-version token going forward; David's content records as `prerelease` until promoted.
+4. **Remap** David's skill paths off `uncategorized` — no longer urgent under C5's relaxed rule (it's a prerequisite for *promoting* his content to `stable`, not for keeping it playable as prerelease). Do it before, or as part of, promotion.
+5. **Producer stamps** `stable` + board-version token going forward; David's content records as `prerelease` until promoted.
 6. **Ship the app change** — `prerelease` flag set at the writer, `collection` + token recorded per observation, mastery/platform-stat exclusion of `prerelease` (§6.5), triangle marker in the strip/grid, exercise-creation guard.
 7. *(Optional)* Backfill the token onto existing Baker observations from the stamped PBNs — low value (a telemetry baseline for static content), gated on the PBNs carrying the token; do it last, if at all.
 
@@ -234,7 +258,9 @@ David's development-era observations are **not deleted** — they are set to **`
 
 ## 10. Contracts
 
-Interface agreements; changes require both sides.
+Interface agreements; changes require both sides. A producer-facing distillation
+of C1–C7 as author obligations lives in
+[`collection-producer-contract.md`](./collection-producer-contract.md).
 
 ### C1 — Board identity
 Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is the BC-owned collection slug from `COLLECTIONS[].id` (`baker-bridge`, `pbs-coaching`, …) — a BC config value, **not** a PBN carrier and not a producer concern (§3.2); no surrogate id. Subfolder names are **not** assumed unique across collections.
@@ -242,20 +268,20 @@ Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is t
 ### C2 — Board-version token
 Producer stamps `[BoardVersionToken "…"]` per board: `sha256( deal + "|" + auction )` over the **rotation-canonical** form (rotate the deal *and* the auction so ♠A is North; §5.2), lowercase hex, from extracted values. **Opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. Producer-owned; there is no consumer implementation and no cross-language matching requirement.
 
-### C3 — Stability (readiness)
-Producer declares stability via `%bridge-classroom-stable: true|false` (file default) + `[Stable "true"|"false"]` (per-board override); absent ⇒ not stable. Not-stable: playable; observations ARE recorded but MUST be flagged `prerelease`, MUST NOT count toward mastery or platform statistics, and the board MUST NOT be selectable into exercises; consumer shows a development warning and a distinct (triangle) history marker. Stable: full behavior. Promotion and token publication are atomic from the consumer's view. **A replacement for a stable board MUST itself be stable.** (`prerelease` is a consumer-side column equal to `NOT stable`; the producer owns only the stability declaration.)
+### C3 — Release status (`stable`)
+Producer declares the `stable` flag via `%bridge-classroom-stable: true|false` (file default) + `[Stable "true"|"false"]` (per-board override); absent ⇒ not stable. Not-stable: playable; observations ARE recorded but MUST be flagged `prerelease`, MUST NOT count toward mastery or platform statistics, and the board MUST NOT be selectable into exercises; consumer shows a development warning and a distinct (triangle) history marker. Stable: full behavior. Promotion and token publication are atomic from the consumer's view. **A replacement for a stable board MUST itself be stable.** (`prerelease` is a consumer-side column equal to `NOT stable`; the producer owns only the `stable` declaration. This board-level flag is distinct from the collection-level `report` flag — see §4.1.)
 
 ### C4 — Position stability
-Producer MAY edit or replace ready boards, but MUST NOT renumber them within a lesson except by explicit coordination. A replacement occupies the **same identity** and SHOULD match the difficulty of what it replaces (lessons are ordered easy→hard).
+Producer MAY edit or replace stable boards, but MUST NOT renumber them within a lesson except by explicit coordination. A replacement occupies the **same identity** and SHOULD match the difficulty of what it replaces (lessons are ordered easy→hard).
 
 ### C5 — Skill-path mapping
-Every board MUST map to a real skill path; `uncategorized` is not permitted for promoted content. New paths are minted as needed.
+Every **stable** board MUST map to a real skill path; `uncategorized` is permitted **only** while a board is prerelease. The requirement binds at promotion: a board MUST carry a real `[SkillPath "…"]` before it is set `stable=true`. (Skill path feeds only mastery, from which prerelease observations are already excluded, so it need not be assigned earlier.) New paths are minted as needed.
 
 ### C6 — "Report a Problem" payload
 Consumer includes: identity (`collection_id`, subfolder, board number), verbatim deal text, and the board-version token. Producer treats the deal text as the authoritative identification and the token as the cross-rotation locator.
 
 ### C7 — History immutability
-No producer action (edit, replacement, retirement, regeneration, non-ready renumbering) requires or triggers any mutation of consumer observation or mastery data. Consumer observations are self-contained; the consumer never re-fetches a board to display history.
+No producer action (edit, replacement, retirement, regeneration, non-stable renumbering) requires or triggers any mutation of consumer observation or mastery data. Consumer observations are self-contained; the consumer never re-fetches a board to display history.
 
 ---
 

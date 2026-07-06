@@ -4,7 +4,7 @@ Companion to [ADR-0001](./0001-positional-board-identity.md) and the [spec](./bo
 
 **Naming:** the new observations column is **`collection_id`** (matches `exercise_boards.collection_id`).
 
-**External dependency (David's repo, parallel):** agree PBN tag names for `ready`, the board-version token, the skill path, and how a served file declares its `collection_id`. The frontend write-path (Phase 3) is gated on these tags existing.
+**External dependency (David's repo, parallel):** agree PBN tag names for the `stable` release flag (`%bridge-classroom-stable:` / `[Stable]`), the board-version token, and the skill path. `collection_id` is **not** a PBN carrier — BC sources it from its own collection config (spec §3.2). The frontend write-path (Phase 3) is gated on these tags existing.
 
 ---
 
@@ -38,7 +38,7 @@ Then a **one-time full `board_status` recompute** so existing rows gain `collect
 
 ## Phase 3 — Frontend (gated on PBN tags)
 
-- Deal loader / `pbnParser.js` + resolver: surface `collection_id`, `board_version_token`, `ready` (→ `prerelease = !ready`).
+- Deal loader / `pbnParser.js` + resolver: surface `collection_id`, `board_version_token`, `stable` (→ `prerelease = !stable`).
 - `useObservationStore.js` (`recordObservation` → `createObservation` → `extractMetadata`): populate + send the new clear fields.
 - `useBoardStatus.js`: carry `prerelease`; `buildBoardMastery`/`mergeLocalPending` tag beta.
 - `BoardMasteryStrip.vue` / `BoardMasteryGrid.vue`: triangle when `prerelease`; "under development" warning.
@@ -50,7 +50,7 @@ Backfills + full recompute (Phase 1) set David's existing content to `prerelease
 
 ## Open sub-problems (not free)
 
-1. **Exercise-creation guard needs per-board `ready` at editor time.** The editor sources boards from `bakerBridgeTaxonomy` (no readiness info); it must learn each board's `ready` state from the PBN or a per-lesson manifest.
+1. **Exercise-creation guard needs per-board `stable` at editor time.** The editor sources boards from `bakerBridgeTaxonomy` (no release-status info); it must learn each board's `stable` state from the PBN or a per-lesson manifest.
 2. **PK rebuilds on live tables** (`board_status`, `exercise_boards`, `assignment_board_status`) — tested migration script + ad-hoc DB backup immediately pre-migration.
 
 ---
