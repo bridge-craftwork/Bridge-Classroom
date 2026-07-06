@@ -154,7 +154,13 @@ export function createObservation({
     assignment,
     prompts: prompts || [],
     exercise_id: exerciseId,
-    jungle
+    jungle,
+    // ADR-0001 board identity / prerelease (clear-text; sent by extractMetadata).
+    // collection_id is tagged onto the deal at load from the active collection;
+    // prerelease = NOT stable (default-deny); the token is the opaque PBN stamp.
+    collection_id: deal.collectionId || null,
+    prerelease: deal.stable !== true,
+    board_version_token: deal.boardVersionToken || null
   }
 }
 
@@ -195,7 +201,11 @@ export function extractMetadata(observation, classroom) {
     // observations), else the single per-prompt time. Lifted into
     // the clear so the teacher's assignment-duration analytics
     // doesn't need to decrypt the blob (issue #7).
-    time_taken_ms: computeTotalTimeMs(observation)
+    time_taken_ms: computeTotalTimeMs(observation),
+    // ADR-0001 board identity / prerelease (clear columns).
+    collection_id: observation.collection_id || null,
+    prerelease: observation.prerelease === true,
+    board_version_token: observation.board_version_token || null
   }
 }
 
