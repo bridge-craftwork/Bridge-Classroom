@@ -3,18 +3,21 @@
 // divergence, narrative), BBA-scripted bots, no seats/invite/multi-human.
 //
 // Owns the board manager: the deal source (selection + persistence + draw +
-// PBN parse) AND the auction/board orchestration (currentDeal, bids, BBA
-// expected auction, interactive divergence, double-dummy). Cardplay still lives
-// in the view (BiddingPracticeView) for now — the only coupling is that a new
-// board / reset must clear the cardplay engine, which the view injects via the
-// `onResetPlay` config callback, and the view starts cardplay off `auctionComplete`.
+// PBN parse), the auction/board orchestration (currentDeal, bids, BBA expected
+// auction, interactive divergence, double-dummy), AND cardplay (useCardPlay,
+// exposed as `cardplay` + the unified `play()`/`startPlay()` actions). The view
+// starts cardplay off `auctionComplete` and reads state via `engine.cardplay`.
 //
 // SEAT-AGNOSTIC: the human's seat is `config.yourSeat` (any of N/E/S/W), never
 // assumed South. The "human is always South" restriction is being removed — the
 // caller passes the seat; this engine only references `yourSeat`.
 //
-// Config: { yourSeat='S', embedded=false, embeddedCards=null,
-//           rotate=()=>false, onResetPlay=()=>{} }
+// Config: { yourSeat='S', embedded=false, embeddedCards=null, rotate=()=>false }
+//
+// CARDPLAY: the engine now owns the in-browser cardplay engine (useCardPlay, a
+// module singleton) and exposes it as `cardplay` plus the unified `play()` /
+// `startPlay()` actions. It resets cardplay itself on every new board / restart,
+// so the view no longer injects an `onResetPlay` callback.
 
 import { ref, computed } from 'vue'
 import { LOCAL_CAPABILITIES } from './tableEngine.js'
@@ -24,6 +27,7 @@ import { fetchScenarioMeta } from '../../utils/pbsScenarios.js'
 import { seatAtIndex, isAuctionOver, lastSuitBid } from '../../utils/handAnalysis.js'
 import { nextBoard as resolverNextBoard, describeSelection } from '../useDealSourceResolver.js'
 import { useHandAnalysis } from '../useHandAnalysis.js'
+import { useCardPlay } from '../useCardPlay.js'
 import { parsePbnDeals, makeDeal } from '../../utils/pbnDeal.js'
 
 // Default convention card for non-scenario sources (Random/Paste/Library/Club).
@@ -48,7 +52,9 @@ export function useLocalEngine(config = {}) {
   const embedded = !!config.embedded
   const embeddedCards = config.embeddedCards || null
   const rotate = typeof config.rotate === 'function' ? config.rotate : () => false
-  const onResetPlay = typeof config.onResetPlay === 'function' ? config.onResetPlay : () => {}
+
+  // The engine owns cardplay (singleton). A new board / auction reset clears it.
+  const cardplay = useCardPlay()
 
   // ── Deal source ───────────────────────────────────────────────────────
   const selection = ref(loadSelection())
@@ -167,7 +173,7 @@ export function useLocalEngine(config = {}) {
     divergedBids.value = {}
     expectedAuction.value = []
     auctionLoading.value = true
-    onResetPlay()
+    cardplay.reset()
 
     const dealRef = currentDeal.value
     loadDoubleDummy(dealRef) // best-effort, latest-wins
@@ -250,7 +256,7 @@ export function useLocalEngine(config = {}) {
     if (!currentDeal.value) return
     bids.value = []
     divergedBids.value = {}
-    onResetPlay()
+    cardplay.reset()
     expectedAuction.value = originalExpectedAuction.value
     meanings.value = originalMeanings.value
     await playToHumanTurn()
@@ -259,6 +265,14 @@ export function useLocalEngine(config = {}) {
   return {
     capabilities: LOCAL_CAPABILITIES,
     yourSeat,
+
+    // ── Cardplay (engine-owned) ────────────────────────────────────────────
+    // `cardplay` is the full useCardPlay surface (state + claim/stats/toggles)
+    // the solo shell reads; `play()`/`startPlay()` are the unified engine actions
+    // (the shell's card-click routes through engine.play, same as ServerEngine).
+    cardplay,
+    play(seat, suit, rank) { return cardplay.onUserCard(suit, rank) },
+    startPlay(opts) { return cardplay.startPlay(opts) },
 
     // deal source
     selection,

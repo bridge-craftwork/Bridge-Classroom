@@ -347,7 +347,6 @@ import ScenarioChatPopup from '../components/ScenarioChatPopup.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import { formatBid } from '../utils/cardFormatting.js'
-import { useCardPlay } from '../composables/useCardPlay.js'
 import { getBot, listBots } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
@@ -419,11 +418,11 @@ const pickerAllow = {
   options: ['fresh'],
 }
 
-// The board-manager engine (P3, LocalEngine) is created below — after cardplay,
-// since it takes cardplay.reset via the onResetPlay config. It owns the deal
-// source (selection/draw/parse) AND the auction/board flow (currentDeal, bids,
-// BBA expected auction, divergence, double-dummy). This view keeps cardplay,
-// presentation, prefs, the picker, narrative, and the embedded shell.
+// The board-manager engine (P3, LocalEngine) is created below (after the prefs
+// it reads). It owns the deal source (selection/draw/parse), the auction/board
+// flow (currentDeal, bids, BBA expected auction, divergence, double-dummy) AND
+// cardplay. This view keeps presentation, prefs, the picker, narrative, the
+// claim/teaching-toggle UI, and the embedded shell.
 const drawing = ref(false) // "dealing…" spinner between a draw and the load
 
 // Scenario-chat popup: the .btn @chat for the open scenario, shown auto-on-open
@@ -487,7 +486,27 @@ watch(cardplayShowAll, (v) => {
   try { localStorage.setItem(SHOW_ALL_KEY, v ? '1' : '0') } catch {}
 })
 
-const cardplay = useCardPlay()
+// ── The board-manager engine (LocalEngine) ─────────────────────────────
+// Owns the deal source, the auction/board flow, AND cardplay (useCardPlay).
+// The shell reads engine.yourSeat / engine.capabilities (seat-agnostic) and
+// sources cardplay from engine.cardplay, so the same shell can later drive
+// ServerEngine. The engine resets its own cardplay on new-board/restart.
+const engine = useLocalEngine({
+  yourSeat: STUDENT_SEAT,
+  embedded: EMBEDDED,
+  embeddedCards: embeddedParams?.cards || null,
+  rotate: () => rotateDeals.value,
+})
+const {
+  capabilities, yourSeat, cardplay,
+  selection, hasSelection, sourceSummary: poolSummary,
+  currentDeal, dealsDrawn, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
+  bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
+  finalContract, doubleDummy,
+  auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
+  summary, canDouble, canRedouble,
+  loadDeal, onUserBid, toggleDivergedBid, resetAuction,
+} = engine
 const availableBots = listBots()
 
 // Claim form: shown inline in the Cardplay status card when the user
@@ -566,32 +585,6 @@ const cardplayHidePlayed = computed(() => {
   if (cardplayPhase.value !== 'playing') return false
   return !cardplayShowPlayed.value
 })
-
-// ── The board-manager engine (LocalEngine) ─────────────────────────────
-// Owns the deal source + the auction/board flow. The view injects its seat,
-// embedded mode, the rotate pref, and onResetPlay (clear the cardplay engine on
-// a new board / restart) — cardplay itself stays in this view for now.
-const engine = useLocalEngine({
-  yourSeat: STUDENT_SEAT,
-  embedded: EMBEDDED,
-  embeddedCards: embeddedParams?.cards || null,
-  rotate: () => rotateDeals.value,
-  onResetPlay: () => cardplay.reset(),
-})
-const {
-  // Capability-gating + seat come from the engine now (seat-agnostic): the shell
-  // reads engine.yourSeat / engine.capabilities instead of assuming South, so the
-  // same shell can later drive ServerEngine. For LocalEngine yourSeat is the
-  // configured seat and every analysis capability is true — behaviour identical.
-  capabilities, yourSeat,
-  selection, hasSelection, sourceSummary: poolSummary,
-  currentDeal, dealsDrawn, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
-  bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
-  finalContract, doubleDummy,
-  auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
-  summary, canDouble, canRedouble,
-  loadDeal, onUserBid, toggleDivergedBid, resetAuction,
-} = engine
 
 // ── Derived (view-side: presentation over the engine + cardplay + prefs) ─
 const visibleHands = computed(() => {
@@ -749,7 +742,7 @@ watch(() => auctionComplete.value, async (isComplete) => {
   // v1: South declares → user controls S (own hand) + N (dummy). Defenders
   // are bots. Wider scopes (defender / N-declares) are deferred per plan.
   const dummySeat = fc.declarer === 'N' ? 'S' : fc.declarer === 'S' ? 'N' : fc.declarer === 'E' ? 'W' : 'E'
-  await cardplay.startPlay({
+  await engine.startPlay({
     hands: currentDeal.value.hands,
     dealer: currentDeal.value.dealer,
     vulnerable: currentDeal.value.vulnerable,
@@ -833,8 +826,9 @@ async function newDeal() {
 // cardplay engine. Mirrors the suit-letter / rank-letter shape that
 // HandDisplay emits.
 async function onCardClick({ seat, suit, rank }) {
-  void seat  // Engine tracks whose turn it is; we just need the card.
-  const result = await cardplay.onUserCard(suit, rank)
+  // Unified engine action — LocalEngine routes to cardplay.onUserCard (seat is
+  // implied by whose turn it is); ServerEngine.play sends the card to the server.
+  const result = await engine.play(seat, suit, rank)
   if (!result.ok && result.reason) {
     // HandDisplay's clickable-cards UI doesn't yet filter to legal cards, so
     // users can click illegal cards and the engine rejects them silently.
@@ -851,7 +845,7 @@ async function restartCardplay() {
   let bot
   try { bot = getBot(cardplayBotName.value) } catch { bot = getBot('random') }
   const dummySeat = fc.declarer === 'N' ? 'S' : fc.declarer === 'S' ? 'N' : fc.declarer === 'E' ? 'W' : 'E'
-  await cardplay.startPlay({
+  await engine.startPlay({
     hands: currentDeal.value.hands,
     dealer: currentDeal.value.dealer,
     vulnerable: currentDeal.value.vulnerable,
