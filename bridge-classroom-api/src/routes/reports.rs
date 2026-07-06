@@ -58,6 +58,11 @@ pub struct ReportRequest {
     // --- Provenance ---
     /// learner | reviewer (defaults to learner).
     pub reporter_tier: Option<String>,
+    /// The name the reporter chose to attach — defaults to their registration
+    /// first name but may be a self-chosen alias. Sent only when the learner
+    /// opts OUT of anonymity. Never an email or last name — contact details are
+    /// kept out of the public content repo. Absent ⇒ anonymous report.
+    pub reporter_name: Option<String>,
     pub source_url: Option<String>,
     pub source_commit: Option<String>,
     pub app_version: Option<String>,
@@ -88,6 +93,19 @@ struct GitHubIssueResponse {
 
 const FEEDBACK_LABEL: &str = "classroom-feedback";
 
+/// Map a lesson collection to the GitHub repo that owns its content, so a report
+/// files an issue where the maintainer will see it. The client sends an opaque
+/// collection id (never a repo slug), so this mapping is the only authority on
+/// where issues land — a caller can't redirect them. All targets are in the same
+/// org, reachable by the single org-scoped token. Unknown/absent → default repo.
+fn repo_for_collection<'a>(collection: Option<&str>, default_repo: &'a str) -> &'a str {
+    match collection {
+        Some("baker-bridge") => "bridge-craftwork/Baker-Bridge",
+        Some("pbs-coaching") => "bridge-craftwork/Practice-Bidding-Scenarios",
+        _ => default_repo,
+    }
+}
+
 /// POST /api/report
 ///
 /// Files a `classroom-feedback` GitHub issue in the content repo on behalf of a
@@ -117,7 +135,10 @@ pub async fn create_report(
             ));
         }
     };
-    let repo = &state.config.github_issues_repo;
+    // Route to the content repo that owns this collection. All target repos live
+    // in the same org, so the one shared org-scoped token can file into any of
+    // them. Unknown/absent collection falls back to the configured default repo.
+    let repo = repo_for_collection(req.collection.as_deref(), &state.config.github_issues_repo);
 
     let scenario = req
         .scenario
@@ -130,7 +151,21 @@ pub async fn create_report(
         .or_else(|| req.board_tag.clone())
         .unwrap_or_else(|| "?".to_string());
 
-    let title = format!("Classroom report: {} · Deal {}", scenario, deal_label);
+    // Append the reporter's chosen name/alias to the title when they opted out
+    // of anonymity, so maintainers can see who reported at a glance. Never an
+    // email — only the name attached to the report.
+    let reporter_suffix = req
+        .reporter_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(|n| format!(" (from {})", n))
+        .unwrap_or_default();
+
+    let title = format!(
+        "Classroom report: {} · Deal {}{}",
+        scenario, deal_label, reporter_suffix
+    );
     let body = build_issue_body(&req, note);
 
     let issue_req = GitHubIssueRequest {
@@ -198,6 +233,17 @@ fn build_issue_body(req: &ReportRequest, note: &str) -> String {
 
     let tier = req.reporter_tier.as_deref().unwrap_or("learner");
     ctx.push(format!("- **Reporter:** {}", tier));
+
+    // First name / alias, only when the reporter opted out of anonymity. Never
+    // their email — contact info is intentionally absent from the public repo.
+    if let Some(name) = req
+        .reporter_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    {
+        ctx.push(format!("- **Reported by:** {}", name));
+    }
 
     if let Some(scenario) = req.scenario.as_deref().or(req.lesson_id.as_deref()) {
         let pretty = req

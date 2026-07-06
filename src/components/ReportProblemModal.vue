@@ -31,6 +31,38 @@
           @keydown.esc="close"
         ></textarea>
         <div class="rp-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</div>
+
+        <!-- Identity is opt-in. Default is anonymous. When the reporter opts in,
+             we attach a name only — editable, so they can use an alias — and
+             never their email. -->
+        <template v-if="canAttachName">
+          <label class="rp-anon">
+            <input
+              type="checkbox"
+              v-model="anonymous"
+              :disabled="state === 'submitting'"
+            />
+            <span>Report anonymously</span>
+          </label>
+          <div v-if="!anonymous" class="rp-name">
+            <label class="rp-name-label" for="rp-name-input">Name shown on the report</label>
+            <input
+              id="rp-name-input"
+              v-model="displayName"
+              class="rp-name-input"
+              type="text"
+              maxlength="40"
+              placeholder="Your name or an alias"
+              :disabled="state === 'submitting'"
+            />
+            <p class="rp-name-note">
+              A name lets the lesson maintainer follow up with you. It appears in the
+              public issue used to track this report, so use a first name or an alias —
+              never your email (your email is never shared).
+            </p>
+          </div>
+        </template>
+
         <div class="rp-actions">
           <button class="rp-btn rp-btn-secondary" @click="close" :disabled="state === 'submitting'">Cancel</button>
           <button class="rp-btn rp-btn-primary" @click="submit" :disabled="!note.trim() || state === 'submitting'">
@@ -61,8 +93,13 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useReportProblem } from '../composables/useReportProblem.js'
+
+// Persisted reporter preferences: whether to stay anonymous, and the name/alias
+// to attach when not. Both default to "next time, do what I did last time".
+const ANON_KEY = 'bridgeReportAnonymous'
+const NAME_KEY = 'bridgeReportName'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -76,6 +113,11 @@ const emit = defineEmits(['close'])
 const { submitReport } = useReportProblem()
 
 const note = ref('')
+// Default to anonymous on the very first report; otherwise honor the last choice.
+const anonymous = ref(localStorage.getItem(ANON_KEY) !== 'false')
+const displayName = ref('')
+// Only offer the name option when we actually have a signed-in user to name.
+const canAttachName = computed(() => !!props.context?.reporterDefaultName)
 const state = ref('idle')  // idle | submitting | done | error
 const errorMessage = ref('')
 const canRetry = ref(false)
@@ -92,6 +134,10 @@ watch(() => props.visible, (open) => {
     state.value = 'idle'
     errorMessage.value = ''
     canRetry.value = false
+    // Re-read the saved anonymity choice, and pre-fill the name with the saved
+    // alias (falling back to the user's registration first name).
+    anonymous.value = localStorage.getItem(ANON_KEY) !== 'false'
+    displayName.value = localStorage.getItem(NAME_KEY) || props.context?.reporterDefaultName || ''
     place()
     window.addEventListener('keydown', onKeydown)
     nextTick(() => noteInput.value?.focus())
@@ -159,7 +205,19 @@ async function submit() {
   if (!trimmed || state.value === 'submitting') return
   state.value = 'submitting'
 
-  const result = await submitReport({ ...props.context, note: trimmed })
+  // Persist the reporter's choices so they become next time's defaults.
+  const name = displayName.value.trim()
+  const attachName = canAttachName.value && !anonymous.value && !!name
+  localStorage.setItem(ANON_KEY, String(anonymous.value))
+  if (name) localStorage.setItem(NAME_KEY, name)
+
+  // Strip the modal-only default-name hint; attach the chosen name only when
+  // the reporter opted in. Email is never part of the payload.
+  const { reporterDefaultName, ...ctx } = props.context
+  const payload = { ...ctx, note: trimmed }
+  if (attachName) payload.reporter_name = name
+
+  const result = await submitReport(payload)
 
   if (result.ok) {
     state.value = 'done'
@@ -280,6 +338,57 @@ onUnmounted(cleanup)
   border: 1px solid #ddd;
   border-radius: 3px;
   padding: 0 4px;
+}
+
+.rp-anon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--text-secondary, #555);
+  cursor: pointer;
+  user-select: none;
+}
+
+.rp-anon input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.rp-name {
+  margin-top: 10px;
+}
+
+.rp-name-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+  margin-bottom: 4px;
+}
+
+.rp-name-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border, #ccc);
+  border-radius: var(--radius-button, 6px);
+}
+
+.rp-name-input:focus {
+  outline: none;
+  border-color: var(--green-mid, #2d6a4f);
+  box-shadow: 0 0 0 2px rgba(45, 106, 79, 0.15);
+}
+
+.rp-name-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #888;
+  margin-top: 6px;
 }
 
 .rp-actions {

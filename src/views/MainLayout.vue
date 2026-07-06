@@ -1271,10 +1271,23 @@ function getCollection(collectionId) {
   return appConfig.COLLECTIONS.find(c => c.id === collectionId)
 }
 
-// "Report a Problem" is opt-in per collection (useAppConfig: report:true). It
-// shows only for a collection that owns its content and report endpoint — so a
-// report files an issue in the right repo. Off for Baker Bridge (Rick's content).
-const reportEnabled = computed(() => getCollection(currentCollection.value)?.report === true)
+// A board is reportable only when we know which repo to file into (collection
+// has a reportRepo). Given that, the collection's `report` property is an
+// explicit override:
+//   report: true  → force reporting ON for the whole collection (e.g. David's
+//                   coaching content, curated as a set regardless of release)
+//   report: false → force it OFF, a kill switch (e.g. to disable Baker Bridge)
+//   absent        → defer to the board's released flag: `stable` (the same flag
+//                   that lets it count toward mastery). So Baker Bridge is
+//                   reportable automatically via its file-level
+//                   %bridge-classroom-stable, with no per-collection opt-in.
+const reportEnabled = computed(() => {
+  const collection = getCollection(currentCollection.value)
+  if (!collection?.reportRepo) return false
+  if (collection.report === true) return true
+  if (collection.report === false) return false
+  return currentDeal.value?.stable === true
+})
 
 // Reconstruct an "N:..." PBN string from parsed hands as a fallback when the
 // deal didn't carry its raw [Deal] string (older parses). N E S W order.
@@ -1321,6 +1334,9 @@ function openReport(e) {
     step_index: practice.currentStepIndex.value,
     prompt: practice.currentStep.value?.text || null,
     reporter_tier: reporterTier,
+    // Default name the modal pre-fills when the reporter opts out of anonymity.
+    // The modal lets them edit it to an alias; email is never attached.
+    reporterDefaultName: userStore.currentUser.value?.firstName || null,
     source_url: sourceUrl,
     source_commit: null,
     app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null,
