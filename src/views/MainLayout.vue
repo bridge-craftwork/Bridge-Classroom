@@ -88,6 +88,7 @@
               :currentIndex="currentDealIndex"
               :forceBoardStatus="forceBoardStatus"
               :exerciseContext="exerciseContext"
+              :localPrerelease="prereleaseByBoard"
               :introUrl="introUrl"
               @goto="gotoDeal"
               @open-intro="handleOpenIntro"
@@ -732,6 +733,18 @@ const currentDealIndex = ref(0)
 
 // Current deal
 const currentDeal = computed(() => deals.value[currentDealIndex.value] || null)
+
+// Local prerelease map for the mastery strip, keyed the same way as its
+// boardNumbers prop. A board is beta when its deal isn't `stable` (ADR-0001,
+// default-deny). Lets the strip draw triangles from local data immediately,
+// instead of flashing circles until server board-status loads.
+const prereleaseByBoard = computed(() => {
+  const map = {}
+  for (const d of deals.value) {
+    map[d.displayNumber || d.boardNumber] = d.stable !== true
+  }
+  return map
+})
 
 const dealTitle = computed(() => {
   const collection = getCollection(currentCollection.value)

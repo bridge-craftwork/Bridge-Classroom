@@ -171,9 +171,14 @@ function achievementFromMaxStars(maxStars) {
  *
  * @param {Array} apiBoards - Board status entries from fetchBoardStatus
  * @param {Array<number>} boardNumbers - All board numbers in the lesson
+ * @param {Object<number,boolean>} [localPrerelease={}] - Per-board prerelease
+ *   flag known locally from the loaded deals (`deal.stable !== true`). Lets a
+ *   beta board render its triangle immediately, before the server board-status
+ *   arrives, instead of flashing a circle first. OR'd with the API flag so the
+ *   marker never flips back once shown; empty map → API-only (legacy).
  * @returns {Array<{boardNumber, status, achievement, lastObservationAt}>}
  */
-function buildBoardMastery(apiBoards, boardNumbers) {
+function buildBoardMastery(apiBoards, boardNumbers, localPrerelease = {}) {
   // Index API data by deal_number
   const byNumber = {}
   for (const b of apiBoards) {
@@ -181,6 +186,7 @@ function buildBoardMastery(apiBoards, boardNumbers) {
   }
 
   return boardNumbers.map(bn => {
+    const localBeta = localPrerelease[bn] === true
     const entry = byNumber[bn]
     if (!entry) {
       return {
@@ -194,7 +200,9 @@ function buildBoardMastery(apiBoards, boardNumbers) {
         lastErrorDate: null,
         lastStarUpdate: null,
         lastObservationAt: null,
-        prerelease: false
+        // No server row yet (or never attempted) — trust the local deal flag so
+        // an unplayed beta board still shows a triangle.
+        prerelease: localBeta
       }
     }
     return {
@@ -206,7 +214,9 @@ function buildBoardMastery(apiBoards, boardNumbers) {
       // distinct (triangle) marker and excluded from mastery counts server-side.
       // See documentation/adr/ (ADR-0001, §6.5). Defaults false when the API
       // predates the field, so boards render as normal circles until then.
-      prerelease: entry.prerelease === true,
+      // OR the local deal flag so a beta board keeps its triangle even if the
+      // server row hasn't caught up (or predates the column).
+      prerelease: entry.prerelease === true || localBeta,
       // Raw §5.1 stored state, preserved so consumers can bucket by
       // spec vocabulary (e.g. distinguish close_correct from corrected).
       apiStatus: entry.status || 'not_attempted',

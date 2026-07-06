@@ -75,6 +75,13 @@ const props = defineProps({
     type: Object,
     default: null
     // Shape: { boards: [{displayNumber, originalSubfolder, originalBoardNumber}], assignedAt: string }
+  },
+  localPrerelease: {
+    type: Object,
+    default: () => ({})
+    // Map boardNumber → boolean, derived locally from the loaded deals'
+    // `stable` flag. Seeds the triangle marker before server board-status
+    // arrives so beta boards don't flash as circles first.
   }
 })
 
@@ -149,7 +156,8 @@ const boardMastery = computed(() => {
   // merged on top for instant feedback before the next sync.
   let results = boardStatusApi.buildBoardMastery(
     apiBoards.value || [],
-    props.boardNumbers
+    props.boardNumbers,
+    props.localPrerelease
   )
   boardStatusApi.mergeLocalPending(results, props.lessonSubfolder)
 
