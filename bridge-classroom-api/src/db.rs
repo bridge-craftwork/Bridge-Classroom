@@ -687,7 +687,7 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
             r#"
             UPDATE observations
             SET collection_id = CASE
-                    WHEN skill_path LIKE 'uncategorized/%' THEN 'practice-bidding-scenarios'
+                    WHEN skill_path LIKE 'uncategorized/%' THEN 'pbs-coaching'
                     ELSE 'baker-bridge'
                 END,
                 prerelease = CASE
