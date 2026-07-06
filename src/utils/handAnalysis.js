@@ -21,6 +21,24 @@ export function isAuctionOver(arr) {
   return false
 }
 
+// Per-bidder divergence: compare ONE seat's actual calls against a BBA reference
+// auction, returning { [index]: { actual, bba } } for that seat's positions where
+// they differ. Used to highlight only the bidder's OWN bids on a shared table —
+// each client passes its own seat, so a multi-human table shows each player just
+// their own divergences. Read-only (post-hoc): unlike the interactive local flow
+// it doesn't re-request BBA per turn, so `expected` should already be a per-turn-
+// consistent reference for the deal (the caller decides how to source it).
+// Only indices present in BOTH auctions are compared (length mismatch ≠ divergence).
+export function bidderDivergence(actual, expected, dealer, seat) {
+  const out = {}
+  const n = Math.min(actual?.length || 0, expected?.length || 0)
+  for (let i = 0; i < n; i++) {
+    if (seatAtIndex(dealer, i) !== seat) continue
+    if (actual[i] !== expected[i]) out[i] = { actual: actual[i], bba: expected[i] }
+  }
+  return out
+}
+
 // The last actual suit/NT bid (ignoring Pass/X/XX).
 export function lastSuitBid(arr) {
   for (let i = arr.length - 1; i >= 0; i--) {

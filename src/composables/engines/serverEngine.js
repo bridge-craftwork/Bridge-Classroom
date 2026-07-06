@@ -13,6 +13,11 @@ import { useTableSocket } from '../useTableSocket.js'
 import { useDealSourceResolver } from '../useDealSourceResolver.js'
 import { SERVER_CAPABILITIES } from './tableEngine.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
+import { fetchAuction } from '../../utils/bbaClient.js'
+
+// Default convention card for the BBA reference auction on a shared table (no
+// scenario context server-side) — mirrors LocalEngine's non-scenario default.
+const DEFAULT_CARD = '21GF-DEFAULT'
 
 export function useServerEngine() {
   const table = useRemoteTable()
@@ -59,10 +64,21 @@ export function useServerEngine() {
     async getDoubleDummy(deal) {
       try { return await fetchDoubleDummy(deal) } catch { return null }
     },
-    // Still local-only (capabilities say so): the BBA overlays are a solo
-    // "your bids vs the reference" concept that doesn't yet map onto a shared
-    // multi-human table, and narrative needs authored server-side content.
-    async getExpectedAuction() { return null },
+    // BBA reference auction for the revealed deal — used at board-complete to
+    // highlight divergence PER BIDDER (each client compares only its own seat's
+    // calls, via bidderDivergence in handAnalysis.js). Computed client-side like
+    // DD; scoping to yourSeat is what makes it meaningful on a shared table.
+    // The render wires up when the merged shell drives ServerEngine.
+    async getExpectedAuction(deal, { scenario = null, conventions = null, auctionPrefix = null } = {}) {
+      try {
+        const opts = { deal, auctionPrefix }
+        if (conventions) opts.conventions = conventions
+        else if (scenario) opts.scenario = scenario
+        else opts.conventions = { ns: DEFAULT_CARD, ew: DEFAULT_CARD }
+        return await fetchAuction(opts)
+      } catch { return null }
+    },
+    // narrative needs authored server-side content — still local-only.
     async getNarrative() { return null },
 
     // ── Seats / invite (host app wires the specifics for now) ──────────────
