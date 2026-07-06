@@ -67,7 +67,7 @@ There is **no surrogate board id**; the natural key is used throughout (consiste
 
 ### 3.2 `collection_id` is a slug, not a table
 
-A short slug string — `baker-bridge`, `practice-bidding-scenarios` — matching the existing `exercise_boards` convention. No `collections` table is introduced; the valid slug set is a documented convention agreed by both sides (C1). The producer declares it per file via the `%bridge-classroom-collection: <slug>` header comment (§7.3).
+A short slug string — `baker-bridge`, `pbs-coaching` — matching the existing `exercise_boards` convention. No `collections` table is introduced. **It is not a PBN carrier:** `collection_id` is BC-owned, sourced from the app's collection config ([`useAppConfig.js`](../../src/composables/useAppConfig.js) `COLLECTIONS[].id`). The collection is a property of *where BC serves a file from*, not of the file's content, and the generators don't know BC's collection names — so the app stamps `collection_id` on each observation from the **active collection** at write time (the same source the "Report a Problem" payload already uses). The config `id` is the stable slug; don't rename it (it also keys localStorage/recent-lessons).
 
 ### 3.3 Migration
 
@@ -183,8 +183,8 @@ Not touched (and correctly so): assignment progress/completion, teacher-dashboar
 
 - Stamp `[BoardVersionToken "…"]` on every board — the rotation-canonical `sha256(deal + "|" + auction)` of §5.2, recomputed each build, never trusted from source. For Baker Bridge this is a **new post-`CSVtoPBN` step** (that pipeline emits no hash today).
 - Declare stability: `%bridge-classroom-stable: true|false` at the file level (the default), with a per-board `[Stable "true"|"false"]` override.
-- Declare collection: `%bridge-classroom-collection: <slug>` at the file level.
 - Ensure every board carries a real `[SkillPath "…"]` (no `uncategorized`); mint new paths as needed.
+- (Collection is **not** a producer concern — BC sources it from its own config; see §3.2.)
 - **Warn** (not fail) when a stable board's `[BoardVersionToken]` changes, so post-promotion edits are deliberate.
 
 ### 7.2 "Report a Problem" issue template
@@ -201,11 +201,12 @@ Vocabulary note: the producer-facing readiness flag is **stability**; the consum
 
 | Level | Carrier | Value | Consumer column |
 |---|---|---|---|
-| File (header `%` comment) | `%bridge-classroom-collection:` | slug, e.g. `baker-bridge` | `observations.collection_id` |
 | File (header `%` comment) | `%bridge-classroom-stable:` | `true` / `false` (absent ⇒ not stable) | `observations.prerelease = NOT stable` |
 | Board (`[Tag]`) | `[Stable "true"\|"false"]` | per-board override of the file default | `observations.prerelease` |
 | Board (`[Tag]`) | `[BoardVersionToken "…"]` | rotation-canonical `sha256(deal+auction)`, lowercase hex (§5.2) | `observations.board_version_token` |
 | Board (`[Tag]`) | `[SkillPath "…"]` | existing; must be a real path, no `uncategorized` | `observations.skill_path` |
+
+**`collection_id` is not a PBN carrier** — BC sources it from its own collection config (`COLLECTIONS[].id`: `baker-bridge`, `pbs-coaching`), stamped from the active collection at write time (§3.2).
 
 Naming: no `bridge`-prefixed *tags* (a PBN is already a bridge file) and no `BC` prefix (Bridge Composer owns it); file-level comments use the full `bridge-classroom` product namespace.
 
@@ -213,7 +214,7 @@ Naming: no `bridge`-prefixed *tags* (a PBN is already a bridge file) and no `BC`
 
 ## 8. Flagging the existing Practice-Bidding-Scenarios observations as prerelease
 
-David's development-era observations are **not deleted** — they are set to **`prerelease = 1`** (identified by `collection_id = 'practice-bidding-scenarios'`, i.e. the current `uncategorized/` set). They keep their beta history, navigation icons, and drill-down, but are excluded from mastery and platform statistics like any prerelease board (§6.5). This also preserves the beta testers' own progress-through-the-set history.
+David's development-era observations are **not deleted** — they are set to **`prerelease = 1`** (identified by `collection_id = 'pbs-coaching'`, i.e. the current `uncategorized/` set). They keep their beta history, navigation icons, and drill-down, but are excluded from mastery and platform statistics like any prerelease board (§6.5). This also preserves the beta testers' own progress-through-the-set history.
 
 **Sequencing matters:** backfill `collection_id` + `prerelease` from the `uncategorized` heuristic **first** → *then* remap David's skill paths. Once `collection_id` and `prerelease` are set they become the durable discriminators, so the later skill-path remap is safe and no longer depends on the `uncategorized` marker.
 
@@ -236,7 +237,7 @@ David's development-era observations are **not deleted** — they are set to **`
 Interface agreements; changes require both sides.
 
 ### C1 — Board identity
-Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is a slug from an agreed set (`baker-bridge`, `practice-bidding-scenarios`, …); no surrogate id. Subfolder names are **not** assumed unique across collections.
+Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is the BC-owned collection slug from `COLLECTIONS[].id` (`baker-bridge`, `pbs-coaching`, …) — a BC config value, **not** a PBN carrier and not a producer concern (§3.2); no surrogate id. Subfolder names are **not** assumed unique across collections.
 
 ### C2 — Board-version token
 Producer stamps `[BoardVersionToken "…"]` per board: `sha256( deal + "|" + auction )` over the **rotation-canonical** form (rotate the deal *and* the auction so ♠A is North; §5.2), lowercase hex, from extracted values. **Opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. Producer-owned; there is no consumer implementation and no cross-language matching requirement.
