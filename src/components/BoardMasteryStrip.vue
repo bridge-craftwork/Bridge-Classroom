@@ -93,7 +93,11 @@ async function loadBoardStatus() {
   if (!uid || !props.lessonSubfolder) return
 
   try {
-    const boards = await boardStatusApi.fetchBoardStatus(uid, props.lessonSubfolder)
+    // Scope to this lesson's collection so a subfolder shared across
+    // collections shows only this one's boards. Null when unknown → unscoped
+    // (legacy) fetch, so nothing breaks before the mapping is cached.
+    const collectionId = mastery.getLessonCollection(props.lessonSubfolder)
+    const boards = await boardStatusApi.fetchBoardStatus(uid, props.lessonSubfolder, false, collectionId)
     if (boards.length > 0) {
       apiBoards.value = boards
       useApi.value = true

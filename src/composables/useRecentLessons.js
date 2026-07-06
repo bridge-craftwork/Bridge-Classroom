@@ -80,8 +80,10 @@ export function useRecentLessons() {
       : {}
 
     const enriched = lessons.map(lesson => {
+      // Collection scope must match ensureLessonData's fetch for the cache to hit.
+      const lessonCollectionId = mastery.getLessonCollection(lesson.subfolder)
       const apiBoards = userId
-        ? (boardStatusApi.getCachedBoards(userId, lesson.subfolder) || [])
+        ? (boardStatusApi.getCachedBoards(userId, lesson.subfolder, lessonCollectionId) || [])
         : []
       const boards = boardStatusApi.buildBoardMastery(apiBoards, lesson.boardNumbers)
 
@@ -107,8 +109,8 @@ export function useRecentLessons() {
       const firstUntried = boards.find(b => b.apiStatus === 'not_attempted')
       const resumeDealNumber = firstUntried ? firstUntried.boardNumber : 1
 
-      // Collection mapping
-      const collectionId = mastery.getLessonCollection(lesson.subfolder)
+      // Collection mapping (resolved above as lessonCollectionId)
+      const collectionId = lessonCollectionId
       const collection = collectionId
         ? appConfig.COLLECTIONS.find(c => c.id === collectionId)
         : null
@@ -183,7 +185,9 @@ export function useRecentLessons() {
     if (subfolders.length === 0) return
 
     await mastery.fetchMissingBoardCounts(subfolders)
-    await Promise.all(subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf)))
+    await Promise.all(subfolders.map(sf =>
+      boardStatusApi.fetchBoardStatus(userId, sf, false, mastery.getLessonCollection(sf))
+    ))
   }
 
   return {
