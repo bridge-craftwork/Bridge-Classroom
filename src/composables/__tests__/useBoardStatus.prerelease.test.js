@@ -43,4 +43,31 @@ describe('buildBoardMastery — prerelease threading', () => {
     const boards = buildBoardMastery([apiBoard(1, { prerelease: 1 })], [1])
     expect(boards[0].prerelease).toBe(false)
   })
+
+  // Local-seed behavior: the triangle must show from the loaded deal's `stable`
+  // flag before (and independent of) the server board-status arriving.
+  describe('local prerelease seed (pre-server, no flash)', () => {
+    it('marks a board beta from the local map when there is no API entry yet', () => {
+      const boards = buildBoardMastery([], [1, 2], { 1: true, 2: false })
+      expect(boards[0].prerelease).toBe(true)  // beta locally, unattempted
+      expect(boards[1].prerelease).toBe(false)
+    })
+
+    it('OR-s the local flag with the API entry so it never flips back to a circle', () => {
+      // API says not-beta but the deal is still beta locally → stays a triangle.
+      const boards = buildBoardMastery([apiBoard(1, { prerelease: false })], [1], { 1: true })
+      expect(boards[0].prerelease).toBe(true)
+    })
+
+    it('only true in the local map counts (=== true)', () => {
+      const boards = buildBoardMastery([], [1, 2], { 1: 1, 2: undefined })
+      expect(boards[0].prerelease).toBe(false)
+      expect(boards[1].prerelease).toBe(false)
+    })
+
+    it('empty/absent local map preserves API-only behavior', () => {
+      expect(buildBoardMastery([apiBoard(1, { prerelease: true })], [1]).at(0).prerelease).toBe(true)
+      expect(buildBoardMastery([], [9]).at(0).prerelease).toBe(false)
+    })
+  })
 })
