@@ -57,8 +57,11 @@ Backfills + full recompute (Phase 1) set David's existing content to `prerelease
 
 ## Slices (delivery order)
 
-- **Slice 1 (this PR):** `observations` columns (`collection_id`, `prerelease`) + one-time backfill + `admin.rs` platform-stat `prerelease = 0` filters. No dependencies, no PK rebuilds, no behavior change for existing Baker content. `board_version_token`, the board_status-derived mastery filters, and ingest wiring are deferred (they need the `board_status` rebuild / frontend).
-- **Slice 2:** `board_status` (+ `assignment_board_status`, `exercise_boards`) rebuilds with `collection_id` in the PK + `board_status.prerelease`; recompute-signature change; `lesson_mastery`/`student_summaries` filters; full recompute.
-- **Slice 3:** ingest wiring + `board_version_token` + `reports.rs`.
-- **Slice 4:** frontend (deal loader, write path, triangle marker, dev warning, report token).
-- **Slice 5:** exercise-creation readiness guard.
+Resequenced so the prerelease (beta) feature — the near-term goal — ships before the risky live-table PK rebuilds.
+
+- **Slice 1 (merged, #53):** `observations` columns (`collection_id`, `prerelease`) + one-time backfill + `admin.rs` platform-stat `prerelease = 0` filters. No PK rebuilds, no behavior change for Baker content.
+- **Slice 2 (this PR):** `board_status.prerelease` (added column + one-time backfill from each board's most recent observation) + `recompute_board_history` stamps it going forward + `get_board_status` returns it + `lesson_mastery` excludes it. **No PK rebuild.** Delivers beta exclusion from lesson mastery for existing data. Deferred to a follow-up: `student_summary` (a separate cache, not `board_status`-derived) still counts beta for teacher-summary "boards tried".
+- **Slice 3:** `collection_id` into the PKs — `board_status` / `exercise_boards` / `assignment_board_status` table rebuilds — fixing the (still-latent) cross-collection collision; recompute-signature change to key on `collection_id`; `student_summary` prerelease handling. **This is the risky live-table-rebuild slice** — tested migration + pre-migration `.backup`.
+- **Slice 4:** ingest wiring (write path persists `collection_id`/`prerelease`/`board_version_token`) + `board_version_token` + `reports.rs`.
+- **Slice 5:** frontend (deal loader, write path, triangle marker, dev warning, report token).
+- **Slice 6:** exercise-creation readiness guard.

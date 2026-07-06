@@ -794,6 +794,43 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     add_column_if_missing(pool, "board_status", "last_star_update", "TEXT").await?;
     add_column_if_missing(pool, "board_status", "wild_achievement", "TEXT").await?;
 
+    // ---- board_status.prerelease (ADR-0001) ----
+    // Mirrors the observation's prerelease flag onto the per-board rollup so
+    // mastery reads can exclude beta boards while the board stays navigable.
+    // Manual (not add_column_if_missing) so the one-time backfill runs exactly
+    // once, when the column is first created. Going forward recompute stamps it.
+    let has_bs_prerelease: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM pragma_table_info('board_status') WHERE name = 'prerelease'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_bs_prerelease {
+        sqlx::query(r#"ALTER TABLE board_status ADD COLUMN prerelease INTEGER NOT NULL DEFAULT 0"#)
+            .execute(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
+        // Seed from the board's most recent observation (its current release
+        // state), matching how recompute_board_history stamps it going forward.
+        sqlx::query(
+            r#"
+            UPDATE board_status
+            SET prerelease = COALESCE((
+                SELECT o.prerelease FROM observations o
+                WHERE o.user_id = board_status.user_id
+                  AND o.deal_subfolder = board_status.deal_subfolder
+                  AND o.deal_number = board_status.deal_number
+                ORDER BY o.timestamp DESC
+                LIMIT 1
+            ), 0)
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+        tracing::info!("Added board_status.prerelease and backfilled from observations");
+    }
+
     // ---- Exercise soft-delete (issue #15) ----
     // Soft-delete keeps observation history intact when a teacher deletes
     // an exercise. Listings filter on `deleted_at IS NULL`; observations

@@ -26,6 +26,10 @@ pub struct BoardStatusEntry {
     pub last_star_update: Option<String>,
     pub wild_achievement: Option<String>,
     pub last_observation_at: Option<String>,
+    /// True when this board was played while not-ready (beta). The board still
+    /// appears for navigation/drill-down; the UI marks it distinctly (triangle)
+    /// and excludes it from mastery counts.
+    pub prerelease: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,7 +77,7 @@ pub async fn get_board_status(
         deal_subfolder, deal_number,
         status, wilderness, last_error_date,
         star_count, max_stars, last_star_update,
-        wild_achievement, last_observation_at
+        wild_achievement, last_observation_at, prerelease
     "#;
 
     let entries: Vec<BoardStatusEntry> = if let Some(ref subfolder) = query.deal_subfolder {
@@ -258,6 +262,7 @@ struct ObservationFullRow {
     correct: bool,
     board_result: Option<String>,
     wilderness: Option<String>,
+    prerelease: bool,
 }
 
 /// Walk every observation for (user, board) in chronological order and
@@ -275,7 +280,7 @@ pub async fn recompute_board_history(
 ) -> Result<(), String> {
     let observations: Vec<ObservationFullRow> = sqlx::query_as(
         r#"
-        SELECT id, timestamp, correct, board_result, wilderness
+        SELECT id, timestamp, correct, board_result, wilderness, prerelease
         FROM observations
         WHERE user_id = ? AND deal_subfolder = ? AND deal_number = ?
         ORDER BY timestamp ASC
@@ -292,7 +297,7 @@ pub async fn recompute_board_history(
         upsert_board_status_v2(
             pool, user_id, deal_subfolder, deal_number,
             "not_attempted", "Tame",
-            None, 0, 0, None, None, None,
+            None, 0, 0, None, None, None, false,
         )
         .await?;
         return Ok(());
@@ -309,6 +314,9 @@ pub async fn recompute_board_history(
     let mut final_status = String::from("not_attempted");
     let mut final_wilderness = String::from("Tame");
     let mut final_timestamp = String::new();
+    // The board's prerelease state = its most recent observation's flag (so a
+    // beta board later released, and replayed, stops being excluded).
+    let mut final_prerelease = false;
 
     // §C8: apply the per-observation status/wilderness rewrites in a single
     // transaction. Previously each row was UPDATEd independently against the
@@ -378,6 +386,7 @@ pub async fn recompute_board_history(
         final_status = obs_status.to_string();
         final_wilderness = wilderness;
         final_timestamp = obs.timestamp.clone();
+        final_prerelease = obs.prerelease;
     }
 
     tx.commit().await.map_err(|e| format!("commit recompute tx failed: {}", e))?;
@@ -395,6 +404,7 @@ pub async fn recompute_board_history(
         last_star_update.map(|t| t.to_rfc3339()),
         wild_achievement,
         Some(&final_timestamp),
+        final_prerelease,
     )
     .await
 }
@@ -606,6 +616,7 @@ async fn upsert_board_status_v2(
     last_star_update: Option<String>,
     wild_achievement: Option<String>,
     last_observation_at: Option<&str>,
+    prerelease: bool,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
     // The legacy `achievement` column is no longer used; we always
@@ -616,9 +627,9 @@ async fn upsert_board_status_v2(
             user_id, deal_subfolder, deal_number,
             status, wilderness, last_error_date,
             star_count, max_stars, last_star_update, wild_achievement,
-            last_observation_at, updated_at, achievement
+            last_observation_at, updated_at, achievement, prerelease
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', ?)
         ON CONFLICT(user_id, deal_subfolder, deal_number) DO UPDATE SET
             status              = excluded.status,
             wilderness          = excluded.wilderness,
@@ -628,7 +639,8 @@ async fn upsert_board_status_v2(
             last_star_update    = excluded.last_star_update,
             wild_achievement    = excluded.wild_achievement,
             last_observation_at = excluded.last_observation_at,
-            updated_at          = excluded.updated_at
+            updated_at          = excluded.updated_at,
+            prerelease          = excluded.prerelease
         "#,
     )
     .bind(user_id)
@@ -643,6 +655,7 @@ async fn upsert_board_status_v2(
     .bind(&wild_achievement)
     .bind(last_observation_at)
     .bind(&now)
+    .bind(prerelease)
     .execute(pool)
     .await
     .map_err(|e| format!("Upsert failed: {}", e))?;
