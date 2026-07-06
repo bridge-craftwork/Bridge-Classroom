@@ -46,22 +46,22 @@
   <div class="grid">
     <a class="card" href="/solo-practice-app/#/">
       <div class="name">Scenario Mastery <span class="tag live">A1</span></div>
-      <div class="desc">The learning home — tracked mastery, resume, achievements. Snapshot content. (Currently "Solo Practice".)</div>
+      <div class="desc">The learning home — tracked mastery, resume, achievements. Also plays David's authored / live (not-yet-ready) content directly: per ADR-0001 those observations are flagged <em>prerelease</em> (kept for the student's history &amp; navigation, excluded from mastery and platform stats). This absorbs what was a separate "Guided Practice" app. (Currently "Solo Practice".)</div>
       <div class="path">/solo-practice-app/#/</div>
     </a>
     <a class="card" href="/solo-practice-app/#/bidding-practice">
-      <div class="name">Practice Table <span class="tag live">local</span></div>
-      <div class="desc">Single-table play, no authored guidance: any deal source, BBA bidding + rules/BEN cardplay, no history. The local-engine table — will gain "add people" via the server later (D9). (Currently "Bidding Practice".)</div>
+      <div class="name">Practice Table — solo <span class="tag live">local</span></div>
+      <div class="desc">The single-table app in <strong>solo</strong> mode (local engine): any deal source, BBA bidding + rules/BEN cardplay, no history. <strong>One app now</strong> — the same shell drives the server table below; the engine swaps under the covers.</div>
       <div class="path">/solo-practice-app/#/bidding-practice</div>
     </a>
     <a class="card" href="/solo-practice-app/#/table/demo">
-      <div class="name">Practice Table (server-based) <span class="tag live">server</span></div>
-      <div class="desc">The table-server single-table (demo room): a seat + bots, cardplay defaults to the instant rulebot. Kept as-is for now; converges with the local one later.</div>
+      <div class="name">Practice Table — server <span class="tag live">server</span></div>
+      <div class="desc">The <strong>same</strong> single-table app in <strong>server</strong> mode (table-service demo room): a seat + bots, instant rulebot cardplay. The local↔server convergence shipped — one unified table shell, ServerEngine behind it.</div>
       <div class="path">/solo-practice-app/#/table/demo</div>
     </a>
     <a class="card" href="/solo-practice-app/#/tables/host">
-      <div class="name">Host a Table <span class="tag new">WIP</span></div>
-      <div class="desc">Single-table "play with friends": you sit and play (host-as-player), share an invite link → guests auto-seat, empty seats are bots. Deal source + invite + 🧪 test players, no multi-table console. Sign in first.</div>
+      <div class="name">Host a Table <span class="tag live">server</span></div>
+      <div class="desc">The same single-table app in server mode with "play with friends": you sit and play (host-as-player), share an invite link → guests auto-seat, empty seats are bots. Deal source + invite + 🧪 test players, no multi-table console. Sign in first.</div>
       <div class="path">/solo-practice-app/#/tables/host</div>
     </a>
     <a class="card" href="/game-analysis/">
@@ -87,11 +87,6 @@
 
   <div class="sec-label">Author / dev tools</div>
   <div class="grid">
-    <div class="card placeholder">
-      <div class="name">Guided Practice <span class="tag dev">A2 · not built</span></div>
-      <div class="desc">The separated no-history, <em>authored-guidance</em> player reading David's LIVE files — his workbench for evolving the guidance engine without freezing. Not carved out yet; nothing to link.</div>
-      <div class="path">— (planned)</div>
-    </div>
     <a class="card" href="/solo-practice-app/#/">
       <div class="name">Deal Library <span class="tag new">tab</span></div>
       <div class="desc">Sign in as teacher/admin → the "Deal Library" lobby tab (folders, files, per-entry settings). No deep link — it's a tab on the lobby.</div>
