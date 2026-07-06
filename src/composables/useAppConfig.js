@@ -124,7 +124,15 @@ const COLLECTIONS = [
     description: 'Classic bridge lessons covering bidding conventions and play',
     icon: '♠',
     tocUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/toc.json',
-    baseUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package'
+    baseUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package',
+    // Repo that receives "Report a Problem" issues for this collection. Its
+    // presence makes the collection reportable; the actual routing is done
+    // server-side by collection id (reports.rs::repo_for_collection) — keep the
+    // two in sync. Baker Bridge boards become reportable via their released
+    // (%bridge-classroom-stable) flag, so no `report` override is set here. To
+    // disable reporting for the whole collection regardless of release, add
+    // `report: false`.
+    reportRepo: 'bridge-craftwork/Baker-Bridge'
   },
   {
     id: 'pbs-coaching',
@@ -133,12 +141,16 @@ const COLLECTIONS = [
     icon: '♦',
     tocUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated/toc.json',
     baseUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated',
-    // Show the "Report a Problem" button only for this collection. A report is
-    // about THIS collection's content and files a classroom-feedback issue in the
-    // content repo behind VITE_REPORT_URL. A collection owner who wants the button
-    // opts in by setting report:true and pointing the report endpoint at their own
-    // repo; otherwise it stays off (e.g. Baker Bridge, which is Rick's content).
-    report: true
+    // `report` is a three-state override of the per-board release flag:
+    //   true  → force reporting on for the whole collection (used here: David's
+    //           coaching content is curated as a set, and not all of it carries
+    //           the %bridge-classroom-stable flag yet)
+    //   false → force it off (kill switch)
+    //   absent → defer to each board's `stable` flag
+    // reportRepo says where its issues file — see the server-side authority in
+    // reports.rs::repo_for_collection (keep the two in sync).
+    report: true,
+    reportRepo: 'bridge-craftwork/Practice-Bidding-Scenarios'
   }
 ]
 
