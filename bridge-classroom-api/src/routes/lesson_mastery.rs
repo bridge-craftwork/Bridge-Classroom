@@ -122,7 +122,7 @@ pub async fn get_lesson_mastery(
         WITH lesson_totals AS (
             SELECT deal_subfolder, COUNT(DISTINCT deal_number) AS total_boards
             FROM board_status
-            WHERE deal_subfolder IS NOT NULL
+            WHERE deal_subfolder IS NOT NULL AND prerelease = 0
             GROUP BY deal_subfolder
         )
         SELECT
@@ -135,7 +135,7 @@ pub async fn get_lesson_mastery(
             SUM(CASE WHEN bs.max_stars >= 2 OR bs.wild_achievement = 'Fresh' THEN 1 ELSE 0 END) AS deep
         FROM board_status bs
         JOIN lesson_totals lt ON lt.deal_subfolder = bs.deal_subfolder
-        WHERE bs.user_id = ?
+        WHERE bs.user_id = ? AND bs.prerelease = 0
         GROUP BY bs.deal_subfolder, lt.total_boards
         ORDER BY bs.deal_subfolder
         "#,
