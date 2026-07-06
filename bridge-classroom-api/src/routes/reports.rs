@@ -40,6 +40,12 @@ pub struct ReportRequest {
     pub board_tag: Option<String>,
     /// The PBN [OriginalBoard] tag value.
     pub original_board: Option<String>,
+    /// Opaque, rotation-independent board-version token from the PBN
+    /// (ADR-0001, Contract C6). Bridge Classroom never computes or compares it;
+    /// it is passed through so the producer can locate the reported deal across
+    /// its rotational variants and other files. Optional — null until the PBNs
+    /// carry the token.
+    pub board_version_token: Option<String>,
 
     // --- Auction / play context ---
     pub student_seat: Option<String>,
@@ -219,6 +225,13 @@ fn build_issue_body(req: &ReportRequest, note: &str) -> String {
     }
     if !deal_bits.is_empty() {
         ctx.push(format!("- **Deal:** {}", deal_bits.join(" · ")));
+    }
+
+    // Rotation-independent board-version token (ADR-0001 C6): a quick equality
+    // check for "is the reported deal still the one in the repo" and the search
+    // key when position has shifted or the deal appears in other rotations.
+    if let Some(token) = req.board_version_token.as_deref().filter(|t| !t.is_empty()) {
+        ctx.push(format!("- **Board-version token:** `{}`", token));
     }
 
     if let Some(seat) = &req.student_seat {
