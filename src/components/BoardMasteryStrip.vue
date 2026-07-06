@@ -15,6 +15,7 @@
       :class="[
         `status-${board.status}`,
         { active: index === currentIndex },
+        { prerelease: board.prerelease },
         { 'has-medal': board.achievement !== 'none' },
         { 'medal-gold': board.achievement === 'gold' },
         { 'medal-silver': board.achievement === 'silver' }
@@ -172,7 +173,8 @@ function getTooltip(board) {
     silver: ' | Silver star',
     gold: ' | Gold star'
   }
-  return `Board ${board.boardNumber}: ${statusLabels[board.status] || board.status}${achievementLabels[board.achievement] || ''}`
+  const prereleaseNote = board.prerelease ? ' | Beta board (under development) — not counted toward mastery' : ''
+  return `Board ${board.boardNumber}: ${statusLabels[board.status] || board.status}${achievementLabels[board.achievement] || ''}${prereleaseNote}`
 }
 </script>
 
@@ -261,6 +263,19 @@ function getTooltip(board) {
 .status-green {
   background: #4caf50;
   color: white;
+}
+
+/* Prerelease (beta) boards render as a triangle instead of a circle, keeping
+   their status color. Signals "under development / not counted toward mastery"
+   while staying navigable. The number is nudged into the wider lower half. */
+.board-indicator.prerelease {
+  border-radius: 0;
+  clip-path: polygon(50% 6%, 96% 94%, 4% 94%);
+}
+
+.board-indicator.prerelease .board-num {
+  padding-top: 9px;
+  font-size: 11px;
 }
 
 /* Active board highlight — pseudo-element ring avoids outline layout quirks */
