@@ -16,6 +16,7 @@ const ACHIEVEMENT_SPACING_DAYS: i64 = 6;
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct BoardStatusEntry {
+    pub collection_id: String,
     pub deal_subfolder: String,
     pub deal_number: i32,
     pub status: String,
@@ -41,6 +42,11 @@ pub struct BoardStatusResponse {
 pub struct BoardStatusQuery {
     pub user_id: String,
     pub deal_subfolder: Option<String>,
+    /// Optional collection scope. When present, only rows for this collection
+    /// are returned. Omitted → all collections (legacy behavior). Callers that
+    /// know the active collection (per-lesson strip/grids) pass it so a
+    /// subfolder shared across collections doesn't leak the other's boards.
+    pub collection_id: Option<String>,
 }
 
 
@@ -74,32 +80,42 @@ pub async fn get_board_status(
     // directly. The legacy `achievement` column is intentionally not
     // selected — it's been superseded by max_stars / wild_achievement.
     let select_columns = r#"
-        deal_subfolder, deal_number,
+        collection_id, deal_subfolder, deal_number,
         status, wilderness, last_error_date,
         star_count, max_stars, last_star_update,
         wild_achievement, last_observation_at, prerelease
     "#;
 
-    let entries: Vec<BoardStatusEntry> = if let Some(ref subfolder) = query.deal_subfolder {
-        sqlx::query_as::<_, BoardStatusEntry>(&format!(
-            "SELECT {} FROM board_status WHERE user_id = ? AND deal_subfolder = ? ORDER BY deal_number ASC",
-            select_columns
-        ))
-        .bind(&query.user_id)
-        .bind(subfolder)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    // Build the WHERE clause + ORDER BY dynamically over two optional filters
+    // (deal_subfolder, collection_id). Binds are pushed in the same order the
+    // placeholders are appended. The (user_id, collection_id, deal_subfolder)
+    // prefix of the PK indexes every combination.
+    let mut sql = format!("SELECT {} FROM board_status WHERE user_id = ?", select_columns);
+    if query.deal_subfolder.is_some() {
+        sql.push_str(" AND deal_subfolder = ?");
+    }
+    if query.collection_id.is_some() {
+        sql.push_str(" AND collection_id = ?");
+    }
+    // When scoped to a single subfolder the deal_subfolder ORDER is redundant.
+    if query.deal_subfolder.is_some() {
+        sql.push_str(" ORDER BY deal_number ASC");
     } else {
-        sqlx::query_as::<_, BoardStatusEntry>(&format!(
-            "SELECT {} FROM board_status WHERE user_id = ? ORDER BY deal_subfolder ASC, deal_number ASC",
-            select_columns
-        ))
-        .bind(&query.user_id)
+        sql.push_str(" ORDER BY deal_subfolder ASC, deal_number ASC");
+    }
+
+    let mut q = sqlx::query_as::<_, BoardStatusEntry>(&sql).bind(&query.user_id);
+    if let Some(ref subfolder) = query.deal_subfolder {
+        q = q.bind(subfolder);
+    }
+    if let Some(ref collection_id) = query.collection_id {
+        q = q.bind(collection_id);
+    }
+
+    let entries: Vec<BoardStatusEntry> = q
         .fetch_all(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    };
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(BoardStatusResponse { boards: entries }))
 }

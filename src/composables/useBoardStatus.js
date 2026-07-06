@@ -18,17 +18,28 @@ const cacheVersion = ref(0)
 const COOLDOWN_MS = 60 * 60 * 1000
 
 /**
+ * Build the singleton cache key. Includes the collection scope so a
+ * collection-filtered fetch and an unscoped one don't share an entry.
+ */
+function boardCacheKey(userId, dealSubfolder, collectionId) {
+  return `${userId}::${dealSubfolder || '__all__'}::${collectionId || '__any__'}`
+}
+
+/**
  * Fetch board status from the backend API.
- * Caches by (userId, dealSubfolder) key.
+ * Caches by (userId, dealSubfolder, collectionId) key.
  * @param {string} userId
  * @param {string} [dealSubfolder] - If omitted, fetches all subfolders
  * @param {boolean} [force=false] - Bypass cache
+ * @param {string} [collectionId] - If set, scopes the query to one collection
+ *   (a subfolder reused across collections otherwise leaks the other's boards).
+ *   Omitted → all collections (legacy behavior).
  * @returns {Promise<Array>} Board status entries
  */
-async function fetchBoardStatus(userId, dealSubfolder = null, force = false) {
+async function fetchBoardStatus(userId, dealSubfolder = null, force = false, collectionId = null) {
   if (!userId) return []
 
-  const cacheKey = `${userId}::${dealSubfolder || '__all__'}`
+  const cacheKey = boardCacheKey(userId, dealSubfolder, collectionId)
 
   // Return cached if fresh (< 30 seconds) and not forced
   if (!force && cache[cacheKey] && Date.now() - cache[cacheKey].fetchedAt < 30000) {
@@ -40,6 +51,9 @@ async function fetchBoardStatus(userId, dealSubfolder = null, force = false) {
     let url = `${API_URL}/board-status?user_id=${encodeURIComponent(userId)}`
     if (dealSubfolder) {
       url += `&deal_subfolder=${encodeURIComponent(dealSubfolder)}`
+    }
+    if (collectionId) {
+      url += `&collection_id=${encodeURIComponent(collectionId)}`
     }
 
     const response = await fetch(url, {
@@ -77,12 +91,18 @@ function invalidateCache(userId = null, dealSubfolder = null) {
     return
   }
 
+  // Keys are `${userId}::${subfolder|__all__}::${collectionId|__any__}`.
+  // Without a subfolder, drop everything for the user. With one, drop that
+  // subfolder's entries (any collection scope) plus the all-subfolders caches.
   const prefix = `${userId}::`
   for (const key in cache) {
-    if (key.startsWith(prefix)) {
-      if (!dealSubfolder || key === `${userId}::${dealSubfolder}` || key === `${userId}::__all__`) {
-        delete cache[key]
-      }
+    if (!key.startsWith(prefix)) continue
+    if (!dealSubfolder) {
+      delete cache[key]
+      continue
+    }
+    if (key.startsWith(`${userId}::${dealSubfolder}::`) || key.startsWith(`${userId}::__all__::`)) {
+      delete cache[key]
     }
   }
   cacheVersion.value++
@@ -253,11 +273,13 @@ function mergeLocalPending(mastery, lessonSubfolder) {
  *
  * @param {string} userId
  * @param {string} [dealSubfolder]
+ * @param {string} [collectionId] - Must match the scope passed to
+ *   fetchBoardStatus for the cache to hit.
  * @returns {Array|null}
  */
-function getCachedBoards(userId, dealSubfolder = null) {
+function getCachedBoards(userId, dealSubfolder = null, collectionId = null) {
   if (!userId) return null
-  const cacheKey = `${userId}::${dealSubfolder || '__all__'}`
+  const cacheKey = boardCacheKey(userId, dealSubfolder, collectionId)
   return cache[cacheKey]?.boards || null
 }
 

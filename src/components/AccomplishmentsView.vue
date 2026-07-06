@@ -189,7 +189,7 @@ const lessonMasteryList = computed(() => {
   return lessons
     .map(lesson => {
       const apiBoards = userId
-        ? (boardStatusApi.getCachedBoards(userId, lesson.subfolder) || [])
+        ? (boardStatusApi.getCachedBoards(userId, lesson.subfolder, mastery.getLessonCollection(lesson.subfolder)) || [])
         : []
       const boardMasteryResults = boardStatusApi.buildBoardMastery(
         apiBoards,
@@ -214,7 +214,7 @@ watch(lessonMasteryList, async (lessons) => {
   const userId = userStore.effectiveUserId.value
   if (userId) {
     await Promise.all(
-      subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf))
+      subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf, false, mastery.getLessonCollection(sf)))
     )
   }
 }, { immediate: true })

@@ -30,6 +30,12 @@ pub struct LessonMasteryQuery {
 
 #[derive(Debug, Serialize)]
 pub struct LessonMasteryEntry {
+    /// Collection this lesson belongs to. Two collections may reuse the same
+    /// `deal_subfolder` name; grouping/keying by (collection_id, deal_subfolder)
+    /// keeps their tiers separate. Consumers still key by subfolder today (no
+    /// user straddles collections), but the field is returned so they can move
+    /// to the composite key without a further backend change.
+    pub collection_id: String,
     pub deal_subfolder: String,
     pub tier: String,
     /// Total boards declared in the lesson (i.e. distinct boards seen
@@ -55,6 +61,7 @@ pub struct LessonMasteryResponse {
 
 #[derive(Debug, sqlx::FromRow)]
 struct LessonStatsRow {
+    collection_id: String,
     deal_subfolder: String,
     total_boards: i64,
     attempted_boards: i64,
@@ -117,15 +124,21 @@ pub async fn get_lesson_mastery(
         return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
     }
 
+    // Group by (collection_id, deal_subfolder) so a subfolder name reused
+    // across collections keeps a separate denominator and tier per collection.
+    // For today's data (no user straddles collections, each subfolder maps to
+    // exactly one collection) this yields the same groups as keying by
+    // subfolder alone — it only diverges once a real collision exists.
     let rows: Vec<LessonStatsRow> = sqlx::query_as(
         r#"
         WITH lesson_totals AS (
-            SELECT deal_subfolder, COUNT(DISTINCT deal_number) AS total_boards
+            SELECT collection_id, deal_subfolder, COUNT(DISTINCT deal_number) AS total_boards
             FROM board_status
             WHERE deal_subfolder IS NOT NULL AND prerelease = 0
-            GROUP BY deal_subfolder
+            GROUP BY collection_id, deal_subfolder
         )
         SELECT
+            bs.collection_id                                                          AS collection_id,
             bs.deal_subfolder                                                         AS deal_subfolder,
             lt.total_boards                                                           AS total_boards,
             COUNT(*)                                                                  AS attempted_boards,
@@ -134,9 +147,10 @@ pub async fn get_lesson_mastery(
             SUM(CASE WHEN bs.wild_achievement = 'Fresh' THEN 1 ELSE 0 END)            AS fresh_paw,
             SUM(CASE WHEN bs.max_stars >= 2 OR bs.wild_achievement = 'Fresh' THEN 1 ELSE 0 END) AS deep
         FROM board_status bs
-        JOIN lesson_totals lt ON lt.deal_subfolder = bs.deal_subfolder
+        JOIN lesson_totals lt
+          ON lt.collection_id = bs.collection_id AND lt.deal_subfolder = bs.deal_subfolder
         WHERE bs.user_id = ? AND bs.prerelease = 0
-        GROUP BY bs.deal_subfolder, lt.total_boards
+        GROUP BY bs.collection_id, bs.deal_subfolder, lt.total_boards
         ORDER BY bs.deal_subfolder
         "#,
     )
@@ -151,6 +165,7 @@ pub async fn get_lesson_mastery(
         .map(|r| {
             let tier = decide_tier(&r).to_string();
             LessonMasteryEntry {
+                collection_id: r.collection_id,
                 deal_subfolder: r.deal_subfolder,
                 tier,
                 total_boards: r.total_boards,
