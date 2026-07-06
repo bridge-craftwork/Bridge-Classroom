@@ -1,0 +1,243 @@
+# Board Identity, Readiness, and History Integrity
+
+**Bridge Classroom ↔ bridge-craftwork deal repositories**
+Companion specification to [ADR-0001](./0001-positional-board-identity.md).
+Status: Draft for review — 2026-07-05 (Rick + David)
+
+---
+
+## 0. TL;DR
+
+- Board identity is **positional**: `(collection_id, deal_subfolder, deal_number)`. Content is never a key.
+- Observations are **self-contained** — they embed the deal that was played — so a board changing later cannot corrupt history. There is no re-fetch and no display-time verification.
+- The producer stamps a **rotation-independent board-version token** in the PBN. Bridge Classroom records it in the clear and echoes it into "Report a Problem". BC never computes, verifies, or compares it.
+- Not-ready boards still **record** observations, flagged **`prerelease`** — excluded from mastery and platform stats, kept for the student's history/navigation/drill-down (shown as a triangle), never assignable. A replacement for a ready board must itself be ready.
+- Every board maps to a **real skill path** (no `uncategorized`).
+
+---
+
+## 1. What each side needs
+
+**Bridge Classroom (consumer)**
+
+- Mastery and progress are presented **by board position** (Collection → Lesson/subfolder → Board 1..n). Position stays the key.
+- Mastery is evidence about a **topic**, earned at a moment in time. If a board is later edited or replaced, students who earned mastery keep it. History is never invalidated or re-attached to different content.
+- The teacher drill-down reconstructs past play **from the stored observation**, which already contains the deal. It does not re-fetch the board.
+- Board identity must be **globally unique**. Subfolder names collide across collections (see §2.2), so the collection must be part of the key.
+
+**Deal repository (producer)**
+
+- Lesson sets are generated in bulk and **churn freely during development**. Weak boards are retired and replaced in response to reports.
+- The "Report a Problem" button must produce issues that **unambiguously identify the reported deal**, immune to renumbering or editing between report and fix, and must let the producer find the same deal in **other files where it appears in other rotations**.
+- Editing a board's narrative, commentary, or teaching notes must be possible **without consequence** on the Bridge Classroom side.
+- Lessons are **progressive** (lower board number = easier). A replacement should match the difficulty of the board it replaces so it can occupy the same position.
+
+---
+
+## 2. Findings from the implementation (the facts this rests on)
+
+### 2.1 Observations are self-contained
+
+[`createObservation`](../../src/utils/observationSchema.js) embeds, in each observation's encrypted payload: all four **hands**, **dealer**, **vulnerability**, the **full auction**, **contract**, **declarer**, **lead**, and the **cardplay prompts** (expected vs. played card per trick). The teacher drill-down [ObservationViewer.vue](../../src/components/ObservationViewer.vue) (shown via [ObservationPopupManager.vue](../../src/components/ObservationPopupManager.vue)) renders **entirely from `props.obs.deal`** — no history/detail component re-fetches a deal by position. The only server fetches in the teacher panels are aggregate board-status and lesson-mastery, never board content.
+
+**Consequence:** the deal a student played is frozen in the observation. Editing or replacing a board in the repo cannot change what any past drill-down shows. The misbinding problem a content hash would guard against **cannot occur** in this architecture.
+
+### 2.2 Board identity is `(subfolder, number)` only — and it collides
+
+The `observations` table has no collection column; boards are keyed by `(deal_subfolder, deal_number)`, with `skill_path` a parallel classifier that is **not in the key**. Mastery is recomputed by `(user_id, subfolder, deal_number)` ([observations.rs `recompute_board_history`](../../bridge-classroom-api/src/routes/observations.rs)).
+
+The subfolder `Drury` is used by **both** collections — Baker's `bidding_conventions/reverse_drury` and David's `uncategorized/drury` — reusing the same board numbers `(Drury, 1)`, `(Drury, 2)`, … for **different deals**. A single student playing both would have two unrelated deals merged into one mastery record. It is latent today only because the two user populations are currently disjoint.
+
+### 2.3 `exercise_boards.collection_id` already exists (partly)
+
+[`exercise_boards`](../../bridge-classroom-api/src/routes/exercises.rs) already carries a free-text `collection_id` slug (value in use: `baker-bridge`), threaded through create/read. But it is **not** in the primary key (`(exercise_id, deal_subfolder, deal_number)`) or the board index, and it is only partially populated (40 rows `baker-bridge`, 103 blank). The collection concept is half-built; this design finishes it.
+
+---
+
+## 3. Board identity: adding `collection_id`
+
+### 3.1 The key
+
+Board identity becomes **`(collection_id, deal_subfolder, deal_number)`** everywhere a board is referenced:
+
+- `observations` — add a clear `collection` column; include it in the mastery-recompute key and the lesson-mastery endpoint.
+- `exercise_boards` — promote the existing `collection_id` into the primary key and the deal index.
+
+There is **no surrogate board id**; the natural key is used throughout (consistent with today).
+
+### 3.2 `collection_id` is a slug, not a table
+
+A short slug string — `baker-bridge`, `practice-bidding-scenarios` — matching the existing `exercise_boards` convention. No `collections` table is introduced; the valid slug set is a documented convention agreed by both sides (C1).
+
+### 3.3 Migration
+
+1. Canonicalize the slug set.
+2. Backfill `exercise_boards.collection_id` where blank (the 103 rows) before it can join the key.
+3. Add `observations.collection`, populate at write time from the value the app already holds at play time, and backfill existing rows (derive from the current `uncategorized`-vs-categorized split for the one live collision).
+4. Promote `collection_id` into the `exercise_boards` PK/index and the observation mastery key.
+
+---
+
+## 4. Board lifecycle: the `ready` flag
+
+Each board carries a readiness flag in its PBN record.
+
+| State | Meaning | Engine behavior | GUI behavior |
+|---|---|---|---|
+| absent / `ready=false` | Prerelease / beta | Fully playable; observations **recorded and flagged `prerelease`**, with the board-version token; **excluded from mastery and platform stats**; not selectable into exercises | Visible with a "scenario under development" warning; history shown with a **triangle** marker; navigable and drill-down-able |
+| `ready=true` | Released; promoted by the producer | Observations recorded normally, with the board-version token; counted toward mastery | Normal display (circle marker) |
+
+Rules:
+
+- **Default is not-ready.** A freshly generated set is prerelease until promoted. Forgetting the flag can never let beta content reach mastery or platform statistics — only the student's own private history.
+- **Granularity:** file-level default with per-board override.
+- **Exercises may only include ready boards.** Exercise creation refuses not-ready boards.
+- **A replacement for a ready board must itself be `ready=true`.** This is the producer's obligation (C3/C4). It keeps every position an exercise or assignment references continuously live and closes the hole where a swapped-in prerelease board would silently drop student work. (It supersedes any notion of a replacement "re-entering alpha" at a promoted position.)
+- **Post-promotion edits are allowed but visible.** Editing a ready board is not forbidden — history survives revisions — but the producer's CI should warn when a ready board's content changes, so it is deliberate.
+
+Recording is now **unconditional**; readiness only decides the value of the `prerelease` flag, set at the one observation write choke point ([`recordObservation`](../../src/composables/useObservationStore.js), verified to be the sole writer). The exclusion of prerelease observations from higher-level functions is described in §6.5.
+
+---
+
+## 5. The board-version token
+
+### 5.1 Purpose
+
+A producer-supplied, per-board version stamp. Two jobs:
+
+1. **Cross-rotation report correction (producer).** The token is **rotation-independent**, so when a report identifies a deal, the producer can locate and fix the same deal wherever it appears in other files in other rotations.
+2. **Change-over-time statistics (consumer).** BC records the token on each observation; when the producer re-stamps a changed board, new observations carry a different token, giving a passive record of when content changed and how many students saw each version.
+
+### 5.2 Rotation-independent; producer-owned; opaque to BC
+
+To Bridge Classroom the token is an **opaque string**. BC never computes it, never re-derives it, never verifies or compares it, and never renders anything from it. Its exact definition (algorithm, fields, normalization, whether/how it canonicalizes rotation) is **entirely the producer's** — BC does not depend on any of it. Because BC treats it as opaque, orientation is irrelevant to BC; the earlier notion that BC needed a fixed-orientation hash is dropped.
+
+### 5.3 Where it lives
+
+- **Stamped in the PBN** by the producer's build pipeline (derived, regenerable, never hand-maintained).
+- **Read by BC** from the loaded PBN and **recorded in the clear** on each observation (new column; null if the PBN carries no token). This is no more revealing than the board id already stored beside it.
+- **Echoed into the "Report a Problem" text** so the producer receives it with the report.
+
+### 5.4 What it is NOT
+
+- Not a key. Not a verifier. Not rendered.
+- No JavaScript implementation. No cross-language byte-identical requirement, no shared test-vector file — there is only one implementation (the producer's) and nothing compares against it.
+- Producer-asserted, not consumer-derived: if the producer edits a board but forgets to re-stamp, BC records the stale token and the change is invisible. The token is **evidence, not enforcement**; the guarantee is the behavioral contract in §7/C4.
+
+---
+
+## 6. Consumer behaviors (Bridge Classroom)
+
+### 6.1 Observation writing
+
+At the single write choke point ([`recordObservation`](../../src/composables/useObservationStore.js)), always write the observation as today, plus three clear columns:
+
+1. `collection` (§3),
+2. the board-version token (§5),
+3. `prerelease` — set to the inverse of the board's `ready` state (`prerelease = 1` for a not-ready/beta board).
+
+### 6.2 Teacher drill-down
+
+Renders **from the stored observation** (which contains the deal). No re-fetch, no token comparison, no staleness check. Unchanged behavior, now explicitly relied upon.
+
+### 6.3 Exercises and assignments
+
+- Reference boards by identity `(collection_id, subfolder, number)` only.
+- A same-identity replacement is used transparently; no notification.
+- Exercise creation rejects boards that are not `ready`.
+
+### 6.4 Mastery
+
+Keyed on `(user_id, collection_id, subfolder, deal_number)`, and computed from `prerelease = 0` observations only (§6.5). Otherwise unchanged — no re-key to content, no remap.
+
+### 6.5 Prerelease observations — the exclusion seam
+
+The goal: prerelease (beta) observations are **kept** for the student's own history, board-navigation icons, and drill-down, but **excluded** from every higher-level function (mastery, lesson mastery, teacher/student rollups, platform stats). Two structural facts make this a small, enumerable seam rather than a scattered filter:
+
+- **Almost all mastery funnels through the `board_status` rollup.** Raw observations → [`recompute_board_history`](../../bridge-classroom-api/src/routes/board_status.rs) → `board_status` → lesson mastery ([lesson_mastery.rs](../../bridge-classroom-api/src/routes/lesson_mastery.rs)), student summaries ([student_summaries.rs](../../bridge-classroom-api/src/routes/student_summaries.rs)), and every frontend grid/strip (which fetch `board_status`/`lesson_mastery`, not raw observations).
+- **Every raw-`observations` aggregate that bypasses `board_status` is exercise-scoped** (`… IN (SELECT … FROM exercise_boards WHERE exercise_id = ?)` in [teacher_dashboard.rs](../../bridge-classroom-api/src/routes/teacher_dashboard.rs) and [assignments.rs](../../bridge-classroom-api/src/routes/assignments.rs)). Since prerelease boards can't be put in an exercise, those queries never see a prerelease observation — they self-exclude, no change needed.
+
+The seam, therefore:
+
+| Touch point | Change |
+|---|---|
+| `observations.prerelease` (new column) | Backfill Baker = 0 / David = 1 (`UPDATE observations SET prerelease = (skill_path LIKE 'uncategorized/%')`, later keyed on `collection_id`); going forward set from the board's `ready` state at write time (§6.1). |
+| `board_status.prerelease` (new column) | `recompute_board_history` / `recompute_assignment_boards` still compute the beta board's row (so it stays navigable) but stamp `prerelease = 1`. |
+| Mastery reads of `board_status` | Add `WHERE prerelease = 0` in the two derived reads — `lesson_mastery.rs` and `student_summaries.rs`. |
+| Platform stats | Add `AND prerelease = 0` to the admin metrics that read raw observations (popular lessons, total/active counts in [admin.rs](../../bridge-classroom-api/src/routes/admin.rs)) — we do **not** count beta/test observations in popular-lessons and the like. |
+| Navigation strip, history list, drill-down | **No filter** — read `board_status`/`observations` including prerelease rows → triangle marker, "where I left off," and drill-down all work. |
+| GUI: `BoardMasteryStrip` / `BoardMasteryGrid` | Render a triangle when `board.prerelease === true` (the indicator is already class-driven by `board.status` — [BoardMasteryStrip.vue](../../src/components/BoardMasteryStrip.vue)); `board-status` responses carry `prerelease` per board; `mergeLocalPending` tags in-progress beta plays so the triangle shows live. |
+
+Not touched (and correctly so): assignment progress/completion, teacher-dashboard student progress, and exercise stats — all exercise-scoped, so prerelease self-excludes.
+
+---
+
+## 7. Producer behaviors (deal repository)
+
+### 7.1 Build pipeline
+
+- Stamp the rotation-independent **board-version token** for every board (regenerated each build; never trusted from source).
+- Emit the **`ready`** flag (file default, per-board override).
+- Ensure every board **maps to a real skill path** (no `uncategorized`); mint new paths as needed.
+- **Warn** (not fail) when a `ready` board's content changes, so post-promotion edits are deliberate.
+
+### 7.2 "Report a Problem" issue template
+
+Each issue contains:
+
+1. **Identity** — `collection_id`, subfolder/lesson, board number.
+2. **Full verbatim deal text** — the ground-truth locator; greppable against the repo.
+3. **Board-version token** — the rotation-independent stamp, so the producer can find and fix the deal across its rotational variants and other files.
+
+---
+
+## 8. Flagging the existing Practice-Bidding-Scenarios observations as prerelease
+
+David's development-era observations are **not deleted** — they are set to **`prerelease = 1`** (identified by `collection_id = 'practice-bidding-scenarios'`, i.e. the current `uncategorized/` set). They keep their beta history, navigation icons, and drill-down, but are excluded from mastery and platform statistics like any prerelease board (§6.5). This also preserves the beta testers' own progress-through-the-set history.
+
+**Sequencing matters:** backfill `collection_id` + `prerelease` from the `uncategorized` heuristic **first** → *then* remap David's skill paths. Once `collection_id` and `prerelease` are set they become the durable discriminators, so the later skill-path remap is safe and no longer depends on the `uncategorized` marker.
+
+---
+
+## 9. Rollout order
+
+1. **Agree the contract in writing** (§10). Includes the slug set and the token's role (opaque to BC).
+2. **Add `collection_id` to board identity** — schema, backfill `exercise_boards` blanks, add `observations.collection`, fold into the mastery key and `exercise_boards` PK/index.
+3. **Flag** the Practice-Bidding-Scenarios observations `prerelease = 1` by `collection_id` (not deleted — see §8).
+4. **Remap** David's skill paths (no `uncategorized`).
+5. **Producer stamps** `ready` + board-version token going forward; David's content records as `prerelease` until promoted.
+6. **Ship the app change** — `prerelease` flag set at the writer, `collection` + token recorded per observation, mastery/platform-stat exclusion of `prerelease` (§6.5), triangle marker in the strip/grid, exercise-creation guard.
+7. *(Optional)* Backfill the token onto existing Baker observations from the stamped PBNs — low value (a telemetry baseline for static content), gated on the PBNs carrying the token; do it last, if at all.
+
+---
+
+## 10. Contracts
+
+Interface agreements; changes require both sides.
+
+### C1 — Board identity
+Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is a slug from an agreed set (`baker-bridge`, `practice-bidding-scenarios`, …); no surrogate id. Subfolder names are **not** assumed unique across collections.
+
+### C2 — Board-version token
+Producer stamps a **rotation-independent** token per board in the PBN (or a per-lesson sidecar readable at fetch time). It is **opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. The definition is producer-owned; there is no consumer implementation and no cross-language matching requirement.
+
+### C3 — Readiness
+`ready=false`/absent: playable; observations ARE recorded but MUST be flagged `prerelease` and MUST NOT count toward mastery or platform statistics, and the board MUST NOT be selectable into exercises; consumer shows a development warning and a distinct (triangle) history marker. `ready=true`: full behavior. Promotion and token publication are atomic from the consumer's view. **A replacement for a ready board MUST itself be `ready=true`.** (`prerelease` is a consumer-side column equal to `NOT ready`; the producer only owns the `ready` flag.)
+
+### C4 — Position stability
+Producer MAY edit or replace ready boards, but MUST NOT renumber them within a lesson except by explicit coordination. A replacement occupies the **same identity** and SHOULD match the difficulty of what it replaces (lessons are ordered easy→hard).
+
+### C5 — Skill-path mapping
+Every board MUST map to a real skill path; `uncategorized` is not permitted for promoted content. New paths are minted as needed.
+
+### C6 — "Report a Problem" payload
+Consumer includes: identity (`collection_id`, subfolder, board number), verbatim deal text, and the board-version token. Producer treats the deal text as the authoritative identification and the token as the cross-rotation locator.
+
+### C7 — History immutability
+No producer action (edit, replacement, retirement, regeneration, non-ready renumbering) requires or triggers any mutation of consumer observation or mastery data. Consumer observations are self-contained; the consumer never re-fetches a board to display history.
+
+---
+
+## 11. Reconciliation with `deal-hash-identity-plan.md`
+
+See the table in [ADR-0001](./0001-positional-board-identity.md#reconciliation-with-deal-hash-identity-planmd). In short: the content-hash **keying** and the position→hash **remap** are declined (self-contained observations make them unnecessary); the stamped hash is **adopted and repurposed** as an opaque, rotation-independent board-version token; and a **collection dimension** — which the plan did not address — is added to board identity to fix the cross-collection subfolder collision.
