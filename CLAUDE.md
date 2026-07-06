@@ -385,4 +385,11 @@ export function useMyComposable() {
 - URL params silently merge with existing config on revisit
 - Hand visibility driven by `[show ...]` tags from PBN, not inferred
 - API key header: `x-api-key` on all authenticated endpoints
-- Frontend env vars: `VITE_API_URL`, `VITE_API_KEY`
+- Frontend env vars: `VITE_API_URL`, `VITE_API_KEY`, `VITE_SOLVER_URL`
+- Double-dummy: `src/utils/ddsClient.js::fetchDoubleDummy` POSTs the deal to our
+  self-hosted `bridge-solver-service` (`VITE_SOLVER_URL`, default
+  `https://solver.bridge-craftwork.com`) and returns the raw 20-char `ddtricks`
+  string. It replaced the third-party bridgewebs BSOL call and is a verified
+  byte-for-byte drop-in — strain order is **NT-first** `[NT,S,H,D,C]`, parsed by
+  `ddTrickAt`/`buildDdRows`. DD is best-effort: `null` on any failure, never
+  load-bearing.
