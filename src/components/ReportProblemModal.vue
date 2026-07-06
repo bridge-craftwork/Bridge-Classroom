@@ -44,6 +44,11 @@
             />
             <span>Report anonymously</span>
           </label>
+          <!-- Visible while still anonymous, so the reporter learns there's a
+               reason to uncheck before they have to. -->
+          <p v-if="anonymous" class="rp-name-note">
+            Uncheck to add your name so the lesson maintainer can follow up with you.
+          </p>
           <div v-if="!anonymous" class="rp-name">
             <label class="rp-name-label" for="rp-name-input">Name shown on the report</label>
             <input
@@ -56,7 +61,7 @@
               :disabled="state === 'submitting'"
             />
             <p class="rp-name-note">
-              A name lets the lesson maintainer follow up with you. It appears in the
+              This lets the lesson maintainer follow up with you. It appears in the
               public issue used to track this report, so use a first name or an alias —
               never your email (your email is never shared).
             </p>
