@@ -67,7 +67,7 @@ There is **no surrogate board id**; the natural key is used throughout (consiste
 
 ### 3.2 `collection_id` is a slug, not a table
 
-A short slug string — `baker-bridge`, `practice-bidding-scenarios` — matching the existing `exercise_boards` convention. No `collections` table is introduced; the valid slug set is a documented convention agreed by both sides (C1).
+A short slug string — `baker-bridge`, `pbs-coaching` — matching the existing `exercise_boards` convention. No `collections` table is introduced. **It is not a PBN carrier:** `collection_id` is BC-owned, sourced from the app's collection config ([`useAppConfig.js`](../../src/composables/useAppConfig.js) `COLLECTIONS[].id`). The collection is a property of *where BC serves a file from*, not of the file's content, and the generators don't know BC's collection names — so the app stamps `collection_id` on each observation from the **active collection** at write time (the same source the "Report a Problem" payload already uses). The config `id` is the stable slug; don't rename it (it also keys localStorage/recent-lessons).
 
 ### 3.3 Migration
 
@@ -105,17 +105,22 @@ Recording is now **unconditional**; readiness only decides the value of the `pre
 
 A producer-supplied, per-board version stamp. Two jobs:
 
-1. **Cross-rotation report correction (producer).** The token is **rotation-independent**, so when a report identifies a deal, the producer can locate and fix the same deal wherever it appears in other files in other rotations.
+1. **Report identification (producer).** The token travels with a report so the producer can pin the exact board reported and detect whether it still matches the repo.
 2. **Change-over-time statistics (consumer).** BC records the token on each observation; when the producer re-stamps a changed board, new observations carry a different token, giving a passive record of when content changed and how many students saw each version.
 
-### 5.2 Rotation-independent; producer-owned; opaque to BC
+### 5.2 Producer-computed, rotation-canonical; opaque to BC
 
-To Bridge Classroom the token is an **opaque string**. BC never computes it, never re-derives it, never verifies or compares it, and never renders anything from it. Its exact definition (algorithm, fields, normalization, whether/how it canonicalizes rotation) is **entirely the producer's** — BC does not depend on any of it. Because BC treats it as opaque, orientation is irrelevant to BC; the earlier notion that BC needed a fixed-orientation hash is dropped.
+To Bridge Classroom the token is an **opaque string**. BC never computes, re-derives, verifies, compares, or renders it. Its construction is the producer's; the agreed scheme is a **content hash over a rotation-canonical form**:
+
+1. **Canonicalize rotation.** Compute the rotation `k` that moves the ♠A holder to North, and apply it to **both the hands and the auction** — the calls keep their order; the dealer and every seat label shift by the same `k`. Every deal has exactly one ♠A, so `k` is always well-defined and unambiguous.
+2. **Hash the canonical form:** `sha256( normalize(canonical [Deal]) + "|" + normalize(canonical auction) )`, lowercase hex, over the *extracted* values (not raw file bytes) so cosmetic PBN reformatting doesn't churn it.
+
+Step 1 makes the token **rotation-independent**: any rotation of the same deal+auction maps to one canonical form and thus one token — so it serves change detection *and* the producer's cross-rotation report matching at once. Baker Bridge adopts this scheme via a new stamping step.
 
 ### 5.3 Where it lives
 
-- **Stamped in the PBN** by the producer's build pipeline (derived, regenerable, never hand-maintained).
-- **Read by BC** from the loaded PBN and **recorded in the clear** on each observation (new column; null if the PBN carries no token). This is no more revealing than the board id already stored beside it.
+- **Stamped in the PBN** as the board-level tag **`[BoardVersionToken "…"]`** by the producer's build pipeline (derived, regenerable, never hand-maintained). For Baker Bridge (`CSVtoPBN`, no native hash) this means adding a post-generation stamping step.
+- **Read by BC** from the loaded PBN and **recorded in the clear** on each observation (`board_version_token` column; null if the PBN carries no tag). This is no more revealing than the board id already stored beside it.
 - **Echoed into the "Report a Problem" text** so the producer receives it with the report.
 
 ### 5.4 What it is NOT
@@ -176,10 +181,11 @@ Not touched (and correctly so): assignment progress/completion, teacher-dashboar
 
 ### 7.1 Build pipeline
 
-- Stamp the rotation-independent **board-version token** for every board (regenerated each build; never trusted from source).
-- Emit the **`ready`** flag (file default, per-board override).
-- Ensure every board **maps to a real skill path** (no `uncategorized`); mint new paths as needed.
-- **Warn** (not fail) when a `ready` board's content changes, so post-promotion edits are deliberate.
+- Stamp `[BoardVersionToken "…"]` on every board — the rotation-canonical `sha256(deal + "|" + auction)` of §5.2, recomputed each build, never trusted from source. For Baker Bridge this is a **new post-`CSVtoPBN` step** (that pipeline emits no hash today).
+- Declare stability: `%bridge-classroom-stable: true|false` at the file level (the default), with a per-board `[Stable "true"|"false"]` override.
+- Ensure every board carries a real `[SkillPath "…"]` (no `uncategorized`); mint new paths as needed.
+- (Collection is **not** a producer concern — BC sources it from its own config; see §3.2.)
+- **Warn** (not fail) when a stable board's `[BoardVersionToken]` changes, so post-promotion edits are deliberate.
 
 ### 7.2 "Report a Problem" issue template
 
@@ -187,13 +193,28 @@ Each issue contains:
 
 1. **Identity** — `collection_id`, subfolder/lesson, board number.
 2. **Full verbatim deal text** — the ground-truth locator; greppable against the repo.
-3. **Board-version token** — the rotation-independent stamp, so the producer can find and fix the deal across its rotational variants and other files.
+3. **`[BoardVersionToken]`** — the rotation-canonical stamp; a fast exact-match for the reported board across its rotational variants and other files.
+
+### 7.3 PBN carriers (the tagging terms)
+
+Vocabulary note: the producer-facing readiness flag is **stability**; the consumer stores `prerelease = NOT stable`.
+
+| Level | Carrier | Value | Consumer column |
+|---|---|---|---|
+| File (header `%` comment) | `%bridge-classroom-stable:` | `true` / `false` (absent ⇒ not stable) | `observations.prerelease = NOT stable` |
+| Board (`[Tag]`) | `[Stable "true"\|"false"]` | per-board override of the file default | `observations.prerelease` |
+| Board (`[Tag]`) | `[BoardVersionToken "…"]` | rotation-canonical `sha256(deal+auction)`, lowercase hex (§5.2) | `observations.board_version_token` |
+| Board (`[Tag]`) | `[SkillPath "…"]` | existing; must be a real path, no `uncategorized` | `observations.skill_path` |
+
+**`collection_id` is not a PBN carrier** — BC sources it from its own collection config (`COLLECTIONS[].id`: `baker-bridge`, `pbs-coaching`), stamped from the active collection at write time (§3.2).
+
+Naming: no `bridge`-prefixed *tags* (a PBN is already a bridge file) and no `BC` prefix (Bridge Composer owns it); file-level comments use the full `bridge-classroom` product namespace.
 
 ---
 
 ## 8. Flagging the existing Practice-Bidding-Scenarios observations as prerelease
 
-David's development-era observations are **not deleted** — they are set to **`prerelease = 1`** (identified by `collection_id = 'practice-bidding-scenarios'`, i.e. the current `uncategorized/` set). They keep their beta history, navigation icons, and drill-down, but are excluded from mastery and platform statistics like any prerelease board (§6.5). This also preserves the beta testers' own progress-through-the-set history.
+David's development-era observations are **not deleted** — they are set to **`prerelease = 1`** (identified by `collection_id = 'pbs-coaching'`, i.e. the current `uncategorized/` set). They keep their beta history, navigation icons, and drill-down, but are excluded from mastery and platform statistics like any prerelease board (§6.5). This also preserves the beta testers' own progress-through-the-set history.
 
 **Sequencing matters:** backfill `collection_id` + `prerelease` from the `uncategorized` heuristic **first** → *then* remap David's skill paths. Once `collection_id` and `prerelease` are set they become the durable discriminators, so the later skill-path remap is safe and no longer depends on the `uncategorized` marker.
 
@@ -216,13 +237,13 @@ David's development-era observations are **not deleted** — they are set to **`
 Interface agreements; changes require both sides.
 
 ### C1 — Board identity
-Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is a slug from an agreed set (`baker-bridge`, `practice-bidding-scenarios`, …); no surrogate id. Subfolder names are **not** assumed unique across collections.
+Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is the BC-owned collection slug from `COLLECTIONS[].id` (`baker-bridge`, `pbs-coaching`, …) — a BC config value, **not** a PBN carrier and not a producer concern (§3.2); no surrogate id. Subfolder names are **not** assumed unique across collections.
 
 ### C2 — Board-version token
-Producer stamps a **rotation-independent** token per board in the PBN (or a per-lesson sidecar readable at fetch time). It is **opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. The definition is producer-owned; there is no consumer implementation and no cross-language matching requirement.
+Producer stamps `[BoardVersionToken "…"]` per board: `sha256( deal + "|" + auction )` over the **rotation-canonical** form (rotate the deal *and* the auction so ♠A is North; §5.2), lowercase hex, from extracted values. **Opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. Producer-owned; there is no consumer implementation and no cross-language matching requirement.
 
-### C3 — Readiness
-`ready=false`/absent: playable; observations ARE recorded but MUST be flagged `prerelease` and MUST NOT count toward mastery or platform statistics, and the board MUST NOT be selectable into exercises; consumer shows a development warning and a distinct (triangle) history marker. `ready=true`: full behavior. Promotion and token publication are atomic from the consumer's view. **A replacement for a ready board MUST itself be `ready=true`.** (`prerelease` is a consumer-side column equal to `NOT ready`; the producer only owns the `ready` flag.)
+### C3 — Stability (readiness)
+Producer declares stability via `%bridge-classroom-stable: true|false` (file default) + `[Stable "true"|"false"]` (per-board override); absent ⇒ not stable. Not-stable: playable; observations ARE recorded but MUST be flagged `prerelease`, MUST NOT count toward mastery or platform statistics, and the board MUST NOT be selectable into exercises; consumer shows a development warning and a distinct (triangle) history marker. Stable: full behavior. Promotion and token publication are atomic from the consumer's view. **A replacement for a stable board MUST itself be stable.** (`prerelease` is a consumer-side column equal to `NOT stable`; the producer owns only the stability declaration.)
 
 ### C4 — Position stability
 Producer MAY edit or replace ready boards, but MUST NOT renumber them within a lesson except by explicit coordination. A replacement occupies the **same identity** and SHOULD match the difficulty of what it replaces (lessons are ordered easy→hard).
