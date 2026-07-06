@@ -62,7 +62,7 @@ pub async fn submit_observations(
 
     // Boards needing recomputation, and users needing a refreshed summary.
     // Use HashSet to dedupe across multiple observations in the same batch.
-    let mut boards_to_recompute: HashSet<(String, String, i32)> = HashSet::new();
+    let mut boards_to_recompute: HashSet<(String, String, String, i32)> = HashSet::new();
     let mut users_to_refresh: HashSet<String> = HashSet::new();
     // Assignment-scoped rollups needing recomputation: (user_id, assignment_id).
     let mut assignments_to_recompute: HashSet<(String, String)> = HashSet::new();
@@ -134,8 +134,15 @@ pub async fn submit_observations(
             Ok(_) => {
                 stored += 1;
                 if let (Some(ref subfolder), Some(deal_num)) = (&obs.deal_subfolder, obs.deal_number) {
+                    // collection_id is always resolved by from_encrypted (client or
+                    // skill_path fallback); default defensively so recompute keys cleanly.
+                    let collection_id = obs
+                        .collection_id
+                        .clone()
+                        .unwrap_or_else(|| "baker-bridge".to_string());
                     boards_to_recompute.insert((
                         obs.user_id.clone(),
+                        collection_id,
                         subfolder.clone(),
                         deal_num,
                     ));
@@ -157,13 +164,13 @@ pub async fn submit_observations(
     // Recompute board_status (and per-observation status/wilderness) for
     // every affected (user, board). This is the v2 walker that produces
     // the new state machine, stars, and wild_achievement.
-    for (user_id, subfolder, deal_number) in &boards_to_recompute {
+    for (user_id, collection_id, subfolder, deal_number) in &boards_to_recompute {
         if let Err(e) =
-            recompute_board_history(&state.db, user_id, subfolder, *deal_number).await
+            recompute_board_history(&state.db, user_id, collection_id, subfolder, *deal_number).await
         {
             tracing::error!(
-                "Failed to recompute board history for {}/{}/{}: {}",
-                user_id, subfolder, deal_number, e
+                "Failed to recompute board history for {}/{}/{}/{}: {}",
+                user_id, collection_id, subfolder, deal_number, e
             );
         }
     }

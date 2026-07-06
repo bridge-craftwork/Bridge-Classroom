@@ -1272,6 +1272,12 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         tracing::info!("Assigned 2/1 Intermediate card to all existing users");
     }
 
+    // Promote collection_id into the primary keys of the board-rollup tables so
+    // the same subfolder in two collections (e.g. Drury) can't conflate. Runs
+    // once (schema_meta-gated), before the recompute-based backfills below so
+    // they populate the new-shape tables. ADR-0001 slice 3.
+    run_collection_pk_migration(pool).await?;
+
     // One-shot data backfill for the Correctness & Mastery v2 schema
     // additions above. Gated by `schema_meta` so it runs exactly once.
     run_v2_backfill(pool).await?;
@@ -1281,6 +1287,197 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     run_assignment_status_backfill(pool).await?;
 
     tracing::info!("Database migrations completed successfully");
+    Ok(())
+}
+
+/// ADR-0001 slice 3: promote `collection_id` into the primary keys of
+/// `board_status`, `exercise_boards`, and `assignment_board_status`. SQLite can't
+/// alter a PK, so each is a create-new → copy → drop → rename inside one
+/// transaction. Gated by `schema_meta` so it runs exactly once. The backfill
+/// derives each board's collection from its observations (unambiguous — no user
+/// straddles collections on the same board), defaulting orphans to `baker-bridge`.
+/// Runs after all board_status column adds, so the copy sees the full schema.
+async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError> {
+    let already_done: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM schema_meta WHERE key = 'collection_id_pk_v1'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if already_done {
+        return Ok(());
+    }
+
+    tracing::info!("Running collection_id PK migration (slice 3)...");
+    let started = std::time::Instant::now();
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| DbError::Migration(format!("begin collection_pk tx: {e}")))?;
+
+    // ---- board_status ----
+    // The board_status_by_name view (created ungated earlier this boot) depends on
+    // board_status; drop it before the rebuild and recreate it after.
+    sqlx::query("DROP VIEW IF EXISTS board_status_by_name")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"
+        CREATE TABLE board_status_new (
+            user_id TEXT NOT NULL,
+            collection_id TEXT NOT NULL DEFAULT 'baker-bridge',
+            deal_subfolder TEXT NOT NULL,
+            deal_number INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'not_attempted',
+            achievement TEXT NOT NULL DEFAULT 'none',
+            last_observation_at TEXT,
+            updated_at TEXT NOT NULL,
+            wilderness TEXT NOT NULL DEFAULT 'Tame',
+            last_error_date TEXT,
+            star_count INTEGER NOT NULL DEFAULT 0,
+            max_stars INTEGER NOT NULL DEFAULT 0,
+            last_star_update TEXT,
+            wild_achievement TEXT,
+            prerelease INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, collection_id, deal_subfolder, deal_number)
+        )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(format!("board_status_new: {e}")))?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO board_status_new
+            (user_id, collection_id, deal_subfolder, deal_number, status, achievement,
+             last_observation_at, updated_at, wilderness, last_error_date, star_count,
+             max_stars, last_star_update, wild_achievement, prerelease)
+        SELECT bs.user_id,
+               COALESCE((SELECT o.collection_id FROM observations o
+                         WHERE o.user_id = bs.user_id AND o.deal_subfolder = bs.deal_subfolder
+                           AND o.deal_number = bs.deal_number AND o.collection_id IS NOT NULL
+                         LIMIT 1), 'baker-bridge'),
+               bs.deal_subfolder, bs.deal_number, bs.status, bs.achievement,
+               bs.last_observation_at, bs.updated_at, bs.wilderness, bs.last_error_date,
+               bs.star_count, bs.max_stars, bs.last_star_update, bs.wild_achievement, bs.prerelease
+        FROM board_status bs
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(format!("board_status copy: {e}")))?;
+
+    sqlx::query("DROP TABLE board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("ALTER TABLE board_status_new RENAME TO board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_board_status_user_subfolder ON board_status(user_id, deal_subfolder)"#).execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"
+        CREATE VIEW board_status_by_name AS
+        SELECT bs.user_id,
+               u.first_name || ' ' || u.last_name AS student_name,
+               u.email AS student_email,
+               bs.collection_id, bs.deal_subfolder, bs.deal_number, bs.status,
+               bs.wilderness, bs.last_error_date, bs.star_count, bs.max_stars,
+               bs.last_star_update, bs.wild_achievement, bs.prerelease,
+               bs.last_observation_at, bs.updated_at
+        FROM board_status bs JOIN users u ON u.id = bs.user_id
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // ---- exercise_boards (collection_id column already exists) ----
+    sqlx::query(
+        r#"
+        CREATE TABLE exercise_boards_new (
+            exercise_id TEXT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+            collection_id TEXT NOT NULL DEFAULT 'baker-bridge',
+            deal_subfolder TEXT NOT NULL,
+            deal_number INTEGER NOT NULL,
+            sort_order INTEGER NOT NULL,
+            PRIMARY KEY (exercise_id, collection_id, deal_subfolder, deal_number)
+        )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(format!("exercise_boards_new: {e}")))?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO exercise_boards_new
+            (exercise_id, collection_id, deal_subfolder, deal_number, sort_order)
+        SELECT exercise_id, COALESCE(NULLIF(collection_id, ''), 'baker-bridge'),
+               deal_subfolder, deal_number, sort_order
+        FROM exercise_boards
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(format!("exercise_boards copy: {e}")))?;
+
+    sqlx::query("DROP TABLE exercise_boards").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("ALTER TABLE exercise_boards_new RENAME TO exercise_boards").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_exercise_boards_deal ON exercise_boards(deal_subfolder, deal_number)"#).execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // ---- assignment_board_status ----
+    sqlx::query(
+        r#"
+        CREATE TABLE assignment_board_status_new (
+            user_id TEXT NOT NULL,
+            assignment_id TEXT NOT NULL,
+            collection_id TEXT NOT NULL DEFAULT 'baker-bridge',
+            deal_subfolder TEXT NOT NULL,
+            deal_number INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'not_attempted',
+            last_observation_at TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, assignment_id, collection_id, deal_subfolder, deal_number)
+        )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(format!("assignment_board_status_new: {e}")))?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO assignment_board_status_new
+            (user_id, assignment_id, collection_id, deal_subfolder, deal_number,
+             status, last_observation_at, updated_at)
+        SELECT a.user_id, a.assignment_id,
+               COALESCE((SELECT o.collection_id FROM observations o
+                         WHERE o.user_id = a.user_id AND o.deal_subfolder = a.deal_subfolder
+                           AND o.deal_number = a.deal_number AND o.collection_id IS NOT NULL
+                         LIMIT 1), 'baker-bridge'),
+               a.deal_subfolder, a.deal_number, a.status, a.last_observation_at, a.updated_at
+        FROM assignment_board_status a
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| DbError::Migration(format!("assignment_board_status copy: {e}")))?;
+
+    sqlx::query("DROP TABLE assignment_board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("ALTER TABLE assignment_board_status_new RENAME TO assignment_board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_abs_user_assignment ON assignment_board_status(user_id, assignment_id)"#).execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(r#"INSERT INTO schema_meta (key, value, completed_at) VALUES (?, ?, ?)"#)
+        .bind("collection_id_pk_v1")
+        .bind("done")
+        .bind(&now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| DbError::Migration(format!("commit collection_pk tx: {e}")))?;
+    tracing::info!("collection_id PK migration complete in {:?}", started.elapsed());
     Ok(())
 }
 
@@ -1381,13 +1578,13 @@ async fn run_v2_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     //    observations have been deleted — those get recomputed to
     //    `not_attempted` under the new rules instead of stranding stale
     //    enum values (e.g. `fresh_correct`) from the old model.
-    let boards: Vec<(String, String, i32)> = sqlx::query_as(
+    let boards: Vec<(String, String, String, i32)> = sqlx::query_as(
         r#"
-        SELECT DISTINCT user_id, deal_subfolder, deal_number
+        SELECT DISTINCT user_id, COALESCE(collection_id, 'baker-bridge'), deal_subfolder, deal_number
         FROM observations
         WHERE deal_subfolder IS NOT NULL AND deal_number IS NOT NULL
         UNION
-        SELECT user_id, deal_subfolder, deal_number FROM board_status
+        SELECT user_id, collection_id, deal_subfolder, deal_number FROM board_status
         "#,
     )
     .fetch_all(pool)
@@ -1398,17 +1595,17 @@ async fn run_v2_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
 
     let mut board_succeeded = 0_usize;
     let mut board_failed = 0_usize;
-    for (user_id, subfolder, deal_number) in &boards {
+    for (user_id, collection_id, subfolder, deal_number) in &boards {
         match crate::routes::board_status::recompute_board_history(
-            pool, user_id, subfolder, *deal_number,
+            pool, user_id, collection_id, subfolder, *deal_number,
         )
         .await
         {
             Ok(()) => board_succeeded += 1,
             Err(e) => {
                 tracing::error!(
-                    "v2 backfill: recompute failed for {}/{}/{}: {}",
-                    user_id, subfolder, deal_number, e
+                    "v2 backfill: recompute failed for {}/{}/{}/{}: {}",
+                    user_id, collection_id, subfolder, deal_number, e
                 );
                 board_failed += 1;
             }
