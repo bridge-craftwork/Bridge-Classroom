@@ -105,13 +105,29 @@ pub struct ObservationMetadataInput {
     /// Issue #7.
     #[serde(default)]
     pub time_taken_ms: Option<i64>,
-    // ADR-0001. Sent by updated clients; default None/false for older clients.
+    // ADR-0001. Updated clients send these from the PBN/collection; older clients
+    // (or a stale SPA still loaded after a frontend deploy) omit them. When absent,
+    // the server derives collection_id + prerelease from skill_path — the same
+    // `uncategorized/%` heuristic the DB backfill uses — so the backend is safe to
+    // deploy ahead of the frontend. `prerelease` is Option so we can tell
+    // "client sent false" from "client sent nothing".
     #[serde(default)]
     pub collection_id: Option<String>,
     #[serde(default)]
-    pub prerelease: bool,
+    pub prerelease: Option<bool>,
     #[serde(default)]
     pub board_version_token: Option<String>,
+}
+
+/// David's Practice-Bidding-Scenarios content is the `uncategorized/*` skill-path
+/// set (prerelease/beta); everything else is Baker Bridge. Mirrors the slice-1 DB
+/// backfill. Used as the server-side default when a client omits the field.
+fn collection_from_skill_path(skill_path: &str) -> &'static str {
+    if skill_path.starts_with("uncategorized/") {
+        "pbs-coaching"
+    } else {
+        "baker-bridge"
+    }
 }
 
 /// Request to submit observations
@@ -180,6 +196,18 @@ impl Observation {
     pub fn from_encrypted(enc: EncryptedObservation) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
 
+        // Client value wins; otherwise derive from skill_path so a backend
+        // deployed ahead of the frontend still classifies correctly. Computed
+        // before the struct literal so skill_path can be borrowed before it moves.
+        let collection_id = match enc.metadata.collection_id {
+            Some(c) => Some(c),
+            None => Some(collection_from_skill_path(&enc.metadata.skill_path).to_string()),
+        };
+        let prerelease = enc
+            .metadata
+            .prerelease
+            .unwrap_or_else(|| enc.metadata.skill_path.starts_with("uncategorized/"));
+
         Observation {
             id: enc.metadata.observation_id,
             user_id: enc.metadata.user_id,
@@ -199,8 +227,8 @@ impl Observation {
             assignment_id: enc.metadata.assignment_id,
             jungle: enc.metadata.jungle,
             time_taken_ms: enc.metadata.time_taken_ms,
-            collection_id: enc.metadata.collection_id,
-            prerelease: enc.metadata.prerelease,
+            collection_id,
+            prerelease,
             board_version_token: enc.metadata.board_version_token,
         }
     }
