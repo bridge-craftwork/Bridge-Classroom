@@ -84,6 +84,7 @@ import { useUserStore } from '../composables/useUserStore.js'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
+import { useTableHandoff } from '../composables/useTableHandoff.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import UnifiedTable from './BiddingPracticeView.vue'
 import { API_URL } from '../utils/apiUrl.js'
@@ -102,6 +103,7 @@ const table = useRemoteTable()
 // teacher console's see-all path).
 const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
+const handoff = useTableHandoff()
 
 const { connectionStatus, sessionClosed } = table
 
@@ -222,6 +224,18 @@ watch(sessionClosed, (closed) => {
   teardown()
   ensureSession({ forceCreate: true })
 })
+
+// "Invite friends" hand-off from the solo Practice Table: once this session is
+// connected, materialize the deal source the solo table was using onto it (once).
+// A direct visit to /tables/host hands off nothing, so this is a no-op there.
+let handoffApplied = false
+watch(connected, (isConnected) => {
+  if (!isConnected || handoffApplied) return
+  const pending = handoff.takePending()
+  if (!pending) return
+  handoffApplied = true
+  onLoadSource(pending)
+}, { immediate: true })
 
 async function createSession() {
   const res = await fetch(`${API_URL}/table-sessions`, {

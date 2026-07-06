@@ -311,6 +311,12 @@
             >Deal source&hellip;</button>
             <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
             <button class="bp-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading">Restart this deal</button>
+            <button
+              v-if="!EMBEDDED"
+              class="bp-btn"
+              title="Turn this into a shared table you can invite friends to (converts to a served table with your current deal source)"
+              @click="inviteFriends"
+            >Invite friends&hellip;</button>
             <button v-if="!EMBEDDED && capabilities.narrative" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
           </div>
         </div>
@@ -598,7 +604,9 @@ import { formatBid } from '../utils/cardFormatting.js'
 import { getBot, listBots } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
+import { useTableHandoff } from '../composables/useTableHandoff.js'
 import { useLocalEngine } from '../composables/engines/localEngine.js'
 import { useServerTable } from '../composables/useServerTable.js'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
@@ -673,8 +681,29 @@ function postEmbedded(msg) {
 // The picker lives in a modal (opened by the "Deal source…" button), so it has
 // room for all 8 tabs — Club/Library included. `owner` (the logged-in user, if
 // any) makes those tabs functional; anonymous users see a register note.
-const { currentUser } = useUserStore()
+const userStore = useUserStore()
+const { currentUser } = userStore
+// Deep-links land here without going through the main app, so load the signed-in
+// user from storage ourselves (idempotent) — needed for "Invite friends" and the
+// picker's account-gated tabs (Club/Library).
+userStore.initialize()
 const ownerId = computed(() => currentUser.value?.id || null)
+
+// "Invite friends" — the solo→served conversion (D9). Stash the current deal
+// source and route to the host table, which spins up a server session, loads
+// that source onto it, and hands over the invite link. Requires an account
+// (the server session is owner-scoped).
+const router = useRouter()
+const handoff = useTableHandoff()
+function inviteFriends() {
+  if (!ownerId.value) {
+    window.alert('Sign in first to host a shared table and invite friends.')
+    return
+  }
+  if (hasSelection.value) handoff.setPending(selection.value)
+  router.push('/tables/host')
+}
+
 const showPicker = ref(false)
 const pickerAllow = {
   tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
