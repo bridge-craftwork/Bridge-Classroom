@@ -194,6 +194,10 @@
                 <template v-for="(step, idx) in practice.steps.value.slice(0, practice.currentStepIndex.value)" :key="'prev-' + idx">
                   <template v-if="idx >= practice.commentaryStartIndex.value">
                     <span class="narrative-text previous" v-html="colorizeSuits(flowText(step.text))"></span>
+                    <!-- Reframe note (#67): an accepted-alternative step's prose describes the recorded call, not the student's. -->
+                    <span v-if="step.type === 'bid' && wasStepAlternative(idx) && step.explanationText"
+                      class="narrative-text previous reframe-note"
+                      v-html="reframeNoteHtml(step)"></span>
                     <span v-if="step.type === 'bid' && step.explanationText && (wasStepWrong(idx) || wasStepAlternative(idx) || step.fadeFollow == null)"
                       :class="['narrative-text', idx === practice.currentStepIndex.value - 1 && practice.isBidStep.value && !practice.bidAnswered.value ? 'current' : 'previous']"
                       v-html="colorizeSuits(flowText(step.explanationText))"></span>
@@ -207,6 +211,8 @@
                 </template>
                 <!-- Current step text (black) -->
                 <span v-if="practice.currentStep.value" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.text))"></span>
+                <!-- Reframe note (#67) for the current step when it was an accepted alternative. -->
+                <span v-if="practice.bidAnswered.value && practice.auctionState.altBid && practice.currentStep.value?.type === 'bid' && practice.currentStep.value?.explanationText" class="narrative-text current reframe-note" v-html="reframeNoteHtml(practice.currentStep.value)"></span>
                 <!-- After a bid: full explanation when wrong (the teaching); brief affirmation when correct. -->
                 <span v-if="practice.bidAnswered.value && practice.currentStep.value?.type === 'bid' && practice.currentStep.value?.explanationText && (practice.auctionState.wrongBid || practice.auctionState.altBid || practice.currentStep.value?.fadeFollow == null)" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.explanationText))"></span>
                 <span v-else-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && !practice.auctionState.altBid && practice.currentStep.value?.type === 'bid'" class="narrative-text current affirmation" v-html="bidLabel(practice.currentStep.value.bid) + ' — ' + affirmationFor(practice.currentStepIndex.value)"></span>
@@ -450,6 +456,17 @@ function wasStepWrong(idx) {
 // and withholds the perfect-board cheer.)
 function wasStepAlternative(idx) {
   return !!practice.boardState.altStepIndices[idx]
+}
+
+// Reframe note for an accepted-alternative step (issue #67). The step's
+// explanation prose is authored second-person about the RECORDED call
+// ("you stretch to 5♦"), so a student who took a defensible alternative would
+// otherwise read a paragraph narrating a call they didn't make. Prefix it with
+// this note so the prose reads as the reasoning behind the recorded line the
+// lesson follows. Content-free — no PBN edits. `step.bid` is the recorded call.
+function reframeNoteHtml(step) {
+  const call = step?.bid ? formatBid(step.bid).html : 'the recorded call'
+  return `Your call was an accepted alternative. The lesson follows the recorded ${call} — the thinking behind it:`
 }
 
 // Was this bid step the student's own call (vs partner's auto-played call)?
@@ -1849,6 +1866,18 @@ body {
 
 .narrative-text.current {
   color: #333;
+}
+
+/* Reframe note (#67): a meta-line before an accepted-alternative step's
+   explanation, flagging that the following prose describes the RECORDED call,
+   not the student's. Orange accent matches the "acceptable alternative" panel;
+   declared after previous/current so it wins the color on a step that is both. */
+.narrative-text.reframe-note {
+  color: #ed6c02;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 0.9em;
+  margin-bottom: 4px;
 }
 
 /* Brief affirmation shown on a correct bid (coaching-feedback-fade). */
