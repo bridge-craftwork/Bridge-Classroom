@@ -173,7 +173,8 @@ function buildBoardMastery(apiBoards, boardNumbers) {
         wilderness: 'Tame',
         lastErrorDate: null,
         lastStarUpdate: null,
-        lastObservationAt: null
+        lastObservationAt: null,
+        prerelease: false
       }
     }
     return {
@@ -181,6 +182,11 @@ function buildBoardMastery(apiBoards, boardNumbers) {
       // Display color derived from stored status + cooldown decay
       // against last_error_date. See §5.3 of the doc.
       status: getDisplayColor(entry.status, entry.last_error_date),
+      // True when this board was played while not-ready (beta). Rendered with a
+      // distinct (triangle) marker and excluded from mastery counts server-side.
+      // See documentation/adr/ (ADR-0001, §6.5). Defaults false when the API
+      // predates the field, so boards render as normal circles until then.
+      prerelease: entry.prerelease === true,
       // Raw §5.1 stored state, preserved so consumers can bucket by
       // spec vocabulary (e.g. distinguish close_correct from corrected).
       apiStatus: entry.status || 'not_attempted',
