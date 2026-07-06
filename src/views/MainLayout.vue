@@ -840,7 +840,8 @@ async function onFileSelect(event) {
       const dealsWithCategory = parsed.map(deal => ({
         ...deal,
         subfolder: deal.subfolder || category,
-        category: deal.category || category
+        category: deal.category || category,
+        collectionId: currentCollection.value || null
       }))
       deals.value = dealsWithCategory
       currentDealIndex.value = 0
@@ -872,7 +873,8 @@ async function loadBundledFile(file) {
       const dealsWithCategory = parsed.map(deal => ({
         ...deal,
         subfolder: file.name,
-        category: file.name
+        category: file.name,
+        collectionId: currentCollection.value || null
       }))
       deals.value = dealsWithCategory
       currentDealIndex.value = 0
@@ -892,7 +894,8 @@ function handleLessonLoad({ subfolder, name, category, content }) {
     const dealsWithCategory = parsed.map(deal => ({
       ...deal,
       subfolder: deal.subfolder || subfolder,
-      category: deal.category || category
+      category: deal.category || category,
+      collectionId: currentCollection.value || null
     }))
     deals.value = dealsWithCategory
     currentDealIndex.value = 0

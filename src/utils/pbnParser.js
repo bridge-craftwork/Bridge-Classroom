@@ -17,6 +17,9 @@ export function parsePbn(pbnContent) {
   let inCommentary = false
   let commentaryBuffer = ''
   let fileBridgeContext = ''
+  // File-level %bridge-classroom-stable flag (ADR-0001). Default-deny: absent ⇒
+  // not stable ⇒ boards are prerelease. Per-board [Stable] can override.
+  let fileStable = false
   // Multi-line [Play "X"] table state (declarer-play lessons). See the header
   // parse below and finalizePlayLine().
   let inPlaySection = false
@@ -40,10 +43,13 @@ export function parsePbn(pbnContent) {
       // fall through — this line is a comment/tag/blank to be handled normally
     }
 
-    // Capture file-level %bridge-context: line, then skip all % header lines
+    // Capture file-level structured comments, then skip all % header lines
     if (line.startsWith('%')) {
       const ctxMatch = line.match(/^%\s*bridge-context\s*:\s*(.+?)\s*$/i)
       if (ctxMatch) fileBridgeContext = ctxMatch[1]
+      // %bridge-classroom-stable: true|false — file-level release flag (ADR-0001).
+      const stableMatch = line.match(/^%\s*bridge-classroom-stable\s*:\s*(\w+)\s*$/i)
+      if (stableMatch) fileStable = /^true$/i.test(stableMatch[1])
       continue
     }
 
@@ -109,6 +115,7 @@ export function parsePbn(pbnContent) {
         currentDeal = createEmptyDeal()
         currentDeal.boardNumber = parseInt(tagValue, 10)
         currentDeal.bridgeContext = fileBridgeContext
+        currentDeal.stable = fileStable
         currentCommentary = []
       } else if (currentDeal) {
         switch (tagName) {
@@ -148,6 +155,14 @@ export function parsePbn(pbnContent) {
             break
           case 'SkillPath':
             currentDeal.skillPath = tagValue
+            break
+          case 'Stable':
+            // Per-board override of the file-level %bridge-classroom-stable.
+            currentDeal.stable = /^true$/i.test(tagValue)
+            break
+          case 'BoardVersionToken':
+            // Opaque rotation-canonical stamp (ADR-0001 §5); recorded verbatim.
+            currentDeal.boardVersionToken = tagValue
             break
           case 'Category':
             currentDeal.category = tagValue
@@ -516,7 +531,10 @@ function createEmptyDeal() {
     skillPath: null,      // Skill path (e.g., "bidding_conventions/stayman")
     category: null,       // Category (e.g., "Bidding Conventions")
     difficulty: null,     // Difficulty level (beginner, intermediate, advanced, mixed)
-    bridgeContext: ''     // File-level %bridge-context: convention/carding summary
+    bridgeContext: '',    // File-level %bridge-context: convention/carding summary
+    // ADR-0001 board identity / prerelease
+    stable: false,            // From %bridge-classroom-stable + [Stable]; default not stable
+    boardVersionToken: null   // [BoardVersionToken] — opaque rotation-canonical stamp
   }
 }
 

@@ -29,6 +29,15 @@ pub struct Observation {
     /// Total time spent on the board, ms. Lifted from the encrypted
     /// blob so the analytics path doesn't need decryption (issue #7).
     pub time_taken_ms: Option<i64>,
+    // ADR-0001 board identity / prerelease (clear columns).
+    /// Collection slug from the app config (`COLLECTIONS[].id`), stamped at write.
+    pub collection_id: Option<String>,
+    /// `NOT stable` — the board was played while not-released (beta). Excluded
+    /// from mastery and platform stats; kept for the student's own history.
+    pub prerelease: bool,
+    /// Opaque, rotation-canonical PBN stamp (`[BoardVersionToken]`). Recorded and
+    /// echoed only; BC never computes or compares it.
+    pub board_version_token: Option<String>,
 }
 
 /// Metadata-only observation (for dashboard queries)
@@ -96,6 +105,13 @@ pub struct ObservationMetadataInput {
     /// Issue #7.
     #[serde(default)]
     pub time_taken_ms: Option<i64>,
+    // ADR-0001. Sent by updated clients; default None/false for older clients.
+    #[serde(default)]
+    pub collection_id: Option<String>,
+    #[serde(default)]
+    pub prerelease: bool,
+    #[serde(default)]
+    pub board_version_token: Option<String>,
 }
 
 /// Request to submit observations
@@ -183,6 +199,9 @@ impl Observation {
             assignment_id: enc.metadata.assignment_id,
             jungle: enc.metadata.jungle,
             time_taken_ms: enc.metadata.time_taken_ms,
+            collection_id: enc.metadata.collection_id,
+            prerelease: enc.metadata.prerelease,
+            board_version_token: enc.metadata.board_version_token,
         }
     }
 }

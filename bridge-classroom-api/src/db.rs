@@ -665,10 +665,11 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // Board identity gains a collection dimension (subfolder names collide
     // across collections), and prerelease-flagged observations (beta boards)
     // are recorded but excluded from mastery and platform statistics.
-    // See documentation/adr/. `board_version_token` and the board_status-side
-    // work land in a later slice.
+    // See documentation/adr/. `board_version_token` is the opaque, rotation-
+    // canonical PBN stamp BC records but never computes or compares (ADR-0001 §5).
     add_column_if_missing(pool, "observations", "collection_id", "TEXT").await?;
     add_column_if_missing(pool, "observations", "prerelease", "INTEGER NOT NULL DEFAULT 0").await?;
+    add_column_if_missing(pool, "observations", "board_version_token", "TEXT").await?;
 
     // One-time backfill of existing rows, classified by the current skill_path
     // taxonomy: David's Practice-Bidding-Scenarios content is the

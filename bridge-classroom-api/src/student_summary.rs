@@ -39,7 +39,7 @@ pub async fn recompute_student_summary(
         r#"
         SELECT status, COUNT(*)
         FROM board_status
-        WHERE user_id = ?
+        WHERE user_id = ? AND prerelease = 0
         GROUP BY status
         "#,
     )
@@ -64,7 +64,7 @@ pub async fn recompute_student_summary(
     // ---- Star achievement distribution (uses max_stars; see §6.4) ----
     // max_stars = 1 → silver badge, max_stars >= 2 → gold badge.
     let boards_silver: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND max_stars = 1"#,
+        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND max_stars = 1 AND prerelease = 0"#,
     )
     .bind(user_id)
     .fetch_one(pool)
@@ -72,7 +72,7 @@ pub async fn recompute_student_summary(
     .unwrap_or(0);
 
     let boards_gold: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND max_stars >= 2"#,
+        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND max_stars >= 2 AND prerelease = 0"#,
     )
     .bind(user_id)
     .fetch_one(pool)
@@ -80,7 +80,7 @@ pub async fn recompute_student_summary(
     .unwrap_or(0);
 
     let on_star_track: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND (max_stars > 0 OR last_star_update IS NOT NULL)"#,
+        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND (max_stars > 0 OR last_star_update IS NOT NULL) AND prerelease = 0"#,
     )
     .bind(user_id)
     .fetch_one(pool)
@@ -89,7 +89,7 @@ pub async fn recompute_student_summary(
 
     // ---- Paw achievement distribution ----
     let boards_recent_paw: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND wild_achievement = 'Recent'"#,
+        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND wild_achievement = 'Recent' AND prerelease = 0"#,
     )
     .bind(user_id)
     .fetch_one(pool)
@@ -97,7 +97,7 @@ pub async fn recompute_student_summary(
     .unwrap_or(0);
 
     let boards_fresh_paw: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND wild_achievement = 'Fresh'"#,
+        r#"SELECT COUNT(*) FROM board_status WHERE user_id = ? AND wild_achievement = 'Fresh' AND prerelease = 0"#,
     )
     .bind(user_id)
     .fetch_one(pool)
