@@ -63,7 +63,7 @@
             >Deal source&hellip;</button>
             <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
             <button class="bp-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading">Restart this deal</button>
-            <button v-if="!EMBEDDED" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
+            <button v-if="!EMBEDDED && capabilities.narrative" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
           </div>
         </div>
 
@@ -111,7 +111,7 @@
                   @toggle-bid="toggleDivergedBid"
                 />
               </div>
-              <div v-if="currentSeat === STUDENT_SEAT && !auctionLoading" class="bp-card">
+              <div v-if="currentSeat === yourSeat && !auctionLoading" class="bp-card">
                 <h3>Your bid</h3>
                 <BiddingBox
                   :last-bid="lastNonPassNonDouble"
@@ -124,8 +124,8 @@
             </div>
             <div class="bp-hand-col">
               <HandDisplay
-                :hand="currentDeal.hands[STUDENT_SEAT]"
-                :seat="STUDENT_SEAT"
+                :hand="currentDeal.hands[yourSeat]"
+                :seat="yourSeat"
                 :show-hcp="true"
                 :show-total-points="true"
               />
@@ -185,7 +185,7 @@
                 />
               </div>
 
-              <div v-if="!auctionComplete && currentSeat === STUDENT_SEAT && !auctionLoading" class="bp-card">
+              <div v-if="!auctionComplete && currentSeat === yourSeat && !auctionLoading" class="bp-card">
                 <h3>Your bid</h3>
                 <BiddingBox
                   :last-bid="lastNonPassNonDouble"
@@ -290,6 +290,7 @@
                 </div>
 
                 <DoubleDummyTable
+                  v-if="capabilities.doubleDummy"
                   :ddtricks="doubleDummy"
                   :final-contract="finalContract"
                   :diverged="hadDivergence"
@@ -578,6 +579,11 @@ const engine = useLocalEngine({
   onResetPlay: () => cardplay.reset(),
 })
 const {
+  // Capability-gating + seat come from the engine now (seat-agnostic): the shell
+  // reads engine.yourSeat / engine.capabilities instead of assuming South, so the
+  // same shell can later drive ServerEngine. For LocalEngine yourSeat is the
+  // configured seat and every analysis capability is true — behaviour identical.
+  capabilities, yourSeat,
   selection, hasSelection, sourceSummary: poolSummary,
   currentDeal, dealsDrawn, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
@@ -605,7 +611,7 @@ const visibleHands = computed(() => {
   if (auctionComplete.value) return currentDeal.value.hands
   // During bidding, only the student's seat is visible.
   const visible = { N: null, E: null, S: null, W: null }
-  visible[STUDENT_SEAT] = currentDeal.value.hands[STUDENT_SEAT]
+  visible[yourSeat.value] = currentDeal.value.hands[yourSeat.value]
   return visible
 })
 const hiddenSeats = computed(() => {
@@ -615,7 +621,7 @@ const hiddenSeats = computed(() => {
     return cardplay.hiddenSeats.value
   }
   if (auctionComplete.value) return []
-  return ['N', 'E', 'S', 'W'].filter(s => s !== STUDENT_SEAT)
+  return ['N', 'E', 'S', 'W'].filter(s => s !== yourSeat.value)
 })
 
 // Cardplay phase derived from auction + toggle + cardplay engine state.
@@ -627,7 +633,7 @@ const hiddenSeats = computed(() => {
 const cardplayPossible = computed(() => {
   if (!auctionComplete.value) return false
   const fc = finalContract.value
-  return fc && fc.contract && fc.contract !== 'Pass' && fc.declarer === STUDENT_SEAT
+  return fc && fc.contract && fc.contract !== 'Pass' && fc.declarer === yourSeat.value
 })
 const cardplayPhase = computed(() => {
   if (!auctionComplete.value) return 'bidding'
@@ -725,7 +731,7 @@ watch(() => auctionComplete.value, (isComplete) => {
     contract: finalContract.value.contract,
     declarer: finalContract.value.declarer,
     dealer: currentDeal.value.dealer,
-    studentSeat: STUDENT_SEAT,
+    studentSeat: yourSeat.value,
     meanings: meanings.value.slice(),
   })
 })
