@@ -1,5 +1,253 @@
 <template>
-  <div class="bp-app" :class="{ embedded: EMBEDDED }">
+  <!-- ══ Server mode: live table-service seat / kibitz view (ServerEngine) ══ -->
+  <div v-if="server" class="tv-page">
+    <div v-if="srv.sessionClosed" class="tv-closed-card">
+      <h2>Session ended</h2>
+      <p>The teacher has ended this table session. Thanks for playing!</p>
+      <button class="tv-btn tv-btn-primary" @click="emit('exit')">Back to the lobby</button>
+    </div>
+
+    <template v-else>
+      <DealSourceModal v-if="srv.dealModalOpen" @close="srv.dealModalOpen = false" />
+      <div class="tv-header">
+        <div class="tv-header-left">
+          <span class="tv-title">{{ srv.tableTitle }}</span>
+          <span v-if="srv.boardNumber !== null" class="tv-tag">Board {{ srv.boardNumber }}</span>
+          <span v-if="srv.dealer" class="tv-tag">Dealer {{ srv.dealer }}</span>
+          <span class="tv-tag" :class="{ 'tv-tag-vul': srv.vulnerable !== 'None' }">
+            {{ srv.vulnerable === 'None' ? 'None vul' : srv.vulnerable + ' vul' }}
+          </span>
+          <span v-if="srv.contract" class="tv-tag tv-tag-contract">
+            <span v-html="srv.contractHtml"></span> by {{ srv.declarer }}
+          </span>
+          <span v-else-if="srv.phase === 'bidding'" class="tv-tag">Bidding</span>
+          <span
+            v-if="srv.botMode"
+            class="tv-tag tv-tag-bots"
+            title="Empty seats are played by practice bots"
+          >
+            {{ srv.botMode === 'random' ? 'practice bots' : 'bots: ' + srv.botMode }}
+          </span>
+          <button
+            v-if="srv.canToggleHands"
+            class="tv-tag tv-tag-toggle"
+            :title="srv.showAllHands
+              ? 'Teacher view: all hands visible. Click to see only what a player would.'
+              : 'Player view: hidden hands stay hidden. Click to reveal all hands.'"
+            @click="srv.toggleShowAllHands"
+          >
+            {{ srv.showAllHands ? '👁 all hands' : '👁 my view' }}
+          </button>
+        </div>
+        <div class="tv-header-right">
+          <span class="tv-conn" :class="'tv-conn-' + srv.connectionStatus">
+            {{ srv.connectionLabel }}
+          </span>
+          <button
+            class="tv-btn"
+            :disabled="srv.seq === 0 || srv.connectionStatus !== 'connected'"
+            title="Rewind the last action (anyone at the table may undo)"
+            @click="srv.onUndo"
+          >
+            Undo
+          </button>
+          <button
+            v-if="srv.canDeal"
+            class="tv-btn"
+            :disabled="srv.connectionStatus !== 'connected'"
+            title="Choose where deals come from: random, a bidding scenario, or pasted PBN"
+            @click="srv.dealModalOpen = true"
+          >
+            Deal source…
+          </button>
+          <button
+            v-if="srv.canDeal"
+            class="tv-btn tv-btn-primary"
+            :disabled="srv.connectionStatus !== 'connected' || srv.dealSource.dealing"
+            :title="'Deal the next board from: ' + srv.dealSource.label()"
+            @click="srv.onNextDeal"
+          >
+            Next deal
+          </button>
+        </div>
+      </div>
+
+      <!-- Seats strip -->
+      <div class="tv-seats">
+        <div
+          v-for="seat in srv.SEAT_ORDER"
+          :key="seat"
+          class="tv-seat"
+          :class="{
+            'tv-seat-you': seat === srv.yourSeat,
+            'tv-seat-turn': seat === srv.nextToAct && srv.phase !== 'complete',
+          }"
+        >
+          <span class="tv-seat-letter">{{ seat }}</span>
+          <span class="tv-seat-name">
+            {{ srv.seatLabel(seat) }}<span v-if="seat === srv.yourSeat"> (you)</span>
+          </span>
+          <span
+            v-if="srv.seats[seat] && srv.seats[seat].kind === 'human'"
+            class="tv-seat-dot"
+            :class="{ 'tv-seat-dot-off': !srv.seats[seat].connected }"
+            :title="srv.seats[seat].connected ? 'connected' : 'disconnected'"
+          ></span>
+          <span
+            v-if="srv.readySeats.includes(seat)"
+            class="tv-seat-ready"
+            title="Ready for the next board"
+          >✓</span>
+          <span
+            v-if="srv.handCounts[seat] && srv.phase === 'play'"
+            class="tv-seat-count"
+            :title="`${srv.handCounts[seat]} card${srv.handCounts[seat] === 1 ? '' : 's'} left in this hand`"
+          >
+            {{ srv.handCounts[seat] }} card{{ srv.handCounts[seat] === 1 ? '' : 's' }}
+          </span>
+        </div>
+      </div>
+
+      <p v-if="!srv.yourSeat && !srv.seeAll" class="tv-kibitz-note">
+        The table is full — you're kibitzing.
+      </p>
+
+      <div class="tv-main">
+        <div class="tv-table-wrap">
+          <BridgeTable
+            :hands="srv.displayHands"
+            :hidden-seats="srv.displayHiddenSeats"
+            :show-hcp="false"
+            :clickable-seat="srv.clickableSeat"
+            :hide-played-cards="true"
+            @card-click="srv.onCardClick"
+          >
+            <template #center>
+              <TrickArea
+                v-if="srv.dealLoaded && (srv.phase === 'play' || srv.phase === 'complete')"
+                :current-trick="srv.currentTrick"
+                :last-finished-trick="srv.lastFinishedTrick"
+                :tricks-taken="srv.tricksTaken"
+                :next-seat="srv.nextToAct"
+                :bot-loading="srv.botThinking"
+                bot-name="Bot"
+              />
+              <div v-else-if="!srv.dealLoaded" class="tv-center tv-center-wait">
+                <div class="tv-center-title">Waiting for the first deal</div>
+                <div class="tv-center-sub">The board appears when the teacher loads a deal.</div>
+              </div>
+              <div v-else class="tv-center">
+                <div class="tv-center-line">Dealer {{ srv.dealer || '—' }}</div>
+                <div class="tv-center-line">
+                  {{ srv.vulnerable === 'None' ? 'None vul' : srv.vulnerable + ' vul' }}
+                </div>
+              </div>
+            </template>
+
+            <template v-if="srv.capabilities.doubleDummy" #corner>
+              <DoubleDummyTable :ddtricks="srv.doubleDummy" :final-contract="srv.ddFinalContract" />
+            </template>
+          </BridgeTable>
+        </div>
+
+        <div class="tv-rail">
+          <div class="tv-card">
+            <h3>Auction</h3>
+            <AuctionTable
+              :bids="srv.auction"
+              :dealer="srv.dealer || 'N'"
+              :current-bid-index="srv.auction.length"
+              :show-turn-indicator="srv.phase === 'bidding'"
+            />
+          </div>
+
+          <div v-if="srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode === 'play-only'" class="tv-card tv-waiting">
+            Play-only board — the auction is bid automatically…
+          </div>
+
+          <div v-else-if="srv.yourSeat && (!srv.dealLoaded || srv.phase === 'bidding')" class="tv-card">
+            <h3>{{ srv.myTurnToBid ? 'Your bid' : 'Bidding' }}</h3>
+            <BiddingBox
+              :last-bid="srv.lastSuitBid"
+              :can-double="srv.canDouble"
+              :can-redouble="srv.canRedouble"
+              :disabled="!srv.myTurnToBid"
+              @bid="srv.onBid"
+            />
+            <div v-if="!srv.dealLoaded" class="tv-status-line tv-waiting tv-bid-waiting">
+              Waiting for the first deal…
+            </div>
+            <div v-else-if="!srv.myTurnToBid && srv.nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
+              Waiting for {{ srv.turnLabel }}…
+            </div>
+          </div>
+
+          <div v-else-if="srv.dealLoaded && srv.phase === 'bidding' && srv.nextToAct" class="tv-card tv-waiting">
+            Waiting for {{ srv.turnLabel }}…
+          </div>
+
+          <div v-if="srv.dealLoaded && srv.phase === 'play'" class="tv-card">
+            <h3>Play</h3>
+            <div class="tv-status-line">
+              Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
+            </div>
+            <div v-if="srv.clickableSeat" class="tv-status-line tv-your-turn">
+              Your turn — play from
+              {{ srv.clickableSeat === srv.yourSeat ? 'your hand'
+                : srv.clickableSeat === srv.dummySeat ? 'dummy' : "declarer's hand" }}.
+            </div>
+            <div v-else-if="srv.nextToAct" class="tv-status-line">
+              Waiting for {{ srv.turnLabel }}…
+              <span v-if="srv.botThinking" class="tv-bot-note">(bots can take up to ~20s)</span>
+            </div>
+          </div>
+
+          <div v-if="srv.dealLoaded && srv.phase === 'complete'" class="tv-card">
+            <h3>Result</h3>
+            <div class="tv-status-line tv-result-line">
+              <span v-if="srv.resultBanner" v-html="srv.resultBanner"></span>
+              <template v-else-if="srv.contract">
+                <span v-html="srv.contractHtml"></span> by {{ srv.declarer }} —
+                declarer took {{ srv.declarerTricks }} trick{{ srv.declarerTricks === 1 ? '' : 's' }}.
+              </template>
+              <template v-else>Passed out.</template>
+            </div>
+            <div class="tv-status-line">
+              Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
+            </div>
+
+            <template v-if="srv.sessionId && srv.yourSeat">
+              <button
+                class="tv-btn tv-btn-primary tv-ready-btn"
+                :disabled="srv.iAmReady || srv.connectionStatus !== 'connected'"
+                @click="srv.onReady"
+              >
+                {{ srv.iAmReady ? 'Ready ✓' : 'Ready for next board' }}
+              </button>
+              <div v-if="srv.readySeats.length" class="tv-status-line tv-ready-line">
+                Ready: {{ srv.readyNames }}
+              </div>
+              <div v-if="srv.iAmReady" class="tv-status-line tv-ready-wait">
+                Waiting for the others — or for the teacher to open the next board.
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <transition name="tv-fade">
+        <div v-if="srv.errorMessage" class="tv-toast tv-toast-error">{{ srv.errorMessage }}</div>
+      </transition>
+      <transition name="tv-fade">
+        <div v-if="srv.undoBy" class="tv-toast">{{ srv.undoBy }} undid the last action</div>
+      </transition>
+
+      <TableDiagnostics v-if="srv.showDiagnostics" />
+    </template>
+  </div>
+
+  <!-- ══ Solo mode: the practice bidding shell (LocalEngine) ══ -->
+  <div v-else class="bp-app" :class="{ embedded: EMBEDDED }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
       <a class="bp-nav-back" href="/">&larr; All tools</a>
@@ -337,7 +585,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import HandDisplay from '../components/HandDisplay.vue'
 import BiddingBox from '../components/BiddingBox.vue'
@@ -352,6 +600,19 @@ import { warmBen } from '../utils/benClient.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useLocalEngine } from '../composables/engines/localEngine.js'
+import { useServerTable } from '../composables/useServerTable.js'
+import DealSourceModal from '../components/table/DealSourceModal.vue'
+import TableDiagnostics from '../components/table/TableDiagnostics.vue'
+
+// The one table shell serves two modes. `server` (set by the table parents —
+// TableHostView / TableLobbyView / TeacherConsoleView) selects the live
+// table-service seat/kibitz view driven by ServerEngine; the default is the
+// solo LocalEngine practice shell. Server-mode state lives in `srv` (reactive so
+// the template auto-unwraps its refs, and namespaced so it can't collide with
+// the solo bindings). See useServerTable.js.
+const props = defineProps({ server: { type: Boolean, default: false } })
+const emit = defineEmits(['exit'])
+const srv = props.server ? reactive(useServerTable()) : null
 
 // ── Config ────────────────────────────────────────────────────────────
 // PBS deal/menu fetching lives in the resolver + pbsScenarios.js; the BBA and
@@ -396,7 +657,9 @@ function readEmbeddedParams() {
   }
 }
 const embeddedParams = readEmbeddedParams()
-const EMBEDDED = !!embeddedParams
+// Solo-only: server mode never runs the embedded (?pbn iframe) flow, even if the
+// table URL carries ?pbn (the server view handles that itself).
+const EMBEDDED = !props.server && !!embeddedParams
 // The compass seat the human is sitting at. Defaults to S for the
 // standalone scenario flow (which has always been South-centric).
 const STUDENT_SEAT = EMBEDDED ? embeddedParams.seat : 'S'
@@ -571,6 +834,7 @@ watch(cardplay.autoplayUserSingletons, (v) => {
 let _benWarmed = false
 function maybeWarmBen() {
   if (_benWarmed) return
+  if (props.server) return // solo cardplay only
   if (!playCardplay.value) return
   if (cardplayBotName.value !== 'ben') return
   _benWarmed = true
@@ -1313,4 +1577,115 @@ async function restartCardplay() {
    :deep() pierces scoped styles to colour those spans. */
 .bp-contract :deep(.red) { color: #d32f2f; }
 .bp-contract :deep(.black) { color: #1a1a1a; }
+
+/* ══ Server-mode (table-service) styles — folded from the old TableView ══ */
+.tv-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+.tv-closed-card {
+  max-width: 420px;
+  margin: 80px auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 28px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+.tv-closed-card h2 { margin: 0 0 8px; }
+.tv-btn {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tv-btn:hover:not(:disabled) { border-color: #007bff; }
+.tv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tv-btn-primary { background: #1d9e75; border-color: #1d9e75; color: #fff; }
+.tv-btn-primary:hover:not(:disabled) { background: #178a65; border-color: #178a65; }
+.tv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.tv-header-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tv-header-right { display: flex; align-items: center; gap: 10px; }
+.tv-title { font-size: 20px; font-weight: 700; margin-right: 4px; }
+.tv-tag { background: #f0f0f0; border-radius: 12px; padding: 3px 10px; font-size: 13px; color: #444; }
+.tv-tag-vul { background: #ffebee; color: #c62828; }
+.tv-tag-contract { background: #e8f5e9; color: #1b5e20; font-weight: 600; }
+.tv-tag-bots { background: #ede7f6; color: #4527a0; }
+.tv-tag-toggle {
+  background: #e3f2ec; color: #1d6e50; border: 1px solid #bcd9cc;
+  cursor: pointer; font: inherit; font-size: inherit;
+}
+.tv-tag-toggle:hover { background: #d2e9de; }
+.tv-conn { font-size: 13px; color: #666; }
+.tv-conn-connected { color: #1d9e75; }
+.tv-conn-reconnecting, .tv-conn-connecting, .tv-conn-minting { color: #e6a700; }
+.tv-conn-error, .tv-conn-unavailable { color: #c62828; }
+.tv-seats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tv-seat {
+  display: flex; align-items: center; gap: 6px;
+  background: #f5f5f5; border: 2px solid transparent; border-radius: 8px;
+  padding: 5px 12px; font-size: 14px;
+}
+.tv-seat-you { background: #e3f2fd; }
+.tv-seat-turn { border-color: #1d9e75; }
+.tv-seat-letter { font-weight: 700; color: #333; width: 14px; }
+.tv-seat-name { color: #444; }
+.tv-seat-dot { width: 8px; height: 8px; border-radius: 50%; background: #1d9e75; }
+.tv-seat-dot-off { background: #bbb; }
+.tv-seat-ready { color: #1d9e75; font-weight: 700; }
+.tv-seat-count { color: #888; font-size: 12px; }
+.tv-kibitz-note { color: #b26a00; font-size: 14px; margin: 0 0 8px; }
+.tv-main {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.tv-table-wrap {
+  position: relative;
+  background: #fbfbf8;
+  border: 1px solid #e5e5e0;
+  border-radius: 10px;
+}
+.tv-rail { display: flex; flex-direction: column; gap: 12px; }
+.tv-center-wait { text-align: center; }
+.tv-center-title { font-weight: 700; color: #24435a; font-size: 14px; }
+.tv-center-sub { font-size: 11.5px; color: #8a97a3; margin-top: 3px; max-width: 180px; }
+.tv-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+.tv-card h3 { margin: 0 0 8px; font-size: 15px; color: #333; }
+.tv-waiting { color: #666; font-style: italic; }
+.tv-bid-waiting { text-align: center; margin-top: 8px; }
+.tv-center { text-align: center; color: #555; font-size: 14px; }
+.tv-center-line { margin: 2px 0; }
+.tv-status-line { font-size: 14px; color: #444; margin: 4px 0; }
+.tv-your-turn { color: #1d9e75; font-weight: 600; }
+.tv-bot-note { color: #999; font-size: 12px; }
+.tv-result-line { font-weight: 600; }
+.tv-ready-btn { margin-top: 8px; width: 100%; }
+.tv-ready-line { color: #1d9e75; }
+.tv-ready-wait { color: #888; font-style: italic; }
+.tv-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #333; color: #fff; padding: 10px 18px; border-radius: 8px;
+  font-size: 14px; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25); z-index: 100;
+}
+.tv-toast-error { background: #c62828; }
+.tv-fade-enter-active, .tv-fade-leave-active { transition: opacity 0.25s; }
+.tv-fade-enter-from, .tv-fade-leave-to { opacity: 0; }
+@media (max-width: 800px) {
+  .tv-main { grid-template-columns: 1fr; }
+}
 </style>

@@ -259,7 +259,7 @@
           <span class="tc-table-name">Watching {{ tableName(kibitzTableId) }}</span>
           <button class="tc-btn tc-btn-small" @click="stopWatching">Stop watching</button>
         </div>
-        <TableView @exit="stopWatching" />
+        <UnifiedTable server @exit="stopWatching" />
       </div>
       </template>
     </template>
@@ -276,7 +276,7 @@
 // (teacher has no seat, so it's naturally read-only — undo still works).
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import TableView from './TableView.vue'
+import UnifiedTable from './BiddingPracticeView.vue'
 import MiniTable from '../components/table/MiniTable.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import { useRemoteTable } from '../composables/useRemoteTable.js'

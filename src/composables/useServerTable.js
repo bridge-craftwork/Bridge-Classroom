@@ -1,0 +1,238 @@
+// useServerTable — the server-mode logic for the unified table shell
+// (BiddingPracticeView). Extracted verbatim from the old TableView.vue so the
+// one shell can render a live table-service seat/kibitz view driven by
+// ServerEngine, while the solo path keeps its own (LocalEngine) setup. The
+// PARENT still owns the socket lifecycle (join/identity/leave) via useRemoteTable;
+// this only presents its reactive state + the seat actions.
+//
+// Everything the server template binds to is returned here (prefixed `server.`
+// in the shell), so there are no name collisions with the solo bindings.
+
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { useDealSource } from './useDealSource.js'
+import { useRemoteTable } from './useRemoteTable.js'
+import { useServerEngine } from './engines/serverEngine.js'
+import { SUIT_SYMBOLS } from '../utils/cardFormatting.js'
+
+const SEAT_ORDER = ['N', 'E', 'S', 'W']
+const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
+
+export function useServerTable() {
+  // ?debug=1 (any value) on the route shows the diagnostics panel.
+  const route = useRoute()
+  const showDiagnostics = computed(() => route.query.debug !== undefined)
+
+  // Deal-source picker (demo room only). "Deal source…" opens the picker;
+  // "Next deal" repeats the sticky source.
+  const dealModalOpen = ref(false)
+  const dealSource = useDealSource()
+
+  function onNextDeal() {
+    const rotate =
+      localStorage.getItem('bridgeTableRotateDeals') === '1' ? Math.floor(Math.random() * 4) : 0
+    dealSource.nextDeal(rotate)
+  }
+
+  const table = useRemoteTable()
+
+  const {
+    connectionStatus,
+    sessionId, tableId, yourSeat, role, seeAll, botMode, boardMode,
+    seq, boardNumber, dealer, vulnerable, phase,
+    auction, contract, declarer, dummySeat,
+    nextToAct, hands, handCounts,
+    currentTrick, lastFinishedTrick, tricksTaken, seats,
+    readySeats, boardComplete, sessionClosed,
+    dealLoaded, setLabel,
+    hiddenSeats, clickableSeat,
+    isYourBid, lastSuitBid, canDouble, canRedouble,
+    errorMessage, undoBy,
+  } = table
+
+  // ── Double-dummy review overlay (via the TableEngine analysis hook) ─────
+  // Computed client-side at board-complete (server has un-redacted all four
+  // hands for review). Behind the engine interface — a future
+  // server-computes-and-broadcast swap is contained to serverEngine.js.
+  const engine = useServerEngine()
+  const { capabilities } = engine
+
+  const doubleDummy = ref(null)
+  let ddToken = 0
+
+  const fullDealRevealed = computed(() => SEAT_ORDER.every(s => !!hands.value[s]))
+
+  const ddFinalContract = computed(() =>
+    contract.value?.text
+      ? { contract: contract.value.text, declarer: declarer.value }
+      : { contract: '', declarer: null })
+
+  watch([() => phase.value, fullDealRevealed], async ([ph, revealed]) => {
+    if (!(capabilities.doubleDummy && ph === 'complete' && revealed)) {
+      doubleDummy.value = null
+      ddToken++
+      return
+    }
+    if (doubleDummy.value) return
+    const token = ++ddToken
+    const dd = await engine.getDoubleDummy({ hands: hands.value, vulnerable: vulnerable.value })
+    if (token === ddToken) doubleDummy.value = dd
+  })
+
+  // ── Teacher hand-visibility toggle ─────────────────────────────────────
+  const SHOW_ALL_HANDS_KEY = 'bridgeTableShowAllHands'
+  const showAllHands = ref(localStorage.getItem(SHOW_ALL_HANDS_KEY) !== '0')
+
+  function toggleShowAllHands() {
+    showAllHands.value = !showAllHands.value
+    localStorage.setItem(SHOW_ALL_HANDS_KEY, showAllHands.value ? '1' : '0')
+  }
+
+  const canToggleHands = computed(() => seeAll.value || role.value === 'teacher')
+
+  const dummyPublic = computed(() =>
+    phase.value === 'play' &&
+    (currentTrick.plays.length > 0 || tricksTaken.value.NS + tricksTaken.value.EW > 0))
+
+  const canDeal = computed(() => tableId.value === 'demo' && !!yourSeat.value)
+
+  // URL-supplied deal (?pbn=<single-board PBN>): applied once, when seated.
+  let urlDealApplied = false
+  watch([() => connectionStatus.value, () => yourSeat.value], () => {
+    if (urlDealApplied || connectionStatus.value !== 'connected') return
+    if (!canDeal.value) return
+    const pbn = typeof route.query.pbn === 'string' ? route.query.pbn.trim() : ''
+    if (!pbn) return
+    urlDealApplied = true
+    table.sendDeal({ source: 'pbn', pbn })
+  })
+
+  const displayHands = computed(() =>
+    dealLoaded.value ? hands.value : { N: null, E: null, S: null, W: null })
+  const myTurnToBid = computed(() => dealLoaded.value && isYourBid.value)
+
+  const displayHiddenSeats = computed(() => {
+    if (!canToggleHands.value || showAllHands.value || phase.value === 'complete') {
+      return hiddenSeats.value
+    }
+    return SEAT_ORDER.filter(s => {
+      if (!hands.value[s]) return true
+      if (s === yourSeat.value) return false
+      if (s === dummySeat.value && dummyPublic.value) return false
+      if (s === declarer.value && yourSeat.value === dummySeat.value && dummyPublic.value) {
+        return false
+      }
+      return true
+    })
+  })
+
+  const connectionLabel = computed(() => ({
+    connected: 'Connected',
+    connecting: 'Connecting…',
+    minting: 'Connecting…',
+    reconnecting: 'Reconnecting…',
+    unavailable: 'Unavailable',
+    error: 'Connection error',
+    idle: 'Offline',
+  }[connectionStatus.value] || connectionStatus.value))
+
+  const tableTitle = computed(() => {
+    const id = tableId.value
+    if (!id) return 'Table'
+    const m = id.match(/-t(\d+)$/)
+    return m ? `Table ${m[1]}` : `Table ${id}`
+  })
+
+  function formatContract(text) {
+    const m = text.match(/^(\d)([CDHSN])(X{0,2})$/)
+    if (!m) return text
+    const [, level, strain, dbl] = m
+    if (strain === 'N') return `${level}NT${dbl}`
+    const color = strain === 'H' || strain === 'D' ? '#d32f2f' : '#1a1a1a'
+    return `${level}<span style="color:${color}">${SUIT_SYMBOLS[strain]}</span>${dbl}`
+  }
+
+  const contractHtml = computed(() =>
+    contract.value?.text ? formatContract(contract.value.text) : '')
+
+  const declarerTricks = computed(() => {
+    if (!declarer.value) return 0
+    return declarer.value === 'N' || declarer.value === 'S'
+      ? tricksTaken.value.NS
+      : tricksTaken.value.EW
+  })
+
+  const resultBanner = computed(() => {
+    const r = boardComplete.value
+    if (!r) return ''
+    if (r.passedOut) return 'Passed out.'
+    const c = r.contract
+    if (!c) return ''
+    if (r.bidOnly) {
+      return `Contract: ${formatContract(c.text)} by ${c.declarer} — bid-only board, no play.`
+    }
+    const made = c.made
+    const outcome = made > 0
+      ? `made with ${made} overtrick${made === 1 ? '' : 's'}`
+      : made === 0
+        ? 'made exactly'
+        : `down ${-made}`
+    return `${formatContract(c.text)} by ${c.declarer} — ${outcome} ` +
+      `(${c.declarerTricks} trick${c.declarerTricks === 1 ? '' : 's'}).`
+  })
+
+  const iAmReady = computed(() =>
+    !!yourSeat.value && readySeats.value.includes(yourSeat.value))
+
+  const readyNames = computed(() =>
+    readySeats.value.map(s => SEAT_NAMES[s] || s).join(', '))
+
+  function seatLabel(seat) {
+    const occ = seats.value[seat]
+    if (!occ || occ.kind === 'empty') return 'Bot'
+    return occ.name || 'Player'
+  }
+
+  const turnLabel = computed(() => {
+    const seat = nextToAct.value
+    if (!seat) return ''
+    return `${SEAT_NAMES[seat]} (${seatLabel(seat)})`
+  })
+
+  const botThinking = computed(() => {
+    const seat = nextToAct.value
+    if (!seat || phase.value === 'complete') return false
+    const occ = seats.value[seat]
+    return !occ || occ.kind === 'empty'
+  })
+
+  function onBid(call) { table.sendBid(call) }
+  function onCardClick({ seat, suit, rank }) { table.sendCard(seat, suit, rank) }
+  function onUndo() { table.sendUndo() }
+  function onReady() { table.sendReady() }
+
+  return {
+    SEAT_ORDER,
+    // state (from useRemoteTable)
+    connectionStatus, sessionId, tableId, yourSeat, role, seeAll, botMode, boardMode,
+    seq, boardNumber, dealer, vulnerable, phase,
+    auction, contract, declarer, dummySeat,
+    nextToAct, hands, handCounts,
+    currentTrick, lastFinishedTrick, tricksTaken, seats,
+    readySeats, boardComplete, sessionClosed,
+    dealLoaded, setLabel, clickableSeat,
+    canDouble, canRedouble, errorMessage, undoBy,
+    // analysis
+    capabilities, doubleDummy, ddFinalContract,
+    // derived / display
+    showDiagnostics, dealModalOpen, dealSource,
+    showAllHands, canToggleHands, canDeal,
+    displayHands, myTurnToBid, displayHiddenSeats,
+    connectionLabel, tableTitle, contractHtml, declarerTricks,
+    resultBanner, iAmReady, readyNames, turnLabel, botThinking,
+    lastSuitBid,
+    // actions
+    onNextDeal, toggleShowAllHands, seatLabel,
+    onBid, onCardClick, onUndo, onReady,
+  }
+}

@@ -1,7 +1,7 @@
 <template>
   <div class="tl-page">
     <!-- ── Joined: the live table ─────────────────────────────────── -->
-    <TableView v-if="mode === 'joined'" @exit="onExit" />
+    <UnifiedTable v-if="mode === 'joined'" server @exit="onExit" />
 
     <!-- ── Everything else is a centered card ─────────────────────── -->
     <div v-else class="tl-card">
@@ -133,7 +133,7 @@
 // the legacy #/table/demo?bot=random dev flow working.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import TableView from './TableView.vue'
+import UnifiedTable from './BiddingPracticeView.vue'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useRememberedTables } from '../composables/useRememberedTables.js'
 import { useUserStore } from '../composables/useUserStore.js'

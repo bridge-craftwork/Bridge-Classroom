@@ -50,7 +50,7 @@
 
       <!-- The seated player table (the host plays their own hand). Empty seats
            are bots; invitees drop into open seats. -->
-      <TableView @exit="onExitTable" />
+      <UnifiedTable server @exit="onExitTable" />
     </main>
 
     <!-- Deal-source picker modal (materialize the whole set onto the table) -->
@@ -85,7 +85,7 @@ import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
-import TableView from './TableView.vue'
+import UnifiedTable from './BiddingPracticeView.vue'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
 
