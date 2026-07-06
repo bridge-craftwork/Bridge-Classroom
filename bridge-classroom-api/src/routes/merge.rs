@@ -283,8 +283,8 @@ pub async fn merge_accounts(
         encrypt_observation(&payload_json, &k_away).map_err(err500("wrap handoff"))?;
 
     // Which keeper boards/assignments to recompute after the move (from away's obs).
-    let affected_boards: Vec<(String, i32)> = sqlx::query_as(
-        "SELECT DISTINCT deal_subfolder, deal_number FROM observations \
+    let affected_boards: Vec<(String, String, i32)> = sqlx::query_as(
+        "SELECT DISTINCT COALESCE(collection_id, 'baker-bridge'), deal_subfolder, deal_number FROM observations \
          WHERE user_id = ? AND deal_subfolder IS NOT NULL AND deal_number IS NOT NULL",
     )
     .bind(&away)
@@ -406,9 +406,9 @@ pub async fn merge_accounts(
     tx.commit().await.map_err(err500("commit"))?;
 
     // Post-commit, idempotent: rebuild the keeper's rollups over its now-larger data.
-    for (subfolder, deal_number) in &affected_boards {
-        if let Err(e) = recompute_board_history(&state.db, &keeper, subfolder, *deal_number).await {
-            tracing::error!("merge recompute board {}/{} for {}: {}", subfolder, deal_number, keeper, e);
+    for (collection_id, subfolder, deal_number) in &affected_boards {
+        if let Err(e) = recompute_board_history(&state.db, &keeper, collection_id, subfolder, *deal_number).await {
+            tracing::error!("merge recompute board {}/{}/{} for {}: {}", collection_id, subfolder, deal_number, keeper, e);
         }
     }
     for assignment_id in &affected_assignments {

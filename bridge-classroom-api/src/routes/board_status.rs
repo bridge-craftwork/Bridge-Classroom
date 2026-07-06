@@ -275,6 +275,7 @@ struct ObservationFullRow {
 pub async fn recompute_board_history(
     pool: &Pool<Sqlite>,
     user_id: &str,
+    collection_id: &str,
     deal_subfolder: &str,
     deal_number: i32,
 ) -> Result<(), String> {
@@ -282,11 +283,12 @@ pub async fn recompute_board_history(
         r#"
         SELECT id, timestamp, correct, board_result, wilderness, prerelease
         FROM observations
-        WHERE user_id = ? AND deal_subfolder = ? AND deal_number = ?
+        WHERE user_id = ? AND collection_id = ? AND deal_subfolder = ? AND deal_number = ?
         ORDER BY timestamp ASC
         "#,
     )
     .bind(user_id)
+    .bind(collection_id)
     .bind(deal_subfolder)
     .bind(deal_number)
     .fetch_all(pool)
@@ -295,7 +297,7 @@ pub async fn recompute_board_history(
 
     if observations.is_empty() {
         upsert_board_status_v2(
-            pool, user_id, deal_subfolder, deal_number,
+            pool, user_id, collection_id, deal_subfolder, deal_number,
             "not_attempted", "Tame",
             None, 0, 0, None, None, None, false,
         )
@@ -394,6 +396,7 @@ pub async fn recompute_board_history(
     upsert_board_status_v2(
         pool,
         user_id,
+        collection_id,
         deal_subfolder,
         deal_number,
         &final_status,
@@ -490,26 +493,27 @@ pub async fn recompute_assignment_boards(
         None => return Ok(()), // orphaned assignment_id — nothing to roll up
     };
 
-    let boards: Vec<(String, i32)> = sqlx::query_as(
-        "SELECT deal_subfolder, deal_number FROM exercise_boards WHERE exercise_id = ?",
+    let boards: Vec<(String, String, i32)> = sqlx::query_as(
+        "SELECT collection_id, deal_subfolder, deal_number FROM exercise_boards WHERE exercise_id = ?",
     )
     .bind(&exercise_id)
     .fetch_all(pool)
     .await
     .map_err(|e| format!("Exercise board fetch failed: {}", e))?;
 
-    for (deal_subfolder, deal_number) in &boards {
+    for (collection_id, deal_subfolder, deal_number) in &boards {
         let observations: Vec<ObservationFullRow> = sqlx::query_as(
             r#"
             SELECT id, timestamp, correct, board_result, wilderness
             FROM observations
             WHERE user_id = ? AND assignment_id = ?
-              AND deal_subfolder = ? AND deal_number = ?
+              AND collection_id = ? AND deal_subfolder = ? AND deal_number = ?
             ORDER BY timestamp ASC
             "#,
         )
         .bind(user_id)
         .bind(assignment_id)
+        .bind(collection_id)
         .bind(deal_subfolder)
         .bind(deal_number)
         .fetch_all(pool)
@@ -530,6 +534,7 @@ pub async fn recompute_assignment_boards(
             pool,
             user_id,
             assignment_id,
+            collection_id,
             deal_subfolder,
             *deal_number,
             final_status,
@@ -545,6 +550,7 @@ async fn upsert_assignment_board_status(
     pool: &Pool<Sqlite>,
     user_id: &str,
     assignment_id: &str,
+    collection_id: &str,
     deal_subfolder: &str,
     deal_number: i32,
     status: &str,
@@ -554,11 +560,11 @@ async fn upsert_assignment_board_status(
     sqlx::query(
         r#"
         INSERT INTO assignment_board_status (
-            user_id, assignment_id, deal_subfolder, deal_number,
+            user_id, assignment_id, collection_id, deal_subfolder, deal_number,
             status, last_observation_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id, assignment_id, deal_subfolder, deal_number) DO UPDATE SET
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, assignment_id, collection_id, deal_subfolder, deal_number) DO UPDATE SET
             status              = excluded.status,
             last_observation_at = excluded.last_observation_at,
             updated_at          = excluded.updated_at
@@ -566,6 +572,7 @@ async fn upsert_assignment_board_status(
     )
     .bind(user_id)
     .bind(assignment_id)
+    .bind(collection_id)
     .bind(deal_subfolder)
     .bind(deal_number)
     .bind(status)
@@ -606,6 +613,7 @@ fn is_board_cold(
 async fn upsert_board_status_v2(
     pool: &Pool<Sqlite>,
     user_id: &str,
+    collection_id: &str,
     deal_subfolder: &str,
     deal_number: i32,
     status: &str,
@@ -624,13 +632,13 @@ async fn upsert_board_status_v2(
     sqlx::query(
         r#"
         INSERT INTO board_status (
-            user_id, deal_subfolder, deal_number,
+            user_id, collection_id, deal_subfolder, deal_number,
             status, wilderness, last_error_date,
             star_count, max_stars, last_star_update, wild_achievement,
             last_observation_at, updated_at, achievement, prerelease
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', ?)
-        ON CONFLICT(user_id, deal_subfolder, deal_number) DO UPDATE SET
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', ?)
+        ON CONFLICT(user_id, collection_id, deal_subfolder, deal_number) DO UPDATE SET
             status              = excluded.status,
             wilderness          = excluded.wilderness,
             last_error_date     = excluded.last_error_date,
@@ -644,6 +652,7 @@ async fn upsert_board_status_v2(
         "#,
     )
     .bind(user_id)
+    .bind(collection_id)
     .bind(deal_subfolder)
     .bind(deal_number)
     .bind(status)
