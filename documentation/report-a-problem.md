@@ -51,15 +51,17 @@ when the board is deemed reportable. The gate (in `MainLayout.vue::reportEnabled
    |----------|----------|
    | `true`   | Force reporting **on** for every board in the collection, regardless of release state. |
    | `false`  | Force it **off** — a kill switch. |
-   | *absent* | Defer to the board's **released** flag (`deal.stable`). |
-3. The **released** flag is `deal.stable`, set from the PBN's file-level
+   | *absent* | Defer to the board's **`stable`** (release) flag (`deal.stable`). |
+3. The **`stable`** flag is `deal.stable`, set from the PBN's file-level
    `%bridge-classroom-stable: true` (applies to every board in the file) or a
    per-board `[Stable]` override. This is the **same flag that lets a board count
-   toward mastery** — so "vetted enough to track mastery" implies "vetted enough
-   to accept reports on."
+   toward mastery** (`prerelease = NOT stable`) — so "vetted enough to track
+   mastery" implies "vetted enough to accept reports on." This board/file-level
+   `stable` flag is a **different scope** from the collection-level `report` flag
+   above; see the [scope summary](adr/board-identity-and-history-integrity.md#41-scope-summary-three-independent-flags).
 
 ### Why it's shaped this way
-- **Baker Bridge** ships released content with the file-level stable flag, so its
+- **Baker Bridge** ships stable content with the file-level `%bridge-classroom-stable` flag, so its
   boards are reportable automatically — no per-collection opt-in, no per-board
   tagging. To disable it wholesale, add `report: false` to its collection entry.
 - **David's coaching** (`pbs-coaching`) is curated as a set and not all of it
