@@ -44,13 +44,23 @@ pub struct StudentSummaryRow {
     pub updated_at: String,
 }
 
+/// One recently-practiced lesson, with a server-computed release status so the
+/// GUI can badge it without inspecting individual boards (ADR-0001).
+#[derive(Debug, Serialize)]
+pub struct RecentLesson {
+    pub subfolder: String,
+    /// `released` (no prerelease boards played), `beta` (all prerelease), or
+    /// `mixed` — derived from the student's `board_status` rows for this lesson.
+    pub status: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct StudentSummaryEntry {
     #[serde(flatten)]
     pub summary: StudentSummaryRow,
     /// Top N most-recently-practiced lessons (by last_observation_at
     /// across the user's `board_status` rows). Up to 3 entries.
-    pub recent_lessons: Vec<String>,
+    pub recent_lessons: Vec<RecentLesson>,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,28 +122,38 @@ pub async fn get_student_summaries(
     // Recent lessons: pull all (user_id, deal_subfolder, last_observation_at)
     // tuples for the requested users in one query, then trim to top 3
     // per user in Rust. Cheap at our scale.
+    // Per (user, lesson): most recent activity, plus a prerelease tally so we can
+    // label the lesson released / beta / mixed without the GUI touching boards.
     let lessons_sql = format!(
-        "SELECT user_id, deal_subfolder, MAX(last_observation_at) AS last_obs \
+        "SELECT user_id, deal_subfolder, MAX(last_observation_at) AS last_obs, \
+                SUM(prerelease) AS beta_boards, COUNT(*) AS total_boards \
          FROM board_status \
          WHERE user_id IN ({}) AND last_observation_at IS NOT NULL \
          GROUP BY user_id, deal_subfolder \
          ORDER BY last_obs DESC",
         placeholders
     );
-    let mut lessons_q = sqlx::query_as::<_, (String, String, String)>(&lessons_sql);
+    let mut lessons_q = sqlx::query_as::<_, (String, String, String, i64, i64)>(&lessons_sql);
     for uid in &user_ids {
         lessons_q = lessons_q.bind(*uid);
     }
-    let lesson_rows: Vec<(String, String, String)> = lessons_q
+    let lesson_rows: Vec<(String, String, String, i64, i64)> = lessons_q
         .fetch_all(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let mut recent_by_user: HashMap<String, Vec<String>> = HashMap::new();
-    for (uid, subfolder, _last_obs) in lesson_rows {
+    let mut recent_by_user: HashMap<String, Vec<RecentLesson>> = HashMap::new();
+    for (uid, subfolder, _last_obs, beta_boards, total_boards) in lesson_rows {
         let entry = recent_by_user.entry(uid).or_default();
         if entry.len() < 3 {
-            entry.push(subfolder);
+            let status = if beta_boards == 0 {
+                "released"
+            } else if beta_boards >= total_boards {
+                "beta"
+            } else {
+                "mixed"
+            };
+            entry.push(RecentLesson { subfolder, status: status.to_string() });
         }
     }
 

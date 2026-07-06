@@ -90,7 +90,15 @@
                   v-for="(lesson, i) in recentLessons[student.id]"
                   :key="i"
                   class="lesson-tag"
-                >{{ lesson }}</span>
+                >{{ lesson.name }}<span
+                    v-if="lesson.status === 'beta'"
+                    class="lesson-badge beta"
+                    title="Beta lesson — not counted toward mastery"
+                  >beta</span><span
+                    v-else-if="lesson.status === 'mixed'"
+                    class="lesson-badge mixed"
+                    title="Mixed — includes beta boards not counted toward mastery"
+                  >mixed</span></span>
                 <span v-if="!recentLessons[student.id]?.length" class="no-data-label">-</span>
               </div>
             </td>
@@ -468,6 +476,27 @@ function initials(student) {
   font-size: 12px;
   color: #555;
   white-space: nowrap;
+}
+
+/* Release-status badge on a recent lesson (ADR-0001): beta / mixed. */
+.lesson-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+.lesson-badge.beta {
+  background: #ff9800;
+  color: #fff;
+}
+.lesson-badge.mixed {
+  background: #ffe0b2;
+  color: #8a5a00;
 }
 
 /* Buttons */

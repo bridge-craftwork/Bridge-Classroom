@@ -235,7 +235,12 @@ function getStudentRecentLessons(userId, limit = 3) {
   const accomplishments = useAccomplishments()
   return summary.recent_lessons
     .slice(0, limit)
-    .map(sf => accomplishments.formatLessonName(sf))
+    .map(l => {
+      // Tolerate the legacy string shape during a deploy transition.
+      const subfolder = typeof l === 'string' ? l : l.subfolder
+      const status = typeof l === 'string' ? 'released' : (l.status || 'released')
+      return { name: accomplishments.formatLessonName(subfolder), status }
+    })
 }
 
 /**
