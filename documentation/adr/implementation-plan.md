@@ -55,10 +55,14 @@ Backfills + full recompute (Phase 1) set David's existing content to `prerelease
 
 ---
 
-## Slices (delivery order)
+## Slices (delivery order + status)
 
-- **Slice 1 (this PR):** `observations` columns (`collection_id`, `prerelease`) + one-time backfill + `admin.rs` platform-stat `prerelease = 0` filters. No dependencies, no PK rebuilds, no behavior change for existing Baker content. `board_version_token`, the board_status-derived mastery filters, and ingest wiring are deferred (they need the `board_status` rebuild / frontend).
-- **Slice 2:** `board_status` (+ `assignment_board_status`, `exercise_boards`) rebuilds with `collection_id` in the PK + `board_status.prerelease`; recompute-signature change; `lesson_mastery`/`student_summaries` filters; full recompute.
-- **Slice 3:** ingest wiring + `board_version_token` + `reports.rs`.
-- **Slice 4:** frontend (deal loader, write path, triangle marker, dev warning, report token).
-- **Slice 5:** exercise-creation readiness guard.
+Re-sliced during implementation: the `collection_id`-in-PK rebuild (the Drury cross-collection fix) was split out of slice 2 into its own later slice, because it's the riskiest migration (live-table PK rebuilds) and is independent of the prerelease-mastery exclusion. Slice 2 therefore ships prerelease exclusion **without** any PK change; today's data has no cross-collection straddling, so mastery is already correct without it.
+
+- **Slice 1 — ✅ merged (#53):** `observations.collection_id` + `observations.prerelease` + one-time backfill + `admin.rs` platform-stat `prerelease = 0` filters. No PK rebuilds, no behavior change for Baker content.
+- **Slice 2 (prerelease-mastery) — 🔧 in progress:** `board_status.prerelease` column + backfill; `recompute_board_history` stamps it (board prerelease = most-recent observation's flag); `lesson_mastery` + `student_summaries` filter `prerelease = 0`; `get_board_status` returns it. **No PK change.**
+- **Frontend triangle — ✅ PR #56:** `BoardMasteryStrip` renders prerelease boards as a triangle; `prerelease` threaded through `useBoardStatus.buildBoardMastery` (+ unit test). No hard dependency on the backend field.
+- **Report token (C6) — ✅ PR #57:** `reports.rs` accepts + echoes `board_version_token` (optional, opaque passthrough).
+- **Slice 3 (collection identity) — ⏳ deferred:** promote `collection_id` into the PKs of `board_status`, `exercise_boards`, `assignment_board_status` (table rebuilds) + fold into the recompute/mastery keys. Fixes the latent Drury conflation. Do **after** slice 2 merges (heavy `board_status.rs` overlap).
+- **Slice 4 (write path + deal loader) — ⏳ pending:** deal loader surfaces `collection_id` / `prerelease` / `board_version_token` from the PBN; observation ingest persists them; report context includes the token; live-play "under development" warning; `BoardMasteryGrid` marker. Gated on the agreed PBN tags.
+- **Slice 5 — ⏳ pending:** exercise-creation readiness guard (needs per-board `ready` at editor time).
