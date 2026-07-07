@@ -379,7 +379,7 @@
               <div v-if="auctionLoading" class="bp-loading-card">Computing&hellip;</div>
             </div>
             <div class="bp-hand-col">
-              <HandDisplay
+              <SeatPanel
                 :hand="currentDeal.hands[yourSeat]"
                 :seat="yourSeat"
                 :show-hcp="true"
@@ -595,7 +595,7 @@
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
-import HandDisplay from '../components/HandDisplay.vue'
+import SeatPanel from '../components/SeatPanel.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'

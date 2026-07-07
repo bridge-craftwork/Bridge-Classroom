@@ -4,7 +4,6 @@ export default {
   label: 'partial (showcards)',
   props: {
     hand: { spades: ['A'], hearts: [], diamonds: ['K', 'T'], clubs: [] },
-    seat: 'S',
     showHcp: true,
   },
 }

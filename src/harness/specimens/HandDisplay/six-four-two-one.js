@@ -3,7 +3,6 @@ export default {
   label: '6-4-2-1',
   props: {
     hand: { spades: ['A', 'K', 'Q', 'J', 'T', '4'], hearts: ['K', 'Q', '7', '3'], diamonds: ['A', '8'], clubs: ['5'] },
-    seat: 'S',
     showHcp: true,
   },
 }

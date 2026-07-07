@@ -4,7 +4,6 @@ export default {
   label: 'all tens',
   props: {
     hand: { spades: ['A', 'T', '9'], hearts: ['A', 'K', 'T', '4'], diamonds: ['T', '8'], clubs: ['A', 'T', '9', '2'] },
-    seat: 'S',
     showHcp: true,
   },
 }

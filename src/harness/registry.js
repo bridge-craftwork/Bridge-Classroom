@@ -5,8 +5,10 @@
 
 import HandDisplay from '../components/HandDisplay.vue'
 import BridgeTable from '../components/BridgeTable.vue'
+import SeatChip from '../components/SeatChip.vue'
+import SeatPanel from '../components/SeatPanel.vue'
 
-export const COMPONENTS = { HandDisplay, BridgeTable }
+export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable }
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 

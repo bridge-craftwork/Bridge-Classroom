@@ -3,7 +3,6 @@ export default {
   label: '7-card suit',
   props: {
     hand: { spades: ['A', 'K', 'Q', 'J', 'T', '7', '4'], hearts: ['K', '8'], diamonds: ['Q', '5'], clubs: ['J', '3'] },
-    seat: 'S',
     showHcp: true,
   },
 }

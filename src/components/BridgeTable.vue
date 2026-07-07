@@ -3,7 +3,7 @@
     <!-- North - spans all columns -->
     <div class="ns-column north-row">
       <div v-if="!hiddenSeats.includes('N') && hands.N" class="position north">
-        <HandDisplay
+        <SeatPanel
           :hand="hands.N"
           seat="N"
           :showHcp="showHcp"
@@ -18,7 +18,7 @@
 
     <!-- West -->
     <div v-if="!hiddenSeats.includes('W') && hands.W" class="position west">
-      <HandDisplay
+      <SeatPanel
         :hand="hands.W"
         seat="W"
         :showHcp="showHcp"
@@ -37,7 +37,7 @@
 
     <!-- East -->
     <div v-if="!hiddenSeats.includes('E') && hands.E" class="position east">
-      <HandDisplay
+      <SeatPanel
         :hand="hands.E"
         seat="E"
         :showHcp="showHcp"
@@ -52,7 +52,7 @@
     <!-- South - spans all columns -->
     <div class="ns-column south-row">
       <div v-if="!hiddenSeats.includes('S') && hands.S" class="position south">
-        <HandDisplay
+        <SeatPanel
           :hand="hands.S"
           seat="S"
           :showHcp="showHcp"
@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import HandDisplay from './HandDisplay.vue'
+import SeatPanel from './SeatPanel.vue'
 
 const props = defineProps({
   hands: {

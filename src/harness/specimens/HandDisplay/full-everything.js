@@ -8,7 +8,6 @@ export default {
   label: 'full-everything (placeholder channels)',
   props: {
     hand: { spades: ['A', 'K', 'Q', 'J', 'T', '7', '4'], hearts: ['A', 'K', '4'], diamonds: ['K', 'Q'], clubs: ['A'] },
-    seat: 'S',
     marks: {
       cards: {
         SA: { played: true },
