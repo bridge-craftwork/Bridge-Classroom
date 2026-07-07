@@ -67,6 +67,17 @@ const routes = [
   }
 ]
 
+// Rendering harness (Tier 1). Behind VITE_HARNESS: the flag is statically
+// replaced at build time, so a production build (flag unset) dead-code-drops
+// this branch and never emits the harness chunk or its specimens.
+if (import.meta.env.VITE_HARNESS === '1') {
+  routes.unshift({
+    path: '/harness/component/:component/:specimen',
+    name: 'harness-component',
+    component: () => import('../harness/HarnessComponentView.vue')
+  })
+}
+
 const router = createRouter({
   history: createWebHashHistory(),
   routes

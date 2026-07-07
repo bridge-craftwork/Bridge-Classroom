@@ -51,3 +51,7 @@ SECURITY-AND-CODE-REVIEW.md
 # Ephemeral clone of the Game Analysis app for /game-analysis/ co-location (build-site.sh)
 game-analysis-src/
 node_modules
+
+# rendering harness (generated)
+gallery/
+dist-harness/

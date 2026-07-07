@@ -1,0 +1,8 @@
+/* Harness mode only — kills motion so screenshots are deterministic. Lives in
+   the harness view (dynamically imported behind VITE_HARNESS), so it is never
+   part of a production bundle. */
+*, *::before, *::after {
+  transition: none !important;
+  animation: none !important;
+  caret-color: transparent !important;
+}
