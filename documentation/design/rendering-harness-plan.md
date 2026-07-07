@@ -255,7 +255,7 @@ no diff mode.
 - **Acceptance:** one command produces a gallery page of HandDisplay at the four
   container widths. Production build contains no harness code.
 
-### Slice 3 — Annotation contract, rendered as today
+### Slice 3 — Annotation contract, rendered as today — ✅ SHIPPED (44 renders 0-diff; PR #77)
 
 Add `marks` and `density` props to HandDisplay. Implement exactly two marks:
 `played` (rendered as today's strikethrough) and `active-seat` (rendered as today's
