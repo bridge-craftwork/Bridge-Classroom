@@ -124,7 +124,7 @@
           >
             <template #center>
               <TrickArea
-                v-if="srv.dealLoaded && (srv.phase === 'play' || srv.phase === 'complete')"
+                v-if="srv.dealLoaded && srvCenterSlot === 'trick-area'"
                 :current-trick="srv.currentTrick"
                 :last-finished-trick="srv.lastFinishedTrick"
                 :tricks-taken="srv.tricksTaken"
@@ -365,7 +365,7 @@
                   @toggle-bid="toggleDivergedBid"
                 />
               </div>
-              <div v-if="currentSeat === yourSeat && !auctionLoading" class="bp-card">
+              <div v-if="localActionSlot === 'bidding-box' && !auctionLoading" class="bp-card">
                 <h3>Your bid</h3>
                 <BiddingBox
                   :last-bid="lastNonPassNonDouble"
@@ -405,7 +405,7 @@
             >
               <template #center>
                 <TrickArea
-                  v-if="cardplayPhase === 'playing' || cardplayPhase === 'complete'"
+                  v-if="localCenterSlot === 'trick-area'"
                   :current-trick="cardplay.currentTrick"
                   :last-finished-trick="cardplay.lastFinishedTrick.value"
                   :tricks-taken="cardplay.tricksTaken.value"
@@ -439,7 +439,7 @@
                 />
               </div>
 
-              <div v-if="!auctionComplete && currentSeat === yourSeat && !auctionLoading" class="bp-card">
+              <div v-if="localActionSlot === 'bidding-box' && !auctionLoading" class="bp-card">
                 <h3>Your bid</h3>
                 <BiddingBox
                   :last-bid="lastNonPassNonDouble"
@@ -608,6 +608,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import { useLocalEngine } from '../composables/engines/localEngine.js'
+import { useTableSlots } from '../composables/engines/tableSlots.js'
 import { useServerTable } from '../composables/useServerTable.js'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
@@ -937,6 +938,34 @@ const cardplayPhase = computed(() => {
   if (cardplay.playComplete.value) return 'complete'
   return 'playing'
 })
+
+// ── Slice 6: mutually-exclusive table slots, decided in ONE place ──────────
+// Both shells read the center (trick area) / action (bidding box) swap from the
+// SAME derivation (useTableSlots) instead of re-testing phase inline. Local
+// rides the localEngine phase/wantsCall lifted in Slice 5. `hasCardplay` = "is
+// cardplay engaged for this board" — for local that's `playCardplay &&
+// cardplayPossible` (NOT playComplete): the trick area owns the center for the
+// whole post-auction life of a playable deck (matching the old
+// cardplayPhase ∈ {playing, complete} gate, including the pre-first-card moment
+// and toggled-off-mid-play), and never for off/unsupported. Locked by the
+// cross-product test in tableEngine.test.js.
+//
+// NOTE: only the CENTER slot is unified for the server here — the server's
+// bidding-box card intentionally shows DISABLED while waiting (a different
+// affordance than local's on-turn-only box), so switching it to `wantsCall`
+// would hide the off-turn box (a visible change), deferred to its own slice.
+const { center: localCenterSlot, action: localActionSlot } = useTableSlots({
+  phase: enginePhase,
+  wantsCall: engine.wantsCall,
+  hasCardplay: computed(() => playCardplay.value && cardplayPossible.value),
+})
+const srvCenterSlot = props.server
+  ? useTableSlots({
+      phase: computed(() => (srv.phase === 'complete' ? 'review' : srv.phase)),
+      wantsCall: computed(() => !!srv.myTurnToBid),
+      hasCardplay: computed(() => true), // a served board always plays out
+    }).center
+  : null
 const botName = computed(() => {
   try { return getBot(cardplayBotName.value).name } catch { return cardplayBotName.value }
 })
