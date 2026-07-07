@@ -17,22 +17,9 @@ if (!fs.existsSync(ROOT)) {
 }
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-const SUIT = { spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣' }
-const fmtRank = (r) => (String(r).toUpperCase() === 'T' ? '10' : String(r))
 
-// Holding as colored suit rows: "♠ K Q 10 2   ♥ A 8 4   ♦ Q J 9   ♣ K 6 3".
-function formatHand(hand) {
-  if (!hand) return ''
-  return ['spades', 'hearts', 'diamonds', 'clubs']
-    .map((s) => {
-      const cards = (hand[s] || []).map(fmtRank).join(' ') || '—'
-      const red = s === 'hearts' || s === 'diamonds'
-      return `<span class="suit ${red ? 'red' : ''}">${SUIT[s]}</span>&nbsp;${esc(cards)}`
-    })
-    .join('&nbsp;&nbsp;&nbsp;')
-}
-
-// Config props as flags/badges: "seat S · showHcp · played: SA DT C2".
+// Config props as flags/badges: "seat S · showHcp · played: SA DT C2". The
+// holding itself isn't listed — it reads well enough in the renders alongside.
 function formatProps(props) {
   const out = []
   if (props.seat) out.push(`seat ${esc(props.seat)}`)
@@ -64,7 +51,6 @@ for (const comp of fs.readdirSync(ROOT).sort()) {
     const spec = await loadSpecimen(comp, name)
     const specCell = `<div class="spec-name">${esc(spec?.label || name)}</div>`
       + (spec ? `<div class="spec-file">${esc(name)}.js</div>` : '')
-      + (spec?.props?.hand ? `<div class="spec-hand">${formatHand(spec.props.hand)}</div>` : '')
       + (spec?.props ? `<div class="spec-props">${formatProps(spec.props)}</div>` : '')
     body += `<tr><td class="spec">${specCell}</td>`
     for (const w of widths) {
@@ -84,11 +70,8 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Component 
   h1 { font-size: 20px; } h2 { margin-top: 32px; font-size: 16px; color: #1D9E75; }
   table { border-collapse: collapse; } th, td { border: 1px solid #e2e2e2; padding: 8px; vertical-align: top; text-align: center; }
   th { background: #fafafa; font-weight: 600; } th.spec, td.spec { text-align: left; white-space: nowrap; }
-  td.spec { min-width: 240px; }
   .spec-name { font-weight: 600; font-size: 13px; }
   .spec-file { font: 11px 'Courier New', monospace; color: #999; margin: 1px 0 6px; }
-  .spec-hand { font: 14px 'Courier New', monospace; color: #222; line-height: 1.5; }
-  .spec-hand .suit { color: #1a1a1a; } .spec-hand .suit.red { color: #d32f2f; }
   .spec-props { margin-top: 6px; }
   .spec-props .flag { display: inline-block; font: 11px 'Courier New', monospace; color: #555; background: #f0f0f0; border-radius: 3px; padding: 1px 5px; margin: 1px 2px 1px 0; }
   img { display: block; max-width: 320px; height: auto; } td.missing { color: #c00; }
