@@ -367,7 +367,7 @@ player see the bidding box **disabled** (today's server behavior) or **hidden**
   in a real seated auction, then production. (Per Rule of Engagement: visible
   changes get their own slice and a test-deploy gate.)
 
-### Slice 7 — Fixture engine + first view scenarios
+### Slice 7 — Fixture engine + first view scenarios — ✅ SHIPPED (table-scene view tier; 2 fixtures × 5 viewports; PR #79)
 
 Fixture engine implementing the engine contract over frozen JSON. First manifest
 rows: `auction-mid-competitive` × UnifiedTable × all five viewports;
