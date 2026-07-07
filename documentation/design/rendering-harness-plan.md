@@ -245,7 +245,7 @@ the strikethrough**. The cell structure ships inert.
 - **Acceptance:** production pages pixel-identical (screenshot diff in PR).
 - **Out of scope:** any visual change, marks prop, density changes.
 
-### Slice 2 — Specimen harness, minimum viable
+### Slice 2 — Specimen harness, minimum viable — ✅ SHIPPED (10 specimens × 4 widths; PR #76)
 
 `/harness/component/:component/:specimen` route behind `VITE_HARNESS`; 3–4
 HandDisplay specimen files (flat 4333, 6421, 7-card boundary, mid-play with cards
