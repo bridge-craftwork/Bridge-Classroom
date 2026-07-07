@@ -4,8 +4,9 @@
 // view, which is itself behind VITE_HARNESS — so none of this reaches prod.
 
 import HandDisplay from '../components/HandDisplay.vue'
+import BridgeTable from '../components/BridgeTable.vue'
 
-export const COMPONENTS = { HandDisplay }
+export const COMPONENTS = { HandDisplay, BridgeTable }
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 

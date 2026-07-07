@@ -9,7 +9,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'N'"
-          :playedCards="playedCards?.N"
+          :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
         />
@@ -24,7 +24,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'W'"
-        :playedCards="playedCards?.W"
+        :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
       />
@@ -43,7 +43,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'E'"
-        :playedCards="playedCards?.E"
+        :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
       />
@@ -58,7 +58,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'S'"
-          :playedCards="playedCards?.S"
+          :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
         />
@@ -76,7 +76,7 @@
 <script setup>
 import HandDisplay from './HandDisplay.vue'
 
-defineProps({
+const props = defineProps({
   hands: {
     type: Object,
     required: true,
@@ -113,6 +113,18 @@ defineProps({
 })
 
 defineEmits(['card-click'])
+
+// Build a seat's annotation map from the (unchanged) external props: each
+// played card code becomes a `played` mark, and the clickable seat carries the
+// `active-seat` frame. Codes are normalized to upper-suit + upper-rank ("DT")
+// to match HandDisplay's per-card lookup — same match behavior as before.
+function marksFor(seat) {
+  const cards = {}
+  for (const code of props.playedCards?.[seat] || []) {
+    cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { played: true }
+  }
+  return { cards, activeSeat: props.clickableSeat === seat }
+}
 </script>
 
 <style scoped>

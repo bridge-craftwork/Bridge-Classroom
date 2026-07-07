@@ -1,5 +1,5 @@
 <template>
-  <div class="hand" :class="{ hidden: hidden, compact: compact, minimal: minimal, clickable: clickable, 'hide-played': hidePlayedCards }">
+  <div class="hand" :class="[densityClass, { hidden: hidden, compact: compact, minimal: minimal, 'active-seat': activeSeat, 'hide-played': hidePlayedCards }]">
     <!-- Minimal mode: just suit symbols in a row (for hidden E/W on desktop) -->
     <template v-if="minimal && hidden">
       <div class="minimal-hand">
@@ -16,29 +16,30 @@
         <template v-for="suit in suits" :key="suit">
           <div v-if="!isPartialHand || hasSuitCards(suit)" class="suit-row">
             <span class="suit-symbol" :class="suitClass(suit)">{{ suitSymbol(suit) }}</span>
-            <!-- One DOM cell per card. The same card element persists across
-                 modes so later slices can animate/annotate it. Three contexts,
-                 each pixel-identical to the pre-cell rendering:
+            <!-- One DOM cell per card. Marks (played + placeholder channels) come
+                 from the annotation map; three contexts, each pixel-identical to
+                 the pre-marks rendering:
                    clickable  → interactive cells in a flex row (gap between)
                    played     → adjacent cells, played ones struck through
-                   plain      → cells separated by real spaces (matches the old
-                                space-joined text run) -->
+                   plain      → cells separated by real spaces -->
             <span v-if="clickable" class="cards clickable-cards">
               <span
                 v-for="card in orderedHand[suit]"
                 :key="card"
                 class="cell"
-                :class="isCardPlayed(suit, card) ? 'played' : 'cell-clickable'"
+                :class="cellClass(suit, card, isCardPlayed(suit, card) ? 'played' : 'cell-clickable')"
+                :style="cellFill(suit, card)"
                 @click="!isCardPlayed(suit, card) && $emit('card-click', { suit: suitLetter(suit), rank: card })"
-              >{{ formatCard(card) }}</span>
+              >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>
             </span>
-            <span v-else-if="hasPlayedCards" class="cards">
+            <span v-else-if="hasPlayedMarks" class="cards">
               <span
                 v-for="card in orderedHand[suit]"
                 :key="card"
                 class="cell"
-                :class="{ played: isCardPlayed(suit, card) }"
-              >{{ formatCard(card) }}</span>
+                :class="cellClass(suit, card, isCardPlayed(suit, card) ? 'played' : '')"
+                :style="cellFill(suit, card)"
+              >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>
             </span>
             <span v-else class="cards"><template v-for="(card, i) in orderedHand[suit]" :key="card"><span class="cell">{{ formatCard(card) }}</span>{{ i < orderedHand[suit].length - 1 ? ' ' : '' }}</template></span>
           </div>
@@ -98,13 +99,27 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Interaction only: makes cells clickable (cursor + card-click emit). The
+  // on-turn FRAME is a separate concern — the `active-seat` mark (see below).
   clickable: {
     type: Boolean,
     default: false
   },
-  playedCards: {
-    type: Array,
+  // Annotation map (Slice 3). Two marks are wired:
+  //   cards: { <code>: { played, badge, fill } }  — per-card, keyed by "SK"/"DT"
+  //   activeSeat: bool                             — seat-level on-turn frame
+  // `played` renders as the strikethrough/collapse; `badge`/`fill` are generic
+  // placeholder channels for future marks (rendered on the individual-cell
+  // paths only). Producers never emit badge/fill in production today.
+  marks: {
+    type: Object,
     default: null
+  },
+  // Rendering budget: 'chip' | 'compact' | 'full'. Only 'full' is wired now
+  // (renders as today); the density-specific budgets arrive with later slices.
+  density: {
+    type: String,
+    default: 'full'
   },
   // When true, cards already played disappear from the hand entirely (matches
   // real-bridge default where played cards are turned face-down). When false,
@@ -167,32 +182,42 @@ function suitClass(suit) {
   return getSuitClass(suit)
 }
 
-// Map suit name to single letter for card-click events
+// Map suit name to single letter for card-click events + mark codes
 const SUIT_LETTERS = { spades: 'S', hearts: 'H', diamonds: 'D', clubs: 'C' }
 function suitLetter(suit) {
   return SUIT_LETTERS[suit] || suit
 }
 
-// playedCards is an array like ['SK', 'H3'] — card codes from showcards for this seat
-const hasPlayedCards = computed(() => props.playedCards && props.playedCards.length > 0)
+const densityClass = computed(() => `density-${props.density}`)
+const activeSeat = computed(() => !!props.marks?.activeSeat)
 
-// Build a Set of "suit:rank" keys for O(1) lookup
-const playedCardSet = computed(() => {
-  if (!props.playedCards) return null
-  const set = new Set()
-  for (const code of props.playedCards) {
-    const suit = code[0].toUpperCase()
-    const rank = code.slice(1).toUpperCase()
-    const suitName = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }[suit]
-    if (suitName) set.add(`${suitName}:${rank}`)
-  }
-  return set
-})
-
-function isCardPlayed(suit, rank) {
-  if (!playedCardSet.value) return false
-  return playedCardSet.value.has(`${suit}:${rank}`)
+// Per-card annotation lookup, keyed by code ("SK", "DT", …).
+function cardMark(suit, rank) {
+  return props.marks?.cards?.[suitLetter(suit) + rank] || null
 }
+function isCardPlayed(suit, rank) {
+  return !!cardMark(suit, rank)?.played
+}
+function cardBadge(suit, rank) {
+  return cardMark(suit, rank)?.badge || null
+}
+function cellFill(suit, rank) {
+  const fill = cardMark(suit, rank)?.fill
+  return fill ? { backgroundColor: fill } : null
+}
+// Compose a cell's classes: the mode class (played / cell-clickable / '') plus
+// has-badge, which turns on `position: relative` ONLY where a badge exists — so
+// unmarked cells stay byte-identical to before.
+function cellClass(suit, rank, mode) {
+  return [mode, cardBadge(suit, rank) ? 'has-badge' : ''].filter(Boolean)
+}
+
+// Any card in THIS hand carries a played mark → use the individual-cell path.
+const hasPlayedMarks = computed(() => {
+  const cards = props.marks?.cards
+  if (!cards) return false
+  return Object.values(cards).some((m) => m?.played)
+})
 </script>
 
 <style scoped>
@@ -201,7 +226,7 @@ function isCardPlayed(suit, rank) {
   border-radius: 8px;
   padding: 12px;
   min-width: 220px;  /* Wide enough to align N/S hands consistently */
-  /* Transparent baseline so toggling .clickable doesn't shift layout. */
+  /* Transparent baseline so toggling the frame doesn't shift layout. */
   border: 2px solid transparent;
 }
 
@@ -262,9 +287,8 @@ function isCardPlayed(suit, rank) {
   user-select: none;
 }
 
-/* Clickable cards mode (border color only — baseline is always rendered
-   so toggling clickable doesn't reflow surrounding layout). */
-.hand.clickable {
+/* active-seat mark: the on-turn frame (was the `.hand.clickable` frame). */
+.hand.active-seat {
   background: #e3f2fd;
   border-color: #2196f3;
 }
@@ -297,6 +321,25 @@ function isCardPlayed(suit, rank) {
 .cell-clickable:active {
   background: #90caf9;
   transform: scale(0.95);
+}
+
+/* Placeholder channels for future marks (harness / full-everything only — no
+   producer emits badge/fill in production, so real cells never grow one). */
+.cell.has-badge {
+  position: relative;
+}
+.cell-badge {
+  position: absolute;
+  top: -7px;
+  right: -3px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #fff;
+  background: #6a1b9a;
+  border-radius: 8px;
+  padding: 1px 4px;
 }
 
 .hidden-hand {

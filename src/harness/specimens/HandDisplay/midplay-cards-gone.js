@@ -5,7 +5,7 @@ export default {
   props: {
     hand: { spades: ['A', 'K', 'T', '5'], hearts: ['A', 'K', '4'], diamonds: ['K', 'Q', 'T'], clubs: ['A', '7', '2'] },
     seat: 'S',
-    playedCards: ['SA', 'DT', 'C2'],
+    marks: { cards: { SA: { played: true }, DT: { played: true }, C2: { played: true } } },
     hidePlayedCards: true,
   },
 }
