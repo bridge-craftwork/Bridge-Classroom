@@ -280,7 +280,7 @@ revertible.
   unchanged for now. **This slice is visible to students** — deploy to test,
   verify in a real lesson flow, then production.
 
-### Slice 5 — Phase lift (independent; can run parallel any day)
+### Slice 5 — Phase lift (independent; can run parallel any day) — ✅ SHIPPED (merged to `main`)
 
 Move `cardplayPhase` out of BiddingPracticeView into `localEngine.phase` with the
 three-state model (`bidding` | `play` | `review`); map serverEngine's `complete` →
@@ -302,7 +302,7 @@ rewrite (see Slice 6).
   exactly; server branch unchanged; `wantsCall` present and inert (no call site reads
   it yet).
 
-### Slice 6 — `useTableSlots` with discriminants
+### Slice 6 — `useTableSlots` with discriminants — ✅ SHIPPED (merged to `main`, online test passed)
 
 Pure derivation beside the engine returning **discriminants + props**
 (`center: 'trick-area' | null`, `action: 'bidding-box' | null`), not component
@@ -325,6 +325,47 @@ the engine boundary, where capability differences already live — never in the 
 
 - **Acceptance:** UnifiedTable server and local paths render through the same slot
   bindings; the `action` slot is driven by `wantsCall`; no behavior change.
+
+**What actually shipped, and the one deferral (feeds Slice 6b).** `deriveSlots`
+returns discriminant *strings* (`'trick-area' | 'bidding-box' | null`), not
+`{kind, props}` — props stay bound in each shell's template (behavior-safe; the
+`+props` richness lands when the branches actually merge, later). Two behavior-safe
+findings surfaced during build:
+- **center** keys on `hasCardplay` = cardplay *engaged* (`playCardplay &&
+  cardplayPossible`), **not** *completed*. An earlier `playComplete` formula
+  diverged on two states (the pre-first-card moment; toggled-off-mid-play) — caught
+  by the 32-case cross-product test. "Engaged, not completed" is the load-bearing
+  distinction; keep it.
+- **action driven by `wantsCall` for LOCAL only.** The **server** bidding-box card
+  intentionally shows *disabled while waiting off-turn* — a different affordance
+  than local's on-turn-only box. Moving the server action onto `wantsCall` would
+  *hide* that off-turn box: a visible change, forbidden in this no-behavior-change
+  slice. So Slice 6 unified the server **center** but left the server **action**
+  as-is. Finishing it is **Slice 6b**.
+
+### Slice 6b — Server action slot onto `wantsCall` (VISIBLE change; own slice)
+
+The one piece Slice 6 couldn't take without changing behavior. Decide the server's
+off-turn bidding affordance deliberately, then move the server action card onto the
+`slots.action` (`wantsCall`) discriminant so **both** shells drive the action slot
+from one place — closing the "action driven by `wantsCall`" goal for the server.
+
+The product decision to make first (this is why it's a visible slice, not a
+restructure): when it is **not** your turn during a live auction, should the seated
+player see the bidding box **disabled** (today's server behavior) or **hidden**
+(local behavior, what `wantsCall` alone yields)? Options:
+- **Hidden off-turn** (adopt local's model): server action becomes pure
+  `slots.action`; drop the disabled-box card and its "Waiting for {turnLabel}…"
+  sibling stays as the waiting affordance. Simplest; unifies cleanly.
+- **Disabled off-turn** (keep server's model): the action discriminant must grow a
+  `disabled` state (`{kind:'bidding-box', disabled}`) so one derivation expresses
+  both shells — local always `disabled:false`, server `disabled: !myTurnToBid`.
+  Richer contract, preserves the seated-player "your box is here, greyed" cue.
+
+- **Acceptance:** server action renders through `slots.action`; the chosen off-turn
+  behavior verified on a live table; **visible to players** — deploy to test, verify
+  in a real seated auction, then production. (Per Rule of Engagement: visible
+  changes get their own slice and a test-deploy gate.)
 
 ### Slice 7 — Fixture engine + first view scenarios
 
