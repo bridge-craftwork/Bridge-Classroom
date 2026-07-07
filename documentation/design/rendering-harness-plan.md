@@ -343,7 +343,7 @@ findings surfaced during build:
   slice. So Slice 6 unified the server **center** but left the server **action**
   as-is. Finishing it is **Slice 6b**.
 
-### Slice 6b — Server action slot onto `wantsCall` (VISIBLE change; own slice)
+### Slice 6b — Server action slot onto `wantsCall` (VISIBLE change; own slice) — ✅ SHIPPED (hidden model; merged, confirmed live)
 
 The one piece Slice 6 couldn't take without changing behavior. Decide the server's
 off-turn bidding affordance deliberately, then move the server action card onto the
