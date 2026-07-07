@@ -369,13 +369,15 @@ function doAddTables() {
 // Testing: open N tabs that each join as a distinct student (?student=<name>),
 // so you can populate a class and exercise seating/unseating. Reuses a named
 // window per index so re-spawning doesn't pile up tabs. (Allow pop-ups.)
+// No `?bot=` — that would flip the sticky room mode and override the teacher's
+// "Bots" selector; leave the mode to the selector (default: rules).
 const spawnCount = ref(4)
 function spawnStudents() {
   if (!shareUrl.value) return
   const n = Math.max(1, Math.min(Number(spawnCount.value) || 1, 32))
   for (let i = 1; i <= n; i++) {
     const name = encodeURIComponent(testStudentName(i))
-    window.open(`${shareUrl.value}?student=${name}&bot=random`, `bc-test-student-${i}`)
+    window.open(`${shareUrl.value}?student=${name}`, `bc-test-student-${i}`)
   }
 }
 

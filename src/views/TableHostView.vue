@@ -163,7 +163,7 @@ function spawnPlayers() {
   const n = Math.max(1, Math.min(Number(spawnCount.value) || 1, 3))
   for (let i = 1; i <= n; i++) {
     const name = encodeURIComponent(testStudentName(i))
-    window.open(`${shareUrl.value}?student=${name}&bot=random`, `bc-test-player-${i}`)
+    window.open(`${shareUrl.value}?student=${name}&bot=rules`, `bc-test-player-${i}`)
   }
 }
 
