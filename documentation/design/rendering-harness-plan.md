@@ -269,7 +269,7 @@ fills, badges) — this answers the cell-size question.
   renders in gallery.
 - **Out of scope:** fixing the jitter, changing the strikethrough.
 
-### Slice 4 — First visible change (smallest one) — ✅ SHIPPED (jitter test 0-diff; PR #78; verifying in real flow)
+### Slice 4 — First visible change (smallest one) — ✅ SHIPPED (jitter test 0-diff; PR #78; verified in real flow — jitter eliminated)
 
 Fix active-seat jitter (reserved indicator space) and replace strikethrough with
 cell-collapse in live play. All inside HandDisplay mark-rendering; trivially
