@@ -379,7 +379,7 @@ rows: `auction-mid-competitive` × UnifiedTable × all five viewports;
 
 ### Directional (not yet sliced)
 
-- **SeatChip/SeatPanel extraction:** create SeatChip (identity) and SeatPanel
+- **SeatChip/SeatPanel extraction:** ✅ SHIPPED (PR #81; BridgeTable+scenes 0-diff). create SeatChip (identity) and SeatPanel
   (chip + optional HandDisplay); `active-seat` migrates out of HandDisplay marks;
   layout-inertness obligation moves to SeatPanel; BridgeTable arranges SeatPanels.
   Natural predecessor to the responsive-arranger work (chips at small sizes are
