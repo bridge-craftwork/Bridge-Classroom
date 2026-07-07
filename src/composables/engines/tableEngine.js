@@ -100,6 +100,40 @@ export const SERVER_CAPABILITIES = Object.freeze({
  * @typedef {Object} TableEngine
  */
 
+/**
+ * Canonical table phase — the shared 3-state vocabulary both engines speak.
+ *   bidding — auction in progress
+ *   play    — tricks actively being played
+ *   review  — auction done and not actively playing
+ *
+ * `review` deliberately COLLAPSES three terminal situations that the solo shell
+ * has historically told apart (bidding-only deck with no cardplay, cardplay
+ * unsupported for this deal, 13 tricks complete). They are one phase because
+ * they are one thing: the deal is resolved. What a shell *reveals* in review is
+ * a per-source decision — LocalEngine reveals all four hands + double-dummy,
+ * matching every one of those old terminal states, so the collapse is
+ * behavior-preserving; ServerEngine un-redacts server-side. That reveal choice
+ * lives in the shell/capabilities, never in this enum.
+ *
+ * Pure (no Vue) so it's unit-testable and reusable by the fixture engine.
+ */
+export function derivePhase({ auctionComplete, cardplayActive, cardplayComplete }) {
+  if (!auctionComplete) return 'bidding'
+  if (cardplayActive && !cardplayComplete) return 'play'
+  return 'review'
+}
+
+/**
+ * `wantsCall` — "the experience wants a bid from you now." Kept DISTINCT from a
+ * literal turn flag (`isYourBid`) on purpose: the coached track will map its
+ * step-machine gate `hasBidPrompt → wantsCall`, so overloading turn logic would
+ * break that retrofit. For a live auction (local/server) "wants your call" is
+ * simply your-turn-and-still-bidding; a coached engine substitutes its own truth.
+ */
+export function deriveWantsCall({ auctionComplete, currentSeat, yourSeat }) {
+  return !auctionComplete && currentSeat === yourSeat
+}
+
 /** Feature keys present in `a` but missing/false in `b` — the "b needs these". */
 export function capabilityGaps(a, b) {
   const gaps = []

@@ -796,6 +796,7 @@ const {
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
   finalContract, doubleDummy,
   auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
+  phase: enginePhase,
   summary, canDouble, canRedouble,
   loadDeal, onUserBid, toggleDivergedBid, resetAuction,
 } = engine
@@ -910,25 +911,30 @@ const hiddenSeats = computed(() => {
   return ['N', 'E', 'S', 'W'].filter(s => s !== yourSeat.value)
 })
 
-// Cardplay phase derived from auction + toggle + cardplay engine state.
-//   bidding     — auction in progress
+// Cardplay phase — the solo shell's finer 5-state view, now layered over the
+// engine's canonical 3-state `phase` (Slice 5). The coarse bidding/play/review
+// authority lives in the engine (enginePhase); this computed only adds the
+// review sub-states the solo UI still distinguishes, all of which depend on the
+// view-level "Play the hand" toggle. Slice 6 collapses the template branches
+// onto enginePhase directly.
+//   bidding     — auction in progress            (enginePhase === 'bidding')
 //   off         — auction done, toggle off (existing flow: reveal all 4 hands)
-//   unsupported — toggle on but S isn't declarer (v1 limitation; reveal + notice)
-//   playing     — actively playing tricks
+//   unsupported — toggle on but you aren't declarer (v1 limitation; reveal + notice)
+//   playing     — actively playing tricks (incl. the pre-start transient)
 //   complete    — 13 tricks done; show DD + result
+// Provably identical to the pre-Slice-5 formula (the old `isActive ? playing :
+// playing` tail is a single 'playing'); locked by the cross-product test in
+// tableEngine.test.js.
 const cardplayPossible = computed(() => {
   if (!auctionComplete.value) return false
   const fc = finalContract.value
   return fc && fc.contract && fc.contract !== 'Pass' && fc.declarer === yourSeat.value
 })
 const cardplayPhase = computed(() => {
-  if (!auctionComplete.value) return 'bidding'
+  if (enginePhase.value === 'bidding') return 'bidding'
   if (!playCardplay.value) return 'off'
   if (!cardplayPossible.value) return 'unsupported'
   if (cardplay.playComplete.value) return 'complete'
-  if (cardplay.isActive.value) return 'playing'
-  // Toggle on, auction done, S declares, but engine not yet started — about
-  // to be entered by the watcher below.
   return 'playing'
 })
 const botName = computed(() => {

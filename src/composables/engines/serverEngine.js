@@ -8,6 +8,7 @@
 // same reactive state the TableView render layer already reads — so wrapping it
 // doesn't fork any state.
 
+import { computed } from 'vue'
 import { useRemoteTable } from '../useRemoteTable.js'
 import { useTableSocket } from '../useTableSocket.js'
 import { useDealSourceResolver } from '../useDealSourceResolver.js'
@@ -24,11 +25,26 @@ export function useServerEngine() {
   const socket = useTableSocket()
   const { materialize } = useDealSourceResolver()
 
+  // Normalize to the shared table-engine vocabulary AT THE SEAM: the service
+  // reports 'complete' at board end; the engine contract calls that terminal
+  // state 'review' (see derivePhase). This override sits AFTER `...table`, so it
+  // shadows the raw `table.phase` ref for any consumer of the façade. The live
+  // solo/server shell still reads `useServerTable`/`useRemoteTable` directly and
+  // is untouched; this is the value future contract-driven shells will see.
+  const phase = computed(() => (table.phase.value === 'complete' ? 'review' : table.phase.value))
+  // For a live server auction, "wants your call" is literally your turn to bid.
+  // Distinct field from isYourBid on purpose (see deriveWantsCall) so the coached
+  // retrofit can substitute hasBidPrompt without touching the slot contract.
+  const wantsCall = computed(() => !!table.isYourBid.value)
+
   return {
     // Everything the render layer needs (seat-agnostic): yourSeat, seats,
     // dealer, vulnerable, phase, auction, contract, hands, currentTrick,
     // isYourBid, legalCards, clickableSeat, connectionStatus, sessionClosed, …
     ...table,
+    // Shared-vocabulary overrides — must stay after the spread to win.
+    phase,
+    wantsCall,
 
     capabilities: SERVER_CAPABILITIES,
 

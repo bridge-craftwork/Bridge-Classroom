@@ -20,7 +20,7 @@
 // so the view no longer injects an `onResetPlay` callback.
 
 import { ref, computed } from 'vue'
-import { LOCAL_CAPABILITIES } from './tableEngine.js'
+import { LOCAL_CAPABILITIES, derivePhase, deriveWantsCall } from './tableEngine.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchScenarioMeta } from '../../utils/pbsScenarios.js'
@@ -93,6 +93,24 @@ export function useLocalEngine(config = {}) {
   const currentSeat = computed(() =>
     currentDeal.value ? seatAtIndex(currentDeal.value.dealer, bids.value.length) : null,
   )
+  // Canonical 3-state phase (the shared table-engine vocabulary). The
+  // play↔review boundary is engine cardplay state; the "toggle on, auction
+  // done, cardplay not yet started" transient the solo shell renders as
+  // 'playing' coarsens to 'review' here for that one tick — which is why the
+  // shell keeps its finer 5-state cardplayPhase (off/unsupported/playing/
+  // complete) layered over this until Slice 6 collapses the branches.
+  const phase = computed(() => derivePhase({
+    auctionComplete: !!auctionComplete.value,
+    cardplayActive: cardplay.isActive.value,
+    cardplayComplete: cardplay.playComplete.value,
+  }))
+  // INERT this slice — no consumer until useTableSlots (Slice 6). Distinct from
+  // any literal turn flag on purpose (see deriveWantsCall).
+  const wantsCall = computed(() => deriveWantsCall({
+    auctionComplete: !!auctionComplete.value,
+    currentSeat: currentSeat.value,
+    yourSeat: yourSeat.value,
+  }))
   const lastNonPassNonDouble = computed(() => lastSuitBid(bids.value))
   const wrongIndicesArray = computed(() => Object.keys(divergedBids.value).map(Number))
   const hadDivergence = computed(() => Object.keys(divergedBids.value).length > 0)
@@ -313,6 +331,8 @@ export function useLocalEngine(config = {}) {
     // derived
     auctionComplete,
     currentSeat,
+    phase,
+    wantsCall,
     lastNonPassNonDouble,
     wrongIndicesArray,
     hadDivergence,
