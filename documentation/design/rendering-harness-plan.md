@@ -237,7 +237,7 @@ designs.
 Each slice is one day's work, one branch, one PR, releasable at end of day.
 Do not start slice N+1 in slice N's PR.
 
-### Slice 1 — HandDisplay goes cellular, pixel-identical
+### Slice 1 — HandDisplay goes cellular, pixel-identical — ✅ SHIPPED (0/3,046,400 px diff; PR #75)
 
 Rebuild HandDisplay internals as per-card cells. Same fonts, same spacing, **keep
 the strikethrough**. The cell structure ships inert.
