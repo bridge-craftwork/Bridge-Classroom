@@ -16,25 +16,31 @@
         <template v-for="suit in suits" :key="suit">
           <div v-if="!isPartialHand || hasSuitCards(suit)" class="suit-row">
             <span class="suit-symbol" :class="suitClass(suit)">{{ suitSymbol(suit) }}</span>
-            <!-- Clickable mode: render each card as a separate clickable span -->
+            <!-- One DOM cell per card. The same card element persists across
+                 modes so later slices can animate/annotate it. Three contexts,
+                 each pixel-identical to the pre-cell rendering:
+                   clickable  → interactive cells in a flex row (gap between)
+                   played     → adjacent cells, played ones struck through
+                   plain      → cells separated by real spaces (matches the old
+                                space-joined text run) -->
             <span v-if="clickable" class="cards clickable-cards">
               <span
                 v-for="card in orderedHand[suit]"
                 :key="card"
-                :class="isCardPlayed(suit, card) ? 'card-played' : 'card-clickable'"
+                class="cell"
+                :class="isCardPlayed(suit, card) ? 'played' : 'cell-clickable'"
                 @click="!isCardPlayed(suit, card) && $emit('card-click', { suit: suitLetter(suit), rank: card })"
               >{{ formatCard(card) }}</span>
             </span>
-            <!-- Non-clickable mode: individual spans when there are played cards -->
             <span v-else-if="hasPlayedCards" class="cards">
               <span
                 v-for="card in orderedHand[suit]"
                 :key="card"
-                :class="{ 'card-played': isCardPlayed(suit, card) }"
+                class="cell"
+                :class="{ played: isCardPlayed(suit, card) }"
               >{{ formatCard(card) }}</span>
             </span>
-            <!-- Non-clickable mode: plain text -->
-            <span v-else class="cards">{{ formatSuitCards(suit) }}</span>
+            <span v-else class="cards"><template v-for="(card, i) in orderedHand[suit]" :key="card"><span class="cell">{{ formatCard(card) }}</span>{{ i < orderedHand[suit].length - 1 ? ' ' : '' }}</template></span>
           </div>
         </template>
       </div>
@@ -167,13 +173,6 @@ function suitLetter(suit) {
   return SUIT_LETTERS[suit] || suit
 }
 
-function formatSuitCards(suit) {
-  if (!props.hand) return '—'
-  const cards = orderedHand.value[suit]
-  if (!cards || cards.length === 0) return '—'
-  return cards.map(formatCard).join(' ')
-}
-
 // playedCards is an array like ['SK', 'H3'] — card codes from showcards for this seat
 const hasPlayedCards = computed(() => props.playedCards && props.playedCards.length > 0)
 
@@ -247,8 +246,15 @@ function isCardPlayed(suit, rank) {
   letter-spacing: 1px;
 }
 
+/* One card. The base cell is a plain inline run (no box model), so plain-mode
+   cells render exactly like the old space-joined text; modes layer padding /
+   marks on top. */
+.cell {
+  display: inline;
+}
+
 /* Played card (already led/played in a previous trick) */
-.card-played {
+.cell.played {
   opacity: 0.4;
   text-decoration: line-through;
   cursor: default;
@@ -266,7 +272,7 @@ function isCardPlayed(suit, rank) {
 /* "Cards turned face-down after play" mode. Default during live cardplay.
    When off (the strike-through view), played cards stay visible — useful
    as a teaching mode and as the post-deal review state. */
-.hand.hide-played .card-played {
+.hand.hide-played .cell.played {
   display: none;
 }
 
@@ -275,7 +281,7 @@ function isCardPlayed(suit, rank) {
   gap: 2px;
 }
 
-.card-clickable {
+.cell-clickable {
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
@@ -283,12 +289,12 @@ function isCardPlayed(suit, rank) {
   user-select: none;
 }
 
-.card-clickable:hover {
+.cell-clickable:hover {
   background: #bbdefb;
   transform: scale(1.1);
 }
 
-.card-clickable:active {
+.cell-clickable:active {
   background: #90caf9;
   transform: scale(0.95);
 }
