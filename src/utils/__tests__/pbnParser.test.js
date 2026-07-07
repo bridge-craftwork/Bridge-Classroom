@@ -380,6 +380,15 @@ Pass
       // spaced variant parses the same as the unspaced two-seat form
       const spaced = parsePrompts(['T\n\nlook [showcards N:C4, E:CT] [BID 1\\S] x'])
       expect(spaced[0].showcards).toEqual({ N: ['C4'], E: ['CT'] })
+
+      // Space-only separators between seats (as the Signals lesson writes them):
+      // "W:SK E:S7 S:S5" must give three seats, not { W: ['SK E:S7 S:S5'] }.
+      const spaceOnly = parsePrompts(['T\n\nlook [showcards W:SK E:S7 S:S5] [BID 1\\S] x'])
+      expect(spaceOnly[0].showcards).toEqual({ W: ['SK'], E: ['S7'], S: ['S5'] })
+
+      // Space-separated seats with multi-card, comma-joined values (Board 4).
+      const spacedMulti = parsePrompts(['T\n\nlook [showcards W:D5 E:DQ,D7,D3 S:D6,DT,DA] [BID 1\\S] x'])
+      expect(spacedMulti[0].showcards).toEqual({ W: ['D5'], E: ['DQ', 'D7', 'D3'], S: ['D6', 'DT', 'DA'] })
     })
   })
 })
