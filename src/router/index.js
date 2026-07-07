@@ -76,6 +76,11 @@ if (import.meta.env.VITE_HARNESS === '1') {
     name: 'harness-component',
     component: () => import('../harness/HarnessComponentView.vue')
   })
+  routes.unshift({
+    path: '/harness/scene/:scene',
+    name: 'harness-scene',
+    component: () => import('../harness/HarnessSceneView.vue')
+  })
 }
 
 const router = createRouter({

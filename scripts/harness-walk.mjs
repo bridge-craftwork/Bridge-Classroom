@@ -10,6 +10,13 @@ const BASE = process.env.HARNESS_URL || 'http://localhost:4173'
 const SPECIMEN_ROOT = 'src/harness/specimens'
 const OUT_ROOT = 'gallery/components'
 const widths = JSON.parse(fs.readFileSync('src/harness/widths.json', 'utf8'))
+// Tier 2 — view scenarios: fixtures walked at named viewports.
+const FIXTURE_ROOT = 'src/harness/fixtures'
+const SCENE_OUT = 'gallery/scenes'
+const viewports = JSON.parse(fs.readFileSync('src/harness/viewports.json', 'utf8'))
+const scenes = fs.existsSync(FIXTURE_ROOT)
+  ? fs.readdirSync(FIXTURE_ROOT).filter((f) => f.endsWith('.js')).map((f) => f.replace(/\.js$/, ''))
+  : []
 
 const walk = []
 for (const comp of fs.readdirSync(SPECIMEN_ROOT)) {
@@ -40,5 +47,24 @@ for (const { component, specimen } of walk) {
     shots++
   }
 }
+console.log(`components: ${walk.length} specimens × ${Object.keys(widths).length} widths = ${shots} shots`)
+
+// Tier 2: each fixture full-page at each named viewport.
+let sceneShots = 0
+for (const scene of scenes) {
+  for (const [vpName, vp] of Object.entries(viewports)) {
+    const page = await browser.newPage({ viewport: { width: vp.w, height: vp.h }, deviceScaleFactor: 1 })
+    const url = `${BASE}/#/harness/scene/${scene}`
+    await page.goto(url, { waitUntil: 'networkidle' })
+    await page.waitForSelector('[data-harness-ready]', { timeout: 15000 })
+    await page.evaluate(() => document.fonts.ready)
+    const out = path.join(SCENE_OUT, scene, `${vpName}.png`)
+    fs.mkdirSync(path.dirname(out), { recursive: true })
+    await page.screenshot({ path: out, fullPage: true })
+    await page.close()
+    sceneShots++
+  }
+}
+
 await browser.close()
-console.log(`walk: ${walk.length} specimens × ${Object.keys(widths).length} widths = ${shots} shots`)
+console.log(`scenes: ${scenes.length} fixtures × ${Object.keys(viewports).length} viewports = ${sceneShots} shots`)

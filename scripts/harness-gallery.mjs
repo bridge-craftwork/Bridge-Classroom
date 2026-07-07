@@ -10,6 +10,11 @@ import { pathToFileURL } from 'url'
 const ROOT = 'gallery/components'
 const SPEC_ROOT = 'src/harness/specimens'
 const widths = Object.keys(JSON.parse(fs.readFileSync('src/harness/widths.json', 'utf8')))
+// Tier 2 — view scenarios.
+const SCENE_ROOT = 'gallery/scenes'
+const FIXTURE_ROOT = 'src/harness/fixtures'
+const viewportsJson = JSON.parse(fs.readFileSync('src/harness/viewports.json', 'utf8'))
+const viewportNames = Object.keys(viewportsJson)
 
 if (!fs.existsSync(ROOT)) {
   console.error('no gallery output — run the walk first')
@@ -42,6 +47,16 @@ async function loadSpecimen(component, name) {
   }
 }
 
+async function loadFixture(name) {
+  const file = path.resolve(FIXTURE_ROOT, `${name}.js`)
+  if (!fs.existsSync(file)) return null
+  try {
+    return (await import(pathToFileURL(file).href)).default
+  } catch {
+    return null
+  }
+}
+
 let body = ''
 for (const comp of fs.readdirSync(ROOT).sort()) {
   const compDir = path.join(ROOT, comp)
@@ -64,6 +79,23 @@ for (const comp of fs.readdirSync(ROOT).sort()) {
   body += `</tbody>\n</table>\n`
 }
 
+// Tier 2 — view scenarios: each fixture full-page across the named viewports.
+let scenesBody = ''
+if (fs.existsSync(SCENE_ROOT)) {
+  for (const scene of fs.readdirSync(SCENE_ROOT).sort()) {
+    const sceneDir = path.join(SCENE_ROOT, scene)
+    if (!fs.statSync(sceneDir).isDirectory()) continue
+    const fx = await loadFixture(scene)
+    scenesBody += `<div class="scene-block"><div class="scene-title">${esc(fx?.label || scene)}<span class="scene-file">${esc(scene)}.js</span></div><div class="vp-row">`
+    for (const vp of viewportNames) {
+      const rel = `scenes/${scene}/${vp}.png`
+      if (!fs.existsSync(path.join('gallery', rel))) continue
+      scenesBody += `<figure class="vp"><img loading="lazy" src="${rel}" alt="${esc(scene)} @ ${esc(vp)}"><figcaption>${esc(vp)}<span>${viewportsJson[vp].w}×${viewportsJson[vp].h}</span></figcaption></figure>`
+    }
+    scenesBody += `</div></div>`
+  }
+}
+
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>Component Gallery</title>
 <style>
   body { font: 14px system-ui, sans-serif; margin: 24px; color: #222; }
@@ -75,9 +107,19 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Component 
   .spec-props { margin-top: 6px; }
   .spec-props .flag { display: inline-block; font: 11px 'Courier New', monospace; color: #555; background: #f0f0f0; border-radius: 3px; padding: 1px 5px; margin: 1px 2px 1px 0; }
   img { display: block; max-width: 320px; height: auto; } td.missing { color: #c00; }
+  h2.tier { margin-top: 44px; padding-top: 22px; border-top: 2px solid #e2e2e2; font-size: 16px; color: #1D9E75; }
+  h2.tier small { color: #999; font-weight: 400; font-size: 12px; }
+  .scene-block { margin: 20px 0 30px; }
+  .scene-title { font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+  .scene-title .scene-file { font: 11px 'Courier New', monospace; color: #a6aca4; margin-left: 8px; }
+  .vp-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .vp { margin: 0; }
+  .vp img { max-width: 300px; max-height: 380px; width: auto; border: 1px solid #e2e2e2; border-radius: 6px; background: #f5f5f3; }
+  .vp figcaption { font: 11px 'Courier New', monospace; color: #777; margin-top: 5px; }
+  .vp figcaption span { color: #b7bdb6; margin-left: 6px; }
 </style></head><body>
 <h1>Component Specimens <small style="color:#999;font-weight:400">Tier 1 · container widths</small></h1>
-${body}</body></html>
+${body}${scenesBody ? `<h2 class="tier">View scenarios <small>Tier 2 · fixtures × viewports</small></h2>${scenesBody}` : ''}</body></html>
 `
 fs.writeFileSync('gallery/index.html', html)
 console.log('gallery → gallery/index.html')

@@ -1,0 +1,7 @@
+{
+  "desktop-wide": { "w": 1440, "h": 900, "represents": "Full-screen desktop" },
+  "laptop-half": { "w": 720, "h": 900, "represents": "Half-screen next to Zoom — primary teaching case" },
+  "tablet-landscape": { "w": 1180, "h": 820, "represents": "iPad landscape" },
+  "tablet-portrait": { "w": 820, "h": 1180, "represents": "iPad portrait" },
+  "phone": { "w": 390, "h": 844, "represents": "Phone portrait" }
+}
