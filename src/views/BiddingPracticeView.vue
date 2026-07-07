@@ -167,11 +167,13 @@
 
           <div v-else-if="srv.yourSeat && (!srv.dealLoaded || srv.phase === 'bidding')" class="tv-card">
             <h3>{{ srv.myTurnToBid ? 'Your bid' : 'Bidding' }}</h3>
+            <!-- Slice 6b: box shown only on your turn (slots.action). Off-turn it
+                 is hidden; the "Waiting for …" line below is the affordance. -->
             <BiddingBox
+              v-if="srvActionSlot === 'bidding-box'"
               :last-bid="srv.lastSuitBid"
               :can-double="srv.canDouble"
               :can-redouble="srv.canRedouble"
-              :disabled="!srv.myTurnToBid"
               @bid="srv.onBid"
             />
             <div v-if="!srv.dealLoaded" class="tv-status-line tv-waiting tv-bid-waiting">
@@ -950,22 +952,24 @@ const cardplayPhase = computed(() => {
 // and toggled-off-mid-play), and never for off/unsupported. Locked by the
 // cross-product test in tableEngine.test.js.
 //
-// NOTE: only the CENTER slot is unified for the server here — the server's
-// bidding-box card intentionally shows DISABLED while waiting (a different
-// affordance than local's on-turn-only box), so switching it to `wantsCall`
-// would hide the off-turn box (a visible change), deferred to its own slice.
+// Slice 6b adopted the "hidden off-turn" model for the server too: the server
+// action slot now also rides `wantsCall` (= `myTurnToBid`), so the seated
+// player's bidding box is HIDDEN when it isn't their turn (the "Waiting for …"
+// line remains the affordance), matching local's on-turn-only box.
 const { center: localCenterSlot, action: localActionSlot } = useTableSlots({
   phase: enginePhase,
   wantsCall: engine.wantsCall,
   hasCardplay: computed(() => playCardplay.value && cardplayPossible.value),
 })
-const srvCenterSlot = props.server
+const srvSlots = props.server
   ? useTableSlots({
       phase: computed(() => (srv.phase === 'complete' ? 'review' : srv.phase)),
       wantsCall: computed(() => !!srv.myTurnToBid),
       hasCardplay: computed(() => true), // a served board always plays out
-    }).center
+    })
   : null
+const srvCenterSlot = srvSlots ? srvSlots.center : null
+const srvActionSlot = srvSlots ? srvSlots.action : null
 const botName = computed(() => {
   try { return getBot(cardplayBotName.value).name } catch { return cardplayBotName.value }
 })
