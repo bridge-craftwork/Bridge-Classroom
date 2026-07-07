@@ -156,14 +156,17 @@ async function copyShareUrl() {
 // ── Testing: spawn a few player tabs ────────────────────────────────────────
 // Each opens the invite link with ?student=<name>, which forces a named-guest
 // (player) join — bypassing the owner/teacher recognition that would otherwise
-// send you to the console. Bots fill any seats you don't spawn.
+// send you to the console. These are HUMAN seats you drive manually; bots fill
+// any seats you don't spawn. No `?bot=` — a human tab must not flip the sticky
+// room mode; the room defaults to rules, so unspawned/idle seats get BBA
+// bidding + rulebot cardplay.
 const spawnCount = ref(3)
 function spawnPlayers() {
   if (!shareUrl.value) return
   const n = Math.max(1, Math.min(Number(spawnCount.value) || 1, 3))
   for (let i = 1; i <= n; i++) {
     const name = encodeURIComponent(testStudentName(i))
-    window.open(`${shareUrl.value}?student=${name}&bot=rules`, `bc-test-player-${i}`)
+    window.open(`${shareUrl.value}?student=${name}`, `bc-test-player-${i}`)
   }
 }
 
