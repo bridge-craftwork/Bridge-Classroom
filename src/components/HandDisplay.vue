@@ -16,32 +16,18 @@
         <template v-for="suit in suits" :key="suit">
           <div v-if="!isPartialHand || hasSuitCards(suit)" class="suit-row">
             <span class="suit-symbol" :class="suitClass(suit)">{{ suitSymbol(suit) }}</span>
-            <!-- One DOM cell per card. Marks (played + placeholder channels) come
-                 from the annotation map; three contexts, each pixel-identical to
-                 the pre-marks rendering:
-                   clickable  → interactive cells in a flex row (gap between)
-                   played     → adjacent cells, played ones struck through
-                   plain      → cells separated by real spaces -->
-            <span v-if="clickable" class="cards clickable-cards">
-              <span
-                v-for="card in orderedHand[suit]"
-                :key="card"
-                class="cell"
-                :class="cellClass(suit, card, isCardPlayed(suit, card) ? 'played' : 'cell-clickable')"
-                :style="cellFill(suit, card)"
-                @click="!isCardPlayed(suit, card) && $emit('card-click', { suit: suitLetter(suit), rank: card })"
-              >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>
-            </span>
-            <span v-else-if="hasPlayedMarks" class="cards">
-              <span
-                v-for="card in orderedHand[suit]"
-                :key="card"
-                class="cell"
-                :class="cellClass(suit, card, isCardPlayed(suit, card) ? 'played' : '')"
-                :style="cellFill(suit, card)"
-              >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>
-            </span>
-            <span v-else class="cards"><template v-for="(card, i) in orderedHand[suit]" :key="card"><span class="cell">{{ formatCard(card) }}</span>{{ i < orderedHand[suit].length - 1 ? ' ' : '' }}</template></span>
+            <!-- One DOM cell per card, one tight layout for every context: cells
+                 separated by real spaces. `played` (strikethrough / collapse) and
+                 `interactive` (cursor + subtle highlight) are modifiers that DON'T
+                 change a cell's geometry — so a hand's cards never reflow when it
+                 gains or loses the turn (the active-seat jitter). Badge/fill are
+                 harness-only placeholder channels. -->
+            <span class="cards"><template v-for="(card, i) in orderedHand[suit]" :key="card"><span
+              class="cell"
+              :class="cellClass(suit, card)"
+              :style="cellFill(suit, card)"
+              @click="clickable && !isCardPlayed(suit, card) && $emit('card-click', { suit: suitLetter(suit), rank: card })"
+            >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>{{ i < orderedHand[suit].length - 1 ? ' ' : '' }}</template></span>
           </div>
         </template>
       </div>
@@ -205,19 +191,17 @@ function cellFill(suit, rank) {
   const fill = cardMark(suit, rank)?.fill
   return fill ? { backgroundColor: fill } : null
 }
-// Compose a cell's classes: the mode class (played / cell-clickable / '') plus
-// has-badge, which turns on `position: relative` ONLY where a badge exists — so
-// unmarked cells stay byte-identical to before.
-function cellClass(suit, rank, mode) {
-  return [mode, cardBadge(suit, rank) ? 'has-badge' : ''].filter(Boolean)
+// A cell's modifiers. `played` and `interactive` add no box geometry (only
+// strikethrough/opacity and cursor/highlight), so cells occupy the same space
+// whether or not the hand is on turn — that's the layout-inertness guarantee.
+// `has-badge` turns on `position: relative` only where a badge exists.
+function cellClass(suit, rank) {
+  return {
+    played: isCardPlayed(suit, rank),
+    interactive: props.clickable && !isCardPlayed(suit, rank),
+    'has-badge': !!cardBadge(suit, rank),
+  }
 }
-
-// Any card in THIS hand carries a played mark → use the individual-cell path.
-const hasPlayedMarks = computed(() => {
-  const cards = props.marks?.cards
-  if (!cards) return false
-  return Object.values(cards).some((m) => m?.played)
-})
 </script>
 
 <style scoped>
@@ -278,12 +262,13 @@ const hasPlayedMarks = computed(() => {
   display: inline;
 }
 
-/* Played card (already led/played in a previous trick) */
+/* Played card (already led/played in a previous trick). Strikethrough + fade
+   only — no padding, so a struck cell keeps its geometry (review) and, in live
+   play, collapses to nothing (below) without disturbing the tight layout. */
 .cell.played {
   opacity: 0.4;
   text-decoration: line-through;
   cursor: default;
-  padding: 2px 6px;
   user-select: none;
 }
 
@@ -293,34 +278,29 @@ const hasPlayedMarks = computed(() => {
   border-color: #2196f3;
 }
 
-/* "Cards turned face-down after play" mode. Default during live cardplay.
-   When off (the strike-through view), played cards stay visible — useful
-   as a teaching mode and as the post-deal review state. */
+/* "Cards turned face-down after play" mode. Default during live cardplay: the
+   played cell collapses out (adjacent spaces coalesce), so the remaining shape
+   reads true. When off (review/teaching) the struck card stays visible. */
 .hand.hide-played .cell.played {
   display: none;
 }
 
-.clickable-cards {
-  display: flex;
-  gap: 2px;
-}
-
-.cell-clickable {
+/* Interaction only: cursor + a subtle highlight. Geometry-free (no padding /
+   flex / transform), so the hand's cards sit in exactly the same place whether
+   or not it's this seat's turn — no reflow when the turn moves. */
+.cell.interactive {
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: background 0.15s, transform 0.1s;
+  border-radius: 3px;
+  transition: background 0.15s;
   user-select: none;
 }
 
-.cell-clickable:hover {
+.cell.interactive:hover {
   background: #bbdefb;
-  transform: scale(1.1);
 }
 
-.cell-clickable:active {
+.cell.interactive:active {
   background: #90caf9;
-  transform: scale(0.95);
 }
 
 /* Placeholder channels for future marks (harness / full-everything only — no
