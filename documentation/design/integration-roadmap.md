@@ -11,21 +11,26 @@ annotation architecture — all still binding)
 > gating spike with a Phase 1/2 swap contingency; contract tests promoted to Invariant 7;
 > instantiation metric corrected to *fork factor*; `.bp-*` target changed to zero-by-rename;
 > stale BiddingBox sizing defect removed; ResizeObserver constraint recorded.
+>
+> **Update (2026-07-08, later):** Phase 0 shipped (0.1–0.4). The `wantsCall` spike is
+> **resolved** — shape (c) pure mapping, and the Phase 1/2 order is **swapped** (local
+> table first). See the Phase 1 spike block and the execution-order note.
 
 ## Where we are
 
-- **Shipped:** 7 redesigned components (BridgeTable, SeatPanel, SeatChip,
-  HandDisplay, AuctionTable, BiddingBox, TrickArea), pixel-identical from frozen
-  specimens; two-tier harness (specimens + view scenarios); `useTableSlots`
-  contract driving harness scenes only.
+- **Shipped:** 9 redesigned components (BridgeTable, SeatPanel, SeatChip,
+  HandDisplay, AuctionTable, BiddingBox, TrickArea, **StatusStrip, ContextPanel**),
+  pixel-identical/spec'd from frozen specimens; two-tier harness (specimens + view
+  scenarios); `useTableSlots` (center/action/**status/context**) + `useTableStatus`
+  + the **server-path fixture driver** driving harness scenes only. **Phase 0 complete.**
 - **Not started:** contract adoption in production. Three surfaces
   (MainLayout; BiddingPracticeView local + server paths; TableHostView /
-  TeacherConsoleView as thin wrappers) still wire components directly.
-- **Known gallery WIP defect:** BridgeTable clips at `tile` width.
-  *(The earlier "BiddingBox smaller at `drill` than `panel`" defect was an artifact
-  of container-query sizing and is resolved — hotfix #88 removed it; `drill` and
-  `panel` now render identically. See the ResizeObserver constraint in Component
-  work · Row A.)*
+  TeacherConsoleView as thin wrappers) still wire components directly — **except**
+  BiddingPracticeView's local path, which already rides `localEngine` + `useTableSlots`
+  for center/action (so Phase 2 starts from the status/context slots).
+- **Gallery clipping debt:** cleared in Phase 0.1 (BridgeTable/AuctionTable/SeatPanel/
+  HandDisplay), all via ResizeObserver / `min()` — never `container-type` (see the
+  constraint in Component work · Row A; hotfix #88 is why).
 
 ## Where we're going
 
@@ -109,6 +114,11 @@ Phases are ordered; slices within a phase are one day each, one PR, releasable.
 Region order within every surface: **auction (display-only) → action (bidding
 box) → center (trick area) → status → context.**
 
+**Execution order (spike-resolved 2026-07-08): 0 → 2 → 3 → 1 → 4 → 5.** The phase
+*numbers* are stable identifiers (slice references like 3.1 don't move); the local
+table (Phase 2) now runs before MainLayout (Phase 1) — see the resolved spike under
+Phase 1.
+
 ### Phase 0 — Gallery debt + referees (before any prod wiring)
 
 0.1 Fix BridgeTable `tile` clipping (ResizeObserver arranger, minimum viable — **not** `container-type`). Gallery-only.
@@ -124,22 +134,29 @@ box) → center (trick area) → status → context.**
 
 ### Phase 1 — MainLayout (coached lessons; highest user traffic, so region-sized steps)
 
-**Gate — `wantsCall` spike (time-boxed; deliverable = a written decision, not code).**
-MainLayout is a **step machine** (`currentStep.type`, `hasBidSteps`, `bidAnswered`),
-not turn logic — `isDeclarerPlay` alone threads through **7 sites**, so the
-step-machine/turn-model reconciliation is a genuine unknown. Choose one shape and
-write down why:
-   (a) the step machine feeds an engine-level `wantsCall`;
-   (b) the slot contract accepts an explicit override; or
-   (c) MainLayout keeps its gating and the adapter is pure mapping.
+**Spike — RESOLVED (2026-07-08). Shape (c): pure mapping `wantsCall := hasBidPrompt`.**
+`hasBidPrompt` is a step-gated turn signal (`isBidStep && isStudentTurn &&
+!auctionComplete && !bidAnswered && step.bid === expected`), but at the contract
+boundary it is *already* exactly the boolean the action slot wants — "show the bidding
+box now." Today's `v-if="hasBidPrompt"` **is** `action = wantsCall ? 'bidding-box' : null`,
+so the map is a **rename, not a reconciliation** (and `tableEngine.js` already anticipated
+it: "a coached engine substitutes its own truth"). Not **(a)** engine-level `wantsCall`:
+MainLayout isn't on an engine (it uses `useDealPractice` directly) and likely never fully
+collapses onto a table engine — coached lessons are a distinct interaction model, and the
+**slot contract, not the engine, is the unification seam.** Not **(b)** contract override:
+(c) needs zero contract change. MainLayout's genuinely hard part is elsewhere — `phase`
+(no clean enum; derived from `auctionComplete` + `isDeclarerPlay` + `showOpeningLead` +
+`hasSteps`) and the `center`/hand-visibility slot (`isDeclarerPlay` ×7, two `<BridgeTable>`
+branches) — i.e. slice **1.3**, not the `wantsCall` of 1.2.
 
-**Sequencing hedge — the Phase 1 / Phase 2 order is contingent on this verdict.**
-If the reconciliation comes back ugly, **swap Phases 1 and 2.** BiddingPracticeView's
-local path is turn-logic-native — the easy customer for the contract — and doing it
-first lets the slot machinery mature on friendly terrain before confronting the step
-machine. MainLayout was slated first only on the premise that the adapter was
-"documented, so the thinking is done"; the 7-sites datum undermines that premise, so
-the order is officially decided by the spike, not assumed.
+**Order — SWAPPED. The local table (Phase 2) runs first.** Not because `wantsCall` is ugly
+(it isn't) but because BiddingPracticeView's local path is **already contract-native** —
+`localEngine` exposes `phase`/`wantsCall` and the view already drives center/action through
+`useTableSlots`. So Phase 2's real work is adopting the brand-new **status/context** slots
+and collapsing the instantiations, which **matures that machinery in a real (lower-traffic)
+view before MainLayout debuts it in the highest-traffic one.** Dependencies are safe: Phase 3
+(server) builds on the local work either way; MainLayout (Phase 1) is orthogonal — different
+view, different composable — so running it later breaks nothing.
 
 1.1 Auction region → `slots` binding. Pixel-identical.
 1.2 Action region → `slots.action`, using the spike's chosen `wantsCall` shape. Pixel-identical.
@@ -149,7 +166,10 @@ the order is officially decided by the spike, not assumed.
 
 ### Phase 2 — BiddingPracticeView, local path
 
-*(May run before Phase 1 — see the Phase 1 spike hedge.)*
+*(**Runs FIRST** — spike resolved, see Phase 1. Center/action slots are already adopted
+here via `localEngine` + `useTableSlots`, so this phase adds the **status/context** slots
+and collapses instantiations. Started with 2.2 — the status/context adoption — since that
+machinery is the freshest and this is its first production home.)*
 
 2.1 Local-bidding + local-review instantiations collapse onto slots (4× → 3×, then 2×). Pixel-identical. Fork-factor + `.bp-*` ratchets drop with each.
 2.2 StatusStrip + ContextPanel on local path; old chips removed. **Visible change.**
