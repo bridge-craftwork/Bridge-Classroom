@@ -1,18 +1,22 @@
 <template>
   <div class="scene-page" :data-harness-ready="ready ? '' : null">
     <div v-if="!fixture" class="scene-miss">no scene: {{ scene }}</div>
+    <ServerTableScene v-else-if="fixture.surface === 'server'" :fixture="fixture" />
     <TableScene v-else :fixture="fixture" />
   </div>
 </template>
 
 <script setup>
-// Tier-2 view-scenario page: mount one TableScene from one frozen fixture,
+// Tier-2 view-scenario page: mount one scene from one frozen fixture,
 // full-viewport. The walk sets the browser viewport per named size; the scene's
-// own responsive CSS does the rest. Reached at /harness/scene/:scene, behind
+// own responsive CSS does the rest. `surface: 'server'` fixtures render through
+// ServerTableScene (the Phase-0.2 fixture driver → real srv state); everything
+// else is a plain TableScene. Reached at /harness/scene/:scene, behind
 // VITE_HARNESS.
 import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import TableScene from './TableScene.vue'
+import ServerTableScene from './ServerTableScene.vue'
 import './harness.css'
 
 const modules = import.meta.glob('./fixtures/*.js', { eager: true })

@@ -586,6 +586,89 @@ function resetTableState() {
   undoBy.value = ''
 }
 
+// ── Fixture driver (Phase 0.2) ─────────────────────────────────────────
+// Capture/replay the CLIENT state without a socket, so the server path can be
+// rendered from a frozen snapshot and pixel-diffed — the referee Phase 3 needs
+// (Invariant 6 is otherwise unfulfillable for the server path). captureFixture()
+// reads the current raw refs; loadFixture() restores them wholesale and the
+// computeds derive as usual. This is already-parsed client state (what the
+// render actually reads), not wire frames.
+
+function captureFixture() {
+  return JSON.parse(JSON.stringify({
+    sessionId: sessionId.value,
+    tableId: tableId.value,
+    yourName: yourName.value,
+    role: role.value,
+    yourSeat: yourSeat.value,
+    seeAll: seeAll.value,
+    botMode: botMode.value,
+    boardMode: boardMode.value,
+    setLabel: setLabel.value,
+    seq: seq.value,
+    board: board.value,
+    phase: phase.value,
+    auction: auction.value,
+    contract: contract.value,
+    nextToAct: nextToAct.value,
+    hands: hands.value,
+    handCounts: handCounts.value,
+    currentTrick: { leader: currentTrick.leader, plays: currentTrick.plays },
+    lastFinishedTrick: lastFinishedTrick.value,
+    tricksTaken: tricksTaken.value,
+    seats: seats.value,
+    readySeats: readySeats.value,
+    boardsOpen: boardsOpen.value,
+    boardComplete: boardComplete.value,
+    sessionClosed: sessionClosed.value,
+  }))
+}
+
+function loadFixture(snap) {
+  if (!snap || typeof snap !== 'object') return
+  resetTableState() // clean slate (clears board/trick state + any linger timer)
+  sessionId.value = snap.sessionId ?? null
+  tableId.value = snap.tableId ?? null
+  yourName.value = snap.yourName ?? ''
+  role.value = snap.role ?? ''
+  yourSeat.value = snap.yourSeat ?? null
+  seeAll.value = !!snap.seeAll
+  botMode.value = snap.botMode ?? ''
+  boardMode.value = snap.boardMode ?? 'bid-and-play'
+  setLabel.value = snap.setLabel ?? null
+  seq.value = snap.seq ?? 0
+  board.value = snap.board ?? null
+  phase.value = snap.phase ?? null
+  auction.value = [...(snap.auction ?? [])]
+  contract.value = snap.contract ?? null
+  nextToAct.value = snap.nextToAct ?? null
+  hands.value = snap.hands ?? { N: null, E: null, S: null, W: null }
+  handCounts.value = snap.handCounts ?? { N: 0, E: 0, S: 0, W: 0 }
+  currentTrick.leader = snap.currentTrick?.leader ?? null
+  currentTrick.plays = [...(snap.currentTrick?.plays ?? [])]
+  lastFinishedTrick.value = snap.lastFinishedTrick ?? null
+  tricksTaken.value = snap.tricksTaken ?? { NS: 0, EW: 0 }
+  seats.value = snap.seats ?? {}
+  readySeats.value = snap.readySeats ?? []
+  boardsOpen.value = snap.boardsOpen ?? null
+  boardComplete.value = snap.boardComplete ?? null
+  sessionClosed.value = !!snap.sessionClosed
+}
+
+// Dev-only capture hook: run window.__captureTableFixture() in the console
+// during a live session to dump the current table state as a fixture (also
+// copied to the clipboard). It doubles as a socket-state debugging tool. Gated
+// on import.meta.env.DEV, so it never ships to production.
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  window.__captureTableFixture = () => {
+    const snap = captureFixture()
+    const json = JSON.stringify(snap, null, 2)
+    try { navigator.clipboard?.writeText(json) } catch { /* no clipboard */ }
+    console.log('[table] fixture captured (copied to clipboard):\n' + json)
+    return snap
+  }
+}
+
 // ── Exported reactive surface ──────────────────────────────────────────
 
 export function useRemoteTable() {
@@ -646,6 +729,9 @@ export function useRemoteTable() {
     sendUndo,
     sendReady,
     sendDeal,
+    // Fixture driver (Phase 0.2): render the server path from a frozen snapshot.
+    loadFixture,
+    captureFixture,
     // exposed for unit tests (message folding without a live socket)
     _handleMessage: handleMessage,
     _resetTableState: resetTableState,
