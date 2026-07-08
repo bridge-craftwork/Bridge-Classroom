@@ -14,7 +14,7 @@ export default {
     wrongBidIndices: [1, 2, 4],  // diverged cells carry the pink tint (as shipped)
     allowDivergenceToggle: true,
     divergedBids: {
-      1: { user: 'X', bba: '2C' },     // BBA's bid is live
+      1: { user: '1H', bba: '2C' },    // BBA's bid is live
       2: { user: '2S', bba: '3D' },    // your bid is live
       4: { user: 'Pass', bba: '3NT' }, // your bid is live — a wide token vs Pass
     },
