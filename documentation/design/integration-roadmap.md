@@ -15,6 +15,13 @@ annotation architecture — all still binding)
 > **Update (2026-07-08, later):** Phase 0 shipped (0.1–0.4). The `wantsCall` spike is
 > **resolved** — shape (c) pure mapping, and the Phase 1/2 order is **swapped** (local
 > table first). See the Phase 1 spike block and the execution-order note.
+>
+> **Update (2026-07-08, maturity model):** added the **Maturity & risk model** —
+> Scenario Mastery (the only released app) is careful; the alpha tables + console
+> are replace-freely / verify-live. Execution order now **0 → 2 → 3 → 4 → 1 → 5**:
+> all alpha surfaces first to settle the look-and-feel, Scenario Mastery integration
+> last (but not frozen). Status region already shipped on both Practice Tables
+> (#101 local, #102 server).
 
 ## Where we are
 
@@ -44,7 +51,8 @@ slots, not view furniture.
 
 1. Each slice is **either pixel-identical** (plumbing; zero diff proves scope)
    **or precisely visible** (design; nonzero diff only inside the named region).
-   Never both in one slice.
+   Never both in one slice. *(Binding on **Scenario Mastery**; on the alpha
+   surfaces this relaxes — see **Maturity & risk model** below.)*
 2. Views only get dumber. State assembly moves **down** into
    engines/derivations, never sideways into another view.
 3. **Ratchet metrics** — may only decrease; a slice that holds them flat is
@@ -64,7 +72,8 @@ slots, not view furniture.
    the same slice**. No dual rendering, however temporary.
 6. Per-region verification: drive old view and new binding from the same
    fixture; pixel-diff them against each other. The fixture engine is the
-   referee.
+   referee. *(Reserved for **Scenario Mastery**; the alpha surfaces verify by
+   Rick testing live, not by building referees — see **Maturity & risk model**.)*
 7. **Contract tests, not just pixels.** Any slice touching an engine or
    derivation ships contract tests alongside the pixel diff. Pixel-identity is
    evidence of **scope**, never of **correctness** — two states can render
@@ -73,6 +82,33 @@ slots, not view furniture.
    Engine slices therefore include at least one **asymmetric fixture** (different
    contracts by seat, a rotated deal) so mapping errors can't hide behind
    symmetry.
+
+## Maturity & risk model (2026-07-08)
+
+The surfaces are NOT equally precious, so the invariants above are NOT applied
+uniformly (Rick's calibration). Terminology is the dev launcher's
+(`bridge-classroom.org/dev`).
+
+- **Scenario Mastery** (`/#/` → MainLayout) is the **only released app**, heavily
+  used, and the only one that records practice history to the Mac server. Treat
+  with care: invariants 1 (pixel-identical XOR visible) and 6 (referee) are
+  **binding here**; changes are small, non-disruptive, verified before shipping.
+  It is **not frozen** — component-level adoptions land opportunistically (the
+  merged X/XX BiddingBox already shipped into it) — but the **big look-and-feel
+  integration comes LAST**, once the design is proven on the alpha apps.
+- **Practice Table — solo / server, Host a Table, Teacher console** (the other
+  routes) are **alpha**, built functionality-first with ~1–2 users (David + Rick
+  on the solo table; Rick alone on the server/console). Here: **replace UI
+  outright — chop and reassemble layouts freely rather than retaining old
+  elements.** Invariants 1 & 6 relax; **verify by Rick testing live**, not by
+  referees or pixel-diffs. Move fast.
+- **The one hard constraint on the alpha work:** preserve *function*, especially
+  the embedded bidding `?pbn=` path that **Game Analysis** (a released webapp)
+  consumes. Break layout, not that integration.
+
+**Strategy:** get all four alpha surfaces onto the new components + design
+language first (fast, replace-freely), settle the look-and-feel there, then do
+the careful Scenario Mastery integration. See the execution order below.
 
 ---
 
@@ -114,10 +150,14 @@ Phases are ordered; slices within a phase are one day each, one PR, releasable.
 Region order within every surface: **auction (display-only) → action (bidding
 box) → center (trick area) → status → context.**
 
-**Execution order (spike-resolved 2026-07-08): 0 → 2 → 3 → 1 → 4 → 5.** The phase
-*numbers* are stable identifiers (slice references like 3.1 don't move); the local
-table (Phase 2) now runs before MainLayout (Phase 1) — see the resolved spike under
-Phase 1.
+**Execution order (updated 2026-07-08): 0 → 2 → 3 → 4 → 1 → 5.** The phase
+*numbers* are stable identifiers (slice references like 3.1 don't move). Per the
+Maturity & risk model, **all four alpha surfaces go first** — Practice Table solo
+(2) → server (3) → Host a Table + Teacher console (4) — replacing UI freely to
+settle the new look-and-feel, then the careful **Scenario Mastery integration
+(1)**, then play-phase compression (5). Scenario Mastery isn't frozen meanwhile:
+small component adoptions (e.g. the merged BiddingBox) land opportunistically; it's
+only the *full* look-and-feel retrofit that waits for last.
 
 ### Phase 0 — Gallery debt + referees (before any prod wiring)
 
@@ -132,7 +172,7 @@ Phase 1.
 
 *Everything in Phase 0 is production-invisible. Ship freely.*
 
-### Phase 1 — MainLayout (coached lessons; highest user traffic, so region-sized steps)
+### Phase 1 — MainLayout = Scenario Mastery (the released app — careful; runs LAST, after all alpha surfaces)
 
 **Spike — RESOLVED (2026-07-08). Shape (c): pure mapping `wantsCall := hasBidPrompt`.**
 `hasBidPrompt` is a step-gated turn signal (`isBidStep && isStudentTurn &&
