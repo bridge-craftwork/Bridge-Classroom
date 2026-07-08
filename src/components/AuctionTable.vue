@@ -216,7 +216,12 @@ function isCorrectBid(roundIdx, colIdx) {
 }
 
 function formatBidHtml(bid) {
-  return formatBid(bid).html
+  const { html } = formatBid(bid)
+  // Pass is a low-information call and doesn't need to be read like a contract
+  // bid — render it a touch smaller/quieter so the real bids dominate and it
+  // stops crowding the cell (it's otherwise nearly as wide as "3♣").
+  if (html === 'Pass') return '<span class="bid-pass">Pass</span>'
+  return html
 }
 
 // Returns HTML-ready tooltip content, or '' to suppress the tooltip entirely.
@@ -283,9 +288,13 @@ function tooltipFor(bidIdx) {
 .bid-cell {
   min-width: 0;
   text-align: center;
-  padding: 8px 4px;
-  font-size: 16px;
-  min-height: 36px;
+  padding: 10px 6px;
+  /* Big by default: seniors reported bids were too small to read. A plain cell
+     has one bid and plenty of room, so fill it (with margin). The rare 4-row
+     diverged cell overrides this down to a compact size (.bid-cell.stacked). */
+  font-size: 26px;
+  font-weight: 500;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -336,6 +345,24 @@ function tooltipFor(bidIdx) {
   color: #d32f2f;
 }
 
+.bid-cell :deep(.black) {
+  color: #1a1a1a;
+}
+
+.bid-cell :deep(.bid-pass) {
+  font-size: 0.72em;
+  font-weight: 500;
+  color: #555;
+}
+
+/* Suit symbol a touch larger than the level digit: at a bigger size the club vs
+   spade shapes read apart, which is exactly what seniors confuse. */
+.bid-cell :deep(.red),
+.bid-cell :deep(.black) {
+  font-size: 1.2em;
+  line-height: 1;
+}
+
 .bid-cell :deep(.double) {
   color: #ff5722;
   font-weight: bold;
@@ -349,7 +376,7 @@ function tooltipFor(bidIdx) {
 .turn-indicator {
   color: #007bff;
   font-weight: bold;
-  font-size: 20px;
+  font-size: 26px;
   animation: pulse 1s ease-in-out infinite;
 }
 
