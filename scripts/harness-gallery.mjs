@@ -106,7 +106,13 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Component 
   .spec-file { font: 11px 'Courier New', monospace; color: #999; margin: 1px 0 6px; }
   .spec-props { margin-top: 6px; }
   .spec-props .flag { display: inline-block; font: 11px 'Courier New', monospace; color: #555; background: #f0f0f0; border-radius: 3px; padding: 1px 5px; margin: 1px 2px 1px 0; }
-  img { display: block; max-width: 320px; height: auto; } td.missing { color: #c00; }
+  img { display: block; max-width: 320px; height: auto; cursor: zoom-in; } td.missing { color: #c00; }
+  /* Click-to-zoom lightbox — any gallery image (specimen or scene) opens full
+     size; click anywhere / Esc to close. Lives in the generator so it survives
+     regeneration and image-inlining. */
+  #lightbox { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,0.85); cursor: zoom-out; }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 96vw; max-height: 96vh; width: auto; height: auto; cursor: zoom-out; background: #fff; border-radius: 6px; box-shadow: 0 6px 40px rgba(0,0,0,0.5); }
   h2.tier { margin-top: 44px; padding-top: 22px; border-top: 2px solid #e2e2e2; font-size: 16px; color: #1D9E75; }
   h2.tier small { color: #999; font-weight: 400; font-size: 12px; }
   .scene-block { margin: 20px 0 30px; }
@@ -119,7 +125,27 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Component 
   .vp figcaption span { color: #b7bdb6; margin-left: 6px; }
 </style></head><body>
 <h1>Component Specimens <small style="color:#999;font-weight:400">Tier 1 · container widths</small></h1>
-${body}${scenesBody ? `<h2 class="tier">View scenarios <small>Tier 2 · fixtures × viewports</small></h2>${scenesBody}` : ''}</body></html>
+${body}${scenesBody ? `<h2 class="tier">View scenarios <small>Tier 2 · fixtures × viewports</small></h2>${scenesBody}` : ''}
+<div id="lightbox"><img alt="zoomed render"></div>
+<script>
+(function () {
+  var lb = document.getElementById('lightbox');
+  var lbImg = lb.firstElementChild;
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.tagName === 'IMG' && !lb.contains(t)) {
+      lbImg.src = t.currentSrc || t.src;
+      lb.classList.add('open');
+    } else if (lb.classList.contains('open')) {
+      lb.classList.remove('open');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') lb.classList.remove('open');
+  });
+})();
+</script>
+</body></html>
 `
 fs.writeFileSync('gallery/index.html', html)
 console.log('gallery → gallery/index.html')

@@ -41,7 +41,9 @@
           :current-bid-index="(f.bids || []).length"
           :show-turn-indicator="phase === 'bidding'"
           :meanings="f.meanings || []"
+          :wrong-bid-indices="f.wrongBidIndices || []"
           :diverged-bids="f.divergedBids || {}"
+          :allow-divergence-toggle="!!f.allowDivergenceToggle"
         />
       </div>
 
