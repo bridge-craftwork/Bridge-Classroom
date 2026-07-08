@@ -167,7 +167,7 @@ function makeBid(level, strain) {
 .level-btn {
   width: 36px;
   height: 36px;
-  border: 2px solid #ccc;
+  border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
   font-size: 18px;
@@ -195,7 +195,7 @@ function makeBid(level, strain) {
 .strain-btn {
   width: 48px;
   height: 42px;
-  border: 2px solid #ccc;
+  border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
   font-size: 20px;
