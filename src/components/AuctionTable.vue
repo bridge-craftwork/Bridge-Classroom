@@ -242,14 +242,21 @@ function tooltipFor(bidIdx) {
   min-width: 200px;
 }
 
+/* Header and every round share ONE set of four rigid column tracks. Because the
+   tracks are defined on the grid container (not inferred from each row's
+   content), a wide cell — e.g. a stacked "you vs BBA" bid — can never widen its
+   column and skew the row. `minmax(0, 1fr)` (paired with min-width:0 on the
+   cells) lets an over-wide cell shrink back into its quarter instead of pushing
+   the others out. Divergence then costs HEIGHT (a taller cell), never width. */
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   background: #333;
   color: white;
 }
 
 .header-cell {
-  flex: 1;
+  min-width: 0;
   text-align: center;
   padding: 8px 4px;
   font-weight: bold;
@@ -262,7 +269,8 @@ function tooltipFor(bidIdx) {
 }
 
 .round {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   border-bottom: 1px solid #ddd;
 }
 
@@ -271,7 +279,7 @@ function tooltipFor(bidIdx) {
 }
 
 .bid-cell {
-  flex: 1;
+  min-width: 0;
   text-align: center;
   padding: 8px 4px;
   font-size: 16px;

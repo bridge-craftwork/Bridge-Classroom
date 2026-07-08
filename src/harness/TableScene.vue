@@ -42,6 +42,7 @@
           :show-turn-indicator="phase === 'bidding'"
           :meanings="f.meanings || []"
           :diverged-bids="f.divergedBids || {}"
+          :allow-divergence-toggle="!!f.allowDivergenceToggle"
         />
       </div>
 

@@ -7,8 +7,9 @@ import HandDisplay from '../components/HandDisplay.vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import SeatChip from '../components/SeatChip.vue'
 import SeatPanel from '../components/SeatPanel.vue'
+import AuctionTable from '../components/AuctionTable.vue'
 
-export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable }
+export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable }
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 
