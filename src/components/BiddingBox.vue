@@ -142,6 +142,8 @@ function makeBid(level, strain) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Size container so the grid can tighten on narrow rails (see @container). */
+  container-type: inline-size;
 }
 
 /* Not this player's turn: same layout, greyed and non-interactive. */
@@ -273,5 +275,20 @@ function makeBid(level, strain) {
 
 .special-btn.redouble:hover:not(:disabled) {
   background: #1976d2;
+}
+
+/* Narrow rails/tiles: the level & strain cards otherwise flex-shrink into tall,
+   thin, widely-spaced slivers. Tighten the gaps and shorten the buttons so they
+   read as compact squares — wider relative to their height, closer together. */
+@container (max-width: 300px) {
+  .levels, .strains { gap: 3px; }
+  .level-btn { height: 30px; font-size: 16px; }
+  .strain-btn { height: 34px; font-size: 18px; }
+}
+@container (max-width: 215px) {
+  .levels, .strains { gap: 2px; }
+  .level-btn { height: 26px; font-size: 14px; }
+  .strain-btn { height: 28px; font-size: 15px; }
+  .strain-btn.suit-nt { font-size: 12px; }
 }
 </style>
