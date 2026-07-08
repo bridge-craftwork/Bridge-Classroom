@@ -7,10 +7,7 @@
     <div class="scene-table">
       <div class="scene-head">
         <span class="tag">Board {{ f.board ?? 1 }}</span>
-        <span class="tag">Dealer {{ f.dealer }}</span>
-        <span class="tag" :class="{ vul: f.vulnerable !== 'None' }">{{ f.vulnerable === 'None' ? 'None vul' : f.vulnerable + ' vul' }}</span>
-        <span v-if="f.contract" class="tag tag-contract">{{ f.contract }} by {{ f.declarer }}</span>
-        <span v-else class="tag tag-phase">{{ phaseLabel }}</span>
+        <StatusStrip v-if="statusSlot === 'status-strip'" :status="status" />
       </div>
       <BridgeTable
         :hands="f.hands"
@@ -57,10 +54,15 @@
         <div v-if="f.clickableSeat" class="rail-line rail-turn">Your turn — play a card.</div>
       </div>
 
-      <div v-if="f.context" class="rail-card rail-context">
-        <h3>{{ f.context.title || 'Chat' }}</h3>
-        <p v-for="(line, i) in contextLines" :key="i">{{ line }}</p>
-      </div>
+      <ContextPanel
+        v-if="contextSlot === 'context-panel'"
+        :mode="f.context.mode || 'commentary'"
+        :title="f.context.title || null"
+        :text="f.context.text || ''"
+        :messages="f.context.messages || []"
+        :stat="f.context.stat || null"
+        :actions="f.context.actions || []"
+      />
     </aside>
   </div>
 </template>
@@ -71,22 +73,36 @@ import BridgeTable from '../components/BridgeTable.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
+import StatusStrip from '../components/StatusStrip.vue'
+import ContextPanel from '../components/ContextPanel.vue'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
+import { useTableStatus } from '../composables/engines/useTableStatus.js'
 
 const props = defineProps({ fixture: { type: Object, required: true } })
 const f = computed(() => props.fixture)
 
 const phase = computed(() => f.value.phase || 'bidding')
-const phaseLabel = computed(() => ({ bidding: 'Bidding', play: 'Playing', review: 'Review' }[phase.value] || phase.value))
-const contextLines = computed(() => (f.value.context?.text || '').split('\n').filter(Boolean))
 
-// Drive the center/action slots through the REAL Slice-6 derivation, so the
-// scene exercises the same swap contract the shells do.
+// Phase-aware status via the real derivation (Phase 0.4): the scene head is a
+// StatusStrip fed by useTableStatus, not ad-hoc pills.
+const { status } = useTableStatus({
+  phase,
+  dealer: computed(() => f.value.dealer),
+  vulnerable: computed(() => f.value.vulnerable),
+  contract: computed(() => (f.value.contract ? { text: f.value.contract, declarer: f.value.declarer } : null)),
+  tricks: computed(() => f.value.tricksTaken || { NS: 0, EW: 0 }),
+})
+
+// Drive all four slots through the REAL derivation, so the scene exercises the
+// same swap contract the shells do.
 const wantsCall = computed(() => phase.value === 'bidding' && f.value.clickableSeat === (f.value.seat || 'S'))
 const hasCardplay = computed(() => phase.value === 'play' || phase.value === 'review')
-const slots = useTableSlots({ phase, wantsCall, hasCardplay })
+const hasContext = computed(() => !!f.value.context)
+const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext })
 const center = slots.center
 const action = slots.action
+const statusSlot = slots.status
+const contextSlot = slots.context
 </script>
 
 <style scoped>
@@ -117,9 +133,7 @@ const action = slots.action
   border-radius: 999px;
   padding: 3px 11px;
 }
-.tag.vul { color: #b23; background: #fdecec; }
-.tag-contract { color: #fff; background: #1d9e75; }
-.tag-phase { color: #1d6a4f; background: #e4f3ec; }
+.scene-head :deep(.status-strip) { flex: 1; }
 .scene-rail {
   display: flex;
   flex-direction: column;
@@ -141,12 +155,6 @@ const action = slots.action
 }
 .rail-line { font-size: 14px; color: #333; margin-top: 4px; }
 .rail-turn { color: #1d6a4f; font-weight: 600; }
-.rail-context p {
-  margin: 4px 0;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: #45514b;
-}
 
 @media (max-width: 860px) {
   .scene { grid-template-columns: 1fr; }
