@@ -3,20 +3,20 @@
        and owns their relationship: the box, the on-turn frame, and the density
        (chip = chip alone; compact/full = chip + hand). The layout-inertness
        obligation (reserved frame width) lives here, not in HandDisplay. -->
-  <div class="seat-panel" :class="[{ compact, active: activeSeat, chip: density === 'chip' }]">
+  <div class="seat-panel" :class="[{ compact: compactMode, active: activeSeat, chip: density === 'chip' }]">
     <SeatChip
       :seat="seat"
       :name="name"
       :presence="presence"
       :card-count="chipCardCount"
-      :compact="compact"
+      :compact="compactMode"
     />
     <HandDisplay
       v-if="showHolding"
       :hand="hand"
       :show-hcp="showHcp"
       :show-total-points="showTotalPoints"
-      :compact="compact"
+      :compact="compactMode"
       :clickable="clickable"
       :marks="marks"
       :density="density"
@@ -58,9 +58,13 @@ const props = defineProps({
 defineEmits(['card-click'])
 
 const activeSeat = computed(() => !!props.marks?.activeSeat)
+// compact sizing comes from the explicit prop OR the 'compact' density rung.
+const compactMode = computed(() => props.compact || props.density === 'compact')
+// Holding shows at compact/full; 'chip' density (and hidden) drop to identity.
 const showHolding = computed(() => !props.hidden && props.density !== 'chip' && !!props.hand)
+// The chip carries a card count whenever the holding isn't shown but a hand exists.
 const chipCardCount = computed(() => {
-  if (!props.hidden || !props.hand) return null
+  if (!props.hand || (!props.hidden && props.density !== 'chip')) return null
   return ['spades', 'hearts', 'diamonds', 'clubs'].reduce((n, s) => n + (props.hand[s]?.length || 0), 0)
 })
 </script>

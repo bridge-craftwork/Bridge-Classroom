@@ -1,5 +1,5 @@
 <template>
-  <div class="bridge-table" :class="{ compact: compact }">
+  <div ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact }]">
     <!-- North - spans all columns -->
     <div class="ns-column north-row">
       <div v-if="!hiddenSeats.includes('N') && hands.N" class="position north">
@@ -9,6 +9,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'N'"
+          :density="sizeMode"
           :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
@@ -24,6 +25,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'W'"
+        :density="sizeMode"
         :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
@@ -43,6 +45,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'E'"
+        :density="sizeMode"
         :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
@@ -58,6 +61,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'S'"
+          :density="sizeMode"
           :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
@@ -74,6 +78,7 @@
 </template>
 
 <script setup>
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import SeatPanel from './SeatPanel.vue'
 
 const props = defineProps({
@@ -113,6 +118,22 @@ const props = defineProps({
 })
 
 defineEmits(['card-click'])
+
+// The arranger: pick a density from the table's OWN width, so it responds inside
+// a console tile as well as at the viewport. Ladder — full ≥ 700 (roomy compass,
+// unchanged from today); compact 400–700 (smaller cards, all hands still shown);
+// chip < 400 (identity chips only — the console monitoring tile). Starts wide so
+// there's no chip-flash before the observer measures.
+const root = ref(null)
+const width = ref(9999)
+let ro = null
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !root.value) return
+  ro = new ResizeObserver((entries) => { width.value = entries[0].contentRect.width })
+  ro.observe(root.value)
+})
+onBeforeUnmount(() => ro?.disconnect())
+const sizeMode = computed(() => (width.value < 360 ? 'chip' : width.value < 700 ? 'compact' : 'full'))
 
 // Build a seat's annotation map from the (unchanged) external props: each
 // played card code becomes a `played` mark, and the clickable seat carries the
@@ -197,6 +218,22 @@ function marksFor(seat) {
   gap: 4px;
   padding: 8px;
   min-width: 280px;
+}
+
+/* Container-relative arranger. `size-full` is the roomy compass (unchanged).
+   `size-compact` tightens the grid + shrinks the reserved center so the smaller
+   hands fit; `size-chip` is a tiny compass of identity chips (console tile). */
+.bridge-table.size-compact {
+  gap: 6px;
+  padding: 10px;
+  min-width: 0;
+  grid-template-columns: 1fr minmax(150px, auto) 1fr;
+}
+.bridge-table.size-chip {
+  gap: 4px;
+  padding: 8px;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 /* Responsive adjustments */
