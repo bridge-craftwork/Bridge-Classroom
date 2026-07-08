@@ -27,10 +27,11 @@ categories. The **`lessons` roster is the required, consumer-critical addition**
 ```jsonc
 {
   "schemaVersion": 2,                     // bump from PBS's current 1
-  "collection": "baker-bridge",           // self-id (debug/sanity only; BC's registry is authoritative)
-  "tier": "release",                      // release | beta | release-test | test
   "generatedAtCommit": "52c5168…",        // change-detection stamp (already present in PBS)
   "generatedAt": "2026-07-08T…",          // human-readable; not load-bearing
+  // NOTE: no `collection` id — that is BC-owned (producer-contract §7), the producer
+  //       never emits it. `tier` is a PBS-only field (its release/beta/test split);
+  //       not part of the shared schema, so Baker Bridge omits it.
 
   // ── REQUIRED: authoritative board roster, keyed by PBN basename = deal_subfolder ──
   "lessons": {
@@ -72,8 +73,9 @@ Notes:
   docstring already flags this same risk).
 - **`stable` is the producer's flag**, carried straight from the PBN. BC derives
   `prerelease = !stable`. Per producer-contract §7, the manifest does **not** carry
-  BC's `collection` id as authority (the `collection` field above is a
-  self-description convenience), the `report` flag, or a `prerelease` column.
+  the `collection` id, the `report` flag, or a `prerelease` column — those are all
+  BC-owned. The producer never emits a collection id (BC knows which collection a
+  manifest belongs to from its own registry, i.e. *which* manifest it fetched).
 - `boardCount`/`stableBoardCount` are conveniences; the `boards` array is truth.
 - **Baker Bridge** must produce this from `CSVtoPBN` — the manifest emitter is the
   companion to the R3 token-stamping step it's already gaining.
