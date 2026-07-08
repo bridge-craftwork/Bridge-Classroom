@@ -19,6 +19,7 @@ export default {
   bids: ['1D', '2C', '2S', '3C', 'Pass', 'Pass'],
   lastBid: '3C',
   allowDivergenceToggle: true,
+  wrongBidIndices: [1, 2, 4],
   divergedBids: {
     1: { user: 'X', bba: '2C' },
     2: { user: '2S', bba: '3D' },

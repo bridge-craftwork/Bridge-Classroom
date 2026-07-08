@@ -32,8 +32,10 @@
               }"
               @click.stop="allowDivergenceToggle && $emit('toggle-bid', getBidIndexFromPosition(roundIdx, bidIdx))"
             >
-              <span class="stacked-marker">{{ divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)][kind] === bid ? '●' : '○' }}</span>
-              <span class="stacked-label">{{ kind === 'user' ? 'You' : 'BBA' }}:</span>
+              <span class="stacked-head">
+                <span class="stacked-marker">{{ divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)][kind] === bid ? '●' : '○' }}</span>
+                <span class="stacked-label">{{ kind === 'user' ? 'You' : 'BBA' }}</span>
+              </span>
               <span class="stacked-bid" v-html="formatBidHtml(divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)][kind])"></span>
             </div>
           </template>
@@ -360,20 +362,31 @@ function tooltipFor(bidIdx) {
   background: #e3f2fd;
 }
 
-/* Stacked-bid display when both user's and BBA's bids are shown together */
+/* Stacked-bid display when both user's and BBA's bids are shown together. Each
+   side is a two-line stack — a "○ BBA" head over the bid — so a diverged cell's
+   horizontal footprint is only as wide as the bid itself (fits a quarter-track
+   even at narrow widths); the cost of divergence is HEIGHT, not width. */
 .bid-cell.stacked {
   flex-direction: column;
-  padding: 4px 6px;
-  font-size: 13px;
-  gap: 1px;
+  padding: 4px 4px;
+  font-size: 14px;
+  gap: 3px;
 }
 
 .stacked-row {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   width: 100%;
+  line-height: 1.15;
+}
+
+.stacked-head {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 3px;
 }
 
 .stacked-row.clickable {
