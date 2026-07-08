@@ -93,16 +93,35 @@ struct GitHubIssueResponse {
 
 const FEEDBACK_LABEL: &str = "classroom-feedback";
 
-/// Map a lesson collection to the GitHub repo that owns its content, so a report
-/// files an issue where the maintainer will see it. The client sends an opaque
-/// collection id (never a repo slug), so this mapping is the only authority on
-/// where issues land — a caller can't redirect them. All targets are in the same
-/// org, reachable by the single org-scoped token. Unknown/absent → default repo.
-fn repo_for_collection<'a>(collection: Option<&str>, default_repo: &'a str) -> &'a str {
+/// Resolve which `(repo, token)` a report for `collection` files under. Each
+/// content repo's reports are filed with a PAT owned by that repo's maintainer,
+/// so the maintainer is the GitHub *author* of the issue. That matters for
+/// notifications: GitHub does not email you about your own actions, so authoring
+/// a report under the maintainer's own PAT keeps them from being spammed by
+/// watcher-emails for reports on their own content (how it worked before the
+/// shared org token made every report author the platform maintainer).
+///
+/// The client sends an opaque collection id (never a repo slug), so this mapping
+/// is the only authority on where issues land AND which identity signs them — a
+/// caller can't redirect either. A collection's token falls back to the default
+/// token when its own is unset, so reporting still works (just authored by the
+/// default identity) rather than 503-ing.
+fn route_for_collection<'a>(
+    collection: Option<&str>,
+    default_repo: &'a str,
+    default_token: Option<&'a str>,
+    pbs_token: Option<&'a str>,
+) -> (&'a str, Option<&'a str>) {
     match collection {
-        Some("baker-bridge") => "bridge-craftwork/Baker-Bridge",
-        Some("pbs-coaching") => "bridge-craftwork/Practice-Bidding-Scenarios",
-        _ => default_repo,
+        // PBS reports authored by David's PAT (fall back to default token).
+        Some("pbs-coaching") => (
+            "bridge-craftwork/Practice-Bidding-Scenarios",
+            pbs_token.or(default_token),
+        ),
+        // Baker Bridge authored by the default (Rick's) token.
+        Some("baker-bridge") => ("bridge-craftwork/Baker-Bridge", default_token),
+        // Unknown/absent → catch-all repo, default token.
+        _ => (default_repo, default_token),
     }
 }
 
@@ -126,7 +145,16 @@ pub async fn create_report(
         return Err((StatusCode::BAD_REQUEST, "Report note is empty".to_string()));
     }
 
-    let token = match state.config.github_issues_token.as_deref() {
+    // Route to the content repo that owns this collection AND the PAT that signs
+    // its issues (see route_for_collection). The 503 gate is on the *selected*
+    // token, so a collection with no token (and no default) degrades gracefully.
+    let (repo, token) = route_for_collection(
+        req.collection.as_deref(),
+        &state.config.github_issues_repo,
+        state.config.github_issues_token.as_deref(),
+        state.config.github_issues_token_pbs.as_deref(),
+    );
+    let token = match token {
         Some(t) => t,
         None => {
             return Err((
@@ -135,10 +163,6 @@ pub async fn create_report(
             ));
         }
     };
-    // Route to the content repo that owns this collection. All target repos live
-    // in the same org, so the one shared org-scoped token can file into any of
-    // them. Unknown/absent collection falls back to the configured default repo.
-    let repo = repo_for_collection(req.collection.as_deref(), &state.config.github_issues_repo);
 
     let scenario = req
         .scenario

@@ -33,12 +33,23 @@ pub struct Config {
     /// From email address for recovery emails
     pub from_email: String,
 
-    /// GitHub token used to file "Report a Problem" issues (optional).
-    /// Scoped to Issues:write on the content repo only. When unset, the
-    /// report endpoint degrades gracefully (503) so the UI can say so.
+    /// Default GitHub token for "Report a Problem" issues (optional). Owned by
+    /// the platform maintainer (Rick); files baker-bridge + default-repo reports,
+    /// so those issues are authored by Rick. Scoped to Issues:write on those
+    /// repos. When the selected token is unset, the endpoint degrades gracefully
+    /// (503) so the UI can say so.
     pub github_issues_token: Option<String>,
 
-    /// owner/repo that classroom-feedback issues are filed into.
+    /// PBS-specific token (optional). Owned by David; files `pbs-coaching`
+    /// reports so they're authored by *David* — which means GitHub doesn't email
+    /// him a "new issue" notification for reports on his own content (his own
+    /// action), matching the pre-multi-repo behavior. Falls back to
+    /// `github_issues_token` when unset.
+    pub github_issues_token_pbs: Option<String>,
+
+    /// owner/repo that classroom-feedback issues are filed into when the
+    /// collection is unknown/absent (the catch-all). Filed under the default
+    /// token, so it should be a repo that token owns.
     pub github_issues_repo: String,
 
     /// HMAC secret for minting table-service join tickets (optional).
@@ -95,12 +106,17 @@ impl Config {
         let github_issues_token = env::var("GITHUB_ISSUES_TOKEN")
             .ok()
             .filter(|s| !s.trim().is_empty());
-        // Default to the org-owned slug. The repo moved from ADavidBailey into
-        // the bridge-craftwork org (2026-06-29); a create-issue POST does not
-        // follow GitHub's redirect from the old slug, so the default must be the
-        // current owner. GITHUB_ISSUES_REPO can still override this.
+        // Optional PBS-only token (David's PAT). Empty == unset == fall back to
+        // the default token for PBS reports.
+        let github_issues_token_pbs = env::var("GITHUB_ISSUES_TOKEN_PBS")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        // Catch-all repo for unknown/absent collections. Filed under the default
+        // token, so it defaults to the app repo (Rick's), NOT David's PBS repo —
+        // a mis-tagged report shouldn't land on David. Must be a repo the default
+        // token can write to. GITHUB_ISSUES_REPO can override.
         let github_issues_repo = env::var("GITHUB_ISSUES_REPO")
-            .unwrap_or_else(|_| "bridge-craftwork/Practice-Bidding-Scenarios".to_string());
+            .unwrap_or_else(|_| "bridge-craftwork/Bridge-Classroom".to_string());
 
         // Treat an empty TABLE_TICKET_SECRET the same as unset.
         let table_ticket_secret = env::var("TABLE_TICKET_SECRET")
@@ -124,6 +140,7 @@ impl Config {
             resend_api_key,
             from_email,
             github_issues_token,
+            github_issues_token_pbs,
             github_issues_repo,
             table_ticket_secret,
             table_service_url,
