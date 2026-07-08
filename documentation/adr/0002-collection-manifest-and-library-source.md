@@ -29,6 +29,36 @@ spot (`reports.rs`) and duplicated in the frontend's `COLLECTIONS[]`.
 
 ---
 
+## Scope — persistence is the dividing line
+
+The manifest / `LibrarySource` mechanism in this ADR governs **only collections
+whose results are persisted** to the Bridge Classroom database. The invariant:
+
+> **The backend knows about a collection if and only if results from it are
+> persisted.**
+
+Non-persisting surfaces — the teaching console, casual play tables, random/paste
+deal entry, and **private repos** (e.g. an instructor's unreleased ABS set) — are
+**frontend deal sources**. They require no backend source information: no
+`LibrarySource` entry, no server-fetched manifest, no `collection_id`, no roster.
+The backend never reads them.
+
+The invariant is enforced in the **"no accidental writes"** direction: those
+surfaces emit **no observations**, and the backend rejects any observation whose
+`collection_id` is not a known persisted collection (defense in depth). Because
+nothing persists, unreleased or licensed content (ABS) never reaches our database
+*by construction* — the IP guarantee falls out of the architecture; it is not a
+policy anyone has to remember to apply.
+
+A non-persisting deal source MAY still ship a **manifest** — but a lighter one, for
+frontend menu presentation only (layout + lesson names + display counts), with
+**no board-version tokens, no `stable`/prerelease, and no positional-freeze
+obligation**. Those exist solely to protect persisted history, so they do not bind
+a source whose results are never saved. See the
+[Non-Persisting Deal Source Contract](./non-persisting-deal-source-contract.md).
+
+---
+
 ## 1. Context — what the backend knows today, and why it's thin
 
 Today the backend has **no authoritative board count and no server-side view of a

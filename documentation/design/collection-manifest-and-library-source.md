@@ -58,6 +58,13 @@ categories. The **`lessons` roster is the required, consumer-critical addition**
 ```
 
 Notes:
+- **Two profiles, one schema.** A `profile` discriminator distinguishes a **tracked**
+  manifest (this section — carries the authoritative `boards` roster with tokens,
+  `stable`, skill paths) from a **menu** manifest for non-persisting sources
+  (`layout` + `lessons` names + display counts only; no roster). The menu profile is
+  a strict subset, so a source can be promoted tracked → additively. See the
+  [Non-Persisting Deal Source Contract](../adr/non-persisting-deal-source-contract.md).
+  Only tracked manifests are ever fetched by the backend.
 - **Key = PBN basename = `deal_subfolder`.** This is the join the whole platform
   already uses (`getSubfolderForSkill` strips `.pbn`; observations store the
   basename). If a lesson ever uses a subfolder that diverges from its PBN basename,
