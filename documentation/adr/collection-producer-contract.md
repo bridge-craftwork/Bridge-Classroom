@@ -6,7 +6,10 @@ Practice-Bidding-Scenarios**, and any future collection.
 
 **What it is:** the obligations you take on as a content producer so that Bridge
 Classroom can track student mastery reliably and never corrupt a student's
-history. It is the producer-facing distillation of [ADR-0001](./0001-positional-board-identity.md)
+history. (If Bridge Classroom **does not** track results from your source — a
+private repo, a teaching-console-only set — you want the far lighter
+[Non-Persisting Deal Source Contract](./non-persisting-deal-source-contract.md)
+instead; this document is the *persisting* case.) It is the producer-facing distillation of [ADR-0001](./0001-positional-board-identity.md)
 and its [companion spec](./board-identity-and-history-integrity.md); those two
 documents are the normative source, and the contracts C1–C7 there govern if
 anything here is ambiguous.
