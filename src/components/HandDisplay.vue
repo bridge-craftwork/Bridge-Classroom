@@ -225,6 +225,13 @@ function cellClass(suit, rank) {
   border-radius: 8px;
   padding: 1px 4px;
 }
+/* The top suit row has no row above it to overlap into, so a badge at top:-7px
+   paints above the holding and clips. Drop just that row's badges down onto the
+   card. (Badges are harness-only marks — no production hand paints one, so this
+   is pixel-identical in prod.) */
+.suit-row:first-child .cell-badge {
+  top: 2px;
+}
 
 .hcp {
   margin-top: 8px;

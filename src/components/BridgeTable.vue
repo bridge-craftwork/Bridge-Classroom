@@ -9,7 +9,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'N'"
-          :density="sizeMode"
+          :density="seatDensity"
           :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
@@ -25,7 +25,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'W'"
-        :density="sizeMode"
+        :density="seatDensity"
         :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
@@ -45,7 +45,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'E'"
-        :density="sizeMode"
+        :density="seatDensity"
         :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
@@ -61,7 +61,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'S'"
-          :density="sizeMode"
+          :density="seatDensity"
           :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
@@ -121,9 +121,12 @@ defineEmits(['card-click'])
 
 // The arranger: pick a density from the table's OWN width, so it responds inside
 // a console tile as well as at the viewport. Ladder — full ≥ 700 (roomy compass,
-// unchanged from today); compact 400–700 (smaller cards, all hands still shown);
-// chip < 400 (identity chips only — the console monitoring tile). Starts wide so
-// there's no chip-flash before the observer measures.
+// unchanged from today); compact 360–700 (smaller cards, all hands still shown);
+// chip 280–360 (identity chips in the compass — two fit side-by-side); stack
+// < 280 (identity chips in a single full-width column — below this the compass's
+// side-by-side W/E chips can't fit and would clip). Starts wide so there's no
+// chip-flash before the observer measures. ResizeObserver, never container
+// queries (inline-size containment breaks shrink-wrap hosts — see #88).
 const root = ref(null)
 const width = ref(9999)
 let ro = null
@@ -133,7 +136,15 @@ onMounted(() => {
   ro.observe(root.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
-const sizeMode = computed(() => (width.value < 360 ? 'chip' : width.value < 700 ? 'compact' : 'full'))
+const sizeMode = computed(() =>
+  width.value < 280 ? 'stack'
+    : width.value < 360 ? 'chip'
+    : width.value < 700 ? 'compact'
+    : 'full'
+)
+// Seat rendering budget: 'stack' and 'chip' are both identity-only (they differ
+// only in arrangement), so both map to the SeatPanel 'chip' density.
+const seatDensity = computed(() => (sizeMode.value === 'stack' ? 'chip' : sizeMode.value))
 
 // Build a seat's annotation map from the (unchanged) external props: each
 // played card code becomes a `played` mark, and the clickable seat carries the
@@ -235,6 +246,21 @@ function marksFor(seat) {
   min-width: 0;
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
+
+/* Below ~280px two chips can't sit side-by-side in the compass (they'd clip off
+   the tile edge), so stack the four identity chips in a single full-width
+   column. The center slot is hidden — a monitoring tile this small shows seat
+   identity, not a trick area. This is the tile-clipping fix. */
+.bridge-table.size-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  min-width: 0;
+}
+.bridge-table.size-stack .ns-column { display: block; }
+.bridge-table.size-stack .position { width: 100%; }
+.bridge-table.size-stack .center { display: none; }
 
 /* Responsive adjustments */
 @media (max-width: 600px) {

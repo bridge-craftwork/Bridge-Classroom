@@ -76,7 +76,10 @@ const chipCardCount = computed(() => {
   background: #f5f5f5;
   border-radius: 8px;
   padding: 12px;
-  min-width: 220px;
+  /* Floor for the compass (≥ 220px containers are unchanged), but never wider
+     than the container — so a narrow console tile caps it at 100% instead of
+     forcing overflow and clipping the right edge / shoving the centered title. */
+  min-width: min(220px, 100%);
   border: 2px solid transparent;
 }
 .seat-panel.active {
@@ -85,7 +88,7 @@ const chipCardCount = computed(() => {
 }
 .seat-panel.compact {
   padding: 8px;
-  min-width: 180px;
+  min-width: min(180px, 100%);
 }
 .seat-panel.chip {
   min-width: auto;

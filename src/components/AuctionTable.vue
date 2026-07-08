@@ -1,5 +1,5 @@
 <template>
-  <div class="auction-table">
+  <div ref="root" class="auction-table" :class="{ dense }">
     <div class="header">
       <div class="header-cell">W</div>
       <div class="header-cell">N</div>
@@ -53,11 +53,28 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { formatBid } from '../utils/cardFormatting.js'
 import { getSeatOrder } from '../utils/pbnParser.js'
 
 const hoveredIdx = ref(null)
+
+// Density sensor: the auction reserves big, senior-legible bids at the rail
+// width it actually ships at, but in a narrow console tile the full-size grid
+// overflows and clips. Below ~280px, drop the min-width and shrink the bids so
+// all four columns fit. ResizeObserver, never container-type (inline-size
+// containment breaks shrink-wrap hosts — see #88). Starts wide so there's no
+// shrink-flash before the observer measures.
+const root = ref(null)
+const tableWidth = ref(9999)
+let ro = null
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !root.value) return
+  ro = new ResizeObserver((entries) => { tableWidth.value = entries[0].contentRect.width })
+  ro.observe(root.value)
+})
+onBeforeUnmount(() => ro?.disconnect())
+const dense = computed(() => tableWidth.value < 280)
 
 // Render BBOalert suit codes (!C !D !H !S) as colored unicode symbols.
 function formatMeaningHtml(text) {
@@ -248,6 +265,21 @@ function tooltipFor(bidIdx) {
   overflow: hidden;
   min-width: 200px;
 }
+
+/* Console-tile density (< 280px): drop the min-width floor so all four columns
+   fit the tile, and shrink the bids to match. The rail width it ships at stays
+   full-size big bids. */
+.auction-table.dense { min-width: 0; }
+.auction-table.dense .bid-cell {
+  font-size: 15px;
+  padding: 6px 3px;
+  min-height: 32px;
+}
+.auction-table.dense .bid-cell :deep(.red),
+.auction-table.dense .bid-cell :deep(.black) { font-size: 1.1em; }
+.auction-table.dense .turn-indicator { font-size: 15px; }
+.auction-table.dense .header-cell { font-size: 11px; padding: 5px 3px; }
+.auction-table.dense .bid-cell.stacked { font-size: 11px; }
 
 /* Header and every round share ONE set of four rigid column tracks. Because the
    tracks are defined on the grid container (not inferred from each row's
