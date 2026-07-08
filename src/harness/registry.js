@@ -8,8 +8,9 @@ import BridgeTable from '../components/BridgeTable.vue'
 import SeatChip from '../components/SeatChip.vue'
 import SeatPanel from '../components/SeatPanel.vue'
 import AuctionTable from '../components/AuctionTable.vue'
+import BiddingBox from '../components/BiddingBox.vue'
 
-export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable }
+export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox }
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 

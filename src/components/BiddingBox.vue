@@ -37,19 +37,18 @@
       >
         Pass
       </button>
+      <!-- Double and redouble are mutually exclusive (you double an opponent's
+           bid, or redouble their double — never both), so a single control
+           covers both: it shows X to double, and switches to XX when there's a
+           double in place to redouble. Labelled as on a physical bidding box. -->
       <button
-        class="special-btn double"
-        :disabled="!canDouble"
-        @click="$emit('bid', 'X')"
+        class="special-btn"
+        :class="canRedouble ? 'redouble' : 'double'"
+        :disabled="!canDouble && !canRedouble"
+        :title="canRedouble ? 'Redouble' : 'Double'"
+        @click="$emit('bid', canRedouble ? 'XX' : 'X')"
       >
-        Double
-      </button>
-      <button
-        class="special-btn redouble"
-        :disabled="!canRedouble"
-        @click="$emit('bid', 'XX')"
-      >
-        Redouble
+        {{ canRedouble ? 'XX' : 'X' }}
       </button>
     </div>
   </div>
@@ -234,6 +233,7 @@ function makeBid(level, strain) {
 }
 
 .special-btn {
+  min-width: 64px;
   padding: 10px 16px;
   border: none;
   border-radius: 4px;
