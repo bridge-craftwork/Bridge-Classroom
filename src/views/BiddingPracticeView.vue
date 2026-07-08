@@ -13,14 +13,7 @@
         <div class="tv-header-left">
           <span class="tv-title">{{ srv.tableTitle }}</span>
           <span v-if="srv.boardNumber !== null" class="tv-tag">Board {{ srv.boardNumber }}</span>
-          <span v-if="srv.dealer" class="tv-tag">Dealer {{ srv.dealer }}</span>
-          <span class="tv-tag" :class="{ 'tv-tag-vul': srv.vulnerable !== 'None' }">
-            {{ srv.vulnerable === 'None' ? 'None vul' : srv.vulnerable + ' vul' }}
-          </span>
-          <span v-if="srv.contract" class="tv-tag tv-tag-contract">
-            <span v-html="srv.contractHtml"></span> by {{ srv.declarer }}
-          </span>
-          <span v-else-if="srv.phase === 'bidding'" class="tv-tag">Bidding</span>
+          <StatusStrip v-if="srvStatusSlot === 'status-strip'" :status="srvStatus" />
           <span
             v-if="srv.botMode"
             class="tv-tag tv-tag-bots"
@@ -981,6 +974,19 @@ const srvSlots = props.server
   : null
 const srvCenterSlot = srvSlots ? srvSlots.center : null
 const srvActionSlot = srvSlots ? srvSlots.action : null
+const srvStatusSlot = srvSlots ? srvSlots.status : null
+
+// Phase-aware status for the server header (Phase 2 status region, server path).
+// srv is a reactive() unwrap, so wrap its fields as computeds for useTableStatus.
+const srvStatus = srv
+  ? useTableStatus({
+      phase: computed(() => (srv.phase === 'complete' ? 'review' : srv.phase)),
+      dealer: computed(() => srv.dealer),
+      vulnerable: computed(() => srv.vulnerable),
+      contract: computed(() => srv.contract || null),
+      tricks: computed(() => srv.tricksTaken || { NS: 0, EW: 0 }),
+    }).status
+  : null
 const botName = computed(() => {
   try { return getBot(cardplayBotName.value).name } catch { return cardplayBotName.value }
 })
@@ -1678,8 +1684,6 @@ async function restartCardplay() {
 .tv-header-right { display: flex; align-items: center; gap: 10px; }
 .tv-title { font-size: 20px; font-weight: 700; margin-right: 4px; }
 .tv-tag { background: #f0f0f0; border-radius: 12px; padding: 3px 10px; font-size: 13px; color: #444; }
-.tv-tag-vul { background: #ffebee; color: #c62828; }
-.tv-tag-contract { background: #e8f5e9; color: #1b5e20; font-weight: 600; }
 .tv-tag-bots { background: #ede7f6; color: #4527a0; }
 .tv-tag-toggle {
   background: #e3f2ec; color: #1d6e50; border: 1px solid #bcd9cc;
