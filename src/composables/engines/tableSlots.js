@@ -32,10 +32,19 @@ import { computed } from 'vue'
  * The trick area therefore owns the center for the whole post-auction life of an
  * engaged board (play → review), and never for bidding or a non-playing deck.
  */
-export function deriveSlots({ phase, wantsCall, hasCardplay }) {
+export function deriveSlots({ phase, wantsCall, hasCardplay, hasContext }) {
   const center = (phase === 'play' || phase === 'review') && hasCardplay ? 'trick-area' : null
   const action = wantsCall ? 'bidding-box' : null
-  return { center, action }
+  // Two more first-class slots (roadmap Phase 0.4):
+  //   • status  — the phase-aware reference strip (dealer+vul → contract+tricks
+  //     → result). Present whenever a board is loaded; StatusStrip decides what
+  //     to show from the phase.
+  //   • context — the docked commentary / chat / teacher region. A per-source
+  //     signal (hasContext): the engine has something to dock. Undefined → null,
+  //     so callers that don't pass it are unaffected.
+  const status = phase ? 'status-strip' : null
+  const context = hasContext ? 'context-panel' : null
+  return { center, action, status, context }
 }
 
 /**
@@ -50,10 +59,13 @@ export function useTableSlots(src) {
       phase: src.phase.value,
       wantsCall: !!src.wantsCall.value,
       hasCardplay: !!src.hasCardplay.value,
+      hasContext: !!src.hasContext?.value,
     }),
   )
   return {
     center: computed(() => slots.value.center),
     action: computed(() => slots.value.action),
+    status: computed(() => slots.value.status),
+    context: computed(() => slots.value.context),
   }
 }
