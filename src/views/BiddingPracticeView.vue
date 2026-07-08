@@ -385,12 +385,7 @@
                 :show-hcp="true"
                 :show-total-points="true"
               />
-              <div class="bp-deal-tags">
-                <span class="bp-vul-tag" :class="{ 'is-vul': vulForSide('NS') || vulForSide('EW') }">
-                  {{ currentDeal.vulnerable === 'None' ? 'None vul' : currentDeal.vulnerable + ' vul' }}
-                </span>
-                <span class="bp-dealer-tag">Dealer {{ currentDeal.dealer }}</span>
-              </div>
+              <StatusStrip v-if="localStatusSlot === 'status-strip'" class="bp-hand-status" :status="localStatus" />
             </div>
           </div>
 
@@ -416,10 +411,7 @@
                   :bot-name="botName"
                 />
                 <div v-else class="bp-center">
-                  <div class="bp-vul-tag" :class="{ 'is-vul': vulForSide('NS') || vulForSide('EW') }">
-                    {{ currentDeal.vulnerable === 'None' ? 'None vul' : currentDeal.vulnerable + ' vul' }}
-                  </div>
-                  <div class="bp-dealer-tag">Dealer {{ currentDeal.dealer }}</div>
+                  <StatusStrip v-if="localStatusSlot === 'status-strip'" :status="localStatus" />
                   <div v-if="auctionLoading" class="bp-loading">Computing&hellip;</div>
                 </div>
               </template>
@@ -599,6 +591,7 @@ import SeatPanel from '../components/SeatPanel.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
+import StatusStrip from '../components/StatusStrip.vue'
 import ScenarioChatPopup from '../components/ScenarioChatPopup.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
@@ -611,6 +604,7 @@ import { useUserStore } from '../composables/useUserStore.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import { useLocalEngine } from '../composables/engines/localEngine.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
+import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useServerTable } from '../composables/useServerTable.js'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
@@ -956,10 +950,27 @@ const cardplayPhase = computed(() => {
 // action slot now also rides `wantsCall` (= `myTurnToBid`), so the seated
 // player's bidding box is HIDDEN when it isn't their turn (the "Waiting for …"
 // line remains the affordance), matching local's on-turn-only box.
-const { center: localCenterSlot, action: localActionSlot } = useTableSlots({
+const { center: localCenterSlot, action: localActionSlot, status: localStatusSlot } = useTableSlots({
   phase: enginePhase,
   wantsCall: engine.wantsCall,
   hasCardplay: computed(() => playCardplay.value && cardplayPossible.value),
+  // context (commentary/chat) has no docked home on the local practice path — its
+  // chat is a popup — so the context slot lands with MainLayout/server, not here.
+})
+
+// Phase-aware status (Phase 2, status region): one StatusStrip replaces the
+// scattered dealer/vul chips and adds contract-relative tricks during play.
+const { status: localStatus } = useTableStatus({
+  phase: enginePhase,
+  dealer: computed(() => currentDeal.value?.dealer),
+  vulnerable: computed(() => currentDeal.value?.vulnerable),
+  contract: computed(() => {
+    const fc = finalContract.value
+    return fc && fc.contract && fc.contract !== 'Pass'
+      ? { text: fc.contract, declarer: fc.declarer }
+      : null
+  }),
+  tricks: computed(() => cardplay.tricksTaken.value || { NS: 0, EW: 0 }),
 })
 const srvSlots = props.server
   ? useTableSlots({
@@ -989,13 +1000,6 @@ const cardplayResult = computed(() => {
 
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function vulForSide(side) {
-  const v = currentDeal.value?.vulnerable || 'None'
-  if (v === 'Both' || v === 'All') return true
-  if (v === 'NS' && side === 'NS') return true
-  if (v === 'EW' && side === 'EW') return true
-  return false
-}
 
 function formatContractHtml(contract) {
   return formatBid(contract).html || contract
@@ -1244,14 +1248,7 @@ async function restartCardplay() {
   border-radius: 10px;
   padding: 12px 14px;
 }
-.bp-deal-tags {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: #555;
-  margin-top: 4px;
-}
+.bp-hand-status { margin-top: 8px; justify-content: center; }
 .bp-loading-card {
   background: #fff;
   border: 0.5px solid #ddd;
@@ -1600,14 +1597,6 @@ async function restartCardplay() {
   font-size: 12px;
   color: #666;
 }
-.bp-vul-tag {
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: #f3f3f0;
-  color: #555;
-}
-.bp-vul-tag.is-vul { background: #fde2e2; color: #b00; }
-.bp-dealer-tag { font-size: 12px; color: #555; }
 .bp-loading { color: #1D9E75; font-size: 11px; }
 
 .bp-right-rail { display: flex; flex-direction: column; gap: 14px; }
