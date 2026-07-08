@@ -14,6 +14,9 @@ anything here is ambiguous.
 **Status:** Accepted 2026-07-06 (Rick + David). Changes to this contract require
 agreement from both the consumer (Bridge Classroom) and the producers.
 
+**Amended 2026-07-08** ([ADR-0002](./0002-collection-manifest-and-library-source.md),
+Rick + David): added **R5 — publish a build-generated manifest** (§10).
+
 ---
 
 ## 0. The one-paragraph version
@@ -56,6 +59,7 @@ is the key, **you must keep positions stable once you've promoted them.** See §
 | R2 | Keep **stable positions frozen** — no renumbering; same-position, same-difficulty, stable replacements only | (behavioral) | C4 |
 | R3 | Stamp a **board-version token** on every board | `[BoardVersionToken "…"]` | C2 |
 | R4 | Give every **stable** board a **real skill path** (required before `stable=true`; `uncategorized` OK while prerelease) | `[SkillPath "…"]` | C5 |
+| R5 | Publish a **build-generated manifest** describing every lesson's board roster | `manifest.json` (build artifact) | ADR-0002 |
 
 Not your responsibility (Bridge Classroom owns these — do **not** put them in your
 PBNs): the **`collection` id**, the **`report`-button** flag, and the
@@ -238,12 +242,42 @@ shortcut.
       post-promotion edits are deliberate.
 - [ ] You do **not** add a collection id, a `report` flag, or a `prerelease` flag
       to the PBN — those are Bridge Classroom's.
+- [ ] Your build emits a **manifest** (§10) with every lesson's board roster
+      (`number`, `stable`, `boardVersionToken`, `skillPath`), regenerated each build.
+
+---
+
+## 10. R5 — Publish a build-generated manifest (ADR-0002)
+
+Your build emits a **manifest** — a JSON build artifact (not a PBN) — that is the
+**authoritative description of your collection's shape**. Bridge Classroom fetches
+it directly (it does **not** re-parse your PBNs to learn sizing), so the manifest is
+how BC learns how many boards a lesson has and which of them are stable. Both
+Baker Bridge and Practice-Bidding-Scenarios publish the **same** format.
+
+For each lesson (keyed by **PBN basename**, which is exactly the `deal_subfolder`
+BC stores on observations), the manifest lists every board with:
+
+| Field | From |
+|---|---|
+| `number` | the board's position (R2) |
+| `stable` | your `stable` flag (R1) — BC derives `prerelease = !stable` from it |
+| `boardVersionToken` | your R3 stamp |
+| `skillPath` | your R4 classification |
+
+Regenerate it **every build** — it's the companion to the R3 token-stamping step
+(for Baker Bridge, both are new post-generation steps in `CSVtoPBN`). The manifest
+carries your producer-owned facts (`stable`, tokens, skill paths, board numbers); it
+does **not** carry BC's `collection` id, `report` flag, or `prerelease` column — §7
+still holds. Full schema in the
+[design doc](../design/collection-manifest-and-library-source.md).
 
 ---
 
 ## References
 
 - [ADR-0001 — Positional board identity](./0001-positional-board-identity.md) (the decision)
+- [ADR-0002 — Collection manifest & library source](./0002-collection-manifest-and-library-source.md) (R5)
 - [Board Identity, Readiness, and History Integrity](./board-identity-and-history-integrity.md) (full spec, contracts C1–C7, §4.1 scope summary)
 - [Implementation plan](./implementation-plan.md) (consumer-side rollout)
 - [Report a Problem — Design](../report-a-problem.md) (how reports reach your repo)
