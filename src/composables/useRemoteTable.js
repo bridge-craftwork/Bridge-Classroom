@@ -32,7 +32,18 @@ const sessionId = ref(null)
 const tableId = ref(null)
 const yourName = ref('')
 const role = ref('')
-const yourSeat = ref(null)
+// Every seat this connection occupies. A player may hold MORE than one (BBO-
+// style "Sit"): the GUI reveals all held hands and activates whichever is on
+// turn. yourSeat is the primary (first) seat, kept for display/compat.
+const yourSeats = ref([])
+const yourSeat = computed(() => yourSeats.value[0] || null)
+// This connection's opaque token (server-minted; never the sub). Used to address
+// self in seat ops ("Sit" = assign my token to a seat).
+const myToken = ref(null)
+// Full table roster from the server: [{ token, name, connected, seats:[...] }]
+// — seated AND waiting people (empty seats[] = waiting/kibitzing). Drives the
+// host seat-management UI + the waiting list; replayed to every new client.
+const roster = ref([])
 // True for teacher connections (see-all, never seated).
 const seeAll = ref(false)
 // True when this connection may control the table (session owner or teacher).
@@ -196,13 +207,17 @@ const hiddenSeats = computed(() => SEAT_ORDER.filter(s => !hands.value[s]))
 // when you're a human dummy for a bot declarer (the human plays the hand —
 // the server enforces the same controller chain).
 const clickableSeat = computed(() => {
-  if (phase.value !== 'play' || !yourSeat.value || !nextToAct.value) return null
-  if (nextToAct.value === yourSeat.value) return yourSeat.value
-  if (declarer.value === yourSeat.value && nextToAct.value === dummySeat.value) {
+  const mine = yourSeats.value
+  if (phase.value !== 'play' || mine.length === 0 || !nextToAct.value) return null
+  // One of your seats is on turn → play from it.
+  if (mine.includes(nextToAct.value)) return nextToAct.value
+  // You're declarer and dummy is on turn → you play dummy.
+  if (mine.includes(declarer.value) && nextToAct.value === dummySeat.value) {
     return dummySeat.value
   }
+  // You're a human dummy for a bot declarer → you play the declarer's hand.
   if (
-    dummySeat.value === yourSeat.value &&
+    mine.includes(dummySeat.value) &&
     nextToAct.value === declarer.value &&
     seats.value[declarer.value]?.kind === 'empty'
   ) {
@@ -219,7 +234,14 @@ const legalCards = computed(() => {
 })
 
 const isYourBid = computed(() =>
-  phase.value === 'bidding' && !!yourSeat.value && nextToAct.value === yourSeat.value)
+  phase.value === 'bidding' && yourSeats.value.includes(nextToAct.value))
+
+// Which of your seats you should act for right now (multi-seat "Sit": the GUI
+// focuses whichever held seat is on turn). Null when it's not your turn.
+const activeSeat = computed(() =>
+  phase.value === 'bidding'
+    ? (isYourBid.value ? nextToAct.value : null)
+    : clickableSeat.value)
 
 // BiddingBox props, mirrored from the solo view's trailing-pass logic.
 const lastSuitBid = computed(() => {
@@ -289,7 +311,8 @@ function applySnapshot(state) {
     currentTrick.plays = []
   }
   tricksTaken.value = { NS: state.tricks?.ns ?? 0, EW: state.tricks?.ew ?? 0 }
-  if (state.your_seat) yourSeat.value = state.your_seat
+  if (state.your_seats) yourSeats.value = state.your_seats
+  else if (state.your_seat) yourSeats.value = [state.your_seat]
 
   // Re-arm the dummy-reveal resync only while the opening lead hasn't been
   // made in this (possibly rewound) state. If the snapshot already reflects
@@ -397,7 +420,9 @@ function handleMessage(msg) {
       role.value = msg.role
       seeAll.value = !!msg.see_all
       isHost.value = !!msg.is_host
-      yourSeat.value = msg.seat || null
+      myToken.value = msg.token || null
+      yourSeats.value = msg.your_seats || (msg.seat ? [msg.seat] : [])
+      roster.value = msg.roster || []
       botMode.value = msg.bot_mode || ''
       // Idle session (no deal loaded) → show the waiting overlay. Absent
       // field (demo room) means always-loaded.
@@ -414,6 +439,7 @@ function handleMessage(msg) {
       if (msg.board_mode) boardMode.value = msg.board_mode
       applySnapshot(msg.state)
       if (msg.seats) seats.value = msg.seats
+      if (msg.roster) roster.value = msg.roster
       break
     case 'event':
       // Kibitz-switching (teacher console) can interleave one table's late
@@ -423,6 +449,10 @@ function handleMessage(msg) {
       switch (msg.kind) {
         case 'seat_update':
           seats.value = msg.seats || {}
+          if (msg.roster) roster.value = msg.roster
+          break
+        case 'roster_update':
+          roster.value = msg.roster || []
           break
         case 'bid_made':
           handleBidMade(msg)
@@ -562,6 +592,20 @@ function sendForceAdvance() {
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
+// Host-only, seat-addressed seat management (the server never exposes subs):
+//   move   → { from, seat }        move the occupant of `from` into `seat`
+//   vacate → { from, seat: null }  the occupant of `from` becomes a waiter
+//   place  → { token, seat }       put that token's connection into `seat`
+//            (Sit = pass your own token; seat a waiter = their token)
+function sendAssignSeat({ seat = null, from = null, token = null }) {
+  if (!isHost.value) return { ok: false, reason: 'not host' }
+  const msg = { t: 'assign_seat', seat }
+  if (from) msg.from = from
+  if (token) msg.token = token
+  const ok = socket.send(msg)
+  return { ok, reason: ok ? '' : 'not connected' }
+}
+
 // Board-scoped state: everything a fresh board (or a reseat to another
 // table) invalidates. Identity/session refs survive.
 function resetBoardState() {
@@ -588,7 +632,9 @@ function resetTableState() {
   tableId.value = null
   yourName.value = ''
   role.value = ''
-  yourSeat.value = null
+  yourSeats.value = []
+  myToken.value = null
+  roster.value = []
   seeAll.value = false
   isHost.value = false
   botMode.value = ''
@@ -613,7 +659,9 @@ function captureFixture() {
     tableId: tableId.value,
     yourName: yourName.value,
     role: role.value,
-    yourSeat: yourSeat.value,
+    yourSeats: yourSeats.value,
+    myToken: myToken.value,
+    roster: roster.value,
     seeAll: seeAll.value,
     botMode: botMode.value,
     boardMode: boardMode.value,
@@ -644,7 +692,9 @@ function loadFixture(snap) {
   tableId.value = snap.tableId ?? null
   yourName.value = snap.yourName ?? ''
   role.value = snap.role ?? ''
-  yourSeat.value = snap.yourSeat ?? null
+  yourSeats.value = snap.yourSeats ?? (snap.yourSeat ? [snap.yourSeat] : [])
+  myToken.value = snap.myToken ?? null
+  roster.value = snap.roster ?? []
   seeAll.value = !!snap.seeAll
   botMode.value = snap.botMode ?? ''
   boardMode.value = snap.boardMode ?? 'bid-and-play'
@@ -695,6 +745,9 @@ export function useRemoteTable() {
     yourName,
     role,
     yourSeat,
+    yourSeats,
+    myToken,
+    roster,
     seeAll,
     isHost,
     botMode,
@@ -727,6 +780,7 @@ export function useRemoteTable() {
     // derived
     hiddenSeats,
     clickableSeat,
+    activeSeat,
     legalCards,
     isYourBid,
     lastSuitBid,
@@ -743,6 +797,7 @@ export function useRemoteTable() {
     sendUndo,
     sendReady,
     sendForceAdvance,
+    sendAssignSeat,
     sendDeal,
     // Fixture driver (Phase 0.2): render the server path from a frozen snapshot.
     loadFixture,

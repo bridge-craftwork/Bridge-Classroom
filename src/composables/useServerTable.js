@@ -38,14 +38,15 @@ export function useServerTable() {
 
   const {
     connectionStatus,
-    sessionId, tableId, yourSeat, role, seeAll, isHost, botMode, boardMode,
+    sessionId, tableId, yourSeat, yourSeats, myToken, roster,
+    role, seeAll, isHost, botMode, boardMode,
     seq, boardNumber, dealer, vulnerable, phase,
     auction, contract, declarer, dummySeat,
     nextToAct, hands, handCounts,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
     readySeats, boardComplete, sessionClosed,
     dealLoaded, setLabel,
-    hiddenSeats, clickableSeat,
+    clickableSeat, activeSeat,
     isYourBid, lastSuitBid, canDouble, canRedouble,
     errorMessage, undoBy,
   } = table
@@ -111,15 +112,23 @@ export function useServerTable() {
     dealLoaded.value ? hands.value : { N: null, E: null, S: null, W: null })
   const myTurnToBid = computed(() => dealLoaded.value && isYourBid.value)
 
+  // Client-side redaction. The server now broadcasts ALL hands (redaction moved
+  // here), so this is the SOLE gate on what a viewer sees — for every viewer, not
+  // just teachers. Reveal everything when a host/teacher has "all hands" on, or at
+  // board end (review). Otherwise reveal only the seats you occupy (multi-seat
+  // Sit), dummy once it's public, and the declarer's hand when you're a human
+  // dummy for a bot declarer. (Robust whether or not the server still redacts:
+  // a seat with no cards is hidden regardless.)
   const displayHiddenSeats = computed(() => {
-    if (!canToggleHands.value || showAllHands.value || phase.value === 'complete') {
-      return hiddenSeats.value
+    if ((canToggleHands.value && showAllHands.value) || phase.value === 'complete') {
+      return []
     }
+    const mine = yourSeats.value
     return SEAT_ORDER.filter(s => {
       if (!hands.value[s]) return true
-      if (s === yourSeat.value) return false
+      if (mine.includes(s)) return false
       if (s === dummySeat.value && dummyPublic.value) return false
-      if (s === declarer.value && yourSeat.value === dummySeat.value && dummyPublic.value) {
+      if (s === declarer.value && mine.includes(dummySeat.value) && dummyPublic.value) {
         return false
       }
       return true
@@ -219,6 +228,8 @@ export function useServerTable() {
   function onReady() { table.sendReady() }
   // Host paces a session table: jump to the next board without waiting on ready.
   function onHostNextDeal() { table.sendForceAdvance() }
+  // Host-only seat management (seat-addressed): move / vacate / place-or-Sit.
+  function onAssignSeat(args) { return table.sendAssignSeat(args) }
   // Show a host "Next deal" on a session table (the demo room uses onNextDeal /
   // canDeal instead). Available once a real deal is on the table.
   const canHostAdvance = computed(() => isHost.value && !!sessionId.value && dealLoaded.value)
@@ -226,7 +237,8 @@ export function useServerTable() {
   return {
     SEAT_ORDER,
     // state (from useRemoteTable)
-    connectionStatus, sessionId, tableId, yourSeat, role, seeAll, isHost, botMode, boardMode,
+    connectionStatus, sessionId, tableId, yourSeat, yourSeats, myToken, roster,
+    activeSeat, role, seeAll, isHost, botMode, boardMode,
     seq, boardNumber, dealer, vulnerable, phase,
     auction, contract, declarer, dummySeat,
     nextToAct, hands, handCounts,
@@ -246,6 +258,6 @@ export function useServerTable() {
     canHostAdvance,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
-    onBid, onCardClick, onUndo, onReady, onHostNextDeal,
+    onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
   }
 }
