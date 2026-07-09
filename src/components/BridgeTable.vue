@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact }]">
+  <div ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact, 'no-center': !hasCenter }]">
     <!-- North - spans all columns -->
     <div class="ns-column north-row">
       <div v-if="!hiddenSeats.includes('N') && hands.N" class="position north">
@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, useSlots } from 'vue'
 import SeatPanel from './SeatPanel.vue'
 
 const props = defineProps({
@@ -118,6 +118,14 @@ const props = defineProps({
 })
 
 defineEmits(['card-click'])
+
+// The center column reserves ~240px for a TrickArea (play view). Bidding/review
+// boards pass no #center slot, so that space is dead and squeezes the side hands
+// (W/E cramp and wrap ranks when the table is narrow — e.g. beside a docked
+// lesson intro). Only reserve the center when the slot is actually filled; when
+// empty, hand that width back to W/E (see `.no-center` CSS).
+const slots = useSlots()
+const hasCenter = computed(() => !!slots.center)
 
 // The arranger: pick a density from the table's OWN width, so it responds inside
 // a console tile as well as at the viewport. Ladder — full ≥ 700 (roomy compass,
@@ -278,6 +286,26 @@ function marksFor(seat) {
 .bridge-table.size-stack .ns-column { display: block; }
 .bridge-table.size-stack .position { width: 100%; }
 .bridge-table.size-stack .center { display: none; }
+
+/* No #center content (bidding/review boards have no trick area): the center is a
+   FLEXIBLE spacer, not a fixed reservation. It grows to the normal compass width
+   (so W/E sit at their usual max separation, as if a trick area were there) when
+   there's room, but shrinks toward 0 — letting W/E encroach — when the side hands
+   need that width to render without cramping/wrapping. `minmax(0, Npx)` on an
+   empty track does exactly this: it grows up to N only if free space remains after
+   the auto W/E columns take their content, and yields first when space is tight.
+   `justify-content: center` keeps the cross centered when the group is narrower
+   than the table. Chip/stack are identity-only and already collapse the center. */
+.bridge-table.no-center {
+  grid-template-columns: auto minmax(0, 240px) auto;
+  justify-content: center;
+}
+.bridge-table.no-center.size-compact {
+  grid-template-columns: auto minmax(0, 150px) auto;
+}
+.bridge-table.no-center .center {
+  min-width: 0;
+}
 
 /* Responsive adjustments */
 @media (max-width: 600px) {
