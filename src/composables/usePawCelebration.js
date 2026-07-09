@@ -47,7 +47,13 @@ function saveState() {
  * board status won't trigger a celebration on the teacher's screen.
  */
 export function registerFreshPaws(userId, entries) {
-  const ownId = useUserStore().currentUser.value?.id
+  const store = useUserStore()
+  // Only the genuinely logged-in user's own paws celebrate. Never fire (or seed)
+  // while a teacher/admin is "viewing as" a student — realUser is the actual
+  // account regardless of view-as, so a viewed student's board-status fetch
+  // won't match and won't mark anything on the viewer's device.
+  if (store.isViewingAs.value) return
+  const ownId = store.realUser.value?.id
   if (!userId || userId !== ownId || !Array.isArray(entries)) return
 
   const fresh = entries.filter(e => e.wild_achievement === 'Fresh')

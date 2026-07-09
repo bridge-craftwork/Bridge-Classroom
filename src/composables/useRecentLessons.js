@@ -105,6 +105,13 @@ export function useRecentLessons() {
       const totalBoards = boards.length
       const triedCount = totalBoards - stateCounts.not_attempted
 
+      // Star / paw achievement tallies for the tile badges. Stars: gold =
+      // max_stars ≥ 2, silver = exactly 1. Paws: Fresh / Recent wild masteries.
+      const goldStars = boards.filter(b => (b.maxStars || 0) >= 2).length
+      const silverStars = boards.filter(b => (b.maxStars || 0) === 1).length
+      const freshPaws = boards.filter(b => b.wildAchievement === 'Fresh').length
+      const recentPaws = boards.filter(b => b.wildAchievement === 'Recent').length
+
       // Resume target: first untried board, or board 1 if all attempted
       const firstUntried = boards.find(b => b.apiStatus === 'not_attempted')
       const resumeDealNumber = firstUntried ? firstUntried.boardNumber : 1
@@ -138,7 +145,12 @@ export function useRecentLessons() {
         relativeTime: lastActivity ? formatRelativeTime(lastActivity) : '',
         // Lesson mastery tier per CORRECTNESS_AND_MASTERY.md §13.
         // Null until /api/lesson-mastery has been fetched.
-        tier: tiersByLesson[lesson.subfolder] || null
+        tier: tiersByLesson[lesson.subfolder] || null,
+        // Achievement tallies for the tile badges.
+        goldStars,
+        silverStars,
+        freshPaws,
+        recentPaws
       }
     })
 
