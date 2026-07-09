@@ -197,6 +197,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/users/search", get(routes::admin_search_user))
         .route("/api/admin/users/:id", patch(routes::admin_correct_name))
         .route("/api/admin/decrypt-observations", post(routes::admin_decrypt_observations))
+        .route("/api/admin/backfill-active-time", post(routes::admin_backfill_active_time))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

@@ -693,6 +693,128 @@ pub async fn admin_decrypt_observations(
     }))
 }
 
+// ---- Active-time backfill (one-shot) ----
+
+#[derive(Debug, Serialize)]
+pub struct BackfillActiveTimeResponse {
+    pub success: bool,
+    pub observations_updated: usize,
+    pub pairs_recomputed: usize,
+}
+
+/// Idle-capped active time (ms) for one observation, from its decrypted JSON.
+/// Board-level observations carry `prompts[].time_ms`; each prompt is clamped
+/// to the per-prompt ceiling before summing. Legacy single-prompt rows fall
+/// back to `result.time_taken_ms` (also clamped). Returns None if neither is
+/// present, so we leave the existing value untouched.
+fn active_ms_from_decrypted(decrypted_json: &str) -> Option<i64> {
+    let json: serde_json::Value = serde_json::from_str(decrypted_json).ok()?;
+    let cap = crate::routes::board_status::PER_PROMPT_CAP_MS;
+    if let Some(prompts) = json.get("prompts").and_then(|v| v.as_array()) {
+        let mut total = 0i64;
+        let mut any = false;
+        for p in prompts {
+            if let Some(t) = p.get("time_ms").and_then(|v| v.as_i64()) {
+                if t >= 0 {
+                    total += t.min(cap);
+                    any = true;
+                }
+            }
+        }
+        if any {
+            return Some(total);
+        }
+    }
+    json.get("result")
+        .and_then(|r| r.get("time_taken_ms"))
+        .and_then(|v| v.as_i64())
+        .filter(|t| *t >= 0)
+        .map(|t| t.min(cap))
+}
+
+/// POST /api/admin/backfill-active-time
+///
+/// One-shot repair of historical `observations.time_taken_ms`: many rows were
+/// stored with uncapped per-prompt idle (a student walking away mid-board could
+/// log hours on one bid). We decrypt every observation into the transient
+/// `observations_decrypted` table, recompute `time_taken_ms` = Σ min(prompt
+/// time_ms, 2min), rewrite the clear-text column, re-roll the assignment
+/// duration columns, then DROP the decrypt table (it exists only for ops like
+/// this). New observations are already capped on the client, so this is only
+/// needed once to clean the backlog.
+pub async fn admin_backfill_active_time(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<BackfillActiveTimeResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
+    // 1. Decrypt every observation into observations_decrypted (DROP+CREATE+fill).
+    let _ = admin_decrypt_observations(State(state.clone()), headers.clone()).await?;
+
+    // 2. Recompute time_taken_ms per observation from the decrypted per-prompt
+    //    times and rewrite the clear-text column.
+    let decrypted: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT observation_id, decrypted_json FROM observations_decrypted",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut observations_updated = 0usize;
+    for (obs_id, json) in &decrypted {
+        let Some(json) = json.as_deref() else { continue };
+        let Some(ms) = active_ms_from_decrypted(json) else { continue };
+        if sqlx::query("UPDATE observations SET time_taken_ms = ? WHERE id = ?")
+            .bind(ms)
+            .bind(obs_id)
+            .execute(&state.db)
+            .await
+            .map(|r| r.rows_affected() > 0)
+            .unwrap_or(false)
+        {
+            observations_updated += 1;
+        }
+    }
+
+    // 3. Re-roll every (user, assignment) so first_pass_ms/total_ms reflect the
+    //    cleaned times.
+    let pairs: Vec<(String, String)> = sqlx::query_as(
+        "SELECT DISTINCT user_id, assignment_id FROM observations WHERE assignment_id IS NOT NULL",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut pairs_recomputed = 0usize;
+    for (user_id, assignment_id) in &pairs {
+        if crate::routes::board_status::recompute_assignment_boards(&state.db, user_id, assignment_id)
+            .await
+            .is_ok()
+        {
+            pairs_recomputed += 1;
+        }
+    }
+
+    // 4. Drop the transient decrypt table — it exists only for operations like this.
+    sqlx::query("DROP TABLE IF EXISTS observations_decrypted")
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Drop table failed: {}", e)))?;
+
+    tracing::info!(
+        "backfill-active-time: {} observations updated, {} pairs recomputed",
+        observations_updated, pairs_recomputed
+    );
+
+    Ok(Json(BackfillActiveTimeResponse {
+        success: true,
+        observations_updated,
+        pairs_recomputed,
+    }))
+}
+
 /// Get disk usage using df command (macOS/Linux compatible)
 fn get_disk_usage() -> (f64, f64) {
     let output = std::process::Command::new("df")

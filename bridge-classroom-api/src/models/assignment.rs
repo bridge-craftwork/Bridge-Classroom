@@ -92,10 +92,15 @@ pub struct StudentAssignmentProgress {
     pub attempted_boards: i64,
     pub correct_boards: i64,
     pub total_boards: i64,
-    /// Total active time this student has spent on this assignment,
-    /// in milliseconds. Sum of `time_taken_ms` across their
-    /// observations. Issue #7.
-    pub active_duration_ms: i64,
+    /// Idle-capped active time on the *first attempt* of each board, summed
+    /// (ms). The "how long did the assignment take the first time through"
+    /// number — the one a 15-minute homework is designed against. Summed from
+    /// `assignment_board_status.first_pass_ms` (no observation scan).
+    pub first_pass_ms: i64,
+    /// Idle-capped active time across *all* attempts/replays of every board,
+    /// summed (ms). Always ≥ `first_pass_ms`. From
+    /// `assignment_board_status.total_ms`.
+    pub total_active_ms: i64,
 }
 
 /// One column header in the assignment grid view (issue #7).

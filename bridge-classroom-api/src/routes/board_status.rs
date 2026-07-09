@@ -12,6 +12,24 @@ use crate::AppState;
 const COOLDOWN_SECS: i64 = 3600; // 1 hour
 const ACHIEVEMENT_SPACING_DAYS: i64 = 6;
 
+/// Per-board active-time ceiling (15 min). A defensive backstop for the
+/// assignment-duration rollup: new observations are already per-prompt idle-capped
+/// on the client (PER_PROMPT_CAP_MS = 120s in observationSchema.js), and the
+/// historical backfill recomputes `time_taken_ms` the same way — this clamp only
+/// bites rows we couldn't clean (no data-consent / decrypt failures).
+const PER_BOARD_CAP_MS: i64 = 900_000;
+
+/// Per-prompt (per-measurement) idle ceiling (2 min). Mirrors
+/// PER_PROMPT_CAP_MS in observationSchema.js. Used by the historical
+/// `time_taken_ms` backfill to re-cap each prompt from the decrypted blob.
+pub const PER_PROMPT_CAP_MS: i64 = 120_000;
+
+/// Clamp one observation's active time to the per-board ceiling. `None`
+/// (unknown time) contributes 0.
+fn capped_ms(time_taken_ms: Option<i64>) -> i64 {
+    time_taken_ms.unwrap_or(0).clamp(0, PER_BOARD_CAP_MS)
+}
+
 // ---- Models ----
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -279,6 +297,7 @@ struct ObservationFullRow {
     board_result: Option<String>,
     wilderness: Option<String>,
     prerelease: bool,
+    time_taken_ms: Option<i64>,
 }
 
 /// Walk every observation for (user, board) in chronological order and
@@ -297,7 +316,7 @@ pub async fn recompute_board_history(
 ) -> Result<(), String> {
     let observations: Vec<ObservationFullRow> = sqlx::query_as(
         r#"
-        SELECT id, timestamp, correct, board_result, wilderness, prerelease
+        SELECT id, timestamp, correct, board_result, wilderness, prerelease, time_taken_ms
         FROM observations
         WHERE user_id = ? AND collection_id = ? AND deal_subfolder = ? AND deal_number = ?
         ORDER BY timestamp ASC
@@ -520,7 +539,7 @@ pub async fn recompute_assignment_boards(
     for (collection_id, deal_subfolder, deal_number) in &boards {
         let observations: Vec<ObservationFullRow> = sqlx::query_as(
             r#"
-            SELECT id, timestamp, correct, board_result, wilderness, prerelease
+            SELECT id, timestamp, correct, board_result, wilderness, prerelease, time_taken_ms
             FROM observations
             WHERE user_id = ? AND assignment_id = ?
               AND collection_id = ? AND deal_subfolder = ? AND deal_number = ?
@@ -536,14 +555,25 @@ pub async fn recompute_assignment_boards(
         .await
         .map_err(|e| format!("Observation fetch failed: {}", e))?;
 
-        // Walk to the final §5 status. Empty → not_attempted.
+        // Walk to the final §5 status. Empty → not_attempted. `observations`
+        // is ordered oldest-first, so the first row is the first attempt.
+        // Active-time rollup (idle-capped): first_pass = the first attempt's
+        // time; total = sum across all attempts/replays. Left as NULL when the
+        // board was never attempted so the panel can distinguish "no data".
         let mut last_error_date: Option<DateTime<Utc>> = None;
         let mut final_status: &str = "not_attempted";
         let mut last_observation_at: Option<String> = None;
-        for obs in &observations {
+        let mut first_pass_ms: Option<i64> = None;
+        let mut total_ms: Option<i64> = None;
+        for (i, obs) in observations.iter().enumerate() {
             let obs_ts = parse_timestamp(&obs.timestamp);
             final_status = derive_obs_status_v2(obs, obs_ts, &mut last_error_date);
             last_observation_at = Some(obs.timestamp.clone());
+            let ms = capped_ms(obs.time_taken_ms);
+            if i == 0 {
+                first_pass_ms = Some(ms);
+            }
+            total_ms = Some(total_ms.unwrap_or(0) + ms);
         }
 
         upsert_assignment_board_status(
@@ -555,6 +585,8 @@ pub async fn recompute_assignment_boards(
             *deal_number,
             final_status,
             last_observation_at.as_deref(),
+            first_pass_ms,
+            total_ms,
         )
         .await?;
     }
@@ -571,19 +603,23 @@ async fn upsert_assignment_board_status(
     deal_number: i32,
     status: &str,
     last_observation_at: Option<&str>,
+    first_pass_ms: Option<i64>,
+    total_ms: Option<i64>,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
     sqlx::query(
         r#"
         INSERT INTO assignment_board_status (
             user_id, assignment_id, collection_id, deal_subfolder, deal_number,
-            status, last_observation_at, updated_at
+            status, last_observation_at, updated_at, first_pass_ms, total_ms
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, assignment_id, collection_id, deal_subfolder, deal_number) DO UPDATE SET
             status              = excluded.status,
             last_observation_at = excluded.last_observation_at,
-            updated_at          = excluded.updated_at
+            updated_at          = excluded.updated_at,
+            first_pass_ms       = excluded.first_pass_ms,
+            total_ms            = excluded.total_ms
         "#,
     )
     .bind(user_id)
@@ -594,6 +630,8 @@ async fn upsert_assignment_board_status(
     .bind(status)
     .bind(last_observation_at)
     .bind(&now)
+    .bind(first_pass_ms)
+    .bind(total_ms)
     .execute(pool)
     .await
     .map_err(|e| format!("assignment_board_status upsert failed: {}", e))?;

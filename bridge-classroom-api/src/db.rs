@@ -754,6 +754,12 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // Per-board active-time rollup columns (idle-capped). first_pass_ms = the
+    // first attempt's time; total_ms = sum across all attempts/replays. Summed
+    // by the assignment panel so it never scans observations for durations.
+    add_column_if_missing(pool, "assignment_board_status", "first_pass_ms", "INTEGER").await?;
+    add_column_if_missing(pool, "assignment_board_status", "total_ms", "INTEGER").await?;
+
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_abs_user_assignment ON assignment_board_status(user_id, assignment_id)"#)
         .execute(pool)
         .await

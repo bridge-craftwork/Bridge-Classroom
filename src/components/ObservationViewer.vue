@@ -180,7 +180,12 @@
                   <span v-else class="prompt-ok">&checkmark;</span>
                 </span>
               </template>
-              <span v-if="p.time_ms > 0" class="prompt-time">{{ formatMs(p.time_ms) }}</span>
+              <span
+                v-if="p.time_ms > 0"
+                class="prompt-time"
+                :class="{ 'prompt-time-idle': isIdlePrompt(p.time_ms) }"
+                :title="isIdlePrompt(p.time_ms) ? `Capped for display — student was idle here (raw ${formatMs(p.time_ms)})` : null"
+              >{{ promptTimeText(p.time_ms) }}<span v-if="isIdlePrompt(p.time_ms)" class="idle-flag">idle</span></span>
             </div>
           </div>
 
@@ -252,6 +257,7 @@
 <script setup>
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { formatDurationMs } from '../utils/formatDuration.js'
+import { PER_PROMPT_CAP_MS } from '../utils/observationSchema.js'
 
 const props = defineProps({
   obs: { type: Object, required: true },
@@ -380,7 +386,9 @@ const promptStats = computed(() => {
       if (hadCorrect) corrected++
     }
   }
-  const totalTime = all.reduce((sum, p) => sum + (p.time_ms || 0), 0)
+  // Idle-capped so the "Total Time" here matches the panel's duration
+  // (a single walked-away prompt no longer counts as hours).
+  const totalTime = all.reduce((sum, p) => sum + Math.min(p.time_ms || 0, PER_PROMPT_CAP_MS), 0)
   return { total, wrong, corrected, totalTime }
 })
 
@@ -438,6 +446,15 @@ function formatMs(ms) {
   if (!ms || ms <= 0) return ''
   if (ms < 1000) return ms + 'ms'
   return (ms / 1000).toFixed(1) + 's'
+}
+
+// A prompt whose raw wall-clock exceeds the per-prompt idle ceiling: the
+// student walked away mid-bid. We display the capped value and flag it.
+function isIdlePrompt(ms) {
+  return Number(ms) > PER_PROMPT_CAP_MS
+}
+function promptTimeText(ms) {
+  return formatMs(Math.min(Number(ms) || 0, PER_PROMPT_CAP_MS))
 }
 
 function formatTotalTime(ms) {
@@ -856,6 +873,23 @@ function parseSuits(hand) {
   font-size: 0.62rem;
   color: var(--text-label);
   margin-left: auto;
+}
+
+.prompt-time-idle {
+  color: #d97706;
+}
+
+.idle-flag {
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
 }
 
 .pill-expected-sm, .pill-student-sm {
