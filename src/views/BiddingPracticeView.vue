@@ -242,7 +242,7 @@
   </div>
 
   <!-- ══ Solo mode: the practice bidding shell (LocalEngine) ══ -->
-  <div v-else class="bp-app" :class="{ embedded: EMBEDDED }">
+  <div v-else class="bp-app" :class="{ embedded: EMBEDDED, 'intro-open': chatReserved }" :style="{ '--intro-gutter': chatGutter }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
       <a class="bp-nav-back" href="/">&larr; All tools</a>
@@ -567,13 +567,18 @@
       </div>
     </div>
 
-    <!-- Scenario chat — sizable, draggable popup of the .btn @chat -->
-    <ScenarioChatPopup
+    <!-- Scenario description — the .btn @chat in the shared dockable/floating
+         panel (same frame as the A1 lesson intro; honors the global dock pref). -->
+    <DockablePanel
       :visible="showScenarioChat && !!scenarioChat"
-      :title="scenarioChat?.title || ''"
-      :text="scenarioChat?.text || ''"
+      :title="scenarioChat?.title || 'Scenario'"
+      :initial-width="620"
+      :initial-height="520"
       @close="showScenarioChat = false"
-    />
+      @geometry="chatGeometry = $event"
+    >
+      <ScenarioChatBody :text="scenarioChat?.text || ''" />
+    </DockablePanel>
   </div>
 </template>
 
@@ -585,7 +590,8 @@ import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import StatusStrip from '../components/StatusStrip.vue'
-import ScenarioChatPopup from '../components/ScenarioChatPopup.vue'
+import DockablePanel from '../components/DockablePanel.vue'
+import ScenarioChatBody from '../components/ScenarioChatBody.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import { formatBid } from '../utils/cardFormatting.js'
@@ -599,6 +605,7 @@ import { useLocalEngine } from '../composables/engines/localEngine.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useServerTable } from '../composables/useServerTable.js'
+import { useAppConfig } from '../composables/useAppConfig.js'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
 
@@ -711,6 +718,21 @@ const drawing = ref(false) // "dealing…" spinner between a draw and the load
 // and reopenable from the scenario bar. { title, text } or null.
 const scenarioChat = ref(null)
 const showScenarioChat = ref(false)
+
+// Docked-gutter reflow (mirrors MainLayout's lesson-intro): when the scenario
+// description is docked (the global uiPrefs.introDock preference), reserve a left
+// gutter the width of the panel so the table reflows to its right instead of
+// hiding behind it; floating overlays with no reflow.
+const appConfig = useAppConfig()
+const chatGeometry = ref(null)
+const introDocked = computed(() => appConfig.uiPrefs.value.introDock === 'dock')
+const chatReserved = computed(() => introDocked.value && showScenarioChat.value && !!scenarioChat.value)
+const chatGutter = computed(() => {
+  if (!chatReserved.value) return null
+  const g = chatGeometry.value
+  if (!g) return '644px' // panel not yet reporting: reserve the default width
+  return `${Math.round(g.x + g.w + 16)}px`
+})
 const chatCache = ref({})       // scenario file -> fetchScenarioMeta result
 let lastChatScenario = ''       // avoids re-popping chat on same-scenario next-deals
 
@@ -1210,6 +1232,17 @@ async function restartCardplay() {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #222;
 }
+/* While the scenario description is docked at the left edge, reserve a left
+   gutter the width of the panel so the practice content reflows to its right
+   instead of hiding behind it (mirrors MainLayout's `.app.intro-open`). Only on
+   screens wide enough to hold the gutter plus the content — narrower screens keep
+   the layout and the panel floats over it. */
+@media (min-width: 1200px) {
+  .bp-app.intro-open .bp-main {
+    padding-left: var(--intro-gutter, 644px);
+  }
+}
+
 .bp-app.embedded {
   grid-template-rows: 1fr;
 }
