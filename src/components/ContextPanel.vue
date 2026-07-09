@@ -2,7 +2,7 @@
   <!-- The docked context region: lesson commentary, table chat, or teacher
        controls. One shell owns which mode is live (keyed on engine.capabilities
        upstream); this component just renders the mode it's given. It absorbs
-       MainLayout's inline commentary and the ScenarioChatPopup. -->
+       MainLayout's inline commentary and the scenario description panel. -->
   <section class="context-panel" :class="'mode-' + mode">
     <header class="cp-head">
       <h3>{{ title || defaultTitle }}</h3>
