@@ -6,6 +6,8 @@
         <SeatPanel
           :hand="hands.N"
           seat="N"
+          :name="occName('N')"
+          :presence="occPresence('N')"
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'N'"
@@ -22,6 +24,8 @@
       <SeatPanel
         :hand="hands.W"
         seat="W"
+        :name="occName('W')"
+        :presence="occPresence('W')"
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'W'"
@@ -42,6 +46,8 @@
       <SeatPanel
         :hand="hands.E"
         seat="E"
+        :name="occName('E')"
+        :presence="occPresence('E')"
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'E'"
@@ -58,6 +64,8 @@
         <SeatPanel
           :hand="hands.S"
           seat="S"
+          :name="occName('S')"
+          :presence="occPresence('S')"
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'S'"
@@ -114,10 +122,32 @@ const props = defineProps({
   hidePlayedCards: {
     type: Boolean,
     default: false
+  },
+  // Per-seat occupants for multiplayer: { N: { name, connected }, ... }. When a
+  // seat has a name, its label becomes a SeatIndicator (badge + player name) over
+  // the hand; absent → the plain compass label (A1 / solo unchanged).
+  occupants: {
+    type: Object,
+    default: null
+  },
+  // Seat to highlight as "on turn" with the active-hand frame, even when it isn't
+  // clickable (e.g. during the auction). Additive to clickableSeat.
+  activeSeat: {
+    type: String,
+    default: null
   }
 })
 
 defineEmits(['card-click'])
+
+function occName(seat) { return props.occupants?.[seat]?.name || null }
+function occPresence(seat) {
+  // Only humans (a boolean `connected`) get a presence dot; bots don't connect.
+  const o = props.occupants?.[seat]
+  return o && o.name && typeof o.connected === 'boolean'
+    ? (o.connected ? 'connected' : 'disconnected')
+    : null
+}
 
 // The center column reserves ~240px for a TrickArea (play view). Bidding/review
 // boards pass no #center slot, so that space is dead and squeezes the side hands
@@ -197,7 +227,7 @@ function marksFor(seat) {
   for (const code of props.playedCards?.[seat] || []) {
     cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { played: true }
   }
-  return { cards, activeSeat: props.clickableSeat === seat }
+  return { cards, activeSeat: props.activeSeat === seat || props.clickableSeat === seat }
 }
 </script>
 
