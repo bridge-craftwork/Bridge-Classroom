@@ -197,39 +197,11 @@
         </div>
       </div>
 
-      <!-- Observation Decryption -->
-      <div class="decrypt-section">
-        <h3 class="section-title">Observation Decryption</h3>
-        <p class="decrypt-description">
-          Decrypt all observations using RECOVERY_SECRET and populate the
-          <code>observations_decrypted</code> table for inspection and backfill.
-        </p>
-        <div class="decrypt-actions">
-          <button
-            class="decrypt-btn"
-            @click="handleDecryptObservations"
-            :disabled="decrypting"
-          >
-            {{ decrypting ? 'Decrypting...' : 'Decrypt All Observations' }}
-          </button>
-        </div>
-        <div v-if="decrypting" class="decrypt-progress">
-          <div class="spinner"></div>
-          <p>Processing observations (this may take a minute)...</p>
-        </div>
-        <div v-if="decryptResult" class="decrypt-result" :class="{ error: !decryptResult.success }">
-          <p v-if="decryptResult.success">
-            Decrypted <strong>{{ decryptResult.observations_decrypted.toLocaleString() }}</strong> observations
-            from <strong>{{ decryptResult.users_processed }}</strong> users.
-            <span v-if="decryptResult.users_skipped"> ({{ decryptResult.users_skipped }} users skipped — no recovery key)</span>
-            <span v-if="decryptResult.errors"> | {{ decryptResult.errors }} errors</span>
-          </p>
-          <p v-else>Decryption failed: {{ decryptResult.error }}</p>
-          <p v-if="decryptResult.success" class="decrypt-hint">
-            Results in <code>observations_decrypted</code> table. Query via SQLite to inspect.
-          </p>
-        </div>
-      </div>
+      <!-- Observation Decryption is an ops-only action: it briefly materialises
+           every E2E-encrypted observation as plaintext, so it must not be one
+           browser click behind the public API key. It now lives behind the
+           server-only ADMIN_SECRET (POST /api/admin/decrypt-observations and
+           /api/admin/backfill-active-time with an x-admin-secret header). -->
     </template>
   </div>
 </template>
@@ -509,31 +481,6 @@ function formatDate(iso) {
     return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
   } catch {
     return iso
-  }
-}
-
-// Observation decryption
-const decrypting = ref(false)
-const decryptResult = ref(null)
-
-async function handleDecryptObservations() {
-  decrypting.value = true
-  decryptResult.value = null
-  try {
-    const res = await fetch(`${API_URL}/admin/decrypt-observations`, {
-      method: 'POST',
-      headers: { 'x-api-key': API_KEY }
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      decryptResult.value = { success: false, error: `HTTP ${res.status}: ${text}` }
-      return
-    }
-    decryptResult.value = await res.json()
-  } catch (err) {
-    decryptResult.value = { success: false, error: err.message }
-  } finally {
-    decrypting.value = false
   }
 }
 
@@ -949,73 +896,6 @@ onMounted(loadData)
 
 .save-feedback.success { color: #2e7d32; }
 .save-feedback.error { color: #d32f2f; }
-
-/* Decrypt section */
-.decrypt-section {
-  background: white;
-  border-radius: var(--radius-card, 10px);
-  border: 1px solid var(--card-border, #e0ddd7);
-  padding: 20px;
-  margin-top: 24px;
-}
-
-.decrypt-description {
-  font-size: 13px;
-  color: var(--text-secondary, #6b7280);
-  margin-bottom: 12px;
-}
-
-.decrypt-description code {
-  background: #f3f4f6;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-.decrypt-actions {
-  margin-bottom: 12px;
-}
-
-.decrypt-btn {
-  padding: 8px 20px;
-  background: #7c3aed;
-  color: white;
-  border: none;
-  border-radius: var(--radius-button, 6px);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: var(--font-body, 'DM Sans', sans-serif);
-}
-
-.decrypt-btn:hover { background: #6d28d9; }
-.decrypt-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.decrypt-progress {
-  text-align: center;
-  padding: 16px 0;
-  color: var(--text-secondary, #6b7280);
-  font-size: 13px;
-}
-
-.decrypt-result {
-  padding: 12px 16px;
-  border-radius: var(--radius-button, 6px);
-  background: #e8f5e9;
-  font-size: 13px;
-}
-
-.decrypt-result.error {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.decrypt-hint {
-  margin-top: 6px;
-  color: var(--text-muted, #9ca3af);
-  font-size: 12px;
-}
 
 @media (max-width: 768px) {
   .content-grid {

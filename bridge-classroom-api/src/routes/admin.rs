@@ -18,6 +18,36 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
     false
 }
 
+/// Gate for the dangerous ops-only admin endpoints (mass decrypt / active-time
+/// backfill). Requires the server-only `ADMIN_SECRET` via the `x-admin-secret`
+/// header. Unlike `api_key`, this secret is never shipped to the browser, so a
+/// leaked frontend key can't trigger these. Fails **closed** (503) when the
+/// secret isn't configured, and uses a constant-time compare.
+fn require_admin(
+    headers: &HeaderMap,
+    config: &crate::config::Config,
+) -> Result<(), (StatusCode, String)> {
+    let Some(secret) = config.admin_secret.as_deref() else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Admin operations are not configured".to_string(),
+        ));
+    };
+    let provided = headers
+        .get("x-admin-secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if ring::constant_time::verify_slices_are_equal(provided.as_bytes(), secret.as_bytes()).is_ok()
+    {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::UNAUTHORIZED,
+            "Invalid or missing admin secret".to_string(),
+        ))
+    }
+}
+
 // ---- Request / Response types ----
 
 #[derive(Debug, Deserialize)]
@@ -405,9 +435,7 @@ pub async fn admin_decrypt_observations(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<DecryptObservationsResponse>, (StatusCode, String)> {
-    if !validate_api_key(&headers, &state.config.api_key) {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
-    }
+    require_admin(&headers, &state.config)?;
 
     let recovery_secret = state
         .config
@@ -746,9 +774,7 @@ pub async fn admin_backfill_active_time(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<BackfillActiveTimeResponse>, (StatusCode, String)> {
-    if !validate_api_key(&headers, &state.config.api_key) {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
-    }
+    require_admin(&headers, &state.config)?;
 
     // 1. Decrypt every observation into observations_decrypted (DROP+CREATE+fill).
     let _ = admin_decrypt_observations(State(state.clone()), headers.clone()).await?;

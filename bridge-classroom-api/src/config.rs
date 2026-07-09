@@ -27,6 +27,11 @@ pub struct Config {
     /// Secret for encrypting recovery keys (optional)
     pub recovery_secret: Option<String>,
 
+    /// Secret gating the dangerous ops-only admin endpoints (decrypt / active-time
+    /// backfill). Unlike `api_key` this is NOT in the frontend bundle — it lives
+    /// only in the launchd plist. When unset, those endpoints fail closed (503).
+    pub admin_secret: Option<String>,
+
     /// Resend API key for sending emails (optional)
     pub resend_api_key: Option<String>,
 
@@ -98,6 +103,10 @@ impl Config {
             .map_err(|_| ConfigError::InvalidPort)?;
 
         let recovery_secret = env::var("RECOVERY_SECRET").ok();
+        // Treat empty ADMIN_SECRET the same as unset (fail closed downstream).
+        let admin_secret = env::var("ADMIN_SECRET")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
         let resend_api_key = env::var("RESEND_API_KEY").ok();
         let from_email = env::var("FROM_EMAIL")
             .unwrap_or_else(|_| "Bridge Classroom <noreply@mail.bridge-classroom.org>".to_string());
@@ -137,6 +146,7 @@ impl Config {
             host,
             port,
             recovery_secret,
+            admin_secret,
             resend_api_key,
             from_email,
             github_issues_token,
