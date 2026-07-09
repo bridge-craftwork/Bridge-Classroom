@@ -9,7 +9,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'N'"
-          :density="seatDensity"
+          :density="nsDensity"
           :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
@@ -25,7 +25,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'W'"
-        :density="seatDensity"
+        :density="ewDensity"
         :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
@@ -45,7 +45,7 @@
         :showHcp="showHcp"
         :showTotalPoints="showTotalPoints"
         :clickable="clickableSeat === 'E'"
-        :density="seatDensity"
+        :density="ewDensity"
         :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
@@ -61,7 +61,7 @@
           :showHcp="showHcp"
           :showTotalPoints="showTotalPoints"
           :clickable="clickableSeat === 'S'"
-          :density="seatDensity"
+          :density="nsDensity"
           :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
@@ -130,11 +130,12 @@ const hasCenter = computed(() => !!slots.center)
 // The arranger: pick a density from the table's OWN width, so it responds inside
 // a console tile as well as at the viewport. Ladder — full ≥ 700 (roomy compass,
 // unchanged from today); compact 360–700 (smaller cards, all hands still shown);
-// chip 280–360 (identity chips in the compass — two fit side-by-side); stack
-// < 280 (identity chips in a single full-width column — below this the compass's
-// side-by-side W/E chips can't fit and would clip). Starts wide so there's no
-// chip-flash before the observer measures. ResizeObserver, never container
-// queries (inline-size containment breaks shrink-wrap hosts — see #88).
+// split 280–360 (N/S stay a compact HAND — they span the full width so they fit —
+// while E/W, boxed into the narrow side columns, fall back to identity chips);
+// stack < 280 (all four are identity chips in a single full-width column — below
+// this the compass's side-by-side W/E can't fit and would clip). Starts wide so
+// there's no chip-flash before the observer measures. ResizeObserver, never
+// container queries (inline-size containment breaks shrink-wrap hosts — see #88).
 const root = ref(null)
 const width = ref(9999)
 let ro = null
@@ -163,13 +164,29 @@ const sizeMode = computed(() => {
     return w < 160 ? 'chip' : w < 700 ? 'compact' : 'full'
   }
   return w < 280 ? 'stack'
-    : w < 360 ? 'chip'
+    : w < 360 ? 'split'
     : w < 700 ? 'compact'
     : 'full'
 })
-// Seat rendering budget: 'stack' and 'chip' are both identity-only (they differ
-// only in arrangement), so both map to the SeatPanel 'chip' density.
-const seatDensity = computed(() => (sizeMode.value === 'stack' ? 'chip' : sizeMode.value))
+// Per-seat rendering budget. N/S span the full table width, so they keep showing
+// an actual hand far narrower than the boxed-in side seats can — in 'split' they
+// stay a compact hand while E/W drop to identity chips. 'stack'/'chip' are
+// identity-only for every seat; 'compact'/'full' pass through to real hands.
+const nsDensity = computed(() => {
+  switch (sizeMode.value) {
+    case 'full': return 'full'
+    case 'stack':
+    case 'chip': return 'chip'
+    default: return 'compact' // compact + split → N/S render a hand
+  }
+})
+const ewDensity = computed(() => {
+  switch (sizeMode.value) {
+    case 'full': return 'full'
+    case 'compact': return 'compact'
+    default: return 'chip' // split + stack + chip → E/W are identity chips
+  }
+})
 
 // Build a seat's annotation map from the (unchanged) external props: each
 // played card code becomes a `played` mark, and the clickable seat carries the
@@ -258,8 +275,10 @@ function marksFor(seat) {
 
 /* Container-relative arranger. `size-full` is the roomy compass (unchanged).
    `size-compact` tightens the grid + shrinks the reserved center so the smaller
-   hands fit; `size-chip` is a tiny compass of identity chips (console tile). */
-.bridge-table.size-compact {
+   hands fit; `size-split` uses the same compass geometry but E/W render as chips
+   (N/S stay hands); `size-chip` is a tiny compass of identity chips (console tile). */
+.bridge-table.size-compact,
+.bridge-table.size-split {
   gap: 6px;
   padding: 10px;
   min-width: 0;
@@ -300,7 +319,8 @@ function marksFor(seat) {
   grid-template-columns: auto minmax(0, 240px) auto;
   justify-content: center;
 }
-.bridge-table.no-center.size-compact {
+.bridge-table.no-center.size-compact,
+.bridge-table.no-center.size-split {
   grid-template-columns: auto minmax(0, 150px) auto;
 }
 .bridge-table.no-center .center {
