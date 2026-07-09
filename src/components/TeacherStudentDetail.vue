@@ -81,6 +81,14 @@
                   v-else-if="board.achievement === 'silver'"
                   class="medal silver-medal"
                 >&#9733;</span>
+                <!-- Wild-mastery paw (from the board_status rollup), bottom-right
+                     so it never collides with the top-right star. -->
+                <span
+                  v-if="board.wildAchievement"
+                  class="paw-mark"
+                  :class="{ fresh: board.wildAchievement === 'Fresh' }"
+                  aria-label="wild mastery"
+                >🐾</span>
                 <span class="board-num">{{ board.boardNumber }}</span>
               </div>
             </div>
@@ -213,7 +221,11 @@ function getTooltip(board) {
     blue: 'Correct (try again after cooldown)',
     green: 'Clean correct'
   }
-  return `Board ${board.boardNumber}: ${statusLabels[board.status] || board.status}`
+  const medal = board.achievement === 'gold' ? ' | Gold star'
+    : board.achievement === 'silver' ? ' | Silver star' : ''
+  const paw = board.wildAchievement === 'Fresh' ? ' | 🐾 Fresh paw (clean on a cold wild board)'
+    : board.wildAchievement === 'Recent' ? ' | 🐾 Recent paw (clean on a wild board)' : ''
+  return `Board ${board.boardNumber}: ${statusLabels[board.status] || board.status}${medal}${paw}`
 }
 </script>
 
@@ -467,6 +479,24 @@ function getTooltip(board) {
 .silver-medal {
   color: #e8e8e8;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* Wild-mastery paw, bottom-right so it never collides with the top-right star.
+   Tier-colored halo: Fresh green / Recent amber. */
+.paw-mark {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  font-size: 11px;
+  line-height: 1;
+  z-index: 1;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 0 1.5px #fbbf24, 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.paw-mark.fresh {
+  background: #34d399;
+  box-shadow: 0 0 0 1.5px #34d399, 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .board-num {
