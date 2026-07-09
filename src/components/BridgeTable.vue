@@ -136,12 +136,29 @@ onMounted(() => {
   ro.observe(root.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
-const sizeMode = computed(() =>
-  width.value < 280 ? 'stack'
-    : width.value < 360 ? 'chip'
-    : width.value < 700 ? 'compact'
-    : 'full'
+// The chip/stack collapse exists only because W (left) + center + E (right) must
+// sit side-by-side; the 280/360 thresholds reserve room for that compass. When
+// NEITHER side seat is shown (a single N/S hand, or N+S stacked — e.g. a bidding
+// board that hides E/W), there is no compass to preserve: one hand column shows
+// in full at ~200px. Using the compass ladder there wrongly collapses a lone hand
+// to an identity chip ("South 13 cards") whenever its column is narrowed — e.g. a
+// docked lesson intro reserving a gutter. So drop to a single-column ladder that
+// keeps rendering the cards (only shrinking card size) until the column is truly
+// too tight for ranks.
+const hasSideSeats = computed(() =>
+  (!props.hiddenSeats.includes('W') && !!props.hands.W) ||
+  (!props.hiddenSeats.includes('E') && !!props.hands.E)
 )
+const sizeMode = computed(() => {
+  const w = width.value
+  if (!hasSideSeats.value) {
+    return w < 160 ? 'chip' : w < 700 ? 'compact' : 'full'
+  }
+  return w < 280 ? 'stack'
+    : w < 360 ? 'chip'
+    : w < 700 ? 'compact'
+    : 'full'
+})
 // Seat rendering budget: 'stack' and 'chip' are both identity-only (they differ
 // only in arrangement), so both map to the SeatPanel 'chip' density.
 const seatDensity = computed(() => (sizeMode.value === 'stack' ? 'chip' : sizeMode.value))
