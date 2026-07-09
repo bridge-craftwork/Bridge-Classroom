@@ -72,12 +72,10 @@
           <div class="board-row">
             <span class="board-label">{{ a.total_boards }} board{{ a.total_boards !== 1 ? 's' : '' }}</span>
             <span v-if="hasAchievements(a)" class="assignment-badges">
-              <!-- Paws lead stars (wilds outrank stars). -->
-              <span
-                v-if="achievementCounts(a).freshPaws + achievementCounts(a).recentPaws"
-                class="ab ab-paw"
-                :title="`${achievementCounts(a).freshPaws} fresh + ${achievementCounts(a).recentPaws} recent wild mastery`"
-              ><PawIcon :tier="achievementCounts(a).freshPaws > 0 ? 'Fresh' : 'Recent'" class="ab-paw-icon" /> {{ achievementCounts(a).freshPaws + achievementCounts(a).recentPaws }}</span>
+              <!-- Highest attainment first: Fresh (gold) → Recent (green) wilds,
+                   then gold → silver stars. -->
+              <span v-if="achievementCounts(a).freshPaws" class="ab ab-paw" :title="`${achievementCounts(a).freshPaws} fresh wild mastery`"><PawIcon tier="Fresh" class="ab-paw-icon" /> {{ achievementCounts(a).freshPaws }}</span>
+              <span v-if="achievementCounts(a).recentPaws" class="ab ab-paw" :title="`${achievementCounts(a).recentPaws} recent wild mastery`"><PawIcon tier="Recent" class="ab-paw-icon" /> {{ achievementCounts(a).recentPaws }}</span>
               <span v-if="achievementCounts(a).goldStars" class="ab ab-gold" :title="`${achievementCounts(a).goldStars} gold star(s)`">★ {{ achievementCounts(a).goldStars }}</span>
               <span v-if="achievementCounts(a).silverStars" class="ab ab-silver" :title="`${achievementCounts(a).silverStars} silver star(s)`">★ {{ achievementCounts(a).silverStars }}</span>
             </span>
