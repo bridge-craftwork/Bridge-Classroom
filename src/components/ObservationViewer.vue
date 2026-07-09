@@ -16,6 +16,14 @@
       </div>
       <div class="obs-header-right">
         <span class="timestamp">{{ formattedTime }}</span>
+        <span
+          v-if="isWild"
+          class="wild-badge"
+          :class="{ mastery: correct && !isCorrected }"
+          :title="correct && !isCorrected
+            ? 'Clean on a WILD board \u2014 a mastery paw. Wild boards are dealt amid a mostly-different set, so they can\'t be rote-recognized.'
+            : 'Played on a WILD board (25% / jungle randomization).'"
+        >\uD83D\uDC3E Wild board</span>
         <span class="result-badge" :class="isCorrected ? 'corrected' : (correct ? 'correct' : 'incorrect')">
           {{ isCorrected ? '\u21BB Corrected' : (correct ? '\u2713 Correct' : '\u2717 Incorrect') }}
         </span>
@@ -326,6 +334,9 @@ const deal        = computed(() => props.obs.deal       || {})
 const prompt      = computed(() => props.obs.bid_prompt || {})
 const result      = computed(() => props.obs.result     || {})
 const correct     = computed(() => result.value.correct)
+// Frozen wilderness of this play — 'Wild' when the board was dealt under the
+// 25%/jungle randomization. A clean play here is the paw mastery milestone.
+const isWild      = computed(() => props.obs.wilderness === 'Wild')
 const hands       = computed(() => deal.value.hands || {})
 const studentSeat = computed(() => deal.value.student_seat)
 
@@ -573,6 +584,24 @@ function parseSuits(hand) {
 .result-badge.correct   { background: var(--correct-bg);   color: var(--green); border: 1px solid var(--correct-border); }
 .result-badge.incorrect { background: var(--incorrect-bg); color: var(--red);   border: 1px solid var(--incorrect-border); }
 .result-badge.corrected { background: #fef3e0; color: #b45309; border: 1px solid #f5c882; }
+
+/* Wild-board tag. Muted by default; a saturated "mastery" variant when the
+   play was clean (the paw milestone). */
+.wild-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+  background: #ecfdf5;
+  color: #6b7280;
+  border: 1px solid #d1fae5;
+}
+.wild-badge.mastery {
+  background: #d1fae5;
+  color: #047857;
+  border: 1px solid #6ee7b7;
+}
 
 .close-btn {
   background: none;

@@ -318,6 +318,15 @@
       Account created — your data is encrypted and linked to your email for recovery.
     </div>
 
+    <!-- Wild-mastery celebration: a Fresh paw earned on a Wild board -->
+    <div v-if="activePaw" class="paw-toast" @click="activePaw = null">
+      <span class="paw-toast-icon">🐾</span>
+      <span class="paw-toast-text">
+        <strong>Wild board mastered!</strong>
+        You earned a fresh paw{{ pawLessonName ? ` in ${pawLessonName}` : '' }} — clean on a wild board.
+      </span>
+    </div>
+
     <!-- Progress Dashboard Modal -->
     <div v-if="showProgress" class="modal-overlay" @click.self="showProgress = false">
       <ProgressDashboard @close="showProgress = false" />
@@ -376,6 +385,7 @@ import { useTeacherRole } from '../composables/useTeacherRole.js'
 import { useAnnouncement } from '../composables/useAnnouncement.js'
 import { useAssignments } from '../composables/useAssignments.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
+import { usePawCelebration } from '../composables/usePawCelebration.js'
 
 import BridgeTable from '../components/BridgeTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -516,6 +526,20 @@ const reportAnchor = ref(null)  // the button's rect, so the popup opens just be
 // { [boardNumber]: 'red'|'yellow'|'green' }
 const forceBoardStatus = ref({})
 const boardStatusApi = useBoardStatus()
+
+// Wild-mastery ("Fresh paw") celebration. usePawCelebration queues a paw when
+// board-status refetch reveals a newly-earned Fresh paw for the logged-in user;
+// we surface one at a time as a brief toast.
+const pawCelebration = usePawCelebration()
+const activePaw = ref(null)
+watch(pawCelebration.pendingCelebrations, (list) => {
+  if (activePaw.value || !list.length) return
+  activePaw.value = pawCelebration.shiftCelebration()
+  setTimeout(() => { activePaw.value = null }, 6000)
+}, { deep: true })
+const pawLessonName = computed(() =>
+  activePaw.value ? useAccomplishments().formatLessonName(activePaw.value.subfolder) : ''
+)
 
 // Exercise context for assignment-scoped mastery (null when not in exercise mode)
 const exerciseContext = ref(null)
@@ -1464,6 +1488,46 @@ async function loadLessonFromUrl(collectionId, lessonId) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   animation: toast-fade 4s ease-in-out;
   pointer-events: none;
+}
+
+/* Fresh-paw celebration toast. Slightly richer than the registration toast
+   (icon + two-line text) and clickable to dismiss. */
+.paw-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 460px;
+  background: linear-gradient(135deg, #047857, #10b981);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  z-index: 3001;
+  box-shadow: 0 6px 20px rgba(4, 120, 87, 0.4);
+  cursor: pointer;
+  animation: paw-toast-in 0.35s ease-out;
+}
+
+.paw-toast-icon {
+  font-size: 28px;
+  line-height: 1;
+  animation: paw-bounce 0.6s ease-in-out 2;
+}
+
+.paw-toast-text strong { display: block; font-size: 15px; margin-bottom: 1px; }
+
+@keyframes paw-toast-in {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.96); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes paw-bounce {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-4px) rotate(-8deg); }
 }
 
 @keyframes toast-fade {

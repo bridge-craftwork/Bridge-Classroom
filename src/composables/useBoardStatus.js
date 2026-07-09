@@ -1,5 +1,6 @@
 import { ref, reactive } from 'vue'
 import { useObservationStore } from './useObservationStore.js'
+import { registerFreshPaws } from './usePawCelebration.js'
 import { API_URL } from '@/utils/apiUrl.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
@@ -69,6 +70,9 @@ async function fetchBoardStatus(userId, dealSubfolder = null, force = false, col
     const boards = data.boards || []
 
     cache[cacheKey] = { boards, fetchedAt: Date.now() }
+    // Surface any newly-earned Fresh paw as a celebration (own data only; no-op
+    // for other users / already-seen paws). See usePawCelebration.
+    registerFreshPaws(userId, boards)
     return boards
   } catch (err) {
     console.error('Failed to fetch board status:', err)

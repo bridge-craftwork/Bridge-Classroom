@@ -357,7 +357,10 @@ async function decryptStudentObservation(studentUserId, rawObs) {
       correct: rawObs.correct,
       deal_subfolder: rawObs.deal_subfolder,
       deal_number: rawObs.deal_number,
-      board_result: rawObs.board_result
+      board_result: rawObs.board_result,
+      // Frozen wilderness of this play ('Wild'/'Tame') — drives the wild-board
+      // tag in the drill-in. Clear column, present on the raw row.
+      wilderness: rawObs.wilderness
     }
   } catch (err) {
     console.error('Failed to decrypt observation:', rawObs.id, err)
