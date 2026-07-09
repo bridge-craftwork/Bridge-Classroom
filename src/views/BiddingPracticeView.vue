@@ -74,41 +74,8 @@
         </div>
       </div>
 
-      <!-- Seats strip: seat-letter badge + player name (responsive name ladder),
-           with connection / ready / cards-left adornments. -->
-      <div class="tv-seats">
-        <SeatIndicator
-          v-for="seat in srv.SEAT_ORDER"
-          :key="seat"
-          class="tv-seat"
-          :class="{
-            'tv-seat-you': seat === srv.yourSeat,
-            'tv-seat-turn': seat === srv.nextToAct && srv.phase !== 'complete',
-          }"
-          :seat="seat"
-          :name="srv.occupantName(seat)"
-          empty-label="Bot"
-          :you="seat === srv.yourSeat"
-          :turn="seat === srv.nextToAct && srv.phase !== 'complete'"
-        >
-          <span
-            v-if="srv.seats[seat] && srv.seats[seat].kind === 'human'"
-            class="tv-seat-dot"
-            :class="{ 'tv-seat-dot-off': !srv.seats[seat].connected }"
-            :title="srv.seats[seat].connected ? 'connected' : 'disconnected'"
-          ></span>
-          <span
-            v-if="srv.readySeats.includes(seat)"
-            class="tv-seat-ready"
-            title="Ready for the next board"
-          >✓</span>
-          <span
-            v-if="srv.handCounts[seat] && srv.phase === 'play'"
-            class="tv-seat-count"
-            :title="`${srv.handCounts[seat]} card${srv.handCounts[seat] === 1 ? '' : 's'} left in this hand`"
-          >{{ srv.handCounts[seat] }}</span>
-        </SeatIndicator>
-      </div>
+      <!-- Seat identity now renders above each hand (BridgeTable occupants); the
+           old seats strip is gone from this view. -->
 
       <p v-if="!srv.yourSeat && !srv.seeAll" class="tv-kibitz-note">
         The table is full — you're kibitzing.
@@ -601,7 +568,6 @@ import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import StatusStrip from '../components/StatusStrip.vue'
-import SeatIndicator from '../components/SeatIndicator.vue'
 import DockablePanel from '../components/DockablePanel.vue'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
@@ -1739,20 +1705,6 @@ async function restartCardplay() {
 .tv-conn-connected { color: #1d9e75; }
 .tv-conn-reconnecting, .tv-conn-connecting, .tv-conn-minting { color: #e6a700; }
 .tv-conn-error, .tv-conn-unavailable { color: #c62828; }
-.tv-seats { display: flex; gap: 8px; margin-bottom: 12px; }
-/* Equal-width seat slots that share the row and shrink together, so the
-   SeatIndicator name ladder engages as the strip narrows. */
-.tv-seat {
-  flex: 1 1 0; min-width: 0; max-width: 240px;
-  background: #f5f5f5; border: 2px solid transparent; border-radius: 8px;
-  padding: 5px 12px; font-size: 14px;
-}
-.tv-seat-you { background: #e3f2fd; }
-.tv-seat-turn { border-color: #1d9e75; }
-.tv-seat-dot { width: 8px; height: 8px; border-radius: 50%; background: #1d9e75; }
-.tv-seat-dot-off { background: #bbb; }
-.tv-seat-ready { color: #1d9e75; font-weight: 700; }
-.tv-seat-count { color: #888; font-size: 12px; }
 .tv-kibitz-note { color: #b26a00; font-size: 14px; margin: 0 0 8px; }
 .tv-main {
   display: grid;

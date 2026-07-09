@@ -5,14 +5,15 @@
   <div class="seat-chip" :class="{ compact, 'is-turn': turn }">
     <!-- Named occupant (multiplayer): badge + player name above the hand, like
          BBO/Intobridge. No name (A1 / solo / bots) → the plain compass label. -->
-    <SeatIndicator v-if="name" :seat="seat" :name="name" :turn="turn" align="center">
+    <SeatIndicator
+      v-if="name"
+      :seat="seat"
+      :name="name"
+      :turn="turn"
+      align="start"
+      :connected="presence === 'connected' ? true : presence === 'disconnected' ? false : null"
+    >
       <span v-if="cardCount != null" class="seat-count">{{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}</span>
-      <span
-        v-if="presence"
-        class="seat-dot"
-        :class="'seat-dot-' + presence"
-        :title="presence === 'connected' ? 'connected' : 'disconnected'"
-      ></span>
     </SeatIndicator>
     <template v-else>
       <span class="seat-name">{{ label }}</span>

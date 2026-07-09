@@ -11,9 +11,9 @@ export default {
     },
     occupants: {
       N: { name: 'Lia', connected: true },
-      E: { name: 'Bot' },
+      E: { name: 'BBA+RulesBot' },
       S: { name: 'KEMistry', connected: true },
-      W: { name: 'Bot' },
+      W: { name: 'BBA+RulesBot' },
     },
     activeSeat: 'S',
     compact: true,

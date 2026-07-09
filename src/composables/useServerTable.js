@@ -209,15 +209,22 @@ export function useServerTable() {
     return occ && occ.kind === 'human' ? (occ.name || 'Player') : null
   }
 
+  // Name for empty (bot) seats: bidding is always BBA; cardplay is the session's
+  // bot backend. e.g. rules → "BBA+RulesBot".
+  const botLabel = computed(() => {
+    const cp = { random: 'Random', rules: 'RulesBot', ben: 'BEN' }[botMode.value]
+    return cp ? `BBA+${cp}` : 'Bot'
+  })
+
   // Per-seat occupant map for BridgeTable's over-the-board SeatIndicators:
-  // humans carry a connection dot; empty seats read 'Bot' (no dot).
+  // humans carry a connection state (greens the badge); empty seats are bots.
   const seatOccupants = computed(() => {
     const out = {}
     for (const s of SEAT_ORDER) {
       const occ = seats.value[s]
       out[s] = occ && occ.kind === 'human'
         ? { name: occ.name || 'Player', connected: occ.connected !== false }
-        : { name: 'Bot' }
+        : { name: botLabel.value }
     }
     return out
   })
