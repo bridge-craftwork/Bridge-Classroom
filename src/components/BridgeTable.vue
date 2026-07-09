@@ -287,13 +287,21 @@ function marksFor(seat) {
 .bridge-table.size-stack .position { width: 100%; }
 .bridge-table.size-stack .center { display: none; }
 
-/* No #center content (bidding/review boards have no trick area): stop reserving
-   the ~240px center column and give that width back to W/E so the side hands
-   don't cramp/wrap when the table is narrow. Full + compass-compact only; chip/
-   stack are identity-only and already collapse the center. */
-.bridge-table.no-center,
+/* No #center content (bidding/review boards have no trick area): the center is a
+   FLEXIBLE spacer, not a fixed reservation. It grows to the normal compass width
+   (so W/E sit at their usual max separation, as if a trick area were there) when
+   there's room, but shrinks toward 0 — letting W/E encroach — when the side hands
+   need that width to render without cramping/wrapping. `minmax(0, Npx)` on an
+   empty track does exactly this: it grows up to N only if free space remains after
+   the auto W/E columns take their content, and yields first when space is tight.
+   `justify-content: center` keeps the cross centered when the group is narrower
+   than the table. Chip/stack are identity-only and already collapse the center. */
+.bridge-table.no-center {
+  grid-template-columns: auto minmax(0, 240px) auto;
+  justify-content: center;
+}
 .bridge-table.no-center.size-compact {
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 150px) auto;
 }
 .bridge-table.no-center .center {
   min-width: 0;
