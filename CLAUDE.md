@@ -74,7 +74,15 @@ If something needs to be shown or hidden, the PBN says so explicitly. The app do
   - Uses `sqlite3 .backup` for safe snapshots (handles WAL correctly)
   - Local backups: `bridge-classroom-api/data/bridge_classroom_backup_YYYYMMDD.db`
   - Google Drive backups: `My Drive/Bridge Classroom/Backups/`
-  - Retention: 14 most recent in each location
+  - **Tiered retention (grandfather-father-son)** — each nightly snapshot is a
+    full copy; the daily is additionally *promoted* into longer-lived tiers on
+    the first run of each period (so a missed night never skips a tier):
+    - **daily** — 14 kept, flat in the backup root (`bridge_classroom_backup_YYYYMMDD.db`)
+    - **monthly** — 3 kept, `backups/monthly/bridge_classroom_backup_YYYYMM.db`
+    - **quarterly** — 4 kept (a rolling year), `backups/quarterly/bridge_classroom_backup_YYYYQn.db`
+    - **annual** — kept **forever**, `backups/annual/bridge_classroom_backup_YYYY.db`
+    - Same tier layout under both the local root and the Google Drive `Backups/`.
+      All of `data/` (incl. `data/backups/`) is gitignored.
   - Logs: `~/Library/Logs/bridge-classroom-backup.log`
 - **API logs**: `~/Library/Logs/bridge-classroom-api.log`
 - **Tunnel logs**: `~/Library/Logs/cloudflared-tunnel.log`
