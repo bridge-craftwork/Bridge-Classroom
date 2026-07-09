@@ -1485,9 +1485,15 @@ async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError>
 /// assignment-tagged observations into the per-(user, assignment, board)
 /// rollup via `recompute_assignment_boards`. Gated by its own `schema_meta`
 /// key so it runs exactly once, independent of the v2 backfill gate.
+///
+/// Gate bumped to `_v2` on 2026-07-08: the original run (2026-06-14) predated
+/// the `prerelease` column, and after ADR-0001 slice-2 added it,
+/// `recompute_assignment_boards`'s SELECT was missing it — so every recompute
+/// crashed on the first board with observations, freezing the rollup. Re-run
+/// once now that the SELECT is fixed to un-freeze all stale rollups.
 async fn run_assignment_status_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     let already_done: bool = sqlx::query_scalar(
-        r#"SELECT COUNT(*) > 0 FROM schema_meta WHERE key = 'assignment_board_status_backfill'"#,
+        r#"SELECT COUNT(*) > 0 FROM schema_meta WHERE key = 'assignment_board_status_backfill_v2'"#,
     )
     .fetch_one(pool)
     .await
@@ -1534,7 +1540,7 @@ async fn run_assignment_status_backfill(pool: &Pool<Sqlite>) -> Result<(), DbErr
 
     let now = chrono::Utc::now().to_rfc3339();
     sqlx::query(r#"INSERT INTO schema_meta (key, value, completed_at) VALUES (?, ?, ?)"#)
-        .bind("assignment_board_status_backfill")
+        .bind("assignment_board_status_backfill_v2")
         .bind("done")
         .bind(&now)
         .execute(pool)

@@ -63,8 +63,8 @@
                     <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
                   </td>
                   <td class="col-score">
-                    <span class="score-text">{{ row.correctCount }}/{{ row.attemptedCount }}</span>
-                    <span v-if="row.attemptedCount > 0" class="accuracy-text" :class="accuracyClass(row)">{{ Math.round(row.correctCount / row.attemptedCount * 100) }}%</span>
+                    <span class="score-text">{{ row.cleanCount }}/{{ row.attemptedCount }}</span>
+                    <span v-if="row.attemptedCount > 0" class="accuracy-text" :class="accuracyClass(row)">{{ Math.round(row.cleanCount / row.attemptedCount * 100) }}%</span>
                   </td>
                   <td class="col-duration">
                     <span v-if="row.student.active_duration_ms > 0" class="duration-text">
@@ -324,12 +324,27 @@ async function openCell(student, cell, event) {
   await teacherRole.fetchStudentObservations(student.student_id)
 
   const rawTs = new Date(cell.timestamp).getTime()
-  const decrypted = await teacherRole.findAndDecryptObservation(
-    student.student_id,
-    rawTs,
-    cell.deal_number,
-    cell.correct,
-  )
+  // For a close_correct (double-tilde ≈) cell the latest observation is a clean
+  // replay — the mistake lives in an earlier, separate observation. Open that
+  // erroring observation so the teacher sees where the student went wrong,
+  // matching the single-tilde (corrected) case where the error is in-line.
+  let decrypted = null
+  if (cell.status === 'close_correct') {
+    decrypted = await teacherRole.findAndDecryptErroringObservation(
+      student.student_id,
+      cell.deal_subfolder,
+      cell.deal_number,
+      rawTs,
+    )
+  }
+  if (!decrypted) {
+    decrypted = await teacherRole.findAndDecryptObservation(
+      student.student_id,
+      rawTs,
+      cell.deal_number,
+      cell.correct,
+    )
+  }
   if (decrypted) {
     popupManager.value.openObservation(decrypted, clickPos)
   } else {
@@ -341,19 +356,29 @@ async function openCell(student, cell, event) {
   }
 }
 
+// Panel summary, computed GUI-side from the live grid cells (`rows`) rather
+// than the backend's per-student rollup counts. Two reasons: (1) it stays
+// correct even if the rollup drifts, and (2) it lets us use a metric the
+// backend doesn't expose — a pooled clean rate. "Clean" = clean_correct only;
+// corrected and close_correct count as errors, matching the per-board PASS
+// RATE row and the per-student score.
 const summary = computed(() => {
-  const progress = assignment.value?.student_progress
-  if (!progress || progress.length === 0) return null
+  if (!rows.value.length) return null
 
-  const total = progress.length
-  const completed = progress.filter(s => s.attempted_boards >= s.total_boards).length
-  const studentsWithAttempts = progress.filter(s => s.attempted_boards > 0)
+  const total = rows.value.length
+  const boardTotal = boards.value.length
+  const completed = boardTotal > 0
+    ? rows.value.filter(r => r.attemptedCount >= boardTotal).length
+    : 0
+
+  const withAttempts = rows.value.filter(r => r.attemptedCount > 0)
   let avgAccuracy = null
-  if (studentsWithAttempts.length > 0) {
-    const sum = studentsWithAttempts.reduce((acc, s) => {
-      return acc + (s.correct_boards / s.attempted_boards) * 100
-    }, 0)
-    avgAccuracy = Math.round(sum / studentsWithAttempts.length)
+  if (withAttempts.length > 0) {
+    // Pooled (micro) average: total clean plays / total attempts across all
+    // students, so a student with a single attempt can't swing the number.
+    const totalClean = withAttempts.reduce((acc, r) => acc + r.cleanCount, 0)
+    const totalAttempted = withAttempts.reduce((acc, r) => acc + r.attemptedCount, 0)
+    avgAccuracy = Math.round((totalClean / totalAttempted) * 100)
   }
 
   return { total, completed, avgAccuracy }
@@ -374,7 +399,7 @@ function formatTimestamp(ts) {
 
 function accuracyClass(row) {
   if (row.attemptedCount === 0) return ''
-  const pct = row.correctCount / row.attemptedCount
+  const pct = row.cleanCount / row.attemptedCount
   if (pct >= 0.80) return 'accuracy-high'
   if (pct >= 0.50) return 'accuracy-mid'
   return 'accuracy-low'
