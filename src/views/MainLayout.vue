@@ -320,7 +320,7 @@
 
     <!-- Wild-mastery celebration: a Fresh paw earned on a Wild board -->
     <div v-if="activePaw" class="paw-toast" @click="activePaw = null">
-      <span class="paw-toast-icon">🐾</span>
+      <PawIcon tier="Fresh" class="paw-toast-icon" />
       <span class="paw-toast-text">
         <strong>Wild board mastered!</strong>
         You earned a fresh paw{{ pawLessonName ? ` in ${pawLessonName}` : '' }}{{ activePaw.dealNumber != null ? ` #${activePaw.dealNumber}` : '' }} — clean on a wild board.
@@ -386,6 +386,7 @@ import { useAnnouncement } from '../composables/useAnnouncement.js'
 import { useAssignments } from '../composables/useAssignments.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { usePawCelebration } from '../composables/usePawCelebration.js'
+import PawIcon from '../components/PawIcon.vue'
 
 import BridgeTable from '../components/BridgeTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -1513,8 +1514,9 @@ async function loadLessonFromUrl(collectionId, lessonId) {
 }
 
 .paw-toast-icon {
-  font-size: 28px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
   animation: paw-bounce 0.6s ease-in-out 2;
 }
 

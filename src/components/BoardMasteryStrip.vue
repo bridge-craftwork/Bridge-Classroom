@@ -32,12 +32,11 @@
         class="medal silver-medal"
       >&#9733;</span>
       <!-- Wild-mastery paw, bottom-right corner (star owns top-right). -->
-      <span
+      <PawIcon
         v-if="board.wildAchievement"
         class="paw-mark"
-        :class="{ fresh: board.wildAchievement === 'Fresh' }"
-        aria-label="wild mastery"
-      >🐾</span>
+        :tier="board.wildAchievement"
+      />
       <span class="board-num">{{ board.boardNumber }}</span>
     </div>
   </div>
@@ -48,6 +47,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { useBoardMastery } from '../composables/useBoardMastery.js'
 import { useUserStore } from '../composables/useUserStore.js'
+import PawIcon from './PawIcon.vue'
 
 const props = defineProps({
   boardNumbers: {
@@ -331,23 +331,15 @@ function getTooltip(board) {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
-/* Wild-mastery paw, bottom-right so it never collides with the top-right star.
-   A tier-colored halo distinguishes Fresh (green) from Recent (amber). */
+/* Wild-mastery paw glyph (PawIcon owns fill/outline); positioned in the
+   bottom-right corner (star owns top-right). */
 .paw-mark {
   position: absolute;
   bottom: -5px;
   right: -5px;
-  font-size: 11px;
-  line-height: 1;
+  width: 13px;
+  height: 13px;
   z-index: 1;
-  border-radius: 50%;
-  background: #fbbf24;
-  box-shadow: 0 0 0 1.5px #fbbf24, 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-.paw-mark.fresh {
-  background: #34d399;
-  box-shadow: 0 0 0 1.5px #34d399, 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 /* Medal + bad status: add a colored ring to make both visible */

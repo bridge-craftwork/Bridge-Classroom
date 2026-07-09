@@ -7,7 +7,7 @@
         class="paw-total"
         :title="`Wild-board masteries: ${totalFreshPaws} fresh, ${totalRecentPaws} recent. Earned by playing a board clean under the 25%/jungle randomization — the strongest mastery signal.`"
       >
-        <span class="paw-total-icon">🐾</span>
+        <PawIcon class="paw-total-icon" />
         <strong>{{ totalFreshPaws + totalRecentPaws }}</strong>
         wild {{ totalFreshPaws + totalRecentPaws === 1 ? 'mastery' : 'masteries' }}
       </span>
@@ -91,10 +91,10 @@
               <span
                 v-if="lesson.freshPaws + lesson.recentPaws > 0"
                 class="paw-badge"
-                :class="{ fresh: lesson.freshPaws > 0 }"
                 :title="`${lesson.freshPaws} fresh + ${lesson.recentPaws} recent wild-board ${lesson.freshPaws + lesson.recentPaws === 1 ? 'mastery' : 'masteries'} in this lesson`"
               >
-                🐾 {{ lesson.freshPaws + lesson.recentPaws }}
+                <PawIcon :tier="lesson.freshPaws > 0 ? 'Fresh' : 'Recent'" class="paw-badge-icon" />
+                {{ lesson.freshPaws + lesson.recentPaws }}
               </span>
             </div>
             <BoardMasteryStrip
@@ -155,6 +155,7 @@ import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { generateBoardMasteryTestData } from '../utils/boardMasteryTestData.js'
 import BoardMasteryStrip from './BoardMasteryStrip.vue'
+import PawIcon from './PawIcon.vue'
 
 const emit = defineEmits(['close', 'navigate-to-deal'])
 
@@ -298,27 +299,24 @@ function formatLessonName(folderName) {
   font-weight: 500;
 }
 .paw-total strong { font-weight: 700; }
-.paw-total-icon { font-size: 15px; line-height: 1; }
+.paw-total-icon { width: 17px; height: 17px; }
 
-/* Per-lesson paw badge next to the gold/silver star badge. */
+/* Per-lesson paw badge next to the gold/silver star badge. The paw glyph
+   carries the tier color (gold = has a Fresh paw); the pill stays neutral. */
 .paw-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   margin-left: 8px;
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
-  background: #ecfdf5;
-  color: #6b7280;
-  border: 1px solid #d1fae5;
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
 }
-.paw-badge.fresh {
-  background: #d1fae5;
-  color: #047857;
-  border-color: #6ee7b7;
-}
+.paw-badge-icon { width: 13px; height: 13px; }
 
 .close-btn {
   background: none;

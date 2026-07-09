@@ -72,9 +72,9 @@
                       :style="{ backgroundColor: cellColor(row.byBoard[boardKey(b)].status) }"
                       :title="cellTooltip(row.student, b, row.byBoard[boardKey(b)])"
                       @click="openCell(row.student, row.byBoard[boardKey(b)], $event)"
-                    >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}<span
+                    >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}<PawIcon
                         v-if="isWildMastery(row.byBoard[boardKey(b)])"
-                        class="cell-paw" aria-label="wild mastery">🐾</span></button>
+                        class="cell-paw" /></button>
                     <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
                   </td>
                   <td class="col-score">
@@ -143,7 +143,7 @@
               <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('corrected') }"></span>Corrected / close</span>
               <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('failed') }"></span>Failed</span>
               <span class="legend-item"><span class="legend-dot legend-empty">·</span>Not attempted</span>
-              <span class="legend-item"><span class="legend-paw-icon">🐾</span>Wild mastery</span>
+              <span class="legend-item"><PawIcon class="legend-paw-icon" />Wild mastery</span>
             </span>
           </div>
         </template>
@@ -158,6 +158,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import PawIcon from '../PawIcon.vue'
 import { useAssignments } from '../../composables/useAssignments.js'
 import { useTeacherRole } from '../../composables/useTeacherRole.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
@@ -735,15 +736,14 @@ onMounted(async () => {
   position: absolute;
   top: -6px;
   right: -6px;
-  font-size: 11px;
-  line-height: 1;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+  width: 12px;
+  height: 12px;
   pointer-events: none;
 }
 
 .legend-paw-icon {
-  font-size: 12px;
-  line-height: 1;
+  width: 13px;
+  height: 13px;
 }
 
 .cell-empty {

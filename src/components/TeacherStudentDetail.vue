@@ -42,6 +42,12 @@
       <div v-else-if="activeTab === 'mastery'" class="tab-content">
         <!-- Summary stats -->
         <div v-if="summary.total > 0" class="stats-row">
+          <!-- Highest attainment first: wilds outrank stars. Gold wild (Fresh)
+               → green wild (Recent) → gold star → silver star → status counts. -->
+          <div v-if="achievementCounts.freshWilds" class="stat stat-wild"><PawIcon tier="Fresh" class="chip-paw" />{{ achievementCounts.freshWilds }} Gold wild</div>
+          <div v-if="achievementCounts.recentWilds" class="stat stat-wild"><PawIcon tier="Recent" class="chip-paw" />{{ achievementCounts.recentWilds }} Green wild</div>
+          <div v-if="achievementCounts.goldStars" class="stat stat-star"><span class="chip-star gold">★</span>{{ achievementCounts.goldStars }} Gold star</div>
+          <div v-if="achievementCounts.silverStars" class="stat stat-star"><span class="chip-star silver">★</span>{{ achievementCounts.silverStars }} Silver star</div>
           <div class="stat stat-green">{{ summary.green }} Green</div>
           <div v-if="summary.blue" class="stat stat-blue">{{ summary.blue }} Blue</div>
           <div v-if="summary.orange" class="stat stat-orange">{{ summary.orange }} Orange</div>
@@ -82,18 +88,12 @@
                   class="medal silver-medal"
                 >&#9733;</span>
                 <!-- Wild-mastery paw (from the board_status rollup), bottom-right
-                     so it never collides with the top-right star. Green = Fresh,
-                     gold = Recent; a thin white outline keeps it visible on a
-                     same-colored circle. -->
-                <svg
+                     so it never collides with the top-right star. -->
+                <PawIcon
                   v-if="board.wildAchievement"
                   class="paw-mark"
-                  :class="{ fresh: board.wildAchievement === 'Fresh' }"
-                  viewBox="0 0 512 512"
-                  aria-label="wild mastery"
-                >
-                  <path d="M226.5 92.9c14.3 42.9-.3 86.2-32.6 96.8s-70.1-15.6-84.4-58.5.3-86.2 32.6-96.8 70.1 15.6 84.4 58.5zM100.4 198.6c18.9 32.4 14.3 70.1-10.2 84.1s-59.7-.9-78.5-33.3S-2.7 179.3 21.8 165.3s59.7 .9 78.5 33.3zM69.2 401.2C121.6 259.9 214.7 224 256 224s134.4 35.9 186.8 177.2c3.6 9.7 5.2 20.1 5.2 30.5v1.6c0 25.8-20.9 46.7-46.7 46.7-11.5 0-22.9-1.4-34-4.2l-88-22c-15.3-3.8-31.3-3.8-46.6 0l-88 22c-11.1 2.8-22.5 4.2-34 4.2C40.9 480 20 459.1 20 433.3v-1.6c0-10.4 1.6-20.8 5.2-30.5zM421.8 282.7c-24.5-14-29.1-51.7-10.2-84.1s54-47.3 78.5-33.3 29.1 51.7 10.2 84.1-54 47.3-78.5 33.3zM310.1 189.7c-32.3-10.6-46.9-53.9-32.6-96.8s52.1-69.1 84.4-58.5 46.9 53.9 32.6 96.8-52.1 69.1-84.4 58.5z"/>
-                </svg>
+                  :tier="board.wildAchievement"
+                />
                 <span class="board-num">{{ board.boardNumber }}</span>
               </div>
             </div>
@@ -111,6 +111,7 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { useTeacherRole } from '../composables/useTeacherRole.js'
 import { useBoardMastery } from '../composables/useBoardMastery.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
+import PawIcon from './PawIcon.vue'
 import { useAccomplishments } from '../composables/useAccomplishments.js'
 import StudentProgressPanel from './StudentProgressPanel.vue'
 
@@ -160,6 +161,20 @@ const observations = computed(() => {
 
 const summary = computed(() => {
   return teacherRole.getStudentMasterySummary(props.studentId)
+})
+
+// Star / wild-mastery tallies for the summary row, from the board_status rollup
+// (no observation query). Shown highest-attainment first.
+const achievementCounts = computed(() => {
+  let goldStars = 0, silverStars = 0, freshWilds = 0, recentWilds = 0
+  for (const b of apiBoardStatus.value) {
+    const ms = b.max_stars || 0
+    if (ms >= 2) goldStars++
+    else if (ms === 1) silverStars++
+    if (b.wild_achievement === 'Fresh') freshWilds++
+    else if (b.wild_achievement === 'Recent') recentWilds++
+  }
+  return { goldStars, silverStars, freshWilds, recentWilds }
 })
 
 const lastActiveText = computed(() => {
@@ -333,6 +348,19 @@ function getTooltip(board) {
 .stat-red { background: #ffebee; color: #c62828; }
 .stat-grey { background: #f5f5f5; color: #757575; }
 
+/* Achievement chips (wilds + stars) — icon + count, neutral pill. */
+.stat-wild, .stat-star {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f3f4f6;
+  color: #374151;
+}
+.chip-paw { width: 16px; height: 16px; }
+.chip-star { line-height: 1; font-size: 16px; }
+.chip-star.gold { color: #eab308; }
+.chip-star.silver { color: #9ca3af; }
+
 /* Tabs */
 .tab-bar {
   display: flex;
@@ -486,10 +514,8 @@ function getTooltip(board) {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
-/* Wild-mastery paw, bottom-right so it never collides with the top-right star.
-   A tintable glyph on a clear background: gold = Recent, green = Fresh. The
-   white stroke (drawn behind the fill via paint-order) keeps it legible even on
-   a same-colored circle. */
+/* Wild-mastery paw glyph (PawIcon owns fill/outline); this just positions and
+   sizes it in the circle's bottom-right corner (star owns top-right). */
 .paw-mark {
   position: absolute;
   bottom: -6px;
@@ -497,14 +523,6 @@ function getTooltip(board) {
   width: 16px;
   height: 16px;
   z-index: 1;
-  fill: #eab308; /* gold — Recent */
-  stroke: #fff;
-  stroke-width: 34;
-  paint-order: stroke fill;
-  overflow: visible;
-}
-.paw-mark.fresh {
-  fill: #16a34a; /* green — Fresh */
 }
 
 .board-num {
