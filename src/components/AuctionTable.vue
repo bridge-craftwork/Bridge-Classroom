@@ -69,9 +69,15 @@ const root = ref(null)
 const tableWidth = ref(9999)
 let ro = null
 onMounted(() => {
-  if (typeof ResizeObserver === 'undefined' || !root.value) return
+  // Observe the CONTAINER's available width, not our own: in a shrink-wrap
+  // parent (e.g. A1's centered practice column) measuring our own width feeds
+  // back — we'd shrink, read small, flip to dense, and collapse further (the
+  // regression that compressed A1's pre-bid auction). The container width is
+  // the honest "is this a console tile" signal.
+  const el = root.value?.parentElement || root.value
+  if (typeof ResizeObserver === 'undefined' || !el) return
   ro = new ResizeObserver((entries) => { tableWidth.value = entries[0].contentRect.width })
-  ro.observe(root.value)
+  ro.observe(el)
 })
 onBeforeUnmount(() => ro?.disconnect())
 const dense = computed(() => tableWidth.value < 280)
@@ -263,7 +269,11 @@ function tooltipFor(bidIdx) {
   border: 2px solid #333;
   border-radius: 4px;
   overflow: hidden;
-  min-width: 200px;
+  /* Floor matches the BiddingBox's natural width (7×36 level buttons + gaps +
+     padding = 308px) so a shrink-wrapped auction lines up with the bidding box
+     below it and stays stable from empty through a full auction, instead of
+     tracking bid content. `dense` (console tiles) drops this to 0. */
+  min-width: 308px;
 }
 
 /* Console-tile density (< 280px): drop the min-width floor so all four columns
