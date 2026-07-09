@@ -35,14 +35,14 @@
               v-if="lesson.goldStars || lesson.silverStars || lesson.freshPaws || lesson.recentPaws"
               class="tile-badges"
             >
-              <span v-if="lesson.goldStars" class="tb tb-gold" :title="`${lesson.goldStars} gold ${lesson.goldStars === 1 ? 'star' : 'stars'}`">★ {{ lesson.goldStars }}</span>
-              <span v-if="lesson.silverStars" class="tb tb-silver" :title="`${lesson.silverStars} silver ${lesson.silverStars === 1 ? 'star' : 'stars'}`">★ {{ lesson.silverStars }}</span>
+              <!-- Wilds rank above stars, so paws lead. -->
               <span
                 v-if="lesson.freshPaws + lesson.recentPaws"
                 class="tb tb-paw"
-                :class="{ fresh: lesson.freshPaws > 0 }"
                 :title="`${lesson.freshPaws} fresh + ${lesson.recentPaws} recent wild ${lesson.freshPaws + lesson.recentPaws === 1 ? 'mastery' : 'masteries'}`"
-              >🐾 {{ lesson.freshPaws + lesson.recentPaws }}</span>
+              ><PawIcon :tier="lesson.freshPaws > 0 ? 'Fresh' : 'Recent'" class="tb-paw-icon" /> {{ lesson.freshPaws + lesson.recentPaws }}</span>
+              <span v-if="lesson.goldStars" class="tb tb-gold" :title="`${lesson.goldStars} gold ${lesson.goldStars === 1 ? 'star' : 'stars'}`">★ {{ lesson.goldStars }}</span>
+              <span v-if="lesson.silverStars" class="tb tb-silver" :title="`${lesson.silverStars} silver ${lesson.silverStars === 1 ? 'star' : 'stars'}`">★ {{ lesson.silverStars }}</span>
             </span>
           </div>
           <div class="card-right">
@@ -87,6 +87,7 @@ import { onMounted, watch } from 'vue'
 import { useRecentLessons } from '../../composables/useRecentLessons.js'
 import { useUserStore } from '../../composables/useUserStore.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
+import PawIcon from '../PawIcon.vue'
 
 defineEmits(['resume-lesson', 'show-progress'])
 
@@ -262,8 +263,8 @@ onMounted(() => {
 
 .tb-gold { background: #fbe9b8; color: #7a5a08; }
 .tb-silver { background: #eef0f3; color: #5f6b7a; }
-.tb-paw { background: #ecfdf5; color: #6b7280; border: 1px solid #d1fae5; }
-.tb-paw.fresh { background: #d1fae5; color: #047857; border-color: #6ee7b7; }
+.tb-paw { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
+.tb-paw-icon { width: 13px; height: 13px; }
 
 .card-right {
   display: flex;
