@@ -38,7 +38,7 @@ export function useServerTable() {
 
   const {
     connectionStatus,
-    sessionId, tableId, yourSeat, role, seeAll, botMode, boardMode,
+    sessionId, tableId, yourSeat, role, seeAll, isHost, botMode, boardMode,
     seq, boardNumber, dealer, vulnerable, phase,
     auction, contract, declarer, dummySeat,
     nextToAct, hands, handCounts,
@@ -217,11 +217,16 @@ export function useServerTable() {
   function onCardClick({ seat, suit, rank }) { table.sendCard(seat, suit, rank) }
   function onUndo() { table.sendUndo() }
   function onReady() { table.sendReady() }
+  // Host paces a session table: jump to the next board without waiting on ready.
+  function onHostNextDeal() { table.sendForceAdvance() }
+  // Show a host "Next deal" on a session table (the demo room uses onNextDeal /
+  // canDeal instead). Available once a real deal is on the table.
+  const canHostAdvance = computed(() => isHost.value && !!sessionId.value && dealLoaded.value)
 
   return {
     SEAT_ORDER,
     // state (from useRemoteTable)
-    connectionStatus, sessionId, tableId, yourSeat, role, seeAll, botMode, boardMode,
+    connectionStatus, sessionId, tableId, yourSeat, role, seeAll, isHost, botMode, boardMode,
     seq, boardNumber, dealer, vulnerable, phase,
     auction, contract, declarer, dummySeat,
     nextToAct, hands, handCounts,
@@ -238,8 +243,9 @@ export function useServerTable() {
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
     lastSuitBid,
+    canHostAdvance,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
-    onBid, onCardClick, onUndo, onReady,
+    onBid, onCardClick, onUndo, onReady, onHostNextDeal,
   }
 }

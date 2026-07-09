@@ -62,6 +62,15 @@
           >
             Next deal
           </button>
+          <button
+            v-if="srv.canHostAdvance"
+            class="tv-btn tv-btn-primary"
+            :disabled="srv.connectionStatus !== 'connected'"
+            title="Move everyone to the next board now (host)"
+            @click="srv.onHostNextDeal"
+          >
+            Next deal →
+          </button>
         </div>
       </div>
 

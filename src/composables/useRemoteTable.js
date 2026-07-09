@@ -35,6 +35,9 @@ const role = ref('')
 const yourSeat = ref(null)
 // True for teacher connections (see-all, never seated).
 const seeAll = ref(false)
+// True when this connection may control the table (session owner or teacher).
+// From the welcome's is_host flag — gates host-only UI (Next deal, seat moves).
+const isHost = ref(false)
 // Server-confirmed bot backend for empty seats ('' until the welcome says).
 const botMode = ref('')
 // Board mode from the snapshot: 'bid-and-play' | 'bid-only' | 'play-only'.
@@ -393,6 +396,7 @@ function handleMessage(msg) {
       yourName.value = msg.name
       role.value = msg.role
       seeAll.value = !!msg.see_all
+      isHost.value = !!msg.is_host
       yourSeat.value = msg.seat || null
       botMode.value = msg.bot_mode || ''
       // Idle session (no deal loaded) → show the waiting overlay. Absent
@@ -550,6 +554,14 @@ function sendReady() {
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
+// Host-only: force the table to the next board now, without waiting for every
+// seat to ready up (the server routes force_advance through host control).
+function sendForceAdvance() {
+  if (!isHost.value) return { ok: false, reason: 'not host' }
+  const ok = socket.send({ t: 'force_advance' })
+  return { ok, reason: ok ? '' : 'not connected' }
+}
+
 // Board-scoped state: everything a fresh board (or a reseat to another
 // table) invalidates. Identity/session refs survive.
 function resetBoardState() {
@@ -578,6 +590,7 @@ function resetTableState() {
   role.value = ''
   yourSeat.value = null
   seeAll.value = false
+  isHost.value = false
   botMode.value = ''
   seats.value = {}
   boardsOpen.value = null
@@ -683,6 +696,7 @@ export function useRemoteTable() {
     role,
     yourSeat,
     seeAll,
+    isHost,
     botMode,
     boardMode,
     // table state
@@ -728,6 +742,7 @@ export function useRemoteTable() {
     sendCard,
     sendUndo,
     sendReady,
+    sendForceAdvance,
     sendDeal,
     // Fixture driver (Phase 0.2): render the server path from a frozen snapshot.
     loadFixture,
