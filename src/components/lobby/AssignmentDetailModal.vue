@@ -57,10 +57,13 @@
                     <button
                       v-if="row.byBoard[boardKey(b)]"
                       class="cell-btn"
+                      :class="{ 'cell-wild': isWildMastery(row.byBoard[boardKey(b)]) }"
                       :style="{ backgroundColor: cellColor(row.byBoard[boardKey(b)].status) }"
                       :title="cellTooltip(row.student, b, row.byBoard[boardKey(b)])"
                       @click="openCell(row.student, row.byBoard[boardKey(b)], $event)"
-                    >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}</button>
+                    >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}<span
+                        v-if="isWildMastery(row.byBoard[boardKey(b)])"
+                        class="cell-paw" aria-label="wild mastery">🐾</span></button>
                     <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
                   </td>
                   <td class="col-score">
@@ -129,6 +132,7 @@
               <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('corrected') }"></span>Corrected / close</span>
               <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('failed') }"></span>Failed</span>
               <span class="legend-item"><span class="legend-dot legend-empty">·</span>Not attempted</span>
+              <span class="legend-item"><span class="legend-paw-icon">🐾</span>Wild mastery</span>
             </span>
           </div>
         </template>
@@ -308,10 +312,17 @@ function cellGlyph(status) {
   }
 }
 
+// A clean_correct played on a Wild (25%/jungle) board — the paw milestone.
+// The latest observation carries the frozen `wilderness` for that board.
+function isWildMastery(cell) {
+  return cell && cell.status === 'clean_correct' && cell.wilderness === 'Wild'
+}
+
 function cellTooltip(student, board, cell) {
   const status = cell.status || 'unknown'
   const ts = formatTimestamp(cell.timestamp)
-  return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status} · ${ts}`
+  const wild = isWildMastery(cell) ? ' · 🐾 clean on a WILD board (mastery)' : ''
+  return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status}${wild} · ${ts}`
 }
 
 async function openCell(student, cell, event) {
@@ -648,6 +659,32 @@ onMounted(async () => {
 .cell-btn:hover {
   transform: scale(1.1);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Wild mastery — a clean_correct on a Wild board. Ring the cell and pin a paw
+   in the corner so the milestone reads at a glance. */
+.cell-btn {
+  position: relative;
+  overflow: visible;
+}
+
+.cell-wild {
+  box-shadow: 0 0 0 2px #10b981;
+}
+
+.cell-paw {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 11px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+  pointer-events: none;
+}
+
+.legend-paw-icon {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .cell-empty {

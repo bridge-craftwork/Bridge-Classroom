@@ -126,6 +126,11 @@ pub struct AssignmentGridCell {
     pub correct: bool,
     pub observation_id: String,
     pub timestamp: String,
+    /// Whether the latest observation for this board was played under Wild
+    /// (25%/jungle) conditions — 'Wild' / 'Tame' / null. A clean_correct on a
+    /// Wild board is the "paw" mastery milestone; the grid marks it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wilderness: Option<String>,
 }
 
 /// Assignment detail with per-student progress (for teacher drill-down)

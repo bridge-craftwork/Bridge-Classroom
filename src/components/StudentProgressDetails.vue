@@ -43,17 +43,24 @@
             &#9733;
             <title>{{ badgeTooltip(dn) }}</title>
           </text>
-          <!-- Paw badge (wild_achievement) -->
-          <circle
-            v-if="pawColor(dn)"
-            :cx="22"
-            :cy="PAD.t + i * BOARD_H + BOARD_H / 2"
-            r="4"
-            :fill="pawColor(dn)"
-            stroke="#fff" stroke-width="1"
-          >
-            <title>{{ badgeTooltip(dn) }}</title>
-          </circle>
+          <!-- Paw badge (wild_achievement) — an actual paw on a tier-colored
+               halo (Fresh green / Recent amber), so this mastery milestone reads
+               at a glance instead of as a 4px dot. -->
+          <g v-if="pawColor(dn)">
+            <circle
+              :cx="24"
+              :cy="PAD.t + i * BOARD_H + BOARD_H / 2"
+              r="8"
+              :fill="pawColor(dn)"
+              fill-opacity="0.3"
+            />
+            <text
+              :x="24"
+              :y="PAD.t + i * BOARD_H + BOARD_H / 2 + 4"
+              text-anchor="middle"
+              font-size="11"
+            >🐾<title>{{ badgeTooltip(dn) }}</title></text>
+          </g>
           <text
             :x="Y_LABEL_W - 16"
             :y="PAD.t + i * BOARD_H + BOARD_H / 2 + 4"
@@ -176,9 +183,9 @@
           >&#9733;</span>
           <span
             v-else
-            class="legend-dot legend-paw"
+            class="legend-paw-badge"
             :style="{ backgroundColor: l.color }"
-          ></span>
+          >🐾</span>
           {{ l.label }}
         </span>
       </div>
@@ -736,6 +743,17 @@ function formatTime(ts) {
   font-size: 16px;
   line-height: 1;
   font-family: serif;
+}
+
+.legend-paw-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .badge-legend {

@@ -789,7 +789,8 @@ pub async fn get_assignment(
                o.status         AS status,
                o.correct        AS correct,
                o.id             AS observation_id,
-               o.timestamp      AS timestamp
+               o.timestamp      AS timestamp,
+               o.wilderness     AS wilderness
         FROM observations o
         JOIN (
             SELECT user_id, deal_subfolder, deal_number, MAX(timestamp) AS max_ts

@@ -2,6 +2,15 @@
   <div class="accomplishments-view">
     <header class="view-header">
       <h2>Accomplishments</h2>
+      <span
+        v-if="totalFreshPaws + totalRecentPaws > 0"
+        class="paw-total"
+        :title="`Wild-board masteries: ${totalFreshPaws} fresh, ${totalRecentPaws} recent. Earned by playing a board clean under the 25%/jungle randomization — the strongest mastery signal.`"
+      >
+        <span class="paw-total-icon">🐾</span>
+        <strong>{{ totalFreshPaws + totalRecentPaws }}</strong>
+        wild {{ totalFreshPaws + totalRecentPaws === 1 ? 'mastery' : 'masteries' }}
+      </span>
       <button class="close-btn" @click="$emit('close')">&times;</button>
     </header>
 
@@ -78,6 +87,14 @@
                 :class="['achievement-badge', lesson.achievement]"
               >
                 &#9733; {{ lesson.achievement === 'gold' ? 'Gold' : 'Silver' }}
+              </span>
+              <span
+                v-if="lesson.freshPaws + lesson.recentPaws > 0"
+                class="paw-badge"
+                :class="{ fresh: lesson.freshPaws > 0 }"
+                :title="`${lesson.freshPaws} fresh + ${lesson.recentPaws} recent wild-board ${lesson.freshPaws + lesson.recentPaws === 1 ? 'mastery' : 'masteries'} in this lesson`"
+              >
+                🐾 {{ lesson.freshPaws + lesson.recentPaws }}
               </span>
             </div>
             <BoardMasteryStrip
@@ -196,13 +213,25 @@ const lessonMasteryList = computed(() => {
         lesson.boardNumbers
       )
       const lessonAchievement = mastery.computeLessonAchievement(boardMasteryResults)
+      // Wild-mastery paws for this lesson: clean_correct on a Wild board.
+      // Fresh = earned on a cold board (the strongest signal); Recent = within
+      // the spacing window. Already carried per board by buildBoardMastery.
+      const freshPaws = boardMasteryResults.filter(b => b.wildAchievement === 'Fresh').length
+      const recentPaws = boardMasteryResults.filter(b => b.wildAchievement === 'Recent').length
       return {
         ...lesson,
-        achievement: lessonAchievement.achievement
+        achievement: lessonAchievement.achievement,
+        freshPaws,
+        recentPaws
       }
     })
     .sort((a, b) => formatLessonName(a.subfolder).localeCompare(formatLessonName(b.subfolder)))
 })
+
+// Total paws across all lessons — surfaced in the header so the milestone is
+// visible at a glance, not buried per-lesson.
+const totalFreshPaws = computed(() => lessonMasteryList.value.reduce((n, l) => n + (l.freshPaws || 0), 0))
+const totalRecentPaws = computed(() => lessonMasteryList.value.reduce((n, l) => n + (l.recentPaws || 0), 0))
 
 // Populate caches the lessons depend on: board-number cache and the
 // API `board_status` cache. Fires on mount and whenever the lesson set
@@ -250,6 +279,45 @@ function formatLessonName(folderName) {
   margin: 0;
   font-size: 20px;
   color: #333;
+}
+
+/* Total wild-mastery chip in the header — sits next to the title, pushes the
+   close button to the right. */
+.paw-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  margin-right: auto;
+  padding: 3px 12px;
+  border-radius: 20px;
+  background: #d1fae5;
+  color: #047857;
+  border: 1px solid #6ee7b7;
+  font-size: 13px;
+  font-weight: 500;
+}
+.paw-total strong { font-weight: 700; }
+.paw-total-icon { font-size: 15px; line-height: 1; }
+
+/* Per-lesson paw badge next to the gold/silver star badge. */
+.paw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ecfdf5;
+  color: #6b7280;
+  border: 1px solid #d1fae5;
+}
+.paw-badge.fresh {
+  background: #d1fae5;
+  color: #047857;
+  border-color: #6ee7b7;
 }
 
 .close-btn {
