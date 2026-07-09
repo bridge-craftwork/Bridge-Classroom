@@ -1,8 +1,10 @@
 # ADR-0003: Signed-request authentication for privileged (teacher/admin) endpoints
 
-**Status:** Proposed (2026-07-08)
-**Date:** 2026-07-08
+**Status:** Accepted (2026-07-09)
+**Date:** 2026-07-08 (accepted 2026-07-09)
 **Deciders:** Rick (Bridge Classroom)
+
+**Decisions locked at acceptance:** (1) signature scheme is **`RSASSA-PKCS1-v1_5` / SHA-256**. (2) The interim `ADMIN_SECRET` **code gate is removed** once signing works, but its **secret value is retained** (left provisioned in the plist, dormant) so the gate can be re-enabled without re-provisioning if we ever need to fall back.
 
 **Scope note:** This ADR defines a **general** request-signing layer intended for *all* teacher-scoped endpoints. The **first rollout** wires it only to the three privileged admin ops (`decrypt-observations`, `backfill-active-time`, `merge-accounts`); the remaining teacher endpoints migrate later. It supersedes the interim `ADMIN_SECRET` shared-header gate for those three (see [Reconciliation](#reconciliation-with-admin_secret)).
 
@@ -114,7 +116,7 @@ Because signing happens **client-side at click-time with a key already on the de
 
 ## Reconciliation with `ADMIN_SECRET`
 
-The `ADMIN_SECRET` gate (interim, 2026-07-08) is **replaced** by `require_admin_signed` on the three ops endpoints once this lands. We may **retain `ADMIN_SECRET` as an optional break-glass** path (env-gated, off by default) for recovery when no admin device is available — or drop it entirely. Decision deferred to implementation; if retained, it must stay fail-closed and documented as break-glass only.
+The `ADMIN_SECRET` gate (interim, 2026-07-08) is **replaced** by `require_admin_signed` on the three ops endpoints once this lands. **Decision:** the `require_admin` / `ADMIN_SECRET` **code path is removed** when signing works, but the **secret value stays provisioned** in the plist (dormant, unreferenced by code). Rationale: keep the material so the gate can be reinstated without re-minting a secret if we ever need to reimplement or fall back. The `config.admin_secret` field may remain loaded (harmless) to keep the value first-class; nothing reads it once the gate is gone.
 
 ## Rollout
 
