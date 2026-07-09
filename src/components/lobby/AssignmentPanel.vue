@@ -69,7 +69,19 @@
               :style="{ width: progressPercent(a) + '%' }"
             ></div>
           </div>
-          <span class="board-label">{{ a.total_boards }} board{{ a.total_boards !== 1 ? 's' : '' }}</span>
+          <div class="board-row">
+            <span class="board-label">{{ a.total_boards }} board{{ a.total_boards !== 1 ? 's' : '' }}</span>
+            <span v-if="hasAchievements(a)" class="assignment-badges">
+              <!-- Paws lead stars (wilds outrank stars). -->
+              <span
+                v-if="achievementCounts(a).freshPaws + achievementCounts(a).recentPaws"
+                class="ab ab-paw"
+                :title="`${achievementCounts(a).freshPaws} fresh + ${achievementCounts(a).recentPaws} recent wild mastery`"
+              ><PawIcon :tier="achievementCounts(a).freshPaws > 0 ? 'Fresh' : 'Recent'" class="ab-paw-icon" /> {{ achievementCounts(a).freshPaws + achievementCounts(a).recentPaws }}</span>
+              <span v-if="achievementCounts(a).goldStars" class="ab ab-gold" :title="`${achievementCounts(a).goldStars} gold star(s)`">★ {{ achievementCounts(a).goldStars }}</span>
+              <span v-if="achievementCounts(a).silverStars" class="ab ab-silver" :title="`${achievementCounts(a).silverStars} silver star(s)`">★ {{ achievementCounts(a).silverStars }}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -139,6 +151,7 @@ import { ref, computed, watch } from 'vue'
 import { useUserStore } from '../../composables/useUserStore.js'
 import { useAssignmentStatus } from '../../composables/useAssignmentStatus.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
+import PawIcon from '../PawIcon.vue'
 
 const ACTIVE_WINDOW_DAYS = 7
 
@@ -192,6 +205,10 @@ watch(
         // Collapse the §5 states into the static summary palette: corrected +
         // close_correct share the orange swatch (§5.4 drilldown rule).
         const buckets = { clean_correct: 0, close_correct: 0, failed: 0, not_attempted: 0 }
+        // Board-level achievements joined from the global board_status rollup
+        // (max_stars / wild_achievement). Wild masteries are only earned in
+        // assignments, so these are the assignment's paws.
+        const ach = { freshPaws: 0, recentPaws: 0, goldStars: 0, silverStars: 0 }
         for (const e of entries) {
           switch (e.status) {
             case 'clean_correct': buckets.clean_correct++; break
@@ -200,8 +217,13 @@ watch(
             case 'failed': buckets.failed++; break
             default: buckets.not_attempted++ // not_attempted / unknown
           }
+          if (e.wild_achievement === 'Fresh') ach.freshPaws++
+          else if (e.wild_achievement === 'Recent') ach.recentPaws++
+          const ms = e.max_stars || 0
+          if (ms >= 2) ach.goldStars++
+          else if (ms === 1) ach.silverStars++
         }
-        nextMap[a.id] = { ...buckets, total: entries.length }
+        nextMap[a.id] = { ...buckets, ...ach, total: entries.length }
       } catch {
         // Rollup unavailable — leave unset so the progressPercent bar renders.
       }
@@ -213,6 +235,22 @@ watch(
 
 function getMastery(assignment) {
   return masteryMap.value[assignment.id] || null
+}
+
+// Paw / star tallies for the card badges (from the joined board_status rollup).
+function achievementCounts(assignment) {
+  const m = getMastery(assignment) || {}
+  return {
+    freshPaws: m.freshPaws || 0,
+    recentPaws: m.recentPaws || 0,
+    goldStars: m.goldStars || 0,
+    silverStars: m.silverStars || 0,
+  }
+}
+
+function hasAchievements(a) {
+  const c = achievementCounts(a)
+  return c.freshPaws + c.recentPaws + c.goldStars + c.silverStars > 0
 }
 
 // Bar segments per CORRECTNESS_AND_MASTERY.md §5, matching the
@@ -526,6 +564,34 @@ function dueClass(assignment) {
   font-size: 12px;
   color: var(--text-secondary, #6b7280);
 }
+
+.board-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assignment-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ab {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ab-paw { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
+.ab-paw-icon { width: 12px; height: 12px; }
+.ab-gold { background: #fbe9b8; color: #7a5a08; }
+.ab-silver { background: #eef0f3; color: #5f6b7a; }
 
 /* Modal styles */
 .modal-overlay {
