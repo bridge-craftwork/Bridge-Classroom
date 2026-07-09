@@ -2,7 +2,7 @@
   <div
     ref="root"
     class="seat-indicator"
-    :class="{ 'is-turn': turn, 'is-you': you, 'is-empty': !name }"
+    :class="{ 'is-turn': turn, 'is-you': you, 'is-empty': !name, centered: align === 'center' }"
     :title="titleText"
   >
     <span class="si-badge">{{ seat }}</span>
@@ -28,6 +28,8 @@ const props = defineProps({
   emptyLabel: { type: String, default: '' },
   you: { type: Boolean, default: false },
   turn: { type: Boolean, default: false },
+  // 'start' (seats strip) | 'center' (centered pill above a hand, BBO-style).
+  align: { type: String, default: 'start' },
 })
 
 const root = ref(null)
@@ -114,6 +116,9 @@ onBeforeUnmount(() => ro?.disconnect())
   gap: 8px;
   width: 100%; /* fill the slot — the name degrades against the slot's width */
   min-width: 0;
+}
+.seat-indicator.centered {
+  justify-content: center;
 }
 .si-badge {
   flex: 0 0 auto;

@@ -3,20 +3,34 @@
        a hand attached — the console tile's resting state ("S  Rick Wilson ●") is
        just a chip. In the table it reproduces the old .seat-label header. -->
   <div class="seat-chip" :class="{ compact, 'is-turn': turn }">
-    <span class="seat-name">{{ label }}</span>
-    <span v-if="cardCount != null" class="seat-count">{{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}</span>
-    <span
-      v-if="presence"
-      class="seat-dot"
-      :class="'seat-dot-' + presence"
-      :title="presence === 'connected' ? 'connected' : 'disconnected'"
-    ></span>
+    <!-- Named occupant (multiplayer): badge + player name above the hand, like
+         BBO/Intobridge. No name (A1 / solo / bots) → the plain compass label. -->
+    <SeatIndicator v-if="name" :seat="seat" :name="name" :turn="turn" align="center">
+      <span v-if="cardCount != null" class="seat-count">{{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}</span>
+      <span
+        v-if="presence"
+        class="seat-dot"
+        :class="'seat-dot-' + presence"
+        :title="presence === 'connected' ? 'connected' : 'disconnected'"
+      ></span>
+    </SeatIndicator>
+    <template v-else>
+      <span class="seat-name">{{ label }}</span>
+      <span v-if="cardCount != null" class="seat-count">{{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}</span>
+      <span
+        v-if="presence"
+        class="seat-dot"
+        :class="'seat-dot-' + presence"
+        :title="presence === 'connected' ? 'connected' : 'disconnected'"
+      ></span>
+    </template>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { getSeatName } from '../utils/cardFormatting.js'
+import SeatIndicator from './SeatIndicator.vue'
 
 const props = defineProps({
   seat: {

@@ -119,6 +119,8 @@
           <BridgeTable
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
+            :occupants="srv.seatOccupants"
+            :active-seat="srv.nextToAct"
             :show-hcp="false"
             :clickable-seat="srv.clickableSeat"
             :hide-played-cards="true"

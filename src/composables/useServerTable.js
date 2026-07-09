@@ -209,6 +209,19 @@ export function useServerTable() {
     return occ && occ.kind === 'human' ? (occ.name || 'Player') : null
   }
 
+  // Per-seat occupant map for BridgeTable's over-the-board SeatIndicators:
+  // humans carry a connection dot; empty seats read 'Bot' (no dot).
+  const seatOccupants = computed(() => {
+    const out = {}
+    for (const s of SEAT_ORDER) {
+      const occ = seats.value[s]
+      out[s] = occ && occ.kind === 'human'
+        ? { name: occ.name || 'Player', connected: occ.connected !== false }
+        : { name: 'Bot' }
+    }
+    return out
+  })
+
   const turnLabel = computed(() => {
     const seat = nextToAct.value
     if (!seat) return ''
@@ -255,7 +268,7 @@ export function useServerTable() {
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
     lastSuitBid,
-    canHostAdvance,
+    canHostAdvance, seatOccupants,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
