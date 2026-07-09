@@ -44,8 +44,8 @@
         <div v-if="summary.total > 0" class="stats-row">
           <!-- Highest attainment first: wilds outrank stars. Gold wild (Fresh)
                → green wild (Recent) → gold star → silver star → status counts. -->
-          <div v-if="achievementCounts.freshWilds" class="stat stat-wild"><PawIcon tier="Fresh" class="chip-paw" />{{ achievementCounts.freshWilds }} Gold wild</div>
-          <div v-if="achievementCounts.recentWilds" class="stat stat-wild"><PawIcon tier="Recent" class="chip-paw" />{{ achievementCounts.recentWilds }} Green wild</div>
+          <div v-if="achievementCounts.freshWilds" class="stat stat-wild"><PawIcon tier="Fresh" class="chip-paw" />{{ achievementCounts.freshWilds }} Fresh</div>
+          <div v-if="achievementCounts.recentWilds" class="stat stat-wild"><PawIcon tier="Recent" class="chip-paw" />{{ achievementCounts.recentWilds }} Recent</div>
           <div v-if="achievementCounts.goldStars" class="stat stat-star"><span class="chip-star gold">★</span>{{ achievementCounts.goldStars }} Gold star</div>
           <div v-if="achievementCounts.silverStars" class="stat stat-star"><span class="chip-star silver">★</span>{{ achievementCounts.silverStars }} Silver star</div>
           <div class="stat stat-green">{{ summary.green }} Green</div>
