@@ -28,13 +28,23 @@
             <button class="close-btn" @click="$emit('close')" aria-label="Close">&times;</button>
           </div>
 
+          <!-- Column-order toggle. Mixed-lesson exercises interleave boards in
+               exercise order; grouping by lesson + board number surfaces which
+               topics students struggled with. -->
+          <div v-if="isMixedLesson && boards.length" class="grid-controls">
+            <label class="sort-toggle">
+              <input type="checkbox" v-model="sortByLesson" />
+              Group boards by lesson
+            </label>
+          </div>
+
           <!-- Grid (issue #7) -->
           <div v-if="rows.length && boards.length" class="grid-wrapper">
             <table class="grid-table">
               <thead>
                 <tr>
                   <th class="col-name">Student</th>
-                  <th v-for="(b, i) in boards" :key="boardKey(b)" class="col-board" :title="boardTooltip(b)">
+                  <th v-for="(b, i) in orderedBoards" :key="boardKey(b)" class="col-board" :title="boardTooltip(b)">
                     {{ boardLabel(b, i) }}
                     <span
                       v-if="isMixedLesson"
@@ -51,7 +61,7 @@
                 <tr v-for="row in rows" :key="row.student.student_id">
                   <td class="col-name">{{ row.student.first_name }} {{ row.student.last_name }}</td>
                   <td
-                    v-for="b in boards" :key="boardKey(b)"
+                    v-for="b in orderedBoards" :key="boardKey(b)"
                     class="col-board cell"
                   >
                     <button
@@ -87,7 +97,7 @@
               <tfoot>
                 <tr class="pass-row">
                   <td class="col-name pass-label">Pass rate</td>
-                  <td v-for="b in boards" :key="boardKey(b)" class="col-board pass-cell" :title="boardPassTooltip(b)">
+                  <td v-for="b in orderedBoards" :key="boardKey(b)" class="col-board pass-cell" :title="boardPassTooltip(b)">
                     <span v-if="boardStats(b).attempted > 0" :class="passClass(boardStats(b))">{{ Math.round(boardStats(b).clean / boardStats(b).attempted * 100) }}%</span>
                     <span v-else class="pass-empty">—</span>
                   </td>
@@ -171,6 +181,20 @@ const cellError = ref(null)
 const assignment = computed(() => assignments.currentAssignment.value)
 const boards = computed(() => assignment.value?.boards || [])
 const cells = computed(() => assignment.value?.cells || [])
+
+// Column order. Off = exercise order (as authored). On = grouped by lesson
+// (deal_subfolder) then board number, so a teacher can see which topics tripped
+// students up in a mixed exercise. Cells follow because they're keyed by
+// boardKey, not position.
+const sortByLesson = ref(false)
+const orderedBoards = computed(() => {
+  if (!sortByLesson.value) return boards.value
+  return [...boards.value].sort(
+    (a, b) =>
+      (a.deal_subfolder || '').localeCompare(b.deal_subfolder || '') ||
+      (a.deal_number - b.deal_number)
+  )
+})
 
 // Decide whether to qualify each board with its lesson prefix. If
 // every board in the exercise is from the same lesson, just show the
@@ -503,6 +527,27 @@ onMounted(async () => {
 }
 
 /* Grid */
+.grid-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.sort-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sort-toggle input {
+  cursor: pointer;
+  margin: 0;
+}
+
 .grid-wrapper {
   overflow-x: auto;
   border: 1px solid var(--card-border, #e0ddd7);
