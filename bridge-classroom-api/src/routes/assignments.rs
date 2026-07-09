@@ -790,7 +790,7 @@ pub async fn get_assignment(
                o.correct        AS correct,
                o.id             AS observation_id,
                o.timestamp      AS timestamp,
-               o.wilderness     AS wilderness
+               bs.wild_achievement AS wild_achievement
         FROM observations o
         JOIN (
             SELECT user_id, deal_subfolder, deal_number, MAX(timestamp) AS max_ts
@@ -802,6 +802,14 @@ pub async fn get_assignment(
          AND latest.deal_subfolder = o.deal_subfolder
          AND latest.deal_number    = o.deal_number
          AND latest.max_ts         = o.timestamp
+        -- Permanent, tiered wild mastery from the global board_status rollup
+        -- (Fresh/Recent), so it matches every other paw surface and doesn't
+        -- vanish when a later replay isn't a clean-on-wild.
+        LEFT JOIN board_status bs
+          ON bs.user_id        = o.user_id
+         AND bs.collection_id  = o.collection_id
+         AND bs.deal_subfolder = o.deal_subfolder
+         AND bs.deal_number    = o.deal_number
         WHERE o.assignment_id = ?
         "#,
     )

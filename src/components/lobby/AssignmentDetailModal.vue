@@ -74,7 +74,7 @@
                       @click="openCell(row.student, row.byBoard[boardKey(b)], $event)"
                     >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}<PawIcon
                         v-if="isWildMastery(row.byBoard[boardKey(b)])"
-                        class="cell-paw" /></button>
+                        class="cell-paw" :tier="row.byBoard[boardKey(b)].wild_achievement" /></button>
                     <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
                   </td>
                   <td class="col-score">
@@ -351,16 +351,17 @@ function cellGlyph(status) {
   }
 }
 
-// A clean_correct played on a Wild (25%/jungle) board — the paw milestone.
-// The latest observation carries the frozen `wilderness` for that board.
+// The student's permanent wild-mastery paw for this board (Fresh/Recent), from
+// the global board_status rollup — matches every other paw surface and doesn't
+// vanish if a later replay isn't a clean-on-wild.
 function isWildMastery(cell) {
-  return cell && cell.status === 'clean_correct' && cell.wilderness === 'Wild'
+  return !!(cell && cell.wild_achievement)
 }
 
 function cellTooltip(student, board, cell) {
   const status = cell.status || 'unknown'
   const ts = formatTimestamp(cell.timestamp)
-  const wild = isWildMastery(cell) ? ' · 🐾 clean on a WILD board (mastery)' : ''
+  const wild = cell && cell.wild_achievement ? ` · 🐾 ${cell.wild_achievement} wild mastery` : ''
   return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status}${wild} · ${ts}`
 }
 
