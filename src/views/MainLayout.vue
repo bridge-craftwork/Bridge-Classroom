@@ -6,7 +6,7 @@
   />
 
   <!-- Main App (shown when user is authenticated) -->
-  <div v-else class="app" :class="{ 'intro-open': showIntroPdf && introDocked }" :style="{ '--intro-gutter': introGutter }" @click.capture="dismissWelcome">
+  <div v-else class="app" :class="{ 'intro-open': introReserved }" :style="{ '--intro-gutter': introGutter }" @click.capture="dismissWelcome">
     <!-- View-as banner — shown when admin is rendering the app as another user -->
     <div v-if="isViewingAs" class="view-as-banner">
       <span class="view-as-text">
@@ -531,11 +531,19 @@ const introPdfUrl = ref(null)
 // opening/closing no longer shifts the whole GUI. The gutter tracks the docked
 // viewer's real right edge.
 const introDocked = computed(() => appConfig.uiPrefs.value.introDock === 'dock')
+// True while the async intro-availability check is in flight (desktop). When
+// docked, we reserve the gutter during this window so the table paints in its
+// docked width up front, instead of full-width → squish once the panel opens.
+const introChecking = ref(false)
+// Reserve the gutter for a docked viewer that's open OR about to open.
+const introReserved = computed(() => introDocked.value && (showIntroPdf.value || introChecking.value))
 const introGeometry = ref(null)
 const introGutter = computed(() => {
-  if (!introDocked.value) return null
+  if (!introReserved.value) return null
   const g = introGeometry.value
-  if (!g) return null
+  // No geometry yet (panel still opening): reserve the default width so the
+  // table doesn't shift when the viewer reports its real edge a moment later.
+  if (!g) return '574px'
   return `${Math.round(g.x + g.w + 16)}px`
 })
 
@@ -1102,20 +1110,25 @@ async function checkIntroAvailability() {
   const filename = lessonId.includes('/') ? lessonId.split('/').pop() : lessonId
   const url = `${collection.baseUrl}/${filename}_Intro.pdf`
 
+  // Desktop auto-opens the intro. If the pref is docked, reserve the gutter NOW
+  // (before the availability round-trip) so the table paints at its docked width
+  // and the panel slides into reserved space — no full-width → squish flash.
+  const desktop = window.innerWidth >= 600
+  if (desktop) introChecking.value = true
+
   try {
     const response = await fetch(url, { method: 'HEAD' })
     if (response.ok) {
       introUrl.value = url
-      // Auto-open the intro when the lesson opens. Desktop only: show the
-      // floating viewer. On mobile we leave the Intro button for manual open
-      // rather than hijacking the lesson into a new browser tab.
-      if (window.innerWidth >= 600) {
+      if (desktop) {
         introPdfUrl.value = url
-        showIntroPdf.value = true
+        showIntroPdf.value = true // now drives the gutter; introChecking clears below
       }
     }
   } catch {
     // Network error or CORS issue - silently hide button
+  } finally {
+    introChecking.value = false
   }
 }
 
