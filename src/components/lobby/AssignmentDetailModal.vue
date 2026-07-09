@@ -43,7 +43,8 @@
                     ></span>
                   </th>
                   <th class="col-score">Score</th>
-                  <th class="col-duration" title="Active time on this assignment (sum of per-board time spent)">Time</th>
+                  <th class="col-duration" title="Active time on the first attempt of each board (idle excluded) — the 'first time through' duration">First pass</th>
+                  <th class="col-duration" title="Active time across all attempts and replays (idle excluded)">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -67,8 +68,14 @@
                     <span v-if="row.attemptedCount > 0" class="accuracy-text" :class="accuracyClass(row)">{{ Math.round(row.cleanCount / row.attemptedCount * 100) }}%</span>
                   </td>
                   <td class="col-duration">
-                    <span v-if="row.student.active_duration_ms > 0" class="duration-text">
-                      {{ formatDurationMs(row.student.active_duration_ms) }}
+                    <span v-if="row.student.first_pass_ms > 0" class="duration-text">
+                      {{ formatDurationMs(row.student.first_pass_ms) }}
+                    </span>
+                    <span v-else class="duration-empty">—</span>
+                  </td>
+                  <td class="col-duration">
+                    <span v-if="row.student.total_active_ms > 0" class="duration-text">
+                      {{ formatDurationMs(row.student.total_active_ms) }}
                     </span>
                     <span v-else class="duration-empty">—</span>
                   </td>
@@ -82,6 +89,7 @@
                     <span v-else class="pass-empty">—</span>
                   </td>
                   <td class="col-score"></td>
+                  <td class="col-duration"></td>
                   <td class="col-duration"></td>
                 </tr>
               </tfoot>

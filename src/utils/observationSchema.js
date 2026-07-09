@@ -6,6 +6,14 @@
  * and correctness.
  */
 
+// Per-measurement idle ceiling. A single prompt's `time_ms` is wall-clock
+// between the prompt being shown and answered, so a student who walks away
+// mid-board can log hours on one bid. We cap each prompt at 2 minutes before
+// summing into the board's `time_taken_ms` — a genuinely slow bid/lead is
+// still "thinking"; anything past this is idle, not effort. Keep in sync with
+// the backend's PER_PROMPT_CAP_MS (board_status.rs).
+export const PER_PROMPT_CAP_MS = 120_000
+
 /**
  * @typedef {Object} DealContext
  * @property {string} subfolder - Lesson category (e.g., "Stayman")
@@ -225,14 +233,14 @@ function computeTotalTimeMs(observation) {
     for (const p of prompts) {
       const t = Number(p?.time_ms)
       if (Number.isFinite(t) && t >= 0) {
-        total += t
+        total += Math.min(t, PER_PROMPT_CAP_MS)  // exclude per-prompt idle
         any = true
       }
     }
     if (any) return total
   }
   const single = Number(observation?.result?.time_taken_ms)
-  if (Number.isFinite(single) && single >= 0) return single
+  if (Number.isFinite(single) && single >= 0) return Math.min(single, PER_PROMPT_CAP_MS)
   return null
 }
 

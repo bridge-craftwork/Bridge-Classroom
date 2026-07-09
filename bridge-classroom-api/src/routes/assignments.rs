@@ -284,9 +284,9 @@ async fn list_student_assignments(
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
-            total_boards: progress.0,
-            attempted_boards: progress.1,
-            correct_boards: progress.2,
+            total_boards: progress.total,
+            attempted_boards: progress.attempted,
+            correct_boards: progress.correct,
             student_count: stats.student_count,
             student_count_attempted: stats.student_count_attempted,
             clean_rates: stats.clean_rates,
@@ -538,15 +538,14 @@ async fn compute_assignment_stats(
         .collect();
     stats.clean_rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Active duration per student: sum of per-play `time_taken_ms`
-    // populated from the encrypted blob's prompts[].time_ms (the
-    // student's actual time on each board). Inter-board idle is
-    // inherently excluded — we never include it in the first place.
-    // Users with all-null time values get 0 in the result.
+    // Active duration per student for the box-plot chips: the idle-capped
+    // total time across all attempts, read from the assignment_board_status
+    // rollup (same source as the panel's per-student Total column) instead of
+    // scanning observations. Per-prompt idle is excluded at recompute time.
     let duration_rows: Vec<UserDurationRow> = sqlx::query_as(
         r#"
-        SELECT user_id, SUM(time_taken_ms) AS total_time_ms
-        FROM observations
+        SELECT user_id, SUM(total_ms) AS total_time_ms
+        FROM assignment_board_status
         WHERE assignment_id = ?
         GROUP BY user_id
         "#,
@@ -565,8 +564,19 @@ async fn compute_assignment_stats(
     Ok(stats)
 }
 
+/// Per-student progress within one assignment, all read from the
+/// `assignment_board_status` rollup (no per-observation scan).
+struct StudentProgress {
+    total: i64,
+    attempted: i64,
+    correct: i64,
+    /// Idle-capped active time on the first attempt of each board, summed (ms).
+    first_pass_ms: i64,
+    /// Idle-capped active time across all attempts of each board, summed (ms).
+    total_active_ms: i64,
+}
+
 /// Compute progress for a single student on an exercise.
-/// Returns (total_boards, attempted_boards, correct_boards).
 ///
 /// Filters by the explicit `observations.assignment_id` link
 /// (issue #15). Historical rows were migrated to populate this column
@@ -577,19 +587,22 @@ async fn compute_student_progress(
     assignment_id: &str,
     exercise_id: &str,
     student_id: &str,
-) -> Result<(i64, i64, i64), (StatusCode, String)> {
+) -> Result<StudentProgress, (StatusCode, String)> {
     // Read from the assignment_board_status rollup instead of querying
     // observations per board. `attempted` = boards worked inside the
     // assignment; `correct` = boards that ended correctly — clean_correct,
     // close_correct, OR corrected. The `corrected` inclusion preserves the
     // pre-rollup raw-boolean meaning exactly (a corrected board's final
     // observation had correct=1), validated against historical counts.
-    let row: Option<(i64, i64, i64)> = sqlx::query_as(
+    // Durations come from the same rollup rows (idle-capped at recompute time).
+    let row: Option<(i64, i64, i64, i64, i64)> = sqlx::query_as(
         r#"
         SELECT
           COUNT(*)                                                                AS total,
           COALESCE(SUM(CASE WHEN status != 'not_attempted' THEN 1 ELSE 0 END), 0) AS attempted,
-          COALESCE(SUM(CASE WHEN status NOT IN ('not_attempted','failed') THEN 1 ELSE 0 END), 0) AS correct
+          COALESCE(SUM(CASE WHEN status NOT IN ('not_attempted','failed') THEN 1 ELSE 0 END), 0) AS correct,
+          COALESCE(SUM(first_pass_ms), 0)                                         AS first_pass_ms,
+          COALESCE(SUM(total_ms), 0)                                              AS total_active_ms
         FROM assignment_board_status
         WHERE user_id = ? AND assignment_id = ?
         "#,
@@ -600,9 +613,9 @@ async fn compute_student_progress(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if let Some((total, attempted, correct)) = row {
+    if let Some((total, attempted, correct, first_pass_ms, total_active_ms)) = row {
         if total > 0 {
-            return Ok((total, attempted, correct));
+            return Ok(StudentProgress { total, attempted, correct, first_pass_ms, total_active_ms });
         }
     }
 
@@ -617,7 +630,7 @@ async fn compute_student_progress(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok((total, 0, 0))
+    Ok(StudentProgress { total, attempted: 0, correct: 0, first_pass_ms: 0, total_active_ms: 0 })
 }
 
 /// GET /api/assignments/:id — Get assignment detail with per-student progress
@@ -677,26 +690,9 @@ pub async fn get_assignment(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        // One query for per-student total time on this assignment.
-        // Avoids N+1 across classroom members.
-        let duration_rows: Vec<UserDurationRow> = sqlx::query_as(
-            r#"
-            SELECT user_id, SUM(time_taken_ms) AS total_time_ms
-            FROM observations
-            WHERE assignment_id = ?
-            GROUP BY user_id
-            "#,
-        )
-        .bind(&row.id)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        let duration_by_user: std::collections::HashMap<String, i64> = duration_rows
-            .into_iter()
-            .map(|r| (r.user_id, r.total_time_ms.unwrap_or(0)))
-            .collect();
-
         for member in members {
+            // Progress + both idle-capped durations come from the rollup in a
+            // single read — no per-student observation scan.
             let progress = compute_student_progress(
                 &state,
                 &row.id,
@@ -705,19 +701,15 @@ pub async fn get_assignment(
             )
             .await?;
 
-            let active_duration_ms = duration_by_user
-                .get(&member.student_id)
-                .copied()
-                .unwrap_or(0);
-
             student_progress.push(StudentAssignmentProgress {
                 student_id: member.student_id,
                 first_name: member.first_name,
                 last_name: member.last_name,
-                attempted_boards: progress.1,
-                correct_boards: progress.2,
-                total_boards: progress.0,
-                active_duration_ms,
+                attempted_boards: progress.attempted,
+                correct_boards: progress.correct,
+                total_boards: progress.total,
+                first_pass_ms: progress.first_pass_ms,
+                total_active_ms: progress.total_active_ms,
             });
         }
     } else if let Some(ref sid) = row.student_id {
@@ -733,23 +725,15 @@ pub async fn get_assignment(
         if let Some(s) = student {
             let progress =
                 compute_student_progress(&state, &row.id, &row.exercise_id, sid).await?;
-            let total_ms: Option<i64> = sqlx::query_scalar(
-                "SELECT SUM(time_taken_ms) FROM observations WHERE assignment_id = ? AND user_id = ?",
-            )
-            .bind(&row.id)
-            .bind(sid)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            let active_duration_ms = total_ms.unwrap_or(0);
             student_progress.push(StudentAssignmentProgress {
                 student_id: s.student_id,
                 first_name: s.first_name,
                 last_name: s.last_name,
-                attempted_boards: progress.1,
-                correct_boards: progress.2,
-                total_boards: progress.0,
-                active_duration_ms,
+                attempted_boards: progress.attempted,
+                correct_boards: progress.correct,
+                total_boards: progress.total,
+                first_pass_ms: progress.first_pass_ms,
+                total_active_ms: progress.total_active_ms,
             });
         }
     }
