@@ -43,23 +43,19 @@
             &#9733;
             <title>{{ badgeTooltip(dn) }}</title>
           </text>
-          <!-- Paw badge (wild_achievement) — an actual paw on a tier-colored
-               halo (Fresh green / Recent amber), so this mastery milestone reads
-               at a glance instead of as a 4px dot. -->
-          <g v-if="pawColor(dn)">
-            <circle
-              :cx="24"
-              :cy="PAD.t + i * BOARD_H + BOARD_H / 2"
-              r="8"
+          <!-- Wild-mastery paw glyph (gold = Fresh, green = Recent), white
+               outline for contrast. Scaled from the 512-unit path to ~14px. -->
+          <g
+            v-if="pawColor(dn)"
+            :transform="`translate(17, ${PAD.t + i * BOARD_H + BOARD_H / 2 - 7}) scale(0.027)`"
+          >
+            <path
+              :d="PAW_PATH"
               :fill="pawColor(dn)"
-              fill-opacity="0.3"
-            />
-            <text
-              :x="24"
-              :y="PAD.t + i * BOARD_H + BOARD_H / 2 + 4"
-              text-anchor="middle"
-              font-size="11"
-            >🐾<title>{{ badgeTooltip(dn) }}</title></text>
+              stroke="#fff"
+              stroke-width="34"
+              paint-order="stroke fill"
+            /><title>{{ badgeTooltip(dn) }}</title>
           </g>
           <text
             :x="Y_LABEL_W - 16"
@@ -181,11 +177,11 @@
             class="legend-star"
             :style="{ color: l.color }"
           >&#9733;</span>
-          <span
+          <PawIcon
             v-else
             class="legend-paw-badge"
-            :style="{ backgroundColor: l.color }"
-          >🐾</span>
+            :tier="l.label.includes('Fresh') ? 'Fresh' : 'Recent'"
+          />
           {{ l.label }}
         </span>
       </div>
@@ -196,6 +192,7 @@
 <script setup>
 import { computed } from 'vue'
 import { yColor as dotColor, STATUS_COLORS } from '../utils/studentProgressData.js'
+import PawIcon from './PawIcon.vue'
 
 const props = defineProps({
   lesson: { type: Object, required: true },
@@ -271,13 +268,15 @@ function starColor(dn) {
   return bl.maxStars >= 2 ? '#d4a900' : '#9ca3af'
 }
 
-// Paw badge color per §7.1: yellow for Recent (any other obs within
-// the 6-day spacing window before the wild clean_correct), green for
-// Fresh (cold board at time of the wild clean_correct).
+// Paw glyph path (512×512 viewBox), shared with PawIcon.vue.
+const PAW_PATH = 'M226.5 92.9c14.3 42.9-.3 86.2-32.6 96.8s-70.1-15.6-84.4-58.5.3-86.2 32.6-96.8 70.1 15.6 84.4 58.5zM100.4 198.6c18.9 32.4 14.3 70.1-10.2 84.1s-59.7-.9-78.5-33.3S-2.7 179.3 21.8 165.3s59.7 .9 78.5 33.3zM69.2 401.2C121.6 259.9 214.7 224 256 224s134.4 35.9 186.8 177.2c3.6 9.7 5.2 20.1 5.2 30.5v1.6c0 25.8-20.9 46.7-46.7 46.7-11.5 0-22.9-1.4-34-4.2l-88-22c-15.3-3.8-31.3-3.8-46.6 0l-88 22c-11.1 2.8-22.5 4.2-34 4.2C40.9 480 20 459.1 20 433.3v-1.6c0-10.4 1.6-20.8 5.2-30.5zM421.8 282.7c-24.5-14-29.1-51.7-10.2-84.1s54-47.3 78.5-33.3 29.1 51.7 10.2 84.1-54 47.3-78.5 33.3zM310.1 189.7c-32.3-10.6-46.9-53.9-32.6-96.8s52.1-69.1 84.4-58.5 46.9 53.9 32.6 96.8-52.1 69.1-84.4 58.5z'
+
+// Paw fill by tier: gold for Fresh (cold-board wild mastery — the pinnacle),
+// green for Recent. Returns null when the board has no wild achievement.
 function pawColor(dn) {
   const bl = props.lesson.boardLines.find(b => b.dealNum === dn)
   if (!bl || !bl.wildAchievement) return null
-  return bl.wildAchievement === 'Fresh' ? '#10b981' : '#f5cd47'
+  return bl.wildAchievement === 'Fresh' ? '#eab308' : '#16a34a'
 }
 
 function badgeTooltip(dn) {
@@ -746,14 +745,8 @@ function formatTime(ts) {
 }
 
 .legend-paw-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  font-size: 9px;
-  line-height: 1;
+  width: 14px;
+  height: 14px;
 }
 
 .badge-legend {
