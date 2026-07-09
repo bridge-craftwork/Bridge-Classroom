@@ -387,6 +387,38 @@ async function findAndDecryptObservation(studentUserId, timestamp, dealNumber, c
 }
 
 /**
+ * Find and decrypt the most recent *erroring* observation for a board,
+ * strictly before `beforeMs`.
+ *
+ * Used to drill into a `close_correct` (double-tilde ≈) grid cell: its latest
+ * observation is a clean replay, so the mistake that made the board "close"
+ * lives in an earlier, separate observation. `close_correct` is only assigned
+ * when that error is within the recent cooldown window, so the most-recent
+ * error before the clean replay is the one the teacher wants to see.
+ *
+ * @param {string} studentUserId
+ * @param {string} dealSubfolder
+ * @param {number} dealNumber
+ * @param {number} beforeMs - Only consider observations strictly older than this
+ * @returns {Promise<Object|null>}
+ */
+async function findAndDecryptErroringObservation(studentUserId, dealSubfolder, dealNumber, beforeMs) {
+  const rawObs = studentRawObservations.value[studentUserId] || []
+  let best = null
+  let bestTs = -Infinity
+  for (const o of rawObs) {
+    if (o.deal_number !== dealNumber) continue
+    if (dealSubfolder && o.deal_subfolder !== dealSubfolder) continue
+    if (o.correct) continue // only erroring plays
+    const ts = new Date(o.timestamp).getTime()
+    if (ts >= beforeMs) continue
+    if (ts > bestTs) { bestTs = ts; best = o }
+  }
+  if (!best) return null
+  return decryptStudentObservation(studentUserId, best)
+}
+
+/**
  * Clear all state (called on user switch).
  */
 function reset() {
@@ -426,6 +458,7 @@ export function useTeacherRole() {
     getStudentRecentLessons,
     formatTimeSince,
     findAndDecryptObservation,
+    findAndDecryptErroringObservation,
     decryptStudentObservation,
     getStudentKey,
     studentRawObservations,

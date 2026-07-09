@@ -520,7 +520,7 @@ pub async fn recompute_assignment_boards(
     for (collection_id, deal_subfolder, deal_number) in &boards {
         let observations: Vec<ObservationFullRow> = sqlx::query_as(
             r#"
-            SELECT id, timestamp, correct, board_result, wilderness
+            SELECT id, timestamp, correct, board_result, wilderness, prerelease
             FROM observations
             WHERE user_id = ? AND assignment_id = ?
               AND collection_id = ? AND deal_subfolder = ? AND deal_number = ?
