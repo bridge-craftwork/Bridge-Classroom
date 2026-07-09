@@ -260,14 +260,20 @@ function lessonColor(b) {
   return lessonColors.value.get(b.deal_subfolder) || '#9ca3af'
 }
 
-// Legend pairs (subfolder, color) for the bottom strip. Only render
-// when the exercise mixes lessons.
+// Legend pairs (subfolder, color) for the bottom strip. Only render when the
+// exercise mixes lessons. Ordered to match the current column order
+// (orderedBoards) so grouping-by-lesson reorders the legend to agree with the
+// grid; each lesson keeps its stable color.
 const lessonLegend = computed(() => {
   if (!isMixedLesson.value) return []
-  return Array.from(lessonColors.value.entries()).map(([subfolder, color]) => ({
-    subfolder,
-    color,
-  }))
+  const seen = new Set()
+  const entries = []
+  for (const b of orderedBoards.value) {
+    if (seen.has(b.deal_subfolder)) continue
+    seen.add(b.deal_subfolder)
+    entries.push({ subfolder: b.deal_subfolder, color: lessonColor(b) })
+  }
+  return entries
 })
 
 // Rows: one per student, with per-board cells indexed by boardKey.

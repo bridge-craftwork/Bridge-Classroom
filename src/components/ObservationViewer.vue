@@ -23,7 +23,7 @@
           :title="correct && !isCorrected
             ? 'Clean on a WILD board \u2014 a mastery paw. Wild boards are dealt amid a mostly-different set, so they can\'t be rote-recognized.'
             : 'Played on a WILD board (25% / jungle randomization).'"
-        >\uD83D\uDC3E Wild board</span>
+        >🐾 Wild board</span>
         <span class="result-badge" :class="isCorrected ? 'corrected' : (correct ? 'correct' : 'incorrect')">
           {{ isCorrected ? '\u21BB Corrected' : (correct ? '\u2713 Correct' : '\u2717 Incorrect') }}
         </span>
