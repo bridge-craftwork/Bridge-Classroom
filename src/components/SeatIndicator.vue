@@ -2,7 +2,7 @@
   <div
     ref="root"
     class="seat-indicator"
-    :class="{ 'is-turn': turn, 'is-you': you, 'is-empty': !name, centered: align === 'center' }"
+    :class="{ 'is-turn': turn, 'is-you': you, 'is-empty': !name, centered: align === 'center', conn: connected === true, disc: connected === false }"
     :title="titleText"
   >
     <span class="si-badge">{{ seat }}</span>
@@ -30,6 +30,10 @@ const props = defineProps({
   turn: { type: Boolean, default: false },
   // 'start' (seats strip) | 'center' (centered pill above a hand, BBO-style).
   align: { type: String, default: 'start' },
+  // Connection state (tri-state): true → green badge (seated & connected),
+  // false → grey badge (disconnected), null → white (bot / no presence). Shown
+  // ON the badge instead of a separate dot, so the name gets the full width.
+  connected: { default: null },
 })
 
 const root = ref(null)
@@ -134,6 +138,17 @@ onBeforeUnmount(() => ro?.disconnect())
   font-size: 13px;
   line-height: 1;
   border: 1.5px solid rgba(0, 0, 0, 0.15);
+}
+/* Connection shown on the badge (no separate dot): green = connected. */
+.seat-indicator.conn .si-badge {
+  background: #1d9e75;
+  color: #fff;
+  border-color: #1d9e75;
+}
+.seat-indicator.disc .si-badge {
+  background: #c0c4c0;
+  color: #fff;
+  border-color: #c0c4c0;
 }
 .si-name {
   flex: 0 1 auto;
