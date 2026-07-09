@@ -27,9 +27,10 @@ pub struct Config {
     /// Secret for encrypting recovery keys (optional)
     pub recovery_secret: Option<String>,
 
-    /// Secret gating the dangerous ops-only admin endpoints (decrypt / active-time
-    /// backfill). Unlike `api_key` this is NOT in the frontend bundle — it lives
-    /// only in the launchd plist. When unset, those endpoints fail closed (503).
+    /// Interim admin gate secret, superseded by signed-request auth (ADR-0003).
+    /// Retained (loaded but intentionally unread) so the value stays provisioned
+    /// in the plist and the old gate can be reinstated without re-minting.
+    #[allow(dead_code)]
     pub admin_secret: Option<String>,
 
     /// Resend API key for sending emails (optional)

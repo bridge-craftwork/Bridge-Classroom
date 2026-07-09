@@ -200,12 +200,16 @@ fn err500<E: std::fmt::Display>(ctx: &str) -> impl Fn(E) -> (StatusCode, String)
 /// POST /api/admin/merge-accounts  { merge_user_id, keeper_user_id }
 pub async fn merge_accounts(
     State(state): State<AppState>,
+    method: axum::http::Method,
+    uri: axum::http::Uri,
     headers: HeaderMap,
-    Json(req): Json<MergeRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<MergeResponse>, (StatusCode, String)> {
-    if !validate_api_key(&headers, &state.config.api_key) {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
-    }
+    // Signed admin request (ADR-0003). The signature binds these exact body
+    // bytes, so we verify before parsing them.
+    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), &body).await?;
+    let req: MergeRequest = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid request body: {e}")))?;
 
     let away = req.merge_user_id;
     let keeper = req.keeper_user_id;

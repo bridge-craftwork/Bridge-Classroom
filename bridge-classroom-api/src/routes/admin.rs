@@ -18,35 +18,11 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
     false
 }
 
-/// Gate for the dangerous ops-only admin endpoints (mass decrypt / active-time
-/// backfill). Requires the server-only `ADMIN_SECRET` via the `x-admin-secret`
-/// header. Unlike `api_key`, this secret is never shipped to the browser, so a
-/// leaked frontend key can't trigger these. Fails **closed** (503) when the
-/// secret isn't configured, and uses a constant-time compare.
-fn require_admin(
-    headers: &HeaderMap,
-    config: &crate::config::Config,
-) -> Result<(), (StatusCode, String)> {
-    let Some(secret) = config.admin_secret.as_deref() else {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Admin operations are not configured".to_string(),
-        ));
-    };
-    let provided = headers
-        .get("x-admin-secret")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if ring::constant_time::verify_slices_are_equal(provided.as_bytes(), secret.as_bytes()).is_ok()
-    {
-        Ok(())
-    } else {
-        Err((
-            StatusCode::UNAUTHORIZED,
-            "Invalid or missing admin secret".to_string(),
-        ))
-    }
-}
+// The interim `ADMIN_SECRET` / `x-admin-secret` gate was replaced by signed-
+// request auth (ADR-0003; see `crate::auth_sig::require_admin_signed`). The
+// secret value is retained in the plist (dormant) so the gate can be
+// reinstated without re-provisioning; `config.admin_secret` is still loaded but
+// intentionally unread.
 
 // ---- Request / Response types ----
 
@@ -433,10 +409,28 @@ fn decrypt_observation_data(
 /// Decrypts all observations using RECOVERY_SECRET and populates observations_decrypted table.
 pub async fn admin_decrypt_observations(
     State(state): State<AppState>,
+    method: axum::http::Method,
+    uri: axum::http::Uri,
     headers: HeaderMap,
 ) -> Result<Json<DecryptObservationsResponse>, (StatusCode, String)> {
-    require_admin(&headers, &state.config)?;
+    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), b"").await?;
+    let (users_processed, observations_decrypted, users_skipped, errors) =
+        populate_observations_decrypted(&state).await?;
+    Ok(Json(DecryptObservationsResponse {
+        success: true,
+        users_processed,
+        observations_decrypted,
+        users_skipped,
+        errors,
+    }))
+}
 
+/// Decrypt every observation into the transient `observations_decrypted` table.
+/// Shared by the admin endpoint and the active-time backfill; performs no auth
+/// of its own — callers authenticate first.
+async fn populate_observations_decrypted(
+    state: &AppState,
+) -> Result<(usize, usize, usize, usize), (StatusCode, String)> {
     let recovery_secret = state
         .config
         .recovery_secret
@@ -712,13 +706,7 @@ pub async fn admin_decrypt_observations(
         users_processed, total_decrypted, users_skipped, total_errors
     );
 
-    Ok(Json(DecryptObservationsResponse {
-        success: true,
-        users_processed,
-        observations_decrypted: total_decrypted,
-        users_skipped,
-        errors: total_errors,
-    }))
+    Ok((users_processed, total_decrypted, users_skipped, total_errors))
 }
 
 // ---- Active-time backfill (one-shot) ----
@@ -772,12 +760,14 @@ fn active_ms_from_decrypted(decrypted_json: &str) -> Option<i64> {
 /// needed once to clean the backlog.
 pub async fn admin_backfill_active_time(
     State(state): State<AppState>,
+    method: axum::http::Method,
+    uri: axum::http::Uri,
     headers: HeaderMap,
 ) -> Result<Json<BackfillActiveTimeResponse>, (StatusCode, String)> {
-    require_admin(&headers, &state.config)?;
+    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), b"").await?;
 
     // 1. Decrypt every observation into observations_decrypted (DROP+CREATE+fill).
-    let _ = admin_decrypt_observations(State(state.clone()), headers.clone()).await?;
+    populate_observations_decrypted(&state).await?;
 
     // 2. Recompute time_taken_ms per observation from the decrypted per-prompt
     //    times and rewrite the clear-text column.

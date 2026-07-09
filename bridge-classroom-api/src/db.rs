@@ -298,6 +298,22 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // One-time-use nonces for signed teacher/admin requests (ADR-0003). A nonce
+    // is inserted the first time it's seen; a second insert collides on the PK
+    // and the request is rejected as a replay. `expires_at` (unix millis) lets
+    // us prune rows once they're older than the freshness window.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS used_nonces (
+            nonce      TEXT PRIMARY KEY,
+            expires_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Add recovery_encrypted_key column to users table if it doesn't exist
     // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
     let has_recovery_column: bool = sqlx::query_scalar(
