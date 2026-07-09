@@ -28,13 +28,14 @@
             <button class="close-btn" @click="$emit('close')" aria-label="Close">&times;</button>
           </div>
 
-          <!-- Column-order toggle. Mixed-lesson exercises interleave boards in
-               exercise order; grouping by lesson + board number surfaces which
-               topics students struggled with. -->
-          <div v-if="isMixedLesson && boards.length" class="grid-controls">
+          <!-- Column-order toggle. Boards are shown in exercise order by
+               default (which may be randomized); grouping by lesson + board
+               number surfaces which specific topics/boards students struggled
+               with. Shown whenever there's more than one board. -->
+          <div v-if="boards.length > 1" class="grid-controls">
             <label class="sort-toggle">
               <input type="checkbox" v-model="sortByLesson" />
-              Group boards by lesson
+              {{ isMixedLesson ? 'Group boards by lesson' : 'Sort boards by number' }}
             </label>
           </div>
 
@@ -44,8 +45,8 @@
               <thead>
                 <tr>
                   <th class="col-name">Student</th>
-                  <th v-for="(b, i) in orderedBoards" :key="boardKey(b)" class="col-board" :title="boardTooltip(b)">
-                    {{ boardLabel(b, i) }}
+                  <th v-for="b in orderedBoards" :key="boardKey(b)" class="col-board" :title="boardTooltip(b)">
+                    {{ boardLabel(b) }}
                     <span
                       v-if="isMixedLesson"
                       class="lesson-swatch"
@@ -156,7 +157,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useAssignments } from '../../composables/useAssignments.js'
 import { useTeacherRole } from '../../composables/useTeacherRole.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
@@ -184,9 +185,13 @@ const cells = computed(() => assignment.value?.cells || [])
 
 // Column order. Off = exercise order (as authored). On = grouped by lesson
 // (deal_subfolder) then board number, so a teacher can see which topics tripped
-// students up in a mixed exercise. Cells follow because they're keyed by
-// boardKey, not position.
-const sortByLesson = ref(false)
+// students up. Cells follow because they're keyed by boardKey, not position.
+// The preference persists across sessions.
+const SORT_PREF_KEY = 'bridgeAssignmentSortByLesson'
+const sortByLesson = ref(localStorage.getItem(SORT_PREF_KEY) === '1')
+watch(sortByLesson, (v) => {
+  try { localStorage.setItem(SORT_PREF_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
 const orderedBoards = computed(() => {
   if (!sortByLesson.value) return boards.value
   return [...boards.value].sort(
@@ -209,8 +214,11 @@ function boardKey(b) {
   return `${b.deal_subfolder}:${b.deal_number}`
 }
 
-function boardLabel(b, i) {
-  if (!isMixedLesson.value) return String(i + 1)
+function boardLabel(b) {
+  // Always label by the real board number so a randomized/subset ordering
+  // shows which board is which. Mixed exercises prefix a 1-letter lesson tag
+  // (disambiguated by the color swatch) since numbers repeat across lessons.
+  if (!isMixedLesson.value) return String(b.deal_number)
   const prefix = (b.deal_subfolder || '?').slice(0, 1).toUpperCase()
   return `${prefix}${b.deal_number}`
 }
