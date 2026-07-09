@@ -193,6 +193,13 @@ export function useServerTable() {
     return occ.name || 'Player'
   }
 
+  // The human occupant's name for a seat, or null for an empty/bot seat. Feeds
+  // SeatIndicator (which shows its own 'Bot' emptyLabel + the name ladder).
+  function occupantName(seat) {
+    const occ = seats.value[seat]
+    return occ && occ.kind === 'human' ? (occ.name || 'Player') : null
+  }
+
   const turnLabel = computed(() => {
     const seat = nextToAct.value
     if (!seat) return ''
@@ -232,7 +239,7 @@ export function useServerTable() {
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
     lastSuitBid,
     // actions
-    onNextDeal, toggleShowAllHands, seatLabel,
+    onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady,
   }
 }
