@@ -142,6 +142,49 @@ export async function importPrivateKey(privateKeyBase64) {
   )
 }
 
+// ============ Request signing (ADR-0003) ============
+//
+// The viewer keypair is RSA-OAEP (encrypt/decrypt only). To SIGN privileged
+// requests we re-import the same PKCS8 private-key bytes under a signing
+// algorithm — WebCrypto won't let one CryptoKey both encrypt and sign, but the
+// raw key material is fine for either. The matching SPKI public key already in
+// `viewers.public_key` verifies these signatures server-side unchanged.
+
+const RSA_SIGNING_ALGORITHM = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
+
+/**
+ * Re-import the stored PKCS8 private key for signing (not decryption).
+ * @param {string} privateKeyBase64 - Base64-encoded PKCS8 private key
+ * @returns {Promise<CryptoKey>}
+ */
+export async function importSigningKey(privateKeyBase64) {
+  const keyBuffer = base64ToArrayBuffer(privateKeyBase64)
+  return crypto.subtle.importKey('pkcs8', keyBuffer, RSA_SIGNING_ALGORITHM, false, ['sign'])
+}
+
+/**
+ * RSASSA-PKCS1-v1_5 / SHA-256 signature over `message` (a string), base64.
+ * @param {CryptoKey} signingKey
+ * @param {string} message
+ * @returns {Promise<string>} base64 signature
+ */
+export async function signMessage(signingKey, message) {
+  const sig = await crypto.subtle.sign(
+    RSA_SIGNING_ALGORITHM,
+    signingKey,
+    new TextEncoder().encode(message)
+  )
+  return arrayBufferToBase64(sig)
+}
+
+/** Lowercase hex SHA-256 of the given bytes (Uint8Array). */
+export async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 /**
  * Generate an RSA keypair for a viewer (teacher, partner, admin)
  * @returns {Promise<{publicKey: string, privateKey: string}>} Base64-encoded keys

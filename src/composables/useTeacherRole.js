@@ -461,6 +461,7 @@ export function useTeacherRole() {
     findAndDecryptErroringObservation,
     decryptStudentObservation,
     getStudentKey,
+    getTeacherPrivateKey,
     studentRawObservations,
     reset
   }

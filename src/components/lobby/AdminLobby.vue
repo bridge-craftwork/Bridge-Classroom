@@ -197,11 +197,27 @@
         </div>
       </div>
 
-      <!-- Observation Decryption is an ops-only action: it briefly materialises
-           every E2E-encrypted observation as plaintext, so it must not be one
-           browser click behind the public API key. It now lives behind the
-           server-only ADMIN_SECRET (POST /api/admin/decrypt-observations and
-           /api/admin/backfill-active-time with an x-admin-secret header). -->
+      <!-- Ops tools. These decrypt every E2E observation server-side, so they
+           are gated by a signed admin request (ADR-0003): the browser signs
+           with the admin's own private key at click time — no secret in the
+           bundle. Only an admin's device can produce a valid signature. -->
+      <div class="ops-section">
+        <h3 class="section-title">Ops tools</h3>
+        <p class="ops-description">
+          Privileged maintenance. Each runs as a request signed with your admin key.
+        </p>
+        <div class="ops-actions">
+          <button class="ops-btn" @click="runOp('decrypt')" :disabled="!!opRunning">
+            {{ opRunning === 'decrypt' ? 'Decrypting…' : 'Decrypt observations' }}
+          </button>
+          <button class="ops-btn" @click="runOp('backfill')" :disabled="!!opRunning">
+            {{ opRunning === 'backfill' ? 'Backfilling…' : 'Backfill active time' }}
+          </button>
+        </div>
+        <div v-if="opResult" class="ops-result" :class="{ error: !opResult.success }">
+          {{ opResult.message }}
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -211,6 +227,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useAdminDashboard } from '../../composables/useAdminDashboard.js'
 import { useAnnouncement } from '../../composables/useAnnouncement.js'
 import { useUserStore } from '../../composables/useUserStore.js'
+import { useTeacherRole } from '../../composables/useTeacherRole.js'
+import { signedFetch } from '../../utils/signedRequest.js'
 import { API_URL } from '@/utils/apiUrl.js'
 import AdminStatsRow from './AdminStatsRow.vue'
 import PopularLessons from './PopularLessons.vue'
@@ -221,6 +239,18 @@ import SystemHealth from './SystemHealth.vue'
 const admin = useAdminDashboard()
 const ann = useAnnouncement()
 const userStore = useUserStore()
+const teacherRole = useTeacherRole()
+
+// Signing credentials for privileged (admin) requests (ADR-0003). Throws a
+// friendly error if the current user has no teacher signing key on this device.
+function signedCreds() {
+  const userId = userStore.currentUser.value?.id
+  const privateKeyBase64 = teacherRole.getTeacherPrivateKey()
+  if (!userId || !privateKeyBase64) {
+    throw new Error('No teacher signing key on this device — sign in as a teacher/admin first.')
+  }
+  return { userId, privateKeyBase64 }
+}
 const refreshing = ref(false)
 
 function handleViewAs(user) {
@@ -452,10 +482,9 @@ async function confirmMerge() {
   mergeError.value = ''
   mergeDoneMsg.value = ''
   try {
-    const res = await fetch(`${API_URL}/admin/merge-accounts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
-      body: JSON.stringify({ merge_user_id: away, keeper_user_id: keeper })
+    const res = await signedFetch('/admin/merge-accounts', {
+      ...signedCreds(),
+      body: { merge_user_id: away, keeper_user_id: keeper },
     })
     const data = await res.json()
     if (!res.ok || !data.success) {
@@ -481,6 +510,31 @@ function formatDate(iso) {
     return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
   } catch {
     return iso
+  }
+}
+
+// Ops tools — signed admin requests (ADR-0003).
+const opRunning = ref(null) // 'decrypt' | 'backfill' | null
+const opResult = ref(null)
+
+async function runOp(kind) {
+  const subpath = kind === 'decrypt' ? '/admin/decrypt-observations' : '/admin/backfill-active-time'
+  opRunning.value = kind
+  opResult.value = null
+  try {
+    const res = await signedFetch(subpath, signedCreds())
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      opResult.value = { success: false, message: `HTTP ${res.status}: ${data.error || (await res.text?.() ) || 'failed'}` }
+      return
+    }
+    opResult.value = kind === 'decrypt'
+      ? { success: true, message: `Decrypted ${data.observations_decrypted?.toLocaleString?.() ?? '?'} observations from ${data.users_processed} users (${data.users_skipped} skipped, ${data.errors} errors).` }
+      : { success: true, message: `Backfill complete — ${data.observations_updated?.toLocaleString?.() ?? '?'} observations updated, ${data.pairs_recomputed} pairs recomputed.` }
+  } catch (err) {
+    opResult.value = { success: false, message: err.message }
+  } finally {
+    opRunning.value = null
   }
 }
 
@@ -896,6 +950,56 @@ onMounted(loadData)
 
 .save-feedback.success { color: #2e7d32; }
 .save-feedback.error { color: #d32f2f; }
+
+/* Ops tools */
+.ops-section {
+  background: white;
+  border-radius: var(--radius-card, 10px);
+  border: 1px solid var(--card-border, #e0ddd7);
+  padding: 20px;
+  margin-top: 24px;
+}
+
+.ops-description {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 12px;
+}
+
+.ops-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.ops-btn {
+  padding: 8px 20px;
+  background: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: var(--radius-button, 6px);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+}
+
+.ops-btn:hover { background: #6d28d9; }
+.ops-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.ops-result {
+  padding: 12px 16px;
+  border-radius: var(--radius-button, 6px);
+  background: #e8f5e9;
+  font-size: 13px;
+}
+
+.ops-result.error {
+  background: #ffebee;
+  color: #c62828;
+}
 
 @media (max-width: 768px) {
   .content-grid {

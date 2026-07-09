@@ -42,6 +42,9 @@ ring = "0.17"
 sha2 = "0.10"
 base64 = "0.21"
 hex = "0.4"
+# RSA signature verification for signed teacher/admin requests (ADR-0003).
+# pkcs8/spki traits parse the base64-SPKI public keys stored in `viewers`.
+rsa = { version = "0.9", features = ["sha2"] }
 
 # HTTP client (for Resend API)
 reqwest = { version = "0.11", features = ["json"] }
