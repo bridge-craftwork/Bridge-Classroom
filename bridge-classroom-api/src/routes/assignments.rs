@@ -538,13 +538,21 @@ async fn compute_assignment_stats(
         .collect();
     stats.clean_rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Active duration per student for the box-plot chips: the idle-capped
-    // total time across all attempts, read from the assignment_board_status
-    // rollup (same source as the panel's per-student Total column) instead of
-    // scanning observations. Per-prompt idle is excluded at recompute time.
-    let duration_rows: Vec<UserDurationRow> = sqlx::query_as(
+    // Active duration per student for the box-plot chips: the idle-capped total
+    // time across all attempts, read from the assignment_board_status rollup
+    // (same source as the panel's per-student Total column). Per-prompt idle is
+    // excluded at recompute time.
+    //
+    // Restrict the distribution to students who completed ≥80% of the boards, so
+    // a partial-completer (e.g. 1 of 7 boards) doesn't sit in the box next to
+    // full completions and drag the min/quartiles down. If nobody has hit 80%
+    // yet, fall back to every attempter so the chip still shows something.
+    let duration_rows: Vec<(String, i64, i64, Option<i64>)> = sqlx::query_as(
         r#"
-        SELECT user_id, SUM(total_ms) AS total_time_ms
+        SELECT user_id,
+               COUNT(*)                                                              AS total,
+               COALESCE(SUM(CASE WHEN status != 'not_attempted' THEN 1 ELSE 0 END),0) AS attempted,
+               SUM(total_ms)                                                          AS total_time_ms
         FROM assignment_board_status
         WHERE assignment_id = ?
         GROUP BY user_id
@@ -555,10 +563,24 @@ async fn compute_assignment_stats(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    stats.active_durations_ms = duration_rows
+    const COMPLETION_THRESHOLD: f64 = 0.80;
+    let completers: Vec<i64> = duration_rows
         .iter()
-        .map(|r| r.total_time_ms.unwrap_or(0))
+        .filter(|(_, total, attempted, _)| {
+            *total > 0 && (*attempted as f64) / (*total as f64) >= COMPLETION_THRESHOLD
+        })
+        .map(|(_, _, _, ms)| ms.unwrap_or(0))
         .collect();
+
+    stats.active_durations_ms = if !completers.is_empty() {
+        completers
+    } else {
+        duration_rows
+            .iter()
+            .filter(|(_, _, attempted, _)| *attempted > 0)
+            .map(|(_, _, _, ms)| ms.unwrap_or(0))
+            .collect()
+    };
     stats.active_durations_ms.sort();
 
     Ok(stats)

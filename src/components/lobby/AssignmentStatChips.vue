@@ -21,7 +21,7 @@
           <line :x1="rateX(cleanRateBox.min)" :y1="midY - 4" :x2="rateX(cleanRateBox.min)" :y2="midY + 4" stroke="#6b7280" stroke-width="1" />
           <line :x1="rateX(cleanRateBox.max)" :y1="midY - 4" :x2="rateX(cleanRateBox.max)" :y2="midY + 4" stroke="#6b7280" stroke-width="1" />
           <!-- Box -->
-          <rect :x="rateX(cleanRateBox.q1)" :y="midY - 5" :width="Math.max(1, rateX(cleanRateBox.q3) - rateX(cleanRateBox.q1))" :height="10" fill="#a7d4b9" stroke="#40916c" stroke-width="1" />
+          <rect :x="rateX(cleanRateBox.q1)" :y="midY - 5" :width="Math.max(1, rateX(cleanRateBox.q3) - rateX(cleanRateBox.q1))" :height="10" :fill="cleanRateColor.fill" :stroke="cleanRateColor.stroke" stroke-width="1" />
           <!-- Median -->
           <line :x1="rateX(cleanRateBox.median)" :y1="midY - 6" :x2="rateX(cleanRateBox.median)" :y2="midY + 6" stroke="#2d6a4f" stroke-width="2" />
         </template>
@@ -39,7 +39,7 @@
           <line :x1="durX(durationBox.min)" :y1="midY" :x2="durX(durationBox.max)" :y2="midY" stroke="#6b7280" stroke-width="1" />
           <line :x1="durX(durationBox.min)" :y1="midY - 4" :x2="durX(durationBox.min)" :y2="midY + 4" stroke="#6b7280" stroke-width="1" />
           <line :x1="durX(durationBox.max)" :y1="midY - 4" :x2="durX(durationBox.max)" :y2="midY + 4" stroke="#6b7280" stroke-width="1" />
-          <rect :x="durX(durationBox.q1)" :y="midY - 5" :width="Math.max(1, durX(durationBox.q3) - durX(durationBox.q1))" :height="10" fill="#dde9f5" stroke="#3b82f6" stroke-width="1" />
+          <rect :x="durX(durationBox.q1)" :y="midY - 5" :width="Math.max(1, durX(durationBox.q3) - durX(durationBox.q1))" :height="10" :fill="durationColor.fill" :stroke="durationColor.stroke" stroke-width="1" />
           <line :x1="durX(durationBox.median)" :y1="midY - 6" :x2="durX(durationBox.median)" :y2="midY + 6" stroke="#1d4f80" stroke-width="2" />
         </template>
         <text v-else :x="chartWidth / 2" :y="midY + 4" text-anchor="middle" font-size="10" fill="#9ca3af">no data</text>
@@ -94,7 +94,25 @@ const participationTooltip = computed(() => {
   return `${a.student_count_attempted} of ${a.student_count} student${a.student_count === 1 ? '' : 's'} have played at least one board (${participationPct.value}%)`
 })
 
+// Red / yellow / green fills for "how good is this box" at a glance.
+const GOODNESS = {
+  good:    { fill: '#a7d4b9', stroke: '#40916c' },
+  ok:      { fill: '#fbe0b8', stroke: '#d97706' },
+  bad:     { fill: '#f6c6ca', stroke: '#e5484d' },
+  neutral: { fill: '#e5e7eb', stroke: '#9ca3af' },
+}
+
 const cleanRateBox = computed(() => boxStats(props.assignment.clean_rates))
+
+// Clean rate: higher is better. Thresholds mirror the per-student accuracy
+// classes (≥75% green, ≥50% amber, else red), keyed off the median.
+const cleanRateColor = computed(() => {
+  const box = cleanRateBox.value
+  if (!box) return GOODNESS.neutral
+  if (box.median >= 0.75) return GOODNESS.good
+  if (box.median >= 0.50) return GOODNESS.ok
+  return GOODNESS.bad
+})
 
 const cleanRateMedianLabel = computed(() => {
   const box = cleanRateBox.value
@@ -117,6 +135,19 @@ function rateX(v) {
 }
 
 const durationBox = computed(() => boxStats(props.assignment.active_durations_ms))
+
+// Duration goodness is anchored on the ~15-minute homework design target
+// (median of the ≥80%-completers): ≤15 min green, ≤30 min amber, longer red.
+// Tunable — bump if your assignments are intentionally longer.
+const DURATION_GOOD_MS = 15 * 60_000
+const DURATION_OK_MS = 30 * 60_000
+const durationColor = computed(() => {
+  const box = durationBox.value
+  if (!box) return GOODNESS.neutral
+  if (box.median <= DURATION_GOOD_MS) return GOODNESS.good
+  if (box.median <= DURATION_OK_MS) return GOODNESS.ok
+  return GOODNESS.bad
+})
 
 // Duration axis scales to the longest student's duration (rounded up to
 // a clean upper bound so the boxplot is readable). All in ms.
