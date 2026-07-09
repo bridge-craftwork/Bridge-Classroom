@@ -126,11 +126,12 @@ pub struct AssignmentGridCell {
     pub correct: bool,
     pub observation_id: String,
     pub timestamp: String,
-    /// Whether the latest observation for this board was played under Wild
-    /// (25%/jungle) conditions — 'Wild' / 'Tame' / null. A clean_correct on a
-    /// Wild board is the "paw" mastery milestone; the grid marks it.
+    /// The student's permanent wild-mastery tier for this board, from the
+    /// global board_status rollup — 'Fresh' / 'Recent' / null. The grid marks a
+    /// paw (gold = Fresh, green = Recent). Permanent, so it matches every other
+    /// paw surface and doesn't disappear if a later replay isn't clean-on-wild.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub wilderness: Option<String>,
+    pub wild_achievement: Option<String>,
 }
 
 /// Assignment detail with per-student progress (for teacher drill-down)
