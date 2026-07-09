@@ -7,6 +7,12 @@
     <div class="viewer-titlebar" @pointerdown="startDrag">
       <span class="viewer-title">Lesson Introduction</span>
       <div class="viewer-controls">
+        <button
+          class="viewer-btn"
+          :class="{ active: docked }"
+          @click="toggleDock"
+          :title="docked ? 'Float over the page' : 'Dock to the left as a reference'"
+        >{{ docked ? '⧉' : '⇤' }}</button>
         <button class="viewer-btn" @click="openInNewTab" title="Open in new tab">&#8599;</button>
         <button class="viewer-btn close" @click="$emit('close')" title="Close">&times;</button>
       </div>
@@ -41,6 +47,7 @@
 
 <script setup>
 import { reactive, ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useAppConfig } from '../composables/useAppConfig.js'
 
 const props = defineProps({
   url: {
@@ -57,6 +64,18 @@ const emit = defineEmits(['close', 'geometry'])
 
 const pos = reactive({ x: 8, y: 80 })
 const size = reactive({ w: 550, h: 700 })
+
+// Dock vs float is a single GLOBAL preference (cross-lesson, cross-viewport,
+// cross-app), remembered in uiPrefs. Default float. Docking reserves a side
+// gutter in the host layout (see MainLayout .intro-open); floating overlays.
+const { uiPrefs, setUIPref } = useAppConfig()
+const docked = computed(() => uiPrefs.value.introDock === 'dock')
+function toggleDock() {
+  const next = docked.value ? 'float' : 'dock'
+  setUIPref('introDock', next)
+  // Snap to the left edge when docking, so the reserved gutter lines up.
+  if (next === 'dock') { pos.x = 8; pos.y = 80 }
+}
 
 // Report position+size so the layout can reserve a gutter that matches the
 // viewer's actual right edge (it's draggable and resizable). Emits live.
@@ -292,6 +311,12 @@ function stopInteraction() {
 
 .viewer-btn:hover {
   opacity: 1;
+}
+
+.viewer-btn.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
 }
 
 .viewer-btn.close {

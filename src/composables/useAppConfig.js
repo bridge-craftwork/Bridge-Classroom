@@ -12,7 +12,12 @@ const appConfig = ref({
 
 // UI preferences (local-only, not synced to server)
 const uiPrefs = ref({
-  showLoadPbnOption: false  // Hidden by default - confuses new users
+  showLoadPbnOption: false,  // Hidden by default - confuses new users
+  // Lesson-intro / description panel: 'float' (overlay, no reflow) | 'dock'
+  // (reserve a side gutter). Global — one setting across every lesson, viewport,
+  // and app (persisted in UI_PREFS_KEY). Defaults to float; remembers the last
+  // explicit choice. See IntroPdfViewer.vue.
+  introDock: 'float'
 })
 
 const initialized = ref(false)

@@ -6,7 +6,7 @@
   />
 
   <!-- Main App (shown when user is authenticated) -->
-  <div v-else class="app" :class="{ 'intro-open': showIntroPdf }" :style="{ '--intro-gutter': introGutter }" @click.capture="dismissWelcome">
+  <div v-else class="app" :class="{ 'intro-open': showIntroPdf && introDocked }" :style="{ '--intro-gutter': introGutter }" @click.capture="dismissWelcome">
     <!-- View-as banner — shown when admin is rendering the app as another user -->
     <div v-if="isViewingAs" class="view-as-banner">
       <span class="view-as-text">
@@ -526,12 +526,16 @@ const showIntroPdf = ref(false)
 const showRegistrationToast = ref(false)
 const introPdfUrl = ref(null)
 // Live {x,w} of the floating intro viewer (or null). The practice layout reserves
-// a left gutter matching its actual right edge — only while it's docked near the
-// left edge; dragged elsewhere, no gutter (it floats over the content).
+// a left gutter — and reflows — ONLY when the viewer is docked (a global user
+// preference; default float). Floating overlays the content with no reflow, so
+// opening/closing no longer shifts the whole GUI. The gutter tracks the docked
+// viewer's real right edge.
+const introDocked = computed(() => appConfig.uiPrefs.value.introDock === 'dock')
 const introGeometry = ref(null)
 const introGutter = computed(() => {
+  if (!introDocked.value) return null
   const g = introGeometry.value
-  if (!g || g.x > 120) return null
+  if (!g) return null
   return `${Math.round(g.x + g.w + 16)}px`
 })
 
