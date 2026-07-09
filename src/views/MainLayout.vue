@@ -323,7 +323,7 @@
       <span class="paw-toast-icon">🐾</span>
       <span class="paw-toast-text">
         <strong>Wild board mastered!</strong>
-        You earned a fresh paw{{ pawLessonName ? ` in ${pawLessonName}` : '' }} — clean on a wild board.
+        You earned a fresh paw{{ pawLessonName ? ` in ${pawLessonName}` : '' }}{{ activePaw.dealNumber != null ? ` #${activePaw.dealNumber}` : '' }} — clean on a wild board.
       </span>
     </div>
 

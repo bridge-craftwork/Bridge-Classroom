@@ -31,6 +31,19 @@
               >{{ lesson.tier }}</span>
             </span>
             <span class="board-count">{{ boardProgressText(lesson) }}</span>
+            <span
+              v-if="lesson.goldStars || lesson.silverStars || lesson.freshPaws || lesson.recentPaws"
+              class="tile-badges"
+            >
+              <span v-if="lesson.goldStars" class="tb tb-gold" :title="`${lesson.goldStars} gold ${lesson.goldStars === 1 ? 'star' : 'stars'}`">★ {{ lesson.goldStars }}</span>
+              <span v-if="lesson.silverStars" class="tb tb-silver" :title="`${lesson.silverStars} silver ${lesson.silverStars === 1 ? 'star' : 'stars'}`">★ {{ lesson.silverStars }}</span>
+              <span
+                v-if="lesson.freshPaws + lesson.recentPaws"
+                class="tb tb-paw"
+                :class="{ fresh: lesson.freshPaws > 0 }"
+                :title="`${lesson.freshPaws} fresh + ${lesson.recentPaws} recent wild ${lesson.freshPaws + lesson.recentPaws === 1 ? 'mastery' : 'masteries'}`"
+              >🐾 {{ lesson.freshPaws + lesson.recentPaws }}</span>
+            </span>
           </div>
           <div class="card-right">
             <span class="relative-time">{{ lesson.relativeTime }}</span>
@@ -226,6 +239,31 @@ onMounted(() => {
   color: var(--text-secondary, #6b7280);
   margin-top: 2px;
 }
+
+/* Achievement tallies (stars + wild paws) on the tile. */
+.tile-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.tb {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tb-gold { background: #fbe9b8; color: #7a5a08; }
+.tb-silver { background: #eef0f3; color: #5f6b7a; }
+.tb-paw { background: #ecfdf5; color: #6b7280; border: 1px solid #d1fae5; }
+.tb-paw.fresh { background: #d1fae5; color: #047857; border-color: #6ee7b7; }
 
 .card-right {
   display: flex;
