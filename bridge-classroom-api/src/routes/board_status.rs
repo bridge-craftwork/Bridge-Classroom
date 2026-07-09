@@ -154,6 +154,13 @@ pub struct AssignmentStatusEntry {
     pub deal_number: i32,
     pub status: String,
     pub last_observation_at: Option<String>,
+    /// The student's board-level mastery for this board, from the global
+    /// `board_status` rollup (max_stars ≥1 = silver, ≥2 = gold;
+    /// wild_achievement = 'Fresh'/'Recent'). Wild masteries are only earned in
+    /// assignments, so these surface the assignment's paws/stars without a
+    /// separate rollup or any observation query.
+    pub max_stars: Option<i64>,
+    pub wild_achievement: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,10 +185,17 @@ pub async fn get_assignment_status(
 
     let entries: Vec<AssignmentStatusEntry> = sqlx::query_as(
         r#"
-        SELECT deal_subfolder, deal_number, status, last_observation_at
-        FROM assignment_board_status
-        WHERE user_id = ? AND assignment_id = ?
-        ORDER BY deal_subfolder ASC, deal_number ASC
+        SELECT abs.deal_subfolder, abs.deal_number, abs.status, abs.last_observation_at,
+               bs.max_stars        AS max_stars,
+               bs.wild_achievement AS wild_achievement
+        FROM assignment_board_status abs
+        LEFT JOIN board_status bs
+          ON bs.user_id        = abs.user_id
+         AND bs.collection_id  = abs.collection_id
+         AND bs.deal_subfolder = abs.deal_subfolder
+         AND bs.deal_number    = abs.deal_number
+        WHERE abs.user_id = ? AND abs.assignment_id = ?
+        ORDER BY abs.deal_subfolder ASC, abs.deal_number ASC
         "#,
     )
     .bind(&query.user_id)
