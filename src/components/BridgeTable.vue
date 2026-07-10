@@ -154,6 +154,13 @@ const props = defineProps({
   labelProps: {
     type: Object,
     default: null
+  },
+  // Force every seat to render as an identity chip (name + badge, no cards),
+  // regardless of width. Used pre-deal (host table at Board 0) so occupant
+  // names show and bots are distinguishable while there are no hands to show.
+  identityOnly: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -222,6 +229,7 @@ const sizeMode = computed(() => {
 // stay a compact hand while E/W drop to identity chips. 'stack'/'chip' are
 // identity-only for every seat; 'compact'/'full' pass through to real hands.
 const nsDensity = computed(() => {
+  if (props.identityOnly) return 'chip'
   switch (sizeMode.value) {
     case 'full': return 'full'
     case 'stack':
@@ -230,6 +238,7 @@ const nsDensity = computed(() => {
   }
 })
 const ewDensity = computed(() => {
+  if (props.identityOnly) return 'chip'
   switch (sizeMode.value) {
     case 'full': return 'full'
     case 'compact': return 'compact'
