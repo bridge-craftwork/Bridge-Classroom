@@ -27,7 +27,7 @@
       <!-- Host strip: deal source + invite + test players + end. The host is a
            seated player (as_player), so the table itself is the TableView below. -->
       <div class="th-controls">
-        <button class="th-btn th-btn-primary" :disabled="!connected" @click="showPicker = true">
+        <button class="th-btn th-btn-primary" :class="{ 'th-btn-attn': needsDeal }" :disabled="!connected" @click="showPicker = true">
           Deal source&hellip;
         </button>
 
@@ -105,11 +105,14 @@ const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
 const handoff = useTableHandoff()
 
-const { connectionStatus, sessionClosed } = table
+const { connectionStatus, sessionClosed, dealLoaded } = table
 
 const connected = computed(() => connectionStatus.value === 'connected')
 const sessionId = ref(null)
 const hasSession = computed(() => !!sessionId.value && !sessionClosed.value)
+// Spotlight the Deal source button until a deal is loaded: the table (seats +
+// bots) is up and invitable, but nothing plays until a source is picked.
+const needsDeal = computed(() => connected.value && hasSession.value && !dealLoaded.value)
 const resolving = ref(true)
 const startError = ref('')
 const ending = ref(false) // host clicked "End table" (vs an unexpected close)
@@ -373,6 +376,17 @@ onBeforeUnmount(teardown)
 .th-btn-primary:hover:not(:disabled) { background: #167a5a; border-color: #167a5a; }
 .th-btn-danger { color: #c62828; border-color: #e2b6b6; margin-left: 4px; }
 .th-btn-danger:hover:not(:disabled) { border-color: #c62828; }
+/* Spotlight the Deal source button until a deal is picked (mirrors the solo
+   Practice Table's bp-btn-attn). */
+.th-btn-attn { animation: th-attn-pulse 1.8s ease-out infinite; }
+@keyframes th-attn-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.45); }
+  70%  { box-shadow: 0 0 0 10px rgba(29, 158, 117, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .th-btn-attn { animation: none; }
+}
 
 .th-error { color: #c62828; font-size: 14px; }
 .th-inline { margin: 10px 0 0; }

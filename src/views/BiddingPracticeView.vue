@@ -110,9 +110,9 @@
                 :bot-loading="srv.botThinking"
                 bot-name="Bot"
               />
-              <div v-else-if="!srv.dealLoaded" class="tv-center tv-center-wait">
-                <div class="tv-center-title">Waiting for the first deal</div>
-                <div class="tv-center-sub">The board appears when the teacher loads a deal.</div>
+              <div v-else-if="!srv.dealLoaded" class="tv-center">
+                <div class="tv-center-line">No deal yet</div>
+                <div class="tv-center-line tv-center-muted">Pick a deal source</div>
               </div>
               <div v-else class="tv-center">
                 <div class="tv-center-line">Dealer {{ srv.dealer || '—' }}</div>
@@ -1743,6 +1743,7 @@ async function restartCardplay() {
 .tv-bid-waiting { text-align: center; margin-top: 8px; }
 .tv-center { text-align: center; color: #555; font-size: 14px; }
 .tv-center-line { margin: 2px 0; }
+.tv-center-muted { color: #8a8f94; font-size: 12px; }
 .tv-status-line { font-size: 14px; color: #444; margin: 4px 0; }
 .tv-your-turn { color: #1d9e75; font-weight: 600; }
 .tv-bot-note { color: #999; font-size: 12px; }
