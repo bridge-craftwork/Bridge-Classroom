@@ -169,6 +169,9 @@ function openSocket(myEpoch) {
     // see-all controller. The server keeps the host-control frames tied to the
     // owner sub, so a seated host still drives the deal source / seating.
     if (identity?.asPlayer) hello.as_player = true
+    // Requested seat (?seat=N invite link, or the host claiming a default seat).
+    // Honored by the server under Manual policy when the seat is free.
+    if (identity?.seat) hello.seat = identity.seat
     ws.send(JSON.stringify(hello))
     recordFrame('out', { ...hello, ticket: '<ticket>' })
     status.value = 'connected'
@@ -260,10 +263,10 @@ function handlePageUnload() {
 
 // Connect (or switch) to a table session. Exactly one of userId / guestName.
 // `bot` optionally selects the server's bot backend (e.g. 'random').
-async function connect({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false }) {
+async function connect({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false, seat = null }) {
   disconnect()
   const myEpoch = ++epoch
-  identity = { sessionId, userId, guestName, bot, asPlayer }
+  identity = { sessionId, userId, guestName, bot, asPlayer, seat }
   // pagehide covers mobile Safari / bfcache where beforeunload doesn't fire.
   window.addEventListener('beforeunload', handlePageUnload)
   window.addEventListener('pagehide', handlePageUnload)

@@ -48,8 +48,21 @@
 
       <p v-if="loadError" class="th-error th-inline">{{ loadError }}</p>
 
+      <!-- Host seat management: drag players between seats, bench (unseat) them,
+           Sit/Stand, or seat waiting arrivals. -->
+      <SeatManager
+        v-if="connected"
+        class="th-seats"
+        :seats="seats"
+        :roster="roster"
+        :your-seats="yourSeats"
+        :my-token="myToken"
+        :share-url="shareUrl"
+        @assign="onAssignSeat"
+      />
+
       <!-- The seated player table (the host plays their own hand). Empty seats
-           are bots; invitees drop into open seats. -->
+           are bots; the host seats invitees from the SeatManager above. -->
       <UnifiedTable server @exit="onExitTable" />
     </main>
 
@@ -86,6 +99,7 @@ import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
+import SeatManager from '../components/table/SeatManager.vue'
 import UnifiedTable from './BiddingPracticeView.vue'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
@@ -105,7 +119,8 @@ const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
 const handoff = useTableHandoff()
 
-const { connectionStatus, sessionClosed } = table
+const { connectionStatus, sessionClosed, seats, roster, yourSeats, myToken } = table
+function onAssignSeat(args) { table.sendAssignSeat(args) }
 
 const connected = computed(() => connectionStatus.value === 'connected')
 const sessionId = ref(null)
@@ -205,9 +220,10 @@ async function ensureSession({ forceCreate = false } = {}) {
     if (!id) id = await createSession()
     if (!id) throw new Error('Could not start your table.')
     sessionId.value = id
-    // Join SEATED (as_player) so the host plays their own hand — while still
-    // holding the host-control frames (deal source / seating) from the seat.
-    table.join({ sessionId: id, userId: currentUser.value.id, asPlayer: true })
+    // Join SEATED at South (as_player) so the host plays their own hand — while
+    // still holding the host-control frames (deal source / seating). Under Manual
+    // policy the ?seat request is what seats the host (arrivals otherwise wait).
+    table.join({ sessionId: id, userId: currentUser.value.id, asPlayer: true, seat: 'S' })
   } catch (e) {
     startError.value = e?.message || 'Could not set up your table.'
   } finally {
@@ -249,7 +265,9 @@ async function createSession() {
       kind: 'adhoc',
       boards_pbn: '',
       table_count: 1,
-      seat_policy: { mode: 'auto', pattern: 'first_free' },
+      // Manual: invitees WAIT to be seated (they don't auto-fill clockwise); the
+      // host seats them from the SeatManager. The host claims South on join below.
+      seat_policy: { mode: 'manual' },
     }),
   })
   if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`)
@@ -324,6 +342,7 @@ onBeforeUnmount(teardown)
 .th-center { text-align: center; }
 
 .th-main { max-width: 900px; margin: 0 auto; padding: 20px 24px; }
+.th-seats { margin: 14px 0; }
 
 .th-controls {
   display: flex;
