@@ -221,11 +221,19 @@ const clickableSeat = computed(() => {
   if (mine.includes(declarer.value) && nextToAct.value === dummySeat.value) {
     return dummySeat.value
   }
-  // You're a human dummy for a bot declarer → you play the declarer's hand.
+  // You're a human dummy for a BOT-CONTROLLED declarer → you play the
+  // declarer's hand too. Bot-controlled = an empty seat OR a disconnected
+  // human (a ghost, greyed 🤖): a bot is covering it, so the human dummy runs
+  // both hands. Mirrors the server's declarer_side_controller (which treats a
+  // disconnected-past-grace declarer as a bot). Previously this only matched a
+  // truly-empty seat, so a ghost declarer left the human dummy unable to play
+  // and the bot declining (server says the human controls it) — a stuck hand.
+  const decl = seats.value[declarer.value]
+  const declIsBot = !decl || decl.kind === 'empty' || decl.connected === false
   if (
     mine.includes(dummySeat.value) &&
     nextToAct.value === declarer.value &&
-    seats.value[declarer.value]?.kind === 'empty'
+    declIsBot
   ) {
     return declarer.value
   }
