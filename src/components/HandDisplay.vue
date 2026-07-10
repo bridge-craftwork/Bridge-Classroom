@@ -8,7 +8,7 @@
     <div v-if="hand" class="suits">
       <!-- For partial holdings (showcards), only show suits that have cards -->
       <template v-for="suit in suits" :key="suit">
-        <div v-if="!isPartialHand || hasSuitCards(suit)" class="suit-row">
+        <div v-if="!isPartialHand || hasSuitCards(suit)" class="suit-row" :style="suitRowStyle(suit)">
           <span class="suit-symbol" :class="suitClass(suit)">{{ suitSymbol(suit) }}</span>
           <!-- One DOM cell per card, one tight layout; `played` / `interactive`
                are geometry-free modifiers (no reflow when the turn moves). -->
@@ -151,6 +151,32 @@ function cellClass(suit, rank) {
     'has-badge': !!cardBadge(suit, rank),
   }
 }
+
+// Cards actually rendered in a suit row (collapsed played cards don't take
+// width when hidePlayedCards is on), which is what compression must fit.
+function renderedCount(suit) {
+  const cards = orderedHand.value?.[suit] || []
+  if (!props.hidePlayedCards) return cards.length
+  return cards.filter((c) => !isCardPlayed(suit, c)).length
+}
+
+// Per-suit horizontal compression instead of wrapping. A suit of ≤7 cards
+// renders at its natural width (scale 1 → PIXEL-IDENTICAL to before); 8–10
+// compress to the reserved 7-card width; 11+ hold at a ~0.65 floor and let the
+// row grow into the arranger's slack rather than shrinking further. The factor
+// rides on the row as --suit-scale, multiplying the card font-size and
+// letter-spacing only — the suit symbol and row height are untouched.
+function suitScale(suit) {
+  const n = renderedCount(suit)
+  if (n <= 7) return 1
+  return Math.max(0.65, 7 / n)
+}
+function suitRowStyle(suit) {
+  const s = suitScale(suit)
+  // No inline var for ≤7 rows — CSS falls back to var(--suit-scale, 1), so the
+  // DOM (and render) is unchanged for the 99.5% case.
+  return s === 1 ? null : { '--suit-scale': s }
+}
 </script>
 
 <style scoped>
@@ -165,7 +191,9 @@ function cellClass(suit, rank) {
   align-items: center;
   gap: calc(8px * var(--table-scale));
   font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: calc(24px * var(--table-scale));
+  /* --suit-scale (per row, default 1) compresses long suits horizontally
+     instead of wrapping — see suitScale(). At 1 this is calc(...*1) = today. */
+  font-size: calc(24px * var(--table-scale) * var(--suit-scale, 1));
 }
 
 .suit-symbol {
@@ -179,7 +207,11 @@ function cellClass(suit, rank) {
 
 .cards {
   font-weight: 500;
-  letter-spacing: 1px;
+  /* nowrap: long suits never wrap to a second line (the "reads as 5-1" bug) —
+     they compress via --suit-scale instead. letter-spacing scales with the row
+     so an 8–10 suit fits the reserved 7-card width. At scale 1 = 1px (today). */
+  white-space: nowrap;
+  letter-spacing: calc(1px * var(--suit-scale, 1));
 }
 
 /* One card. Plain inline run (no box model), tight space-joined layout. */
@@ -242,7 +274,7 @@ function cellClass(suit, rank) {
 
 /* Compact — smaller card sizing (SeatPanel shrinks the box + SeatChip). */
 .holding.compact .suit-row {
-  font-size: calc(21px * var(--table-scale));
+  font-size: calc(21px * var(--table-scale) * var(--suit-scale, 1));
   gap: calc(6px * var(--table-scale));
 }
 .holding.compact .suit-symbol {
