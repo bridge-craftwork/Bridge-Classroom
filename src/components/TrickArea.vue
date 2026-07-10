@@ -83,8 +83,8 @@ function formatRank(rank) {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 220px;
-  padding: 0 8px;  /* clearance from adjacent E/W hand panels */
+  min-height: calc(220px * var(--table-scale));
+  padding: 0 calc(8px * var(--table-scale));  /* clearance from adjacent E/W hand panels */
 }
 .trick-area.inactive {
   display: none;
@@ -97,8 +97,8 @@ function formatRank(rank) {
      column flexes to fit the trick counter / status. */
   grid-template-columns: 56px 1fr 56px;
   grid-template-rows: minmax(48px, auto) minmax(48px, auto) minmax(48px, auto);
-  gap: 6px;
-  width: 200px;
+  gap: calc(6px * var(--table-scale));
+  width: calc(200px * var(--table-scale));
 }
 
 .slot {
@@ -109,7 +109,7 @@ function formatRank(rank) {
 }
 .slot-n { grid-column: 2; grid-row: 1; }
 .slot-w { grid-column: 1; grid-row: 2; }
-.slot-center { grid-column: 2; grid-row: 2; flex-direction: column; gap: 4px; color: #666; text-align: center; }
+.slot-center { grid-column: 2; grid-row: 2; flex-direction: column; gap: calc(4px * var(--table-scale)); color: #666; text-align: center; }
 .slot-e { grid-column: 3; grid-row: 2; }
 .slot-s { grid-column: 2; grid-row: 3; }
 
@@ -120,7 +120,7 @@ function formatRank(rank) {
 .slot:not(:has(.card)).is-next::after {
   content: '·';
   color: #1D9E75;
-  font-size: 28px;
+  font-size: calc(28px * var(--table-scale));
   line-height: 1;
 }
 
@@ -128,9 +128,9 @@ function formatRank(rank) {
   background: #fff;
   border: 0.5px solid #bbb;
   border-radius: 4px;
-  padding: 6px 10px;
+  padding: calc(6px * var(--table-scale)) calc(10px * var(--table-scale));
   font-weight: 500;
-  font-size: 20px;
+  font-size: calc(20px * var(--table-scale));
   white-space: nowrap;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   letter-spacing: 1px;
@@ -143,17 +143,17 @@ function formatRank(rank) {
   font-variant-numeric: tabular-nums;
   color: #555;
   font-weight: 500;
-  font-size: 14px;
+  font-size: calc(14px * var(--table-scale));
   line-height: 1.3;
 }
 .bot-thinking {
   color: #1D9E75;
   font-style: italic;
-  font-size: 11px;
+  font-size: calc(11px * var(--table-scale));
 }
 .last-winner {
   color: #1D9E75;
-  font-size: 11px;
+  font-size: calc(11px * var(--table-scale));
   font-weight: 500;
 }
 </style>

@@ -85,11 +85,11 @@ const chipCardCount = computed(() => {
 .seat-panel {
   background: #f5f5f5;
   border-radius: 8px;
-  padding: 12px;
+  padding: calc(12px * var(--table-scale));
   /* Floor for the compass (≥ 220px containers are unchanged), but never wider
      than the container — so a narrow console tile caps it at 100% instead of
      forcing overflow and clipping the right edge / shoving the centered title. */
-  min-width: min(220px, 100%);
+  min-width: min(calc(220px * var(--table-scale)), 100%);
   border: 2px solid transparent;
 }
 .seat-panel.active {
@@ -97,8 +97,8 @@ const chipCardCount = computed(() => {
   border-color: #2196f3;
 }
 .seat-panel.compact {
-  padding: 8px;
-  min-width: min(180px, 100%);
+  padding: calc(8px * var(--table-scale));
+  min-width: min(calc(180px * var(--table-scale)), 100%);
 }
 .seat-panel.chip {
   min-width: auto;

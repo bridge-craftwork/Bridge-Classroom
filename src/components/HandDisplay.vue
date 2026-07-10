@@ -157,20 +157,20 @@ function cellClass(suit, rank) {
 .suits {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--table-scale));
 }
 
 .suit-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--table-scale));
   font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 24px;
+  font-size: calc(24px * var(--table-scale));
 }
 
 .suit-symbol {
-  font-size: 27px;
-  width: 28px;
+  font-size: calc(27px * var(--table-scale));
+  width: calc(28px * var(--table-scale));
   text-align: center;
 }
 
@@ -216,14 +216,14 @@ function cellClass(suit, rank) {
   position: absolute;
   top: -7px;
   right: -3px;
-  font-size: 10px;
+  font-size: calc(10px * var(--table-scale));
   line-height: 1;
   font-weight: 700;
   letter-spacing: 0;
   color: #fff;
   background: #6a1b9a;
   border-radius: 8px;
-  padding: 1px 4px;
+  padding: calc(1px * var(--table-scale)) calc(4px * var(--table-scale));
 }
 /* The top suit row has no row above it to overlap into, so a badge at top:-7px
    paints above the holding and clips. Drop just that row's badges down onto the
@@ -234,19 +234,19 @@ function cellClass(suit, rank) {
 }
 
 .hcp {
-  margin-top: 8px;
+  margin-top: calc(8px * var(--table-scale));
   text-align: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--table-scale));
   color: #666;
 }
 
 /* Compact — smaller card sizing (SeatPanel shrinks the box + SeatChip). */
 .holding.compact .suit-row {
-  font-size: 21px;
-  gap: 6px;
+  font-size: calc(21px * var(--table-scale));
+  gap: calc(6px * var(--table-scale));
 }
 .holding.compact .suit-symbol {
-  font-size: 24px;
-  width: 24px;
+  font-size: calc(24px * var(--table-scale));
+  width: calc(24px * var(--table-scale));
 }
 </style>

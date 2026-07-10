@@ -128,7 +128,7 @@ onBeforeUnmount(() => ro?.disconnect())
 .seat-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--table-scale));
   width: 100%; /* fill the slot — the name degrades against the slot's width */
   min-width: 0;
 }
@@ -140,13 +140,13 @@ onBeforeUnmount(() => ro?.disconnect())
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--table-scale));
+  height: calc(22px * var(--table-scale));
   border-radius: 50%;
   background: #fff;
   color: #1a1a1a;
   font-weight: 700;
-  font-size: 13px;
+  font-size: calc(13px * var(--table-scale));
   line-height: 1;
   border: 1.5px solid rgba(0, 0, 0, 0.15);
 }
@@ -165,7 +165,7 @@ onBeforeUnmount(() => ro?.disconnect())
   flex: 0 1 auto;
   min-width: 0;
   font-weight: 600;
-  font-size: 14px;
+  font-size: calc(14px * var(--table-scale));
   white-space: nowrap;
   overflow: hidden;
 }
@@ -173,10 +173,10 @@ onBeforeUnmount(() => ro?.disconnect())
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--table-scale));
 }
 .si-adorn:empty { display: none; }
-.si-bot { font-size: 13px; line-height: 1; filter: grayscale(0.2); }
+.si-bot { font-size: calc(13px * var(--table-scale)); line-height: 1; filter: grayscale(0.2); }
 /* Disconnected human: dim the name so a bot-covered seat reads as "not live". */
 .seat-indicator.disc .si-name { color: #888; }
 

@@ -273,7 +273,7 @@ function tooltipFor(bidIdx) {
      padding = 308px) so a shrink-wrapped auction lines up with the bidding box
      below it and stays stable from empty through a full auction, instead of
      tracking bid content. `dense` (console tiles) drops this to 0. */
-  min-width: 308px;
+  min-width: calc(308px * var(--table-scale));
 }
 
 /* Console-tile density (< 280px): drop the min-width floor so all four columns
@@ -281,15 +281,15 @@ function tooltipFor(bidIdx) {
    full-size big bids. */
 .auction-table.dense { min-width: 0; }
 .auction-table.dense .bid-cell {
-  font-size: 15px;
-  padding: 6px 3px;
-  min-height: 32px;
+  font-size: calc(15px * var(--table-scale));
+  padding: calc(6px * var(--table-scale)) calc(3px * var(--table-scale));
+  min-height: calc(32px * var(--table-scale));
 }
 .auction-table.dense .bid-cell :deep(.red),
 .auction-table.dense .bid-cell :deep(.black) { font-size: 1.1em; }
-.auction-table.dense .turn-indicator { font-size: 15px; }
-.auction-table.dense .header-cell { font-size: 11px; padding: 5px 3px; }
-.auction-table.dense .bid-cell.stacked { font-size: 11px; }
+.auction-table.dense .turn-indicator { font-size: calc(15px * var(--table-scale)); }
+.auction-table.dense .header-cell { font-size: calc(11px * var(--table-scale)); padding: calc(5px * var(--table-scale)) calc(3px * var(--table-scale)); }
+.auction-table.dense .bid-cell.stacked { font-size: calc(11px * var(--table-scale)); }
 
 /* Header and every round share ONE set of four rigid column tracks. Because the
    tracks are defined on the grid container (not inferred from each row's
@@ -307,9 +307,9 @@ function tooltipFor(bidIdx) {
 .header-cell {
   min-width: 0;
   text-align: center;
-  padding: 8px 4px;
+  padding: calc(8px * var(--table-scale)) calc(4px * var(--table-scale));
   font-weight: bold;
-  font-size: 14px;
+  font-size: calc(14px * var(--table-scale));
 }
 
 .rounds {
@@ -330,13 +330,13 @@ function tooltipFor(bidIdx) {
 .bid-cell {
   min-width: 0;
   text-align: center;
-  padding: 10px 6px;
+  padding: calc(10px * var(--table-scale)) calc(6px * var(--table-scale));
   /* Big by default: seniors reported bids were too small to read. A plain cell
      has one bid and plenty of room, so fill it (with margin). The rare 4-row
      diverged cell overrides this down to a compact size (.bid-cell.stacked). */
   font-size: 26px;
   font-weight: 500;
-  min-height: 48px;
+  min-height: calc(48px * var(--table-scale));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -351,16 +351,16 @@ function tooltipFor(bidIdx) {
   transform: translateX(-50%);
   background: #fffbe6;
   color: #222;
-  padding: 6px 10px;
+  padding: calc(6px * var(--table-scale)) calc(10px * var(--table-scale));
   border: 1px solid #d4c97a;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: calc(13px * var(--table-scale));
   line-height: 1.45;
   white-space: pre-line;
   pointer-events: none;
   z-index: 20;
-  min-width: 90px;
-  max-width: 240px;
+  min-width: calc(90px * var(--table-scale));
+  max-width: calc(240px * var(--table-scale));
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
 
@@ -418,7 +418,7 @@ function tooltipFor(bidIdx) {
 .turn-indicator {
   color: #007bff;
   font-weight: bold;
-  font-size: 26px;
+  font-size: calc(26px * var(--table-scale));
   animation: pulse 1s ease-in-out infinite;
 }
 
@@ -437,9 +437,9 @@ function tooltipFor(bidIdx) {
    even at narrow widths); the cost of divergence is HEIGHT, not width. */
 .bid-cell.stacked {
   flex-direction: column;
-  padding: 4px 4px;
-  font-size: 14px;
-  gap: 3px;
+  padding: calc(4px * var(--table-scale)) calc(4px * var(--table-scale));
+  font-size: calc(14px * var(--table-scale));
+  gap: calc(3px * var(--table-scale));
 }
 
 .stacked-row {
@@ -455,13 +455,13 @@ function tooltipFor(bidIdx) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: calc(3px * var(--table-scale));
 }
 
 .stacked-row.clickable {
   cursor: pointer;
   border-radius: 3px;
-  padding: 1px 4px;
+  padding: calc(1px * var(--table-scale)) calc(4px * var(--table-scale));
 }
 
 .stacked-row.clickable:hover {
@@ -476,9 +476,9 @@ function tooltipFor(bidIdx) {
 }
 
 .stacked-marker {
-  font-size: 10px;
+  font-size: calc(10px * var(--table-scale));
   color: #1D9E75;
-  width: 10px;
+  width: calc(10px * var(--table-scale));
   display: inline-block;
 }
 
@@ -487,7 +487,7 @@ function tooltipFor(bidIdx) {
 }
 
 .stacked-label {
-  font-size: 10px;
+  font-size: calc(10px * var(--table-scale));
   color: #666;
   font-weight: 500;
   text-transform: uppercase;

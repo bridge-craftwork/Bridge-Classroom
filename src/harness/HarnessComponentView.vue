@@ -6,7 +6,7 @@
     <div
       v-else
       class="harness-frame"
-      :style="{ width: widthPx + 'px' }"
+      :style="{ width: widthPx + 'px', '--table-scale': scale }"
       :data-harness-ready="ready ? '' : null"
     >
       <component :is="comp" v-bind="entry.props" />
@@ -32,6 +32,9 @@ const comp = computed(() => COMPONENTS[component.value] || null)
 const entry = computed(() => SPECIMENS[component.value]?.[specimen.value] || null)
 // ?w=tile|narrow|panel|drill (named) or a raw px number; defaults to panel.
 const widthPx = computed(() => WIDTHS[route.query.w] ?? (Number(route.query.w) || WIDTHS.panel))
+// ?scale=1|1.25|1.5 → --table-scale on the frame (cascades into the component's
+// scoped styles). Defaults to 1 (today's sizes exactly).
+const scale = computed(() => Number(route.query.scale) || 1)
 
 // The walk waits for [data-harness-ready], set after mount + fonts settle.
 const ready = ref(false)

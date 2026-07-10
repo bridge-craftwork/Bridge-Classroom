@@ -58,27 +58,27 @@ const label = computed(() => props.name || getSeatName(props.seat))
 /* Table identity: reproduces the old .seat-label exactly. */
 .seat-chip {
   font-weight: bold;
-  font-size: 21px;
+  font-size: calc(21px * var(--table-scale));
   color: #333;
-  margin-bottom: 8px;
+  margin-bottom: calc(8px * var(--table-scale));
   text-align: center;
 }
 .seat-chip.compact {
-  font-size: 18px;
-  margin-bottom: 4px;
+  font-size: calc(18px * var(--table-scale));
+  margin-bottom: calc(4px * var(--table-scale));
 }
 .seat-count {
-  font-size: 12px;
+  font-size: calc(12px * var(--table-scale));
   font-weight: 500;
   color: #666;
-  margin-left: 8px;
+  margin-left: calc(8px * var(--table-scale));
 }
 .seat-dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: calc(8px * var(--table-scale));
+  height: calc(8px * var(--table-scale));
   border-radius: 50%;
-  margin-left: 6px;
+  margin-left: calc(6px * var(--table-scale));
   vertical-align: middle;
 }
 .seat-dot-connected { background: #1d9e75; }

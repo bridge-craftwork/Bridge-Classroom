@@ -10,6 +10,8 @@ const BASE = process.env.HARNESS_URL || 'http://localhost:4173'
 const SPECIMEN_ROOT = 'src/harness/specimens'
 const OUT_ROOT = 'gallery/components'
 const widths = JSON.parse(fs.readFileSync('src/harness/widths.json', 'utf8'))
+// Design-scale axis (--table-scale): capture each specimen×width at every scale.
+const scales = JSON.parse(fs.readFileSync('src/harness/scales.json', 'utf8'))
 // Tier 2 — view scenarios: fixtures walked at named viewports.
 const FIXTURE_ROOT = 'src/harness/fixtures'
 const SCENE_OUT = 'gallery/scenes'
@@ -31,23 +33,27 @@ const browser = await chromium.launch()
 let shots = 0
 for (const { component, specimen } of walk) {
   for (const [wname, wpx] of Object.entries(widths)) {
-    const page = await browser.newPage({
-      viewport: { width: Math.max(wpx + 120, 600), height: 900 },
-      deviceScaleFactor: 2,
-    })
-    const url = `${BASE}/#/harness/component/${component}/${specimen}?w=${wname}`
-    await page.goto(url, { waitUntil: 'networkidle' })
-    await page.waitForSelector('[data-harness-ready]', { timeout: 15000 })
-    await page.evaluate(() => document.fonts.ready)
-    const frame = await page.$('.harness-frame')
-    const out = path.join(OUT_ROOT, component, specimen, `${wname}.png`)
-    fs.mkdirSync(path.dirname(out), { recursive: true })
-    await frame.screenshot({ path: out })
-    await page.close()
-    shots++
+    for (const sval of scales) {
+      const page = await browser.newPage({
+        // Give the frame room even when the scaled content grows past wpx.
+        viewport: { width: Math.max(Math.ceil(wpx * sval) + 120, 600), height: 900 },
+        deviceScaleFactor: 2,
+      })
+      const url = `${BASE}/#/harness/component/${component}/${specimen}?w=${wname}&scale=${sval}`
+      await page.goto(url, { waitUntil: 'networkidle' })
+      await page.waitForSelector('[data-harness-ready]', { timeout: 15000 })
+      await page.evaluate(() => document.fonts.ready)
+      const frame = await page.$('.harness-frame')
+      // Filename token: <width>@<scale>.png (e.g. panel@1.25.png).
+      const out = path.join(OUT_ROOT, component, specimen, `${wname}@${sval}.png`)
+      fs.mkdirSync(path.dirname(out), { recursive: true })
+      await frame.screenshot({ path: out })
+      await page.close()
+      shots++
+    }
   }
 }
-console.log(`components: ${walk.length} specimens × ${Object.keys(widths).length} widths = ${shots} shots`)
+console.log(`components: ${walk.length} specimens × ${Object.keys(widths).length} widths × ${scales.length} scales = ${shots} shots`)
 
 // Tier 2: each fixture full-page at each named viewport.
 let sceneShots = 0
