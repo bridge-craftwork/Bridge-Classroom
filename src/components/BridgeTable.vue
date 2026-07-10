@@ -14,6 +14,8 @@
           :density="nsDensity"
           :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
+          :labelComponent="labelComponent"
+          :labelProps="labelProps"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
         />
       </div>
@@ -32,6 +34,8 @@
         :density="ewDensity"
         :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
+        :labelComponent="labelComponent"
+        :labelProps="labelProps"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
       />
     </div>
@@ -54,6 +58,8 @@
         :density="ewDensity"
         :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
+        :labelComponent="labelComponent"
+        :labelProps="labelProps"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
       />
     </div>
@@ -72,6 +78,8 @@
           :density="nsDensity"
           :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
+          :labelComponent="labelComponent"
+          :labelProps="labelProps"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
         />
       </div>
@@ -134,6 +142,17 @@ const props = defineProps({
   // clickable (e.g. during the auction). Additive to clickableSeat.
   activeSeat: {
     type: String,
+    default: null
+  },
+  // Optional replacement label component + shared props (a drag/drop variant
+  // injects a grabbable label). null → the plain SeatChip; the base has no
+  // seat-control code, so A1 (which passes neither) is untouched.
+  labelComponent: {
+    type: [Object, Function],
+    default: null
+  },
+  labelProps: {
+    type: Object,
     default: null
   }
 })

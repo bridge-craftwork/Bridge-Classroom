@@ -12,9 +12,9 @@ import BiddingBox from '../components/BiddingBox.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import SeatIndicator from '../components/SeatIndicator.vue'
-import SeatManager from '../components/table/SeatManager.vue'
+import SeatControlTable from '../components/table/SeatControlTable.vue'
 
-export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatManager }
+export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable }
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 

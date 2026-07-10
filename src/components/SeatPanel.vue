@@ -4,12 +4,17 @@
        (chip = chip alone; compact/full = chip + hand). The layout-inertness
        obligation (reserved frame width) lives here, not in HandDisplay. -->
   <div class="seat-panel" :class="[{ compact: compactMode, active: activeSeat, chip: density === 'chip' }]">
-    <SeatChip
+    <!-- Seat identity. Default = the plain SeatChip label (A1 and every other
+         caller). A drag/drop variant (SeatControlTable) injects a grabbable label
+         component here — the base itself carries no seat-control code. -->
+    <component
+      :is="labelComponent || SeatChip"
       :seat="seat"
       :name="name"
       :presence="presence"
       :card-count="chipCardCount"
       :compact="compactMode"
+      v-bind="labelProps"
     />
     <HandDisplay
       v-if="showHolding"
@@ -53,6 +58,11 @@ const props = defineProps({
   density: { type: String, default: 'full' },
   // Hidden seat: no holding shown; the chip carries a card count instead.
   hidden: { type: Boolean, default: false },
+  // Optional replacement for the SeatChip label (a drag/drop variant injects an
+  // interactive label). null → the plain SeatChip. `labelProps` are extra props
+  // merged in (context + callbacks); the base never inspects them.
+  labelComponent: { type: [Object, Function], default: null },
+  labelProps: { type: Object, default: null },
 })
 
 defineEmits(['card-click'])
