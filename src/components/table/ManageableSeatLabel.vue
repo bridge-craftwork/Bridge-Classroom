@@ -13,10 +13,14 @@
     <!-- The name IS the drag handle and the menu trigger (no separate button). -->
     <SeatChip :seat="seat" :name="name" :presence="presence" :card-count="cardCount" :compact="compact" />
     <div v-if="menuOpen" class="msl-menu" @click.stop>
-      <button v-if="isYou" class="msl-item" @click="act({ from: seat, seat: null })">Stand</button>
+      <template v-if="isYou">
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Stand</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Seat a bot</button>
+      </template>
       <template v-else-if="isHuman">
         <button class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
         <button class="msl-item" @click="act({ from: seat, seat: null })">Remove &rarr; kibitz</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Seat a bot</button>
       </template>
       <button v-else class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
     </div>
