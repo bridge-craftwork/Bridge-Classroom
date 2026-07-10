@@ -37,11 +37,25 @@
             {{ srv.connectionLabel }}
           </span>
           <button
+            v-if="srv.canManageSeats"
             class="tv-btn"
-            :disabled="srv.seq === 0 || srv.connectionStatus !== 'connected' || !srv.hasHumanSeat"
-            :title="srv.hasHumanSeat
-              ? 'Rewind to your last decision (bots replay up to your turn)'
-              : 'Nothing to undo — every seat is a bot'"
+            :class="{ 'tv-btn-active': srv.botsPaused }"
+            :disabled="srv.connectionStatus !== 'connected'"
+            :title="srv.botsPaused
+              ? 'Bots are paused — click to resume play'
+              : 'Pause all bots, then Undo steps back through bot actions'"
+            @click="srv.onPauseBots(!srv.botsPaused)"
+          >
+            {{ srv.botsPaused ? '▶ Resume bots' : '⏸ Pause bots' }}
+          </button>
+          <button
+            class="tv-btn"
+            :disabled="srv.seq === 0 || srv.connectionStatus !== 'connected' || (!srv.hasHumanSeat && !srv.botsPaused)"
+            :title="srv.botsPaused
+              ? 'Step back one action (bots paused)'
+              : (srv.hasHumanSeat
+                ? 'Rewind to your last decision (bots replay up to your turn)'
+                : 'Nothing to undo — pause bots to step back through bot actions')"
             @click="srv.onUndo"
           >
             Undo
@@ -1718,6 +1732,7 @@ async function restartCardplay() {
 }
 .tv-btn:hover:not(:disabled) { border-color: #007bff; }
 .tv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tv-btn-active { background: #fff3cd; border-color: #e0b34d; color: #7a5b00; font-weight: 600; }
 .tv-btn-primary { background: #1d9e75; border-color: #1d9e75; color: #fff; }
 .tv-btn-primary:hover:not(:disabled) { background: #178a65; border-color: #178a65; }
 .tv-header {
