@@ -271,6 +271,12 @@ export function useServerTable() {
   // Show a host "Next deal" on a session table (the demo room uses onNextDeal /
   // canDeal instead). Available once a real deal is on the table.
   const canHostAdvance = computed(() => isHost.value && !!sessionId.value && dealLoaded.value)
+  // Seat management is a SESSION operation (Session::assign_seat). Require a
+  // real session, not just host role — the sessionless demo room (/#/table/demo)
+  // reports is_host for a teacher ticket but can't fulfil assign_seat, so the
+  // Sit/Remove menu + kibitz drop must stay hidden there. Host tables
+  // (/#/tables/host) carry a sessionId, so they keep it.
+  const canManageSeats = computed(() => isHost.value && !!sessionId.value)
 
   return {
     SEAT_ORDER,
@@ -293,7 +299,7 @@ export function useServerTable() {
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
     lastSuitBid,
-    canHostAdvance, seatOccupants, kibitzers,
+    canHostAdvance, canManageSeats, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,

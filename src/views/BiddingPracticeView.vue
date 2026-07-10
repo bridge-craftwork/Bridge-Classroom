@@ -96,7 +96,7 @@
             :seats="srv.seats"
             :your-seats="srv.yourSeats"
             :my-token="srv.myToken"
-            :can-manage="srv.isHost"
+            :can-manage="srv.canManageSeats"
             @card-click="srv.onCardClick"
             @assign="srv.onAssignSeat"
           >
@@ -168,8 +168,8 @@
 
           <!-- Kibitz box: who's watching; the host drags labels here to unseat,
                and drags a kibitzer onto a seat to seat them. -->
-          <div v-if="srv.isHost || srv.kibitzers.length" class="tv-card">
-            <KibitzBox :kibitzers="srv.kibitzers" :can-manage="srv.isHost" @assign="srv.onAssignSeat" />
+          <div v-if="srv.canManageSeats || srv.kibitzers.length" class="tv-card">
+            <KibitzBox :kibitzers="srv.kibitzers" :can-manage="srv.canManageSeats" @assign="srv.onAssignSeat" />
           </div>
 
           <div v-if="srv.dealLoaded && srv.phase === 'play'" class="tv-card">
