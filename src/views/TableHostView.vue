@@ -220,10 +220,10 @@ async function ensureSession({ forceCreate = false } = {}) {
     if (!id) id = await createSession()
     if (!id) throw new Error('Could not start your table.')
     sessionId.value = id
-    // Join SEATED at South (as_player) so the host plays their own hand — while
-    // still holding the host-control frames (deal source / seating). Under Manual
-    // policy the ?seat request is what seats the host (arrivals otherwise wait).
-    table.join({ sessionId: id, userId: currentUser.value.id, asPlayer: true, seat: 'S' })
+    // Join SEATED (as_player) so the host plays their own hand — while still
+    // holding the host-control frames (deal source / seating). First-free seats
+    // the first joiner (the host) at South.
+    table.join({ sessionId: id, userId: currentUser.value.id, asPlayer: true })
   } catch (e) {
     startError.value = e?.message || 'Could not set up your table.'
   } finally {
@@ -265,9 +265,10 @@ async function createSession() {
       kind: 'adhoc',
       boards_pbn: '',
       table_count: 1,
-      // Manual: invitees WAIT to be seated (they don't auto-fill clockwise); the
-      // host seats them from the SeatManager. The host claims South on join below.
-      seat_policy: { mode: 'manual' },
+      // Auto-fill: bots hold the empty seats; an arriving human takes the first
+      // free seat (replacing a bot); a 5th+ human kibitzes. The host rearranges
+      // from the table (drag the seat labels / kibitz box).
+      seat_policy: { mode: 'auto', pattern: 'first_free' },
     }),
   })
   if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`)

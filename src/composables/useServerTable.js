@@ -136,6 +136,8 @@ export function useServerTable() {
       return []
     }
     const mine = yourSeats.value
+    // Kibitzer (no seat) — watching, not playing: reveal ALL four hands.
+    if (mine.length === 0) return []
     return SEAT_ORDER.filter(s => {
       if (!hands.value[s]) return true
       if (mine.includes(s)) return false
