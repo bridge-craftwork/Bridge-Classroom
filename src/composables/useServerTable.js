@@ -219,7 +219,8 @@ export function useServerTable() {
 
   function seatLabel(seat) {
     const occ = seats.value[seat]
-    if (!occ || occ.kind === 'empty') return 'Bot'
+    if (!occ || occ.kind === 'bot') return 'Bot'
+    if (occ.kind === 'empty') return 'Open seat'
     return occ.name || 'Player'
   }
 
@@ -242,14 +243,20 @@ export function useServerTable() {
   })
 
   // Per-seat occupant map for BridgeTable's over-the-board SeatIndicators:
-  // humans carry a connection state (greens the badge); empty seats are bots.
+  // - human → name + connection state (greens/greys the badge)
+  // - bot   → the bot label ("BBA+RulesBot")
+  // - empty → "Open seat" flagged empty (no bot; the table pauses on its turn)
   const seatOccupants = computed(() => {
     const out = {}
     for (const s of SEAT_ORDER) {
       const occ = seats.value[s]
-      out[s] = occ && occ.kind === 'human'
-        ? { name: occ.name || 'Player', connected: occ.connected !== false }
-        : { name: botLabel.value }
+      if (occ && occ.kind === 'human') {
+        out[s] = { name: occ.name || 'Player', connected: occ.connected !== false }
+      } else if (occ && occ.kind === 'empty') {
+        out[s] = { name: 'Open seat', empty: true }
+      } else {
+        out[s] = { name: botLabel.value }
+      }
     }
     return out
   })
@@ -263,9 +270,29 @@ export function useServerTable() {
   const botThinking = computed(() => {
     const seat = nextToAct.value
     if (!seat || phase.value === 'complete') return false
-    const occ = seats.value[seat]
-    return !occ || occ.kind === 'empty'
+    return seats.value[seat]?.kind === 'bot'
   })
+
+  // An EMPTY (open) seat is on turn → the game is PAUSED here until the host
+  // seats a player or a bot. Drives the "waiting for <seat>" affordance.
+  const pausedSeat = computed(() => {
+    const seat = nextToAct.value
+    if (!seat || phase.value === 'complete') return null
+    return seats.value[seat]?.kind === 'empty' ? seat : null
+  })
+  const pausedLabel = computed(() =>
+    pausedSeat.value ? `${SEAT_NAMES[pausedSeat.value] || pausedSeat.value} is empty — seat a player or a bot` : '')
+
+  // PassBot state + toggle (host, per side): passSides is ['NS'|'EW', ...].
+  const passSides = table.passSides
+  function onKick(token) { return table.sendKick(token) }
+  function onSetPassSides(sides) { return table.sendPassSides(sides) }
+  function togglePassSide(side) {
+    const cur = new Set(passSides.value || [])
+    if (cur.has(side)) cur.delete(side)
+    else cur.add(side)
+    return table.sendPassSides([...cur])
+  }
 
   function onBid(call) { table.sendBid(call) }
   function onCardClick({ seat, suit, rank }) { table.sendCard(seat, suit, rank) }
@@ -305,10 +332,12 @@ export function useServerTable() {
     displayHands, myTurnToBid, displayHiddenSeats,
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
+    pausedSeat, pausedLabel, passSides,
     lastSuitBid,
     canHostAdvance, canManageSeats, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
+    onKick, onSetPassSides, togglePassSide,
   }
 }

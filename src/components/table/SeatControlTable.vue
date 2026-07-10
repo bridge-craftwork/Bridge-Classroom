@@ -15,23 +15,27 @@ import BridgeTable from '../BridgeTable.vue'
 import ManageableSeatLabel from './ManageableSeatLabel.vue'
 
 const props = defineProps({
-  // Seat occupancy (kind) for classifying human vs bot: { N:{kind,name,connected}|{kind:'empty'} }
+  // Seat occupancy (kind): { N:{kind:'human',name,connected}|{kind:'bot'}|{kind:'empty'} }
   seats: { type: Object, default: () => ({}) },
   yourSeats: { type: Array, default: () => [] },
   myToken: { type: String, default: null },
   canManage: { type: Boolean, default: false },
+  // Roster (token→seats) so a label can resolve an occupant's token for Kick.
+  roster: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['assign'])
+const emit = defineEmits(['assign', 'kick'])
 
 const labelComponent = markRaw(ManageableSeatLabel)
-// Shared context + an onAssign callback handed to every seat label (no event
-// bubbling through the base table). Each label derives its own seat from the base.
+// Shared context + onAssign/onKick callbacks handed to every seat label (no
+// event bubbling through the base table). Each label derives its own seat.
 const labelProps = computed(() => ({
   seats: props.seats,
   yourSeats: props.yourSeats,
   myToken: props.myToken,
   canManage: props.canManage,
+  roster: props.roster,
   onAssign: (p) => emit('assign', p),
+  onKick: (token) => emit('kick', token),
 }))
 </script>
 

@@ -14,15 +14,23 @@
     <SeatChip :seat="seat" :name="name" :presence="presence" :card-count="cardCount" :compact="compact" />
     <div v-if="menuOpen" class="msl-menu" @click.stop>
       <template v-if="isYou">
-        <button class="msl-item" @click="act({ from: seat, seat: null })">Stand</button>
-        <button class="msl-item" @click="act({ from: seat, seat: null })">Seat a bot</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Stand (leave empty)</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null, bot: true })">Seat a bot</button>
       </template>
       <template v-else-if="isHuman">
         <button class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
         <button class="msl-item" @click="act({ from: seat, seat: null })">Remove &rarr; kibitz</button>
-        <button class="msl-item" @click="act({ from: seat, seat: null })">Seat a bot</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null, bot: true })">Seat a bot</button>
+        <button class="msl-item msl-danger" @click="kick">Kick from table</button>
       </template>
-      <button v-else class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
+      <template v-else-if="isEmpty">
+        <button class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null, bot: true })">Seat a bot</button>
+      </template>
+      <template v-else>
+        <button class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Make empty</button>
+      </template>
     </div>
   </div>
 </template>
@@ -48,16 +56,27 @@ const props = defineProps({
   yourSeats: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
   myToken: { type: String, default: null },
+  roster: { type: Array, default: () => [] },
   onAssign: { type: Function, default: null },
+  onKick: { type: Function, default: null },
 })
 
-const isHuman = computed(() => props.seats[props.seat] && props.seats[props.seat].kind === 'human')
+const kind = computed(() => props.seats[props.seat]?.kind)
+const isHuman = computed(() => kind.value === 'human')
+const isEmpty = computed(() => kind.value === 'empty')
 const isYou = computed(() => props.yourSeats.includes(props.seat))
+// The occupant's connection token (for Kick), resolved from the roster by seat.
+const seatToken = computed(() =>
+  (props.roster || []).find(r => (r.seats || []).includes(props.seat))?.token || null)
 
 const menuOpen = ref(false)
 const dropOver = ref(false)
 
 function act(payload) { menuOpen.value = false; props.onAssign && props.onAssign(payload) }
+function kick() {
+  menuOpen.value = false
+  if (seatToken.value && props.onKick) props.onKick(seatToken.value)
+}
 
 function onDragStart(e) {
   if (!props.canManage || !isHuman.value) return
@@ -93,4 +112,6 @@ function onDrop(e) {
   padding: 5px 10px; border: none; background: none; font-size: 13px; cursor: pointer; border-radius: 6px; white-space: nowrap;
 }
 .msl-item:hover { background: #f0f2f5; }
+.msl-danger { color: #c62828; }
+.msl-danger:hover { background: #fdeaea; }
 </style>

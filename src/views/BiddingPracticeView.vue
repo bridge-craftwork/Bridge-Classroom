@@ -83,6 +83,10 @@
         You're kibitzing — watching all four hands. The host can seat you.
       </p>
 
+      <p v-if="srv.pausedSeat" class="tv-paused-note">
+        ⏸ Paused — {{ srv.pausedLabel }}.
+      </p>
+
       <div class="tv-main">
         <div class="tv-table-wrap">
           <SeatControlTable
@@ -98,8 +102,10 @@
             :your-seats="srv.yourSeats"
             :my-token="srv.myToken"
             :can-manage="srv.canManageSeats"
+            :roster="srv.roster"
             @card-click="srv.onCardClick"
             @assign="srv.onAssignSeat"
+            @kick="srv.onKick"
           >
             <template #center>
               <TrickArea
@@ -171,6 +177,21 @@
                and drags a kibitzer onto a seat to seat them. -->
           <div v-if="srv.canManageSeats || srv.kibitzers.length" class="tv-card">
             <KibitzBox :kibitzers="srv.kibitzers" :can-manage="srv.canManageSeats" @assign="srv.onAssignSeat" />
+          </div>
+
+          <!-- PassBot: make a side's bots always pass (BBO-style bidding
+               practice). Cardplay still uses the room's cardplay bot. -->
+          <div v-if="srv.canManageSeats" class="tv-card tv-passbot">
+            <h3>PassBot</h3>
+            <div class="tv-passbot-hint">Bots on a “pass” side never bid (cardplay unaffected).</div>
+            <label class="tv-passbot-row">
+              <input type="checkbox" :checked="srv.passSides.includes('NS')" @change="srv.togglePassSide('NS')">
+              N/S always pass
+            </label>
+            <label class="tv-passbot-row">
+              <input type="checkbox" :checked="srv.passSides.includes('EW')" @change="srv.togglePassSide('EW')">
+              E/W always pass
+            </label>
           </div>
 
           <div v-if="srv.dealLoaded && srv.phase === 'play'" class="tv-card">
@@ -1722,6 +1743,12 @@ async function restartCardplay() {
 .tv-conn-reconnecting, .tv-conn-connecting, .tv-conn-minting { color: #e6a700; }
 .tv-conn-error, .tv-conn-unavailable { color: #c62828; }
 .tv-kibitz-note { color: #b26a00; font-size: 14px; margin: 0 0 8px; }
+.tv-paused-note {
+  color: #8a5a00; background: #fff6e5; border: 1px solid #f0d9a8;
+  border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 600; margin: 0 0 8px;
+}
+.tv-passbot-hint { color: #777; font-size: 12px; margin-bottom: 6px; }
+.tv-passbot-row { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
 .tv-main {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
