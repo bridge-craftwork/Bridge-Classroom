@@ -67,8 +67,17 @@ const hoveredIdx = ref(null)
 // shrink-flash before the observer measures.
 const root = ref(null)
 const tableWidth = ref(9999)
+// Effective --table-scale — the dense threshold (and min-width floor) scale
+// with it, so at 1.5× a 320px container is correctly "narrow" and goes dense
+// instead of letting the scaled 462px grid overflow and clip. Read once on
+// mount (scale is static per render); default 1 keeps the 1.0 case identical.
+const uiScale = ref(1)
 let ro = null
 onMounted(() => {
+  if (root.value) {
+    const s = parseFloat(getComputedStyle(root.value).getPropertyValue('--table-scale'))
+    if (s > 0) uiScale.value = s
+  }
   // Observe the CONTAINER's available width, not our own: in a shrink-wrap
   // parent (e.g. A1's centered practice column) measuring our own width feeds
   // back — we'd shrink, read small, flip to dense, and collapse further (the
@@ -80,7 +89,7 @@ onMounted(() => {
   ro.observe(el)
 })
 onBeforeUnmount(() => ro?.disconnect())
-const dense = computed(() => tableWidth.value < 280)
+const dense = computed(() => tableWidth.value < 280 * uiScale.value)
 
 // Render BBOalert suit codes (!C !D !H !S) as colored unicode symbols.
 function formatMeaningHtml(text) {
