@@ -48,21 +48,8 @@
 
       <p v-if="loadError" class="th-error th-inline">{{ loadError }}</p>
 
-      <!-- Host seat management: drag players between seats, bench (unseat) them,
-           Sit/Stand, or seat waiting arrivals. -->
-      <SeatManager
-        v-if="connected"
-        class="th-seats"
-        :seats="seats"
-        :roster="roster"
-        :your-seats="yourSeats"
-        :my-token="myToken"
-        :share-url="shareUrl"
-        @assign="onAssignSeat"
-      />
-
-      <!-- The seated player table (the host plays their own hand). Empty seats
-           are bots; the host seats invitees from the SeatManager above. -->
+      <!-- The seated player table. The host arranges seats ON the table — drag
+           the seat labels, use the per-seat pulldown, and the kibitz box. -->
       <UnifiedTable server @exit="onExitTable" />
     </main>
 
@@ -99,7 +86,6 @@ import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
-import SeatManager from '../components/table/SeatManager.vue'
 import UnifiedTable from './BiddingPracticeView.vue'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
@@ -119,8 +105,7 @@ const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
 const handoff = useTableHandoff()
 
-const { connectionStatus, sessionClosed, seats, roster, yourSeats, myToken } = table
-function onAssignSeat(args) { table.sendAssignSeat(args) }
+const { connectionStatus, sessionClosed } = table
 
 const connected = computed(() => connectionStatus.value === 'connected')
 const sessionId = ref(null)
@@ -343,7 +328,6 @@ onBeforeUnmount(teardown)
 .th-center { text-align: center; }
 
 .th-main { max-width: 900px; margin: 0 auto; padding: 20px 24px; }
-.th-seats { margin: 14px 0; }
 
 .th-controls {
   display: flex;

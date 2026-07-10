@@ -80,12 +80,12 @@
            old seats strip is gone from this view. -->
 
       <p v-if="!srv.yourSeat && !srv.seeAll" class="tv-kibitz-note">
-        The table is full — you're kibitzing.
+        You're kibitzing — watching all four hands. The host can seat you.
       </p>
 
       <div class="tv-main">
         <div class="tv-table-wrap">
-          <BridgeTable
+          <SeatControlTable
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
             :occupants="srv.seatOccupants"
@@ -93,7 +93,12 @@
             :show-hcp="false"
             :clickable-seat="srv.clickableSeat"
             :hide-played-cards="true"
+            :seats="srv.seats"
+            :your-seats="srv.yourSeats"
+            :my-token="srv.myToken"
+            :can-manage="srv.isHost"
             @card-click="srv.onCardClick"
+            @assign="srv.onAssignSeat"
           >
             <template #center>
               <TrickArea
@@ -120,7 +125,7 @@
             <template v-if="srv.capabilities.doubleDummy" #corner>
               <DoubleDummyTable :ddtricks="srv.doubleDummy" :final-contract="srv.ddFinalContract" />
             </template>
-          </BridgeTable>
+          </SeatControlTable>
         </div>
 
         <div class="tv-rail">
@@ -159,6 +164,12 @@
 
           <div v-else-if="srv.dealLoaded && srv.phase === 'bidding' && srv.nextToAct" class="tv-card tv-waiting">
             Waiting for {{ srv.turnLabel }}…
+          </div>
+
+          <!-- Kibitz box: who's watching; the host drags labels here to unseat,
+               and drags a kibitzer onto a seat to seat them. -->
+          <div v-if="srv.isHost || srv.kibitzers.length" class="tv-card">
+            <KibitzBox :kibitzers="srv.kibitzers" :can-manage="srv.isHost" @assign="srv.onAssignSeat" />
           </div>
 
           <div v-if="srv.dealLoaded && srv.phase === 'play'" class="tv-card">
@@ -565,6 +576,8 @@
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
+import SeatControlTable from '../components/table/SeatControlTable.vue'
+import KibitzBox from '../components/table/KibitzBox.vue'
 import SeatPanel from '../components/SeatPanel.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'

@@ -14,12 +14,10 @@
           :density="nsDensity"
           :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
+          :labelComponent="labelComponent"
+          :labelProps="labelProps"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
-        >
-          <template #label="lp">
-            <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
-          </template>
-        </SeatPanel>
+        />
       </div>
     </div>
 
@@ -36,12 +34,10 @@
         :density="ewDensity"
         :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
+        :labelComponent="labelComponent"
+        :labelProps="labelProps"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
-      >
-        <template #label="lp">
-          <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
-        </template>
-      </SeatPanel>
+      />
     </div>
 
     <!-- Center (empty slot for dealer/vul indicator if needed) -->
@@ -62,12 +58,10 @@
         :density="ewDensity"
         :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
+        :labelComponent="labelComponent"
+        :labelProps="labelProps"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
-      >
-        <template #label="lp">
-          <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
-        </template>
-      </SeatPanel>
+      />
     </div>
 
     <!-- South - spans all columns -->
@@ -84,12 +78,10 @@
           :density="nsDensity"
           :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
+          :labelComponent="labelComponent"
+          :labelProps="labelProps"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
-        >
-          <template #label="lp">
-            <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
-          </template>
-        </SeatPanel>
+        />
       </div>
     </div>
 
@@ -104,7 +96,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, useSlots } from 'vue'
 import SeatPanel from './SeatPanel.vue'
-import SeatChip from './SeatChip.vue'
 
 const props = defineProps({
   hands: {
@@ -151,6 +142,17 @@ const props = defineProps({
   // clickable (e.g. during the auction). Additive to clickableSeat.
   activeSeat: {
     type: String,
+    default: null
+  },
+  // Optional replacement label component + shared props (a drag/drop variant
+  // injects a grabbable label). null → the plain SeatChip; the base has no
+  // seat-control code, so A1 (which passes neither) is untouched.
+  labelComponent: {
+    type: [Object, Function],
+    default: null
+  },
+  labelProps: {
+    type: Object,
     default: null
   }
 })

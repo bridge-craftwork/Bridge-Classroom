@@ -223,6 +223,10 @@ export function useServerTable() {
     return occ && occ.kind === 'human' ? (occ.name || 'Player') : null
   }
 
+  // Humans with no seat — the kibitz box (host can drag them onto seats).
+  const kibitzers = computed(() =>
+    (roster.value || []).filter(r => !r.seats || r.seats.length === 0))
+
   // Name for empty (bot) seats: bidding is always BBA; cardplay is the session's
   // bot backend. e.g. rules → "BBA+RulesBot".
   const botLabel = computed(() => {
@@ -289,7 +293,7 @@ export function useServerTable() {
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
     lastSuitBid,
-    canHostAdvance, seatOccupants,
+    canHostAdvance, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
