@@ -120,8 +120,15 @@ export function useServerTable() {
     table.sendDeal({ source: 'pbn', pbn })
   })
 
+  // Pre-deal (host table at Board 0) we still want the four seats on the table
+  // so the host can invite/seat friends before picking a deal source. Feed
+  // empty-suit placeholder hands so the compass renders the seat chips (with
+  // their bot/host occupants) instead of collapsing to a bare "waiting" box.
+  const EMPTY_HAND = () => ({ spades: [], hearts: [], diamonds: [], clubs: [] })
   const displayHands = computed(() =>
-    dealLoaded.value ? hands.value : { N: null, E: null, S: null, W: null })
+    dealLoaded.value
+      ? hands.value
+      : { N: EMPTY_HAND(), E: EMPTY_HAND(), S: EMPTY_HAND(), W: EMPTY_HAND() })
   const myTurnToBid = computed(() => dealLoaded.value && isYourBid.value)
 
   // Client-side redaction. The server now broadcasts ALL hands (redaction moved
@@ -132,6 +139,9 @@ export function useServerTable() {
   // dummy for a bot declarer. (Robust whether or not the server still redacts:
   // a seat with no cards is hidden regardless.)
   const displayHiddenSeats = computed(() => {
+    // Pre-deal: nothing to hide — show every seat chip (empty placeholder hands)
+    // so the host sees the full table (bots + self) and can seat friends.
+    if (!dealLoaded.value) return []
     if ((canToggleHands.value && showAllHands.value) || phase.value === 'complete') {
       return []
     }
@@ -271,6 +281,12 @@ export function useServerTable() {
   // Show a host "Next deal" on a session table (the demo room uses onNextDeal /
   // canDeal instead). Available once a real deal is on the table.
   const canHostAdvance = computed(() => isHost.value && !!sessionId.value && dealLoaded.value)
+  // Seat management is a SESSION operation (Session::assign_seat). Require a
+  // real session, not just host role — the sessionless demo room (/#/table/demo)
+  // reports is_host for a teacher ticket but can't fulfil assign_seat, so the
+  // Sit/Remove menu + kibitz drop must stay hidden there. Host tables
+  // (/#/tables/host) carry a sessionId, so they keep it.
+  const canManageSeats = computed(() => isHost.value && !!sessionId.value)
 
   return {
     SEAT_ORDER,
@@ -293,7 +309,7 @@ export function useServerTable() {
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
     lastSuitBid,
-    canHostAdvance, seatOccupants, kibitzers,
+    canHostAdvance, canManageSeats, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
