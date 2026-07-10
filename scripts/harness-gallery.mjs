@@ -18,6 +18,17 @@ const widths = Object.keys(widthsMap)
 // [1.0, 1.25, 1.5] as a real axis. Shown in each caption badge now so the
 // format is stable when the axis lands.
 const SCALE = 1.0
+
+// `--inline` embeds every PNG as a base64 data: URI and writes a SELF-CONTAINED
+// gallery/index-inline.html — the form a claude.ai Artifact needs (its CSP
+// blocks external image requests). Default (no flag) writes index.html with
+// relative <img src> for fast local browsing.
+const INLINE = process.argv.includes('--inline') || process.env.INLINE === '1'
+function imgSrc(rel) {
+  if (!INLINE) return rel
+  const abs = path.join('gallery', rel)
+  return `data:image/png;base64,${fs.readFileSync(abs).toString('base64')}`
+}
 // Tier 2 — view scenarios.
 const SCENE_ROOT = 'gallery/scenes'
 const FIXTURE_ROOT = 'src/harness/fixtures'
@@ -82,7 +93,7 @@ for (const comp of fs.readdirSync(ROOT).sort()) {
       const px = widthsMap[w]
       const rel = `components/${comp}/${name}/${w}.png`
       body += fs.existsSync(path.join('gallery', rel))
-        ? `<td style="width:${px}px"><img class="spec-img" style="width:${px}px" src="${rel}" alt="${esc(name)} @ ${esc(w)}"><div class="cap">${px}px · ${SCALE.toFixed(2)}×</div></td>`
+        ? `<td style="width:${px}px"><img class="spec-img" style="width:${px}px" src="${imgSrc(rel)}" alt="${esc(name)} @ ${esc(w)}"><div class="cap">${px}px · ${SCALE.toFixed(2)}×</div></td>`
         : `<td class="missing">—</td>`
     }
     body += `</tr>\n`
@@ -101,7 +112,7 @@ if (fs.existsSync(SCENE_ROOT)) {
     for (const vp of viewportNames) {
       const rel = `scenes/${scene}/${vp}.png`
       if (!fs.existsSync(path.join('gallery', rel))) continue
-      scenesBody += `<figure class="vp"><img loading="lazy" src="${rel}" alt="${esc(scene)} @ ${esc(vp)}"><figcaption>${esc(vp)}<span>${viewportsJson[vp].w}×${viewportsJson[vp].h}</span></figcaption></figure>`
+      scenesBody += `<figure class="vp"><img loading="lazy" src="${imgSrc(rel)}" alt="${esc(scene)} @ ${esc(vp)}"><figcaption>${esc(vp)}<span>${viewportsJson[vp].w}×${viewportsJson[vp].h}</span></figcaption></figure>`
     }
     scenesBody += `</div></div>`
   }
@@ -165,5 +176,6 @@ ${body}${scenesBody ? `<h2 class="tier">View scenarios <small>Tier 2 · fixtures
 </script>
 </body></html>
 `
-fs.writeFileSync('gallery/index.html', html)
-console.log('gallery → gallery/index.html')
+const outFile = INLINE ? 'gallery/index-inline.html' : 'gallery/index.html'
+fs.writeFileSync(outFile, html)
+console.log(`gallery → ${outFile}${INLINE ? ' (self-contained, artifact-ready)' : ''}`)
