@@ -120,15 +120,12 @@ export function useServerTable() {
     table.sendDeal({ source: 'pbn', pbn })
   })
 
-  // Pre-deal (host table at Board 0) we still want the four seats on the table
-  // so the host can invite/seat friends before picking a deal source. Feed
-  // empty-suit placeholder hands so the compass renders the seat chips (with
-  // their bot/host occupants) instead of collapsing to a bare "waiting" box.
-  const EMPTY_HAND = () => ({ spades: [], hearts: [], diamonds: [], clubs: [] })
+  // Pre-deal (host table at Board 0) there are no hands; the compass still
+  // renders the four seat chips from occupants via BridgeTable's `identityOnly`
+  // mode (no cards, no "0 cards"), so the host can see who's seated and
+  // invite/seat friends before picking a deal source.
   const displayHands = computed(() =>
-    dealLoaded.value
-      ? hands.value
-      : { N: EMPTY_HAND(), E: EMPTY_HAND(), S: EMPTY_HAND(), W: EMPTY_HAND() })
+    dealLoaded.value ? hands.value : { N: null, E: null, S: null, W: null })
   const myTurnToBid = computed(() => dealLoaded.value && isYourBid.value)
 
   // Client-side redaction. The server now broadcasts ALL hands (redaction moved

@@ -1,8 +1,8 @@
 <template>
-  <div ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact, 'no-center': !hasCenter }]">
+  <div ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact, 'no-center': !hasCenter, 'identity-only': identityOnly }]">
     <!-- North - spans all columns -->
     <div class="ns-column north-row">
-      <div v-if="!hiddenSeats.includes('N') && hands.N" class="position north">
+      <div v-if="!hiddenSeats.includes('N') && (hands.N || identityOnly)" class="position north">
         <SeatPanel
           :hand="hands.N"
           seat="N"
@@ -22,7 +22,7 @@
     </div>
 
     <!-- West -->
-    <div v-if="!hiddenSeats.includes('W') && hands.W" class="position west">
+    <div v-if="!hiddenSeats.includes('W') && (hands.W || identityOnly)" class="position west">
       <SeatPanel
         :hand="hands.W"
         seat="W"
@@ -46,7 +46,7 @@
     </div>
 
     <!-- East -->
-    <div v-if="!hiddenSeats.includes('E') && hands.E" class="position east">
+    <div v-if="!hiddenSeats.includes('E') && (hands.E || identityOnly)" class="position east">
       <SeatPanel
         :hand="hands.E"
         seat="E"
@@ -66,7 +66,7 @@
 
     <!-- South - spans all columns -->
     <div class="ns-column south-row">
-      <div v-if="!hiddenSeats.includes('S') && hands.S" class="position south">
+      <div v-if="!hiddenSeats.includes('S') && (hands.S || identityOnly)" class="position south">
         <SeatPanel
           :hand="hands.S"
           seat="S"
@@ -336,6 +336,17 @@ function marksFor(seat) {
   gap: 4px;
   padding: 8px;
   min-width: 280px;
+}
+
+/* Identity-only (pre-deal): seats are name chips with no hands. Give each seat
+   real width so the occupant name shows instead of collapsing to the badge
+   letter, and center the chip in its cell. */
+.bridge-table.identity-only :deep(.seat-panel) {
+  min-width: 180px;
+}
+.bridge-table.identity-only .position.west,
+.bridge-table.identity-only .position.east {
+  justify-self: center;
 }
 
 /* Container-relative arranger. `size-full` is the roomy compass (unchanged).
