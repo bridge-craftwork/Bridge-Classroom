@@ -44,6 +44,7 @@ export function useServerTable() {
     auction, contract, declarer, dummySeat,
     nextToAct, hands, handCounts,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
+    passSides, botsPaused,
     readySeats, boardComplete, sessionClosed,
     dealLoaded, setLabel, hasHumanSeat,
     clickableSeat, activeSeat,
@@ -235,12 +236,18 @@ export function useServerTable() {
   const kibitzers = computed(() =>
     (roster.value || []).filter(r => !r.seats || r.seats.length === 0))
 
-  // Name for empty (bot) seats: bidding is always BBA; cardplay is the session's
-  // bot backend. e.g. rules → "BBA+RulesBot".
-  const botLabel = computed(() => {
-    const cp = { random: 'Random', rules: 'RulesBot', ben: 'BEN' }[botMode.value]
-    return cp ? `BBA+${cp}` : 'Bot'
-  })
+  // Name for a bot seat: <bidder>+<cardplay>. Cardplay is the session's bot
+  // backend (rules → "RulesBot"); the bidder is BBA, or "Pass" when this seat's
+  // SIDE is a PassBot side. e.g. E on a pass-EW table → "Pass+RulesBot".
+  const cardplayBot = computed(() =>
+    ({ random: 'Random', rules: 'RulesBot', ben: 'BEN' }[botMode.value] || null))
+  function seatSide(seat) { return seat === 'N' || seat === 'S' ? 'NS' : 'EW' }
+  function botLabelFor(seat) {
+    const cp = cardplayBot.value
+    if (!cp) return 'Bot'
+    const bidder = (passSides.value || []).includes(seatSide(seat)) ? 'Pass' : 'BBA'
+    return `${bidder}+${cp}`
+  }
 
   // Per-seat occupant map for BridgeTable's over-the-board SeatIndicators:
   // - human → name + connection state (greens/greys the badge)
@@ -255,7 +262,7 @@ export function useServerTable() {
       } else if (occ && occ.kind === 'empty') {
         out[s] = { name: 'Open seat', empty: true }
       } else {
-        out[s] = { name: botLabel.value }
+        out[s] = { name: botLabelFor(s) }
       }
     }
     return out
@@ -284,7 +291,6 @@ export function useServerTable() {
     pausedSeat.value ? `${SEAT_NAMES[pausedSeat.value] || pausedSeat.value} is empty — seat a player or a bot` : '')
 
   // PassBot state + toggle (host, per side): passSides is ['NS'|'EW', ...].
-  const passSides = table.passSides
   function onKick(token) { return table.sendKick(token) }
   function onSetPassSides(sides) { return table.sendPassSides(sides) }
   function togglePassSide(side) {
@@ -293,6 +299,8 @@ export function useServerTable() {
     else cur.add(side)
     return table.sendPassSides([...cur])
   }
+  // Bots paused/running (host). While paused, Undo steps back one action.
+  function onPauseBots(on) { return table.sendPauseBots(on) }
 
   function onBid(call) { table.sendBid(call) }
   function onCardClick({ seat, suit, rank }) { table.sendCard(seat, suit, rank) }
@@ -332,12 +340,12 @@ export function useServerTable() {
     displayHands, myTurnToBid, displayHiddenSeats,
     connectionLabel, tableTitle, contractHtml, declarerTricks,
     resultBanner, iAmReady, readyNames, turnLabel, botThinking,
-    pausedSeat, pausedLabel, passSides,
+    pausedSeat, pausedLabel, passSides, botsPaused,
     lastSuitBid,
     canHostAdvance, canManageSeats, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
     onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
-    onKick, onSetPassSides, togglePassSide,
+    onKick, onSetPassSides, togglePassSide, onPauseBots,
   }
 }

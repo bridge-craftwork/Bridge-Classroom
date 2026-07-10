@@ -73,6 +73,10 @@ const seats = ref({})
 // Sides whose bots always pass in the auction (PassBot), e.g. ['EW']. From the
 // snapshot / seat_update. Host toggles it via sendPassSides.
 const passSides = ref([])
+// Bots paused (Shark "Stop play"): bots stop acting, and undo steps back one
+// action at a time (any actor) so the host can override a bot. From welcome +
+// the bots_paused event; host toggles via sendPauseBots.
+const botsPaused = ref(false)
 
 // ── Session round state (teacher-gated boards; absent on the demo room) ──
 // Seats that have sent ready_next_board on the current board.
@@ -441,6 +445,7 @@ function handleMessage(msg) {
       yourSeats.value = msg.your_seats || (msg.seat ? [msg.seat] : [])
       roster.value = msg.roster || []
       botMode.value = msg.bot_mode || ''
+      botsPaused.value = !!msg.bots_paused
       // Idle session (no deal loaded) → show the waiting overlay. Absent
       // field (demo room) means always-loaded.
       setLabel.value = msg.set_label || null
@@ -472,6 +477,9 @@ function handleMessage(msg) {
           break
         case 'roster_update':
           roster.value = msg.roster || []
+          break
+        case 'bots_paused':
+          botsPaused.value = !!msg.on
           break
         case 'bid_made':
           handleBidMade(msg)
@@ -648,6 +656,14 @@ function sendPassSides(sides) {
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
+// Host-only: pause/resume all bots (Shark "Stop play"). While paused, undo
+// steps back one action at a time so the host can override a bot.
+function sendPauseBots(on) {
+  if (!isHost.value) return { ok: false, reason: 'not host' }
+  const ok = socket.send({ t: 'pause_bots', on })
+  return { ok, reason: ok ? '' : 'not connected' }
+}
+
 // Board-scoped state: everything a fresh board (or a reseat to another
 // table) invalidates. Identity/session refs survive.
 function resetBoardState() {
@@ -813,6 +829,7 @@ export function useRemoteTable() {
     tricksTaken,
     seats,
     passSides,
+    botsPaused,
     // session rounds
     readySeats,
     boardsOpen,
@@ -844,6 +861,7 @@ export function useRemoteTable() {
     sendAssignSeat,
     sendKick,
     sendPassSides,
+    sendPauseBots,
     sendDeal,
     // Fixture driver (Phase 0.2): render the server path from a frozen snapshot.
     loadFixture,
