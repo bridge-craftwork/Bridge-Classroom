@@ -88,6 +88,7 @@
           <SeatControlTable
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
+            :identity-only="!srv.dealLoaded"
             :occupants="srv.seatOccupants"
             :active-seat="srv.nextToAct"
             :show-hcp="false"
