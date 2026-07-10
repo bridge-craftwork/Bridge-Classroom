@@ -290,7 +290,11 @@ function enterIdentify(myEpoch) {
 async function doJoin(opts, myEpoch = navEpoch) {
   joining.value = true
   const bot = typeof route.query.bot === 'string' && route.query.bot ? route.query.bot : null
-  const ok = await table.join({ sessionId: sessionInfo.value.id, bot, ...opts })
+  // ?seat=N (per-seat invite link): request that seat on join. Honored under
+  // Manual policy when free; otherwise the host seats you from the SeatManager.
+  const q = typeof route.query.seat === 'string' ? route.query.seat.toUpperCase() : null
+  const seat = ['N', 'E', 'S', 'W'].includes(q) ? q : null
+  const ok = await table.join({ sessionId: sessionInfo.value.id, bot, seat, ...opts })
   if (myEpoch !== navEpoch) return
   joining.value = false
   if (ok) mode.value = 'joined'

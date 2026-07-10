@@ -535,10 +535,10 @@ function handleMessage(msg) {
 
 // ── Public actions ─────────────────────────────────────────────────────
 
-async function join({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false }) {
+async function join({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false, seat = null }) {
   resetTableState()
   if (!unsubscribe) unsubscribe = socket.onMessage(handleMessage)
-  return socket.connect({ sessionId, userId, guestName, bot, asPlayer })
+  return socket.connect({ sessionId, userId, guestName, bot, asPlayer, seat })
 }
 
 function leave() {
