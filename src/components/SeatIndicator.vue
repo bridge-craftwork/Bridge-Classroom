@@ -7,7 +7,15 @@
   >
     <span class="si-badge">{{ seat }}</span>
     <span v-if="display" class="si-name">{{ display }}</span>
-    <span class="si-adorn"><slot /></span>
+    <span class="si-adorn">
+      <span
+        v-if="connected === false"
+        class="si-bot"
+        title="Bot is playing this seat (player disconnected)"
+        aria-label="bot playing"
+      >🤖</span>
+      <slot />
+    </span>
   </div>
 </template>
 
@@ -81,7 +89,10 @@ const display = computed(() => {
 
 const titleText = computed(() => {
   const n = (props.name || '').trim()
-  if (n) return props.you ? `${n} (you)` : n
+  if (n) {
+    if (props.connected === false) return `${n} — disconnected, bot playing`
+    return props.you ? `${n} (you)` : n
+  }
   return props.emptyLabel || props.seat
 })
 
@@ -109,7 +120,7 @@ onMounted(async () => {
     ro.observe(root.value)
   }
 })
-watch(() => [props.name, props.emptyLabel], async () => { await nextTick(); measureAvail() })
+watch(() => [props.name, props.emptyLabel, props.connected], async () => { await nextTick(); measureAvail() })
 onBeforeUnmount(() => ro?.disconnect())
 </script>
 
@@ -165,6 +176,9 @@ onBeforeUnmount(() => ro?.disconnect())
   gap: 6px;
 }
 .si-adorn:empty { display: none; }
+.si-bot { font-size: 13px; line-height: 1; filter: grayscale(0.2); }
+/* Disconnected human: dim the name so a bot-covered seat reads as "not live". */
+.seat-indicator.disc .si-name { color: #888; }
 
 /* Emphasis states (kept subtle; hosts can override via the wrapper). */
 .seat-indicator.is-turn .si-badge {
