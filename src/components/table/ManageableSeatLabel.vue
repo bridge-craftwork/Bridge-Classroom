@@ -1,20 +1,26 @@
 <template>
   <div
     class="msl"
-    :class="{ 'drop-over': dropOver }"
+    :class="{ 'drop-over': dropOver, manage: canManage }"
     :draggable="canManage && isHuman"
+    :title="canManage ? (isHuman ? 'Drag to move · click for options' : 'Click for options') : null"
     @dragstart="onDragStart"
     @dragover="canManage ? onDragOver($event) : null"
     @dragleave="dropOver = false"
     @drop="canManage ? onDrop($event) : null"
+    @click="canManage ? (menuOpen = !menuOpen) : null"
   >
+    <!-- The name IS the drag handle and the menu trigger (no separate button). -->
     <SeatChip :seat="seat" :name="name" :presence="presence" :card-count="cardCount" :compact="compact" />
-    <button v-if="canManage" class="msl-menu-btn" title="Seat options" @click.stop="menuOpen = !menuOpen">⌄</button>
     <div v-if="menuOpen" class="msl-menu" @click.stop>
-      <button v-if="isYou" class="msl-item" @click="act({ from: seat, seat: null })">Stand</button>
+      <template v-if="isYou">
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Stand</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Seat a bot</button>
+      </template>
       <template v-else-if="isHuman">
         <button class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
         <button class="msl-item" @click="act({ from: seat, seat: null })">Remove &rarr; kibitz</button>
+        <button class="msl-item" @click="act({ from: seat, seat: null })">Seat a bot</button>
       </template>
       <button v-else class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
     </div>
@@ -71,14 +77,12 @@ function onDrop(e) {
 </script>
 
 <style scoped>
-.msl { position: relative; display: inline-block; }
+/* Block so the SeatChip/SeatIndicator fills the seat width — otherwise the name
+   ladder measures a collapsed inline box and falls to badge-only. */
+.msl { position: relative; display: block; }
+.msl.manage { cursor: pointer; }
 .msl[draggable="true"] { cursor: grab; }
 .msl.drop-over { outline: 2px dashed #1d9e75; outline-offset: 2px; border-radius: 6px; }
-.msl-menu-btn {
-  position: absolute; top: -2px; right: -14px;
-  border: none; background: none; font-size: 13px; color: #888; cursor: pointer; line-height: 1;
-}
-.msl-menu-btn:hover { color: #222; }
 .msl-menu {
   position: absolute; top: 100%; left: 0; z-index: 20;
   background: #fff; border: 1px solid #ddd; border-radius: 8px;
