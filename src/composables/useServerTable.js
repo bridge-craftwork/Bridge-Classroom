@@ -61,22 +61,34 @@ export function useServerTable() {
   const doubleDummy = ref(null)
   let ddToken = 0
 
-  const fullDealRevealed = computed(() => SEAT_ORDER.every(s => !!hands.value[s]))
+  // Capture the full 13-card deal the moment it's dealt. The server now un-redacts
+  // all hands, so the raw `hands` ref EMPTIES as cards are played — by board end
+  // it's all-empty. Double-dummy must run on the captured deal, not the played-down
+  // hands (otherwise the DD table comes up blank).
+  const fullDeal = ref(null)
+  function handTotal(h) {
+    return h ? (h.spades?.length || 0) + (h.hearts?.length || 0) + (h.diamonds?.length || 0) + (h.clubs?.length || 0) : 0
+  }
+  watch(hands, (h) => {
+    if (SEAT_ORDER.every(s => handTotal(h[s]) === 13)) {
+      fullDeal.value = JSON.parse(JSON.stringify(h))
+    }
+  }, { deep: true, immediate: true })
 
   const ddFinalContract = computed(() =>
     contract.value?.text
       ? { contract: contract.value.text, declarer: declarer.value }
       : { contract: '', declarer: null })
 
-  watch([() => phase.value, fullDealRevealed], async ([ph, revealed]) => {
-    if (!(capabilities.doubleDummy && ph === 'complete' && revealed)) {
+  watch([() => phase.value, fullDeal], async ([ph, deal]) => {
+    if (!(capabilities.doubleDummy && ph === 'complete' && deal)) {
       doubleDummy.value = null
       ddToken++
       return
     }
     if (doubleDummy.value) return
     const token = ++ddToken
-    const dd = await engine.getDoubleDummy({ hands: hands.value, vulnerable: vulnerable.value })
+    const dd = await engine.getDoubleDummy({ hands: deal, vulnerable: vulnerable.value })
     if (token === ddToken) doubleDummy.value = dd
   })
 
