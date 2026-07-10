@@ -70,6 +70,9 @@ const tricksTaken = ref({ NS: 0, EW: 0 })
 // { N: {kind:'human',name,connected} | {kind:'empty'}, ... } — empty seats
 // are played by the server's bots.
 const seats = ref({})
+// Sides whose bots always pass in the auction (PassBot), e.g. ['EW']. From the
+// snapshot / seat_update. Host toggles it via sendPassSides.
+const passSides = ref([])
 
 // ── Session round state (teacher-gated boards; absent on the demo room) ──
 // Seats that have sent ready_next_board on the current board.
@@ -453,6 +456,7 @@ function handleMessage(msg) {
       if (msg.board_mode) boardMode.value = msg.board_mode
       applySnapshot(msg.state)
       if (msg.seats) seats.value = msg.seats
+      if (msg.pass_sides) passSides.value = msg.pass_sides
       if (msg.roster) roster.value = msg.roster
       break
     case 'event':
@@ -463,6 +467,7 @@ function handleMessage(msg) {
       switch (msg.kind) {
         case 'seat_update':
           seats.value = msg.seats || {}
+          if (msg.pass_sides) passSides.value = msg.pass_sides
           if (msg.roster) roster.value = msg.roster
           break
         case 'roster_update':
@@ -614,12 +619,32 @@ function sendForceAdvance() {
 //   vacate → { from, seat: null }  the occupant of `from` becomes a waiter
 //   place  → { token, seat }       put that token's connection into `seat`
 //            (Sit = pass your own token; seat a waiter = their token)
-function sendAssignSeat({ seat = null, from = null, token = null }) {
+//   vacate → { from, seat: null }  the occupant is benched; the seat becomes
+//            EMPTY (open, game pauses on its turn) unless `bot: true` (Seat a
+//            bot → the seat is a bot again).
+function sendAssignSeat({ seat = null, from = null, token = null, bot = false }) {
   if (!isHost.value) return { ok: false, reason: 'not host' }
   const msg = { t: 'assign_seat', seat }
   if (from) msg.from = from
   if (token) msg.token = token
+  if (bot) msg.bot = true
   const ok = socket.send(msg)
+  return { ok, reason: ok ? '' : 'not connected' }
+}
+
+// Host-only: remove a person from the table entirely (by their connection
+// token), distinct from vacate/Remove which only benches them.
+function sendKick(token) {
+  if (!isHost.value) return { ok: false, reason: 'not host' }
+  const ok = socket.send({ t: 'kick', token })
+  return { ok, reason: ok ? '' : 'not connected' }
+}
+
+// Host-only: PassBot — set which sides' bots always pass in the auction.
+// `sides` is an array like ['EW'] (empty clears it).
+function sendPassSides(sides) {
+  if (!isHost.value) return { ok: false, reason: 'not host' }
+  const ok = socket.send({ t: 'set_pass_sides', sides })
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
@@ -787,6 +812,7 @@ export function useRemoteTable() {
     lastFinishedTrick,
     tricksTaken,
     seats,
+    passSides,
     // session rounds
     readySeats,
     boardsOpen,
@@ -816,6 +842,8 @@ export function useRemoteTable() {
     sendReady,
     sendForceAdvance,
     sendAssignSeat,
+    sendKick,
+    sendPassSides,
     sendDeal,
     // Fixture driver (Phase 0.2): render the server path from a frozen snapshot.
     loadFixture,
