@@ -260,6 +260,8 @@ function marksFor(seat) {
   gap: 8px;
   padding: 16px;
   min-width: 320px;
+  /* Containing block for the absolutely-positioned SE corner (DD table). */
+  position: relative;
 }
 
 /* N/S column containers - centered but contents left-aligned */
@@ -306,13 +308,18 @@ function marksFor(seat) {
   grid-row: 3;
 }
 
-/* SE corner: the empty bottom-right cell (South's row, East's column). South
-   spans the full row but its hand is centered, so this cell is visually free. */
+/* SE corner: post-hand analysis grid (double-dummy table). Absolutely
+   positioned in the table's bottom-right so it does NOT participate in grid
+   column sizing — otherwise, being wider than the East hand, it inflates
+   column 3 and (under the fixed total width) squeezes the West column, wrapping
+   West's card ranks the instant the DD table appears. Out of flow it can't push
+   the columns; anchoring hard-right also minimises overlap with the centered
+   South hand. */
 .corner-se {
-  grid-column: 3;
-  grid-row: 3;
-  justify-self: start;
-  align-self: start;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
 }
 
 /* Compact mode for desktop two-column layout */
