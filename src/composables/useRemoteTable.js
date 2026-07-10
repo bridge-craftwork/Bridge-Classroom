@@ -191,6 +191,12 @@ function showError(msg) {
 
 // ── Derived ────────────────────────────────────────────────────────────
 
+// Is at least one seat held by a human? Undo only makes sense when a human has
+// acted (otherwise every "undo" is instantly re-played by the bots), so the UI
+// greys Undo out at an all-bot table.
+const hasHumanSeat = computed(() =>
+  SEAT_ORDER.some(s => seats.value[s]?.kind === 'human'))
+
 const dealer = computed(() => board.value?.dealer || null)
 const vulnerable = computed(() => board.value?.vulnerable || 'None')
 const boardNumber = computed(() => board.value?.number ?? null)
@@ -571,7 +577,10 @@ function sendDeal(payload) {
 // Unlimited any-actor undo (Shark-style): rewind the last action.
 function sendUndo() {
   if (seq.value === 0) return { ok: false, reason: 'nothing to undo' }
-  const ok = socket.send({ t: 'undo', to_seq: seq.value - 1 })
+  // No to_seq → the server rewinds to just before the LAST HUMAN action, so the
+  // table lands on a human's turn instead of a bot's (a single-ply undo is
+  // useless at a bot table — the bot instantly replays it).
+  const ok = socket.send({ t: 'undo' })
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
@@ -778,6 +787,7 @@ export function useRemoteTable() {
     boardComplete,
     sessionClosed,
     // derived
+    hasHumanSeat,
     hiddenSeats,
     clickableSeat,
     activeSeat,

@@ -38,8 +38,10 @@
           </span>
           <button
             class="tv-btn"
-            :disabled="srv.seq === 0 || srv.connectionStatus !== 'connected'"
-            title="Rewind the last action (anyone at the table may undo)"
+            :disabled="srv.seq === 0 || srv.connectionStatus !== 'connected' || !srv.hasHumanSeat"
+            :title="srv.hasHumanSeat
+              ? 'Rewind to your last decision (bots replay up to your turn)'
+              : 'Nothing to undo — every seat is a bot'"
             @click="srv.onUndo"
           >
             Undo

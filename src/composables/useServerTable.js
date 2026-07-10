@@ -45,7 +45,7 @@ export function useServerTable() {
     nextToAct, hands, handCounts,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
     readySeats, boardComplete, sessionClosed,
-    dealLoaded, setLabel,
+    dealLoaded, setLabel, hasHumanSeat,
     clickableSeat, activeSeat,
     isYourBid, lastSuitBid, canDouble, canRedouble,
     errorMessage, undoBy,
@@ -276,7 +276,7 @@ export function useServerTable() {
     nextToAct, hands, handCounts,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
     readySeats, boardComplete, sessionClosed,
-    dealLoaded, setLabel, clickableSeat,
+    dealLoaded, setLabel, clickableSeat, hasHumanSeat,
     canDouble, canRedouble, errorMessage, undoBy,
     // analysis
     capabilities, doubleDummy, ddFinalContract,
