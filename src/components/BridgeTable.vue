@@ -15,7 +15,11 @@
           :marks="marksFor('N')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'N', ...payload })"
-        />
+        >
+          <template #label="lp">
+            <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
+          </template>
+        </SeatPanel>
       </div>
     </div>
 
@@ -33,7 +37,11 @@
         :marks="marksFor('W')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'W', ...payload })"
-      />
+      >
+        <template #label="lp">
+          <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
+        </template>
+      </SeatPanel>
     </div>
 
     <!-- Center (empty slot for dealer/vul indicator if needed) -->
@@ -55,7 +63,11 @@
         :marks="marksFor('E')"
         :hidePlayedCards="hidePlayedCards"
         @card-click="(payload) => $emit('card-click', { seat: 'E', ...payload })"
-      />
+      >
+        <template #label="lp">
+          <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
+        </template>
+      </SeatPanel>
     </div>
 
     <!-- South - spans all columns -->
@@ -73,7 +85,11 @@
           :marks="marksFor('S')"
           :hidePlayedCards="hidePlayedCards"
           @card-click="(payload) => $emit('card-click', { seat: 'S', ...payload })"
-        />
+        >
+          <template #label="lp">
+            <slot name="seat-label" v-bind="lp"><SeatChip v-bind="lp" /></slot>
+          </template>
+        </SeatPanel>
       </div>
     </div>
 
@@ -88,6 +104,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, useSlots } from 'vue'
 import SeatPanel from './SeatPanel.vue'
+import SeatChip from './SeatChip.vue'
 
 const props = defineProps({
   hands: {

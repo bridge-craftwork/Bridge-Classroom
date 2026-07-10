@@ -4,13 +4,18 @@
        (chip = chip alone; compact/full = chip + hand). The layout-inertness
        obligation (reserved frame width) lives here, not in HandDisplay. -->
   <div class="seat-panel" :class="[{ compact: compactMode, active: activeSeat, chip: density === 'chip' }]">
-    <SeatChip
-      :seat="seat"
-      :name="name"
-      :presence="presence"
-      :card-count="chipCardCount"
-      :compact="compactMode"
-    />
+    <!-- Seat identity. Default = the plain SeatChip label (A1 and every other
+         caller). A drag/drop variant (SeatControlTable) fills this slot to make
+         the label grabbable — the base itself carries no seat-control code. -->
+    <slot name="label" :seat="seat" :name="name" :presence="presence" :card-count="chipCardCount" :compact="compactMode">
+      <SeatChip
+        :seat="seat"
+        :name="name"
+        :presence="presence"
+        :card-count="chipCardCount"
+        :compact="compactMode"
+      />
+    </slot>
     <HandDisplay
       v-if="showHolding"
       :hand="hand"
