@@ -24,6 +24,7 @@ for (const file of fs.readdirSync(FIX_DIR)) {
 // ── Walk ────────────────────────────────────────────────────────────────────
 const browser = await chromium.launch()
 let shots = 0
+const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
 for (const { name } of fixtures) {
   for (const [vp, dim] of Object.entries(viewports)) {
     const page = await browser.newPage({ viewport: { width: dim.w, height: dim.h }, deviceScaleFactor: 1 })
@@ -31,6 +32,20 @@ for (const { name } of fixtures) {
     await page.waitForSelector('[data-harness-ready]', { state: 'attached', timeout: 15000 })
     await page.evaluate(() => document.fonts.ready)
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+    // The §3 clamp's computed per-region scales, straight off the arranger's
+    // data-region-scale attributes — turns review from impressions into params.
+    const scales = await page.evaluate(() => {
+      const out = {}
+      document.querySelectorAll('[data-region-scale]').forEach((el) => {
+        const r = el.getAttribute('data-region'); const s = el.getAttribute('data-region-scale')
+        if (r && s && out[r] == null) out[r] = s
+      })
+      return out
+    })
+    const order = ['center', 'seat-s', 'ne', 'se', 'nw']
+    const label = { 'seat-s': 'seats' }
+    capText[`${name}/${vp}`] = order.filter((r) => scales[r] != null)
+      .map((r) => `${label[r] || r} ${scales[r]}×`).join(' · ')
     const out = path.join(OUT, 'scenes', name, `${vp}.png`)
     fs.mkdirSync(path.dirname(out), { recursive: true })
     await page.screenshot({ path: out, fullPage: true })
@@ -55,7 +70,8 @@ for (const { name, label, phase } of fixtures) {
   body += `<section class="fx"><h2>${label}${phase ? ` <span class="ph">${phase}</span>` : ''}</h2><div class="row">`
   for (const [vp, dim] of vpEntries) {
     const rel = `scenes/${name}/${vp}.png`
-    body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span></figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div></figure>`
+    const caps = capText[`${name}/${vp}`] || ''
+    body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span>${caps ? `<br><span class="scales">${caps}</span>` : ''}</figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div></figure>`
   }
   body += `</div></section>`
 }
@@ -73,6 +89,8 @@ header h1 { margin:0; font-size:20px; } header p { margin:6px 0 0; color:var(--m
 .row { display:flex; gap:18px; overflow-x:auto; padding-bottom:6px; }
 figure { margin:0; flex:0 0 auto; }
 figcaption { font-size:11px; color:var(--mut); margin-bottom:6px; } .rep { opacity:.7; }
+.scales { display:inline-block; margin-top:3px; font-weight:700; color:#1d8a5f; font-variant-numeric:tabular-nums; }
+@media (prefers-color-scheme: dark){ .scales { color:#5fd39b; } }
 .shot { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
 .shot img { display:block; max-height:520px; width:auto; }
 </style></head><body>

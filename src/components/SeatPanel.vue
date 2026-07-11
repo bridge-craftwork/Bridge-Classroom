@@ -75,7 +75,10 @@ const showHolding = computed(() => !props.hidden && props.density !== 'chip' && 
 // The chip carries a card count whenever the holding isn't shown but a hand exists.
 const chipCardCount = computed(() => {
   if (!props.hand || (!props.hidden && props.density !== 'chip')) return null
-  return ['spades', 'hearts', 'diamonds', 'clubs'].reduce((n, s) => n + (props.hand[s]?.length || 0), 0)
+  const n = ['spades', 'hearts', 'diamonds', 'clubs'].reduce((t, s) => t + (props.hand[s]?.length || 0), 0)
+  // An undealt-for-display seat (empty {} hand) reads 0 — suppress it rather than
+  // render "0 cards" (grid-arranger fix 3). A real hidden hand still counts.
+  return n || null
 })
 </script>
 

@@ -1,5 +1,29 @@
 <template>
-  <div ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact, 'no-center': !hasCenter, 'identity-only': identityOnly }]">
+  <!-- Grid arrangement (dark; opt-in via arrangement='grid' + tableConfig).
+       Delegates to the real named-area arranger. The legacy branch below is
+       unchanged — production (a1/MainLayout) never passes `arrangement`, so it
+       renders exactly as before. -->
+  <GridArrangement
+    v-if="arrangement === 'grid' && tableConfig"
+    :hands="hands"
+    :hidden-seats="hiddenSeats"
+    :show-hcp="showHcp"
+    :clickable-seat="clickableSeat"
+    :played-cards="playedCards"
+    :hide-played-cards="hidePlayedCards"
+    :config="tableConfig"
+    :phase="phase"
+    :hero-seat="heroSeat"
+    @card-click="(p) => $emit('card-click', p)"
+  >
+    <template v-if="$slots.center" #center><slot name="center" /></template>
+    <template v-if="$slots.nw" #nw><slot name="nw" /></template>
+    <template v-if="$slots.ne" #ne><slot name="ne" /></template>
+    <template v-if="$slots.se" #se><slot name="se" /></template>
+    <template v-if="$slots.sw" #sw><slot name="sw" /></template>
+  </GridArrangement>
+
+  <div v-else ref="root" class="bridge-table" :class="['size-' + sizeMode, { compact: compact, 'no-center': !hasCenter, 'identity-only': identityOnly }]">
     <!-- North - spans all columns -->
     <div class="ns-column north-row">
       <div v-if="!hiddenSeats.includes('N') && (hands.N || identityOnly)" class="position north">
@@ -96,6 +120,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, useSlots } from 'vue'
 import SeatPanel from './SeatPanel.vue'
+import GridArrangement from './table/GridArrangement.vue'
 
 const props = defineProps({
   hands: {
@@ -161,6 +186,26 @@ const props = defineProps({
   identityOnly: {
     type: Boolean,
     default: false
+  },
+  // Arrangement selector (grid-arranger-spec). 'legacy' (default) = today's
+  // compass layout, untouched. 'grid' delegates to GridArrangement, driven by
+  // `tableConfig`. Production passes neither, so nothing changes there.
+  arrangement: {
+    type: String,
+    default: 'legacy'
+  },
+  tableConfig: {
+    type: Object,
+    default: null
+  },
+  // Grid-only: canonical engine phase (densities) + hero seat (orientation).
+  phase: {
+    type: String,
+    default: 'bidding'
+  },
+  heroSeat: {
+    type: String,
+    default: 'S'
   }
 })
 
