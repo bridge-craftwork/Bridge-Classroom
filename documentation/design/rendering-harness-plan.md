@@ -227,6 +227,15 @@ designs.
   review = keep the cell, trick fill, opacity step. The old strikethrough is
   removed (Slice 4, not before). `playedCards`/`hidePlayedCards` props collapse
   into the mode/density system.
+- **Badge containment & scale (2026-07-10, in-review).** Corner badges (the
+  annotation channel — `dd-error`, recommendation, group…) ride **both**
+  `--table-scale` and the row's `--suit-scale`, so a pill stays glued to its glyph
+  on a compressed row instead of floating oversized. Overhang is contained by a
+  holding inset (`padding-top`/`-right`) applied **only when the hand carries
+  badges** — so badge-free production hands stay pixel-identical, and the inset
+  also narrows the row's measured `available` so the suit-fit leaves room for a
+  right-edge badge. Replaces the old first-row-only `top:2px` nudge. A badge on a
+  *truncated* card surfaces as the chip's indicator dot (item-3 interaction).
 - **Layout inertness:** active-seat indication must not shift layout. Reserve
   indicator space always (transparent border of identical width, or
   outline/box-shadow). After the SeatPanel extraction this obligation lives in
@@ -522,7 +531,9 @@ Suit-fit acceptance specimens (2026-07-10): `eleven-card-clickable` (dressed pil
 beside `eleven-card` (plain chip); `eleven-card-play-2/4/6` (monotone `+N` over a
 play sequence, frozen row geometry); `eleven-card-marked-hidden` (chip indicator
 dot); `CardSelectorPopup/eleven-card` (full suit wrapped, ≥44px, one mark —
-captured by locator, not frame crop).
+captured by locator, not frame crop); `badges-edges` (badge containment — pills
+on the first-row top-left, a filling suit's right-edge card, and a compressed
+suit — no clipping across widths × scales).
 
 Configurations: `chip` bare; `compact` + played; `full-everything` (trick fills,
 badges, won/led glyphs, DD outlines, one group bar) — the permanent noise-ceiling
