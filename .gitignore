@@ -55,3 +55,6 @@ node_modules
 # rendering harness (generated)
 gallery/
 dist-harness/
+
+# Bug-report dev sink (local capture bundles — never committed)
+dev-reports/
