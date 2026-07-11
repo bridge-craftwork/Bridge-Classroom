@@ -47,6 +47,15 @@ shipping with the grid-flip visible slice; the gallery is **`gallery-a1/`** and
 **short-lived PR carrying the a1 pixel-diff** (the diff is the gate; the PR is
 where the evidence lives — "no long-lived branch," not "no PR").
 
+**Refinement (2026-07-11) — seat uniformity is over *hand-bearing* seats.** Strict
+min-across-all-four starves the hero: in A1 bidding only the hero shows a hand, but
+the empty chip-only side cells are the narrowest tracks, so strict uniformity would
+shrink the hero to fit cells holding only chips. Corrected rule in §3: uniform
+scale = min fit over seat tracks currently displaying a hand; chips-only seats
+render at the cap-side value; recompute pinned to **phase boundaries** only. §6
+now carries the concrete `a1.tableConfig` values and a **prediction table** the
+first gallery review will confirm or refute.
+
 ## Purpose
 
 Build the real `grid` arrangement inside BridgeTable (the arranger), driven by
@@ -219,9 +228,21 @@ Precisely:
    `roleCap` (fixes "auction tiny in a huge center"), and to **shrink below the
    wish** when the region physically cannot honor it (fixes the clipped-S
    auction) — but never below `legibilityFloor`.
-3. **Seat uniformity:** one `--region-scale` for all four seat regions, computed
-   from the seat track geometry and the reserve — never from any hand's content.
-   Hands never change size because of shape or play state.
+3. **Seat uniformity (refined 2026-07-11):** one `--region-scale` shared by the
+   seat regions, but **= min fit over the seat tracks currently displaying a
+   hand**, not all four. Strict min-across-all-four is wrong: in an A1 bidding
+   exercise only the hero shows a hand (in the wide center-column `s` cell) while
+   the empty chip-only side cells are the *narrowest* tracks — strict uniformity
+   would shrink the hero's hand to fit cells holding nothing but chips.
+   **Chips-only seats always render at the seat scale's cap-side value** (chips
+   have no reserve to fit). Computed from track geometry and the reserve, never
+   from any hand's content — hands never change size because of shape or play
+   state. **Recomputed only at phase boundaries, never mid-phase:** for A1 the
+   hand-bearing set is fixed per deal (the PBN display directive), so it's stable
+   throughout; for the table apps the dummy appears at the play transition, so the
+   recompute pins to the bidding→play boundary — already a scene change (center
+   swaps auction→tricks), where a seat-scale adjustment reads as part of the scene
+   rather than as jitter.
 4. Per-suit-row compression/truncation (HandDisplay's own cascade) operates
    *inside* the seat's `--region-scale` — i.e. HandDisplay measures the box it's
    handed and runs its `handFit` cascade there, unchanged.
@@ -260,13 +281,56 @@ obstacle to code around.
 
 ## 6. Initial config drafts (starting points, tuned in gallery)
 
-**a1.tableConfig:** grid; tracks columns `[1, 1.5, 1]`, rows `[0.8, 1.2, 1.2]`;
-caps center 1.8 / seats 1.4 / periphery 1.0; densities: bidding `{ne:
-none-or-empty}`, play `{ne: full}` (pinned auction), review `{ne: full}`;
-shell: `desktop-wide → two-column (companion left)`, `laptop-half → stacked
-(companion above)` and the drawer variant for the A/B, `tablet-portrait →
-stacked (coach below)`, `phone → stacked` (rendered for completeness, not
-optimized).
+**a1.tableConfig:** `arrangement: 'grid'`, `orientation: 'south'`; tracks columns
+**`[1.1, 1.3, 1.1]`**, rows **`[0.85, 1.15, 1.3]`**; caps **center 1.8 · seats
+1.4 · all periphery 1.0**; `legibilityFloor 0.65`; densities bidding `{ne:
+none}`, play `{ne: full}` (pinned auction), review `{ne: full}`; shell:
+`desktop-wide → two-column (companion left)`, `laptop-half → stacked (companion
+above)` + the drawer variant for the A/B, `tablet-portrait → stacked (coach
+below)`, `phone → stacked` (rendered for completeness, not optimized).
+
+Why these values:
+- **Columns `[1.1, 1.3, 1.1]`** — center widest (it's the stage *and* the hero's
+  column), sides **close behind rather than starved**: under the `'south'` anchor,
+  A1's defense lessons put a *real hand* in a side column (West at screen-left).
+  That case — not the chips — sizes the side tracks.
+- **Rows `[0.85, 1.15, 1.3]`** — top short (status, chips, reference-auction
+  header), middle for the stage, **bottom heaviest**: the hero row carries the
+  hand *plus* the SE action cluster and is the row seniors read continuously.
+- **Caps center 1.8 / seats 1.4 / periphery 1.0.** Center 1.8 is deliberately
+  *above* what desktop geometry yields (~1.5 computed) so the **cap isn't the
+  binding constraint** at current sizes — geometry binds, and bigger screens get
+  bigger auctions for free. Seats 1.4 covers senior generosity without ballooning.
+  Periphery flat 1.0 **including SE** — the bidding box was designed comfortable at
+  1.0 and its floor is *ergonomic* (touch targets), not typographic; identical
+  peripheral caps also preserve the clean "center owns prominence" statement.
+- **`legibilityFloor 0.65`** — the same constant as the HandDisplay cascade; one
+  number, one meaning, one place.
+
+**Predictions (first-review checklist).** These are what the computed-scale
+captions must confirm or refute on the first render. **Reserve estimate ≈ 260px**
+at 1.0× for a 7-card row (from the suit-fit measured geometry — compute it from
+HandDisplay's exported cell metrics per Reconciliation 4, don't hardcode):
+
+| Viewport (A1 shell) | center | seats (hand-bearing) | periphery |
+|---|---|---|---|
+| desktop-wide, two-column (~1000px grid) | ~1.5× | ~1.15× (hero in center col; ~1.15 via min with any side hand ~1.1) | 1.0× |
+| laptop-half, stacked (~680px grid) | ~1.0× | **~0.9× hero-only bidding; ~0.8× when a side column bears a hand** | 1.0× |
+| tablet-landscape, two-column | ~1.3× | ~1.05× | 1.0× |
+
+The **bolded cell is the finding to stare at**: at the primary teaching viewport,
+a defense lesson's West hand computes **below the 1.0 user floor**. That's not a
+config failure — it's the honest geometry of 680px split three ways, and exactly
+the tension the clamp exists to make *visible* instead of letting it clip.
+Candidate responses, in the order to try them:
+1. **Accept it** — 0.8× of the new base may still beat today's A1 rendering.
+   *Measure, don't assume.*
+2. **Give the grid more width** in stacked mode by tightening shell padding.
+3. **Per-shell-mode column re-weight** — e.g. `[1.2, 1.2, 1.2]` for stacked; a
+   config extension worth adding *only if the render proves the need*.
+
+Decide from the captions, not in advance — every caption that disagrees with this
+table is either a bug or a lesson, and both are what the gallery is for.
 
 **tables.tableConfig (draft only, not adopted):** same region map; densities
 play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
@@ -276,10 +340,12 @@ play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
 - **a1 unchanged:** pixel diff of a1's current views (`legacy` arrangement) with
   the new arranger code merged — zero diff. This is the merge gate.
 - Gallery: all A1 scenarios render through the real arranger; captions show
-  computed scales; seat scale identical across all four seats in every render;
+  computed `--region-scale` per region; **seat scale identical across all
+  hand-bearing seats** in every render (chips-only seats at the cap-side value);
   no region below `legibilityFloor`; center auction at desktop ≥1.5× computed;
   ne auction at laptop-half cardplay = 1.0× computed; bidding box and hand
-  side-by-side (s + se) at desktop and laptop-half.
+  side-by-side (s + se) at desktop and laptop-half. **Captions match the §6
+  prediction table, or each divergence is triaged (bug vs. lesson).**
 - Grid renders identically (internal layout) in tablet-portrait stacked mode
   vs. landscape two-column — only the shell placement differs.
 - Config-as-data check: the diff between `a1.tableConfig` and
