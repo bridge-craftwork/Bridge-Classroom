@@ -10,7 +10,7 @@
        capability is lost: the hidden cards stay viewable/selectable through the
        floating CardSelectorPopup, which floats above the layout and may wrap
        freely without pushing anything. SeatPanel supplies the box + frame. -->
-  <div ref="rootEl" class="holding" :class="[densityClass, { compact, 'hide-played': hidePlayedCards, 'has-badges': hasBadges }]">
+  <div ref="rootEl" class="holding" :class="[densityClass, { compact, 'hide-played': hidePlayedCards, 'has-badges': hasBadges }]" :style="unitVars">
     <div v-if="hand" class="suits">
       <template v-for="suit in suits" :key="suit">
         <!-- Rank cells ALWAYS play their card directly — truncation never
@@ -79,6 +79,15 @@ import {
 } from '../utils/cardFormatting.js'
 import CardSelectorPopup from './CardSelectorPopup.vue'
 import { computeFit, LEGIBILITY_FLOOR } from '../utils/handFit.js'
+import { HAND_UNIT } from './handMetrics.js'
+
+// Publish the shared unit geometry (handMetrics) as CSS vars so the full-density
+// label zone + row gap read the SAME numbers the arranger provisions from. At
+// 1.0× these equal the former literals (28px / 8px) → pixel-identical.
+const unitVars = {
+  '--hd-label-w': HAND_UNIT.labelPx + 'px',
+  '--hd-gap': HAND_UNIT.gapPx + 'px',
+}
 
 const props = defineProps({
   hand: { type: Object, default: null },
@@ -285,7 +294,7 @@ function onPopupSelect(rank) {
 .suit-row {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--table-scale));
+  gap: calc(var(--hd-gap, 8px) * var(--table-scale));
   font-family: 'Segoe UI', system-ui, sans-serif;
   /* --suit-scale (per row, default 1) compresses long suits horizontally to
      fit; below the floor the row truncates + shows a +N chip (never wraps or
@@ -294,7 +303,7 @@ function onPopupSelect(rank) {
 }
 .suit-symbol {
   font-size: calc(27px * var(--table-scale));
-  width: calc(28px * var(--table-scale));
+  width: calc(var(--hd-label-w, 28px) * var(--table-scale));
   text-align: center;
   flex: 0 0 auto;
 }
