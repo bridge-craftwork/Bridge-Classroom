@@ -1812,8 +1812,12 @@ body {
    hand's min-content and normal 4–5-card suits compress — each row to a DIFFERENT
    scale (different natural widths), giving one hand four font sizes. Pin a fixed
    width that fits a 7-card suit at full font, so nothing compresses until 8+
-   and every suit renders uniform. Scoped to the a1 practice hand only. */
-.practice-left :deep(.seat-panel) {
+   and every suit renders uniform.
+   NOTE: this <style> block is UNSCOPED, so NO `:deep()` — `:deep()` is a
+   scoped-CSS-only selector and in a global block it's invalid CSS that makes the
+   browser drop the whole rule (which is why the earlier `:deep(.seat-panel)`
+   version never applied). A plain descendant selector targets it directly. */
+.practice-left .seat-panel {
   min-width: 240px !important;
 }
 
