@@ -101,6 +101,7 @@ pub async fn create_bug_report(
     scrub_emails(&mut context);
 
     let env = context.get("env").cloned().unwrap_or(Value::Null);
+    let layout = context.get("layout").cloned().unwrap_or(Value::Null);
     let now = chrono::Utc::now();
     let bundle_path = format!(
         "{}/{:02}/{}-{}",
@@ -150,6 +151,7 @@ pub async fn create_bug_report(
     let body = build_issue_body(&BugBody {
         note,
         env: &env,
+        layout: &layout,
         reporter_name: req.reporter_name.as_deref(),
         contact_email: req.contact_email.as_deref(),
         repo,
@@ -286,6 +288,7 @@ async fn create_issue(
 struct BugBody<'a> {
     note: &'a str,
     env: &'a Value,
+    layout: &'a Value,
     reporter_name: Option<&'a str>,
     contact_email: Option<&'a str>,
     repo: &'a str,
@@ -338,6 +341,11 @@ fn build_issue_body(b: &BugBody) -> String {
         out.push_str(&format!("\n**Screenshot** (approximate rendering):\n\n![screenshot]({url})\n"));
     }
 
+    // Layout forensics — the highest-signal geometry, collapsed. The full block
+    // (all anchors) lives in context.json; here we surface the shrink-wrap/scope
+    // story a triager needs at a glance.
+    out.push_str(&build_layout_section(b.layout));
+
     let base = format!("https://github.com/{}/tree/main/{}", b.repo, b.bundle_path);
     out.push_str(&format!(
         "\n**Bundle:** [{path}]({base}) · \
@@ -384,6 +392,91 @@ fn env_rows(env: &Value) -> Vec<(String, String)> {
         }
     }
     rows
+}
+
+/// Max anchor rows rendered inline; the rest stay in context.json.
+const LAYOUT_ANCHOR_CAP: usize = 10;
+
+/// Render the highest-signal layout forensics as a collapsed `<details>`: the
+/// primary hand-box ancestry (widths + min-width + Vue scope flag — the
+/// shrink-wrap/dead-`:deep()` story) and a capped anchor table. Empty string
+/// when there's no layout block (legacy a1, or no table on screen).
+fn build_layout_section(layout: &Value) -> String {
+    let anchors = layout.get("anchors").and_then(Value::as_array);
+    let ancestry = layout.get("ancestry").and_then(Value::as_array);
+    let has_anchors = anchors.is_some_and(|a| !a.is_empty());
+    let has_ancestry = ancestry.is_some_and(|a| !a.is_empty());
+    if !has_anchors && !has_ancestry {
+        return String::new();
+    }
+
+    let n = anchors.map_or(0, |a| a.len());
+    let mut s = format!("\n<details><summary>Layout — {n} anchors</summary>\n\n");
+
+    if let Some(chain) = ancestry.filter(|c| !c.is_empty()) {
+        s.push_str("**Primary hand-box ancestry** (scope = carries `data-v-*`):\n\n");
+        s.push_str("| Element | width | min-width | scoped |\n|---|---|---|---|\n");
+        for lvl in chain {
+            s.push_str(&format!(
+                "| `{}` | {} | {} | {} |\n",
+                lvl.get("sel").and_then(Value::as_str).unwrap_or("?"),
+                num_or_dash(lvl.get("w")),
+                lvl.get("minW").and_then(Value::as_str).unwrap_or(""),
+                lvl.get("scoped").and_then(Value::as_bool)
+                    .map(|b| if b { "yes" } else { "**no**" }).unwrap_or(""),
+            ));
+        }
+        s.push('\n');
+    }
+
+    if let Some(list) = anchors.filter(|a| !a.is_empty()) {
+        s.push_str("**Anchors:**\n\n| Selector | width | min-width | vars |\n|---|---|---|---|\n");
+        for a in list.iter().take(LAYOUT_ANCHOR_CAP) {
+            s.push_str(&format!(
+                "| `{}` | {} | {} | {} |\n",
+                a.get("sel").and_then(Value::as_str).unwrap_or("?"),
+                num_or_dash(a.get("w")),
+                a.get("minW").and_then(Value::as_str).unwrap_or(""),
+                fmt_vars(a.get("vars")),
+            ));
+        }
+        if list.len() > LAYOUT_ANCHOR_CAP {
+            s.push_str(&format!("\n_(+{} more in context.json)_\n", list.len() - LAYOUT_ANCHOR_CAP));
+        }
+    }
+
+    s.push_str("\n</details>\n");
+    s
+}
+
+/// A JSON number as a compact string (integers without a trailing `.0`), or `–`.
+fn num_or_dash(v: Option<&Value>) -> String {
+    match v.and_then(Value::as_f64) {
+        Some(n) if n.fract() == 0.0 => format!("{}", n as i64),
+        Some(n) => format!("{n}"),
+        None => "–".to_string(),
+    }
+}
+
+/// The layout vars object (`{ts, ss, rs}`) as `ts=1.25 ss=0.65`, in a fixed
+/// meaningful order (not serde's alphabetical), else empty.
+fn fmt_vars(v: Option<&Value>) -> String {
+    let m = match v.and_then(Value::as_object) {
+        Some(m) if !m.is_empty() => m,
+        _ => return String::new(),
+    };
+    let known = ["ts", "ss", "rs"];
+    let mut parts: Vec<String> = known
+        .iter()
+        .filter_map(|k| m.get(*k).map(|val| format!("{k}={}", val.as_str().unwrap_or(""))))
+        .collect();
+    // Any unexpected keys, appended so nothing is silently dropped.
+    for (k, val) in m {
+        if !known.contains(&k.as_str()) {
+            parts.push(format!("{k}={}", val.as_str().unwrap_or("")));
+        }
+    }
+    parts.join(" ")
 }
 
 fn push_scalar(rows: &mut Vec<(String, String)>, key: &str, v: Option<&Value>) {
@@ -505,6 +598,40 @@ mod tests {
         let rows = env_rows(&env);
         assert!(rows.iter().any(|(k, v)| k == "viewport" && v == "800×600@2"));
         assert!(rows.iter().any(|(k, v)| k == "app" && v == "a1"));
+    }
+
+    #[test]
+    fn layout_section_renders_ancestry_and_capped_anchors() {
+        let layout = json!({
+            "anchors": (0..14).map(|i| json!({ "sel": format!("div.a{i}"), "w": 119.0, "minW": "240px" })).collect::<Vec<_>>(),
+            "ancestry": [
+                { "sel": "div.holding", "w": 119.0, "minW": "none", "scoped": true },
+                { "sel": "div.practice-left", "w": 119.0, "minW": "240px", "scoped": false }
+            ],
+            "truncated": false
+        });
+        let s = build_layout_section(&layout);
+        assert!(s.contains("<details><summary>Layout — 14 anchors</summary>"));
+        assert!(s.contains("div.holding"));
+        assert!(s.contains("| 119 | 240px | **no** |")); // dead min-width + unscoped container = the tell
+        assert!(s.contains("(+4 more in context.json)")); // 14 anchors, cap 10
+        assert!(s.contains("</details>"));
+    }
+
+    #[test]
+    fn layout_section_empty_without_layout() {
+        assert_eq!(build_layout_section(&Value::Null), "");
+        assert_eq!(build_layout_section(&json!({ "anchors": [] })), "");
+    }
+
+    #[test]
+    fn fmt_vars_and_num_or_dash() {
+        assert_eq!(fmt_vars(Some(&json!({ "ts": "1.25", "ss": "0.65" }))), "ts=1.25 ss=0.65");
+        assert_eq!(fmt_vars(Some(&json!({}))), "");
+        assert_eq!(fmt_vars(None), "");
+        assert_eq!(num_or_dash(Some(&json!(119.0))), "119");
+        assert_eq!(num_or_dash(Some(&json!(119.5))), "119.5");
+        assert_eq!(num_or_dash(None), "–");
     }
 
     #[test]

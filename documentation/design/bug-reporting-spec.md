@@ -164,6 +164,51 @@ wording, one remembered preference across both pipelines:
   or strip names from existing public hand-report issues. This is independent
   of all beetle slices and can proceed immediately.
 
+## 5b. Layout block
+
+The env block's geometric twin: a **bounded, computed-geometry snapshot** of the
+shared table components, so a sizing/compression bug (a hand box that
+shrink-wraps, an auction that overflows, a region that clamps wrong) is
+diagnosable from the report alone — no live session, no DevTools element-picker.
+Motivating incident: bug-artifacts #6 took several rounds because the report
+couldn't show a hand box shrink-wrapped to ~119px under a *silently dead*
+`min-width:240px` (an unscoped `<style>` killed a `:deep()` rule); the box's
+computed width + its ancestry (which container carried no `data-v-*` scope) would
+have pinned it in one glance.
+
+App-blind, like the rest of the collector — the breaking components are the SAME
+across every app, so it reads a **fixed anchor set**, never a pointer target:
+`.holding` · `.seat-panel` · `.suit-row` · `.auction-table` · `.bidding-box` ·
+`.trick-area` · `.grid-table` · `.bridge-table` (ordered most-diagnostic first).
+
+- **Per anchor** — `sel` (`tag.class.class`) · `w`/`h` (rounded px) · `minW`
+  (computed `min-width` — a set floor with a smaller `w` is the shrink-wrap tell)
+  · `disp` (only when not `block`) · `vars` (the scale CSS custom props present:
+  `ts`=`--table-scale`, `ss`=`--suit-scale`, `rs`=`--region-scale`).
+- **Ancestry** — the primary hand box's chain (`.holding`→…), each level with
+  `w` · `minW` · **`scoped`** (carries a `data-v-*` attr). An unscoped container
+  in the chain is the dead-`:deep()` tell — a cheap boolean, no values leaked.
+- **Caps/budget** — 60 elements · 64-char class · depth 8; `truncated` flag.
+  ≈1–2 KB a bidding view, ≈3 KB a full table. `null` when there's no DOM or no
+  table on screen (spread-safe).
+- **Captured on the beetle tap**, against the real DOM, frozen alongside the
+  screenshot — before the dialog opens or a bot/timer mutates the table — so
+  outputs and screenshot agree. Gathering it can never fail the report (guarded;
+  degrades to `null`).
+
+**Config inputs — the `tableConfig` seam.** Layout records *outputs* (rendered
+widths, effective `--region-scale`); the *inputs* (caps, tracks, current-phase
+density, the shell mode this viewport matched) flow through the `enrich.context`
+hook, never imported into the collector — the same pattern env uses for
+`arrangement`/`tableScale`/`density`. The shell mounting the grid arranger sets
+`enrich.context.tableConfig = { ...resolveTableConfig(cfg, phase, viewport),
+reserves: { auction: auctionReservePx(), seat: rowReservePx(7) } }`, so a
+config-driven bug reads input→output at a glance. Legacy a1 has no config, so
+`tableConfig` is simply absent (like the other not-yet-wired shell fields).
+
+Adding the layout block is **additive** to the bundle schema — no loader
+validates the shape today (spec §9), so no `schemaVersion` bump.
+
 ## 6. Artifact bundle & repository
 
 Dedicated **private** repo: **`bridge-craftwork/bridge-classroom-bug-artifacts`** (separate from
@@ -217,9 +262,13 @@ tooling. Body contains, in order:
 2. **Environment table** — the §5 block rendered as a markdown table
    (searchable: `is:issue "arrangement: grid"` must work).
 3. **Screenshot inline** (markdown image → raw URL, same repo).
-4. **Bundle link** — one link to the bundle directory; individual links to
+4. **Layout** (§5b) — a collapsed `<details>` surfacing the highest-signal bits:
+   the hand-box ancestry (width · min-width · scoped) and a **capped** anchor
+   table (sel · w · minW · vars). The full block stays in `context.json`; the
+   issue shows the shrink-wrap/scope story without a download.
+5. **Bundle link** — one link to the bundle directory; individual links to
    `fixture.json` and `context.json`.
-5. Labels: `bug-report`, `app:<name>`, `engine:<type>`, plus `phase:<phase>`.
+6. Labels: `bug-report`, `app:<name>`, `engine:<type>`, plus `phase:<phase>`.
 
 ## 8. Report dialog & privacy
 

@@ -24,19 +24,21 @@
       <div v-if="toast" class="beetle-toast">{{ toast }}</div>
     </transition>
   </div>
-  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :client-hints="clientHints" @close="closeDialog" @saved="onSaved" />
+  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :client-hints="clientHints" :layout="layout" @close="closeDialog" @saved="onSaved" />
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { captureScreenshot } from './screenshot.js'
 import { collectClientHints } from './env.js'
+import { collectLayout } from './layout.js'
 import ReportDialog from './ReportDialog.vue'
 
 const capturing = ref(false)
 const dialogOpen = ref(false)
 const screenshot = ref(null)
 const clientHints = ref(null)
+const layout = ref(null)
 const toast = ref('')
 let toastTimer = null
 
@@ -44,6 +46,13 @@ async function onClick() {
   if (capturing.value || dialogOpen.value) return
   capturing.value = true
   try {
+    // Freeze the layout snapshot NOW — on the tap, against the real buggy DOM,
+    // BEFORE the screenshot's transient style-freeze and before the dialog opens
+    // (or a bot/timer mutates the table). This matches what the screenshot shows.
+    // collectLayout() is guarded (returns null on any error), but wrap anyway so
+    // a capture hiccup can never stop the report.
+    layout.value = collectLayoutSafe()
+
     // §4: capture the screen BEFORE the dialog covers it. Grab the async UA
     // client hints (architecture etc.) in the same beat.
     const [shot, hints] = await Promise.all([
@@ -58,9 +67,20 @@ async function onClick() {
   }
 }
 
+function collectLayoutSafe() {
+  try {
+    return collectLayout()
+  } catch (err) {
+    console.warn('[report] layout capture failed (continuing):', err)
+    return null
+  }
+}
+
 function closeDialog() {
   dialogOpen.value = false
   screenshot.value = null
+  clientHints.value = null
+  layout.value = null
 }
 
 // Report finished (local bundle saved + copied, or GitHub issue filed): close the
