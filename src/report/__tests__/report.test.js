@@ -4,11 +4,19 @@ import { collectReport, SCHEMA_VERSION } from '../ReportCollector.js'
 import { buildCcPrompt } from '../ccPrompt.js'
 
 describe('detectApp', () => {
-  it('maps known route prefixes to app ids', () => {
+  it('maps each mounted surface to its own app id', () => {
+    expect(detectApp('/bidding-practice')).toBe('practice-table') // BiddingPracticeView
+    expect(detectApp('/bidding-practice?pbn=...')).toBe('practice-table') // embedded flow
     expect(detectApp('/tables/host')).toBe('table-host')
-    expect(detectApp('/tables/console')).toBe('console')
-    expect(detectApp('/tables/solo')).toBe('practice-table')
+    expect(detectApp('/tables/console/abc')).toBe('console')
+    expect(detectApp('/tables/new')).toBe('table-lobby')
+    expect(detectApp('/play/CODE')).toBe('table-lobby')
+    expect(detectApp('/table/INVITE')).toBe('table-lobby')
+    expect(detectApp('/convention-card')).toBe('convention-card')
     expect(detectApp('/harness/scene/foo')).toBe('harness')
+  })
+  it('does NOT conflate the practice table with the a1 catch-all (the #-triage bug)', () => {
+    expect(detectApp('/bidding-practice')).not.toBe('a1')
   })
   it('defaults everything else to a1 (Scenario Mastery / MainLayout catch-all)', () => {
     expect(detectApp('/')).toBe('a1')

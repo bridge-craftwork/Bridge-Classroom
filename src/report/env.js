@@ -14,9 +14,15 @@
  */
 export function detectApp(path = '') {
   const p = String(path)
-  if (p.startsWith('/tables/host')) return 'table-host'
-  if (p.startsWith('/tables/console') || p.startsWith('/console')) return 'console'
-  if (p.startsWith('/tables')) return 'practice-table'
+  // BiddingPracticeView — the solo/server practice table. (Solo vs server is an
+  // engine distinction, not a route one — env.engine carries that; both mount
+  // here.) Must precede the /tables checks so it isn't lost to the a1 catch-all.
+  if (p.startsWith('/bidding-practice')) return 'practice-table'
+  if (p.startsWith('/tables/host')) return 'table-host'         // TableHostView
+  if (p.startsWith('/tables/console') || p.startsWith('/console')) return 'console' // TeacherConsoleView
+  // TableLobbyView launchers/join flows (/tables/new, /play/:code, /table/:code).
+  if (p.startsWith('/tables') || p.startsWith('/play') || p.startsWith('/table')) return 'table-lobby'
+  if (p.startsWith('/convention-card')) return 'convention-card' // ConventionCardView
   if (p.startsWith('/harness')) return 'harness'
   // Everything else is the MainLayout catch-all = Scenario Mastery (a1).
   return 'a1'

@@ -127,7 +127,9 @@ implementation:
 The harness coordinates plus runtime facts — every field is a filterable
 triage axis:
 
-`app` (a1 | practice-table | table-host | table-student | console) ·
+`app` (a1 | practice-table | table-lobby | table-host | console |
+convention-card | harness — route-derived per `detectApp`; solo vs server on the
+practice table is the `engine` axis, not a separate app id) ·
 `version/commit` · `engine` (local | server) · `phase` · `arrangement` ·
 `--table-scale` (preference and effective per-region if fill-scaling active) ·
 `density` context · `viewport` (w×h, dpr) · `platform/UA` · `board/deal id
