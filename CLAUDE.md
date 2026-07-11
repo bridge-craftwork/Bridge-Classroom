@@ -200,6 +200,33 @@ The `docs/` directory contains the static landing-page sources that `scripts/bui
 
 ---
 
+## Reading a bug-report bundle (dev sink)
+
+The dev-only **beetle** (🐞, bottom-right, dev builds only) captures the app's
+failing state as a **bundle** and copies a ready-to-paste prompt to the clipboard
+pointing here. Design: [documentation/design/bug-reporting-spec.md](documentation/design/bug-reporting-spec.md)
++ [implementation plan](documentation/design/bug-reporting-implementation-plan.md).
+Library: [src/report/](src/report/). This is Slice 0 — local only, no GitHub yet.
+
+When handed a bundle path (`dev-reports/YYYY/MM/<slug>-<ts>/`, gitignored):
+
+1. **Read `context.json` first** — the env block (`app`, `commit`, `viewport`,
+   `route`, and later `arrangement`/`scale`/`phase`), the reporter's `note`, and
+   (once Slice 2 lands) the action `tape`. This is the forensic record.
+2. **`fixture.json`** is the engine state. **Stubbed until Slice 3/4** — until
+   then it just says so; don't expect loadable state yet.
+3. **`screenshot.jpg`** is what the reporter saw (approximate rendering — the
+   rasterizer is not pixel-exact; the fixture is ground truth once it exists).
+4. Once the harness `/harness/report/` loader exists (Slice 3), load
+   `fixture.json` there at the env block's coordinates and compare to the
+   screenshot. Until then, reason from `context.json` + the screenshot.
+
+**Diagnose before changing anything.** The single-file fallback (`*.bundle.json`,
+used when the File System Access API is unavailable) inlines all three as one JSON
+with the screenshot as a data URL.
+
+---
+
 ## Application Architecture
 
 ### Role-Based Lobby Tabs

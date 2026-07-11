@@ -1,0 +1,113 @@
+<!--
+  BeetleButton — the in-app problem-report trigger (spec §8).
+
+  SLICE 0 scope: dev-only. A tap captures a screenshot (before any dialog covers
+  the screen, §4) and opens ReportDialog, which writes a bundle to the local dev
+  sink and hands back a copy-able CC prompt. No GitHub, no sanitization, no
+  consent — that arrives in Slice 1, when the same button/dialog gain the privacy
+  preview, identity, and a pluggable GitHub sink.
+
+  Mounted once at the app root (App.vue), so it rides every shell automatically.
+-->
+<template>
+  <div class="beetle-root">
+    <button
+      class="beetle-btn"
+      :disabled="capturing"
+      :title="capturing ? 'Capturing…' : 'Report a bug (dev): capture a state bundle'"
+      aria-label="Report a bug"
+      @click="onClick"
+    >
+      🐞
+    </button>
+    <transition name="beetle-fade">
+      <div v-if="toast" class="beetle-toast">{{ toast }}</div>
+    </transition>
+  </div>
+  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" @close="closeDialog" @saved="onSaved" />
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { captureScreenshot } from './screenshot.js'
+import ReportDialog from './ReportDialog.vue'
+
+const capturing = ref(false)
+const dialogOpen = ref(false)
+const screenshot = ref(null)
+const toast = ref('')
+let toastTimer = null
+
+async function onClick() {
+  if (capturing.value || dialogOpen.value) return
+  capturing.value = true
+  try {
+    // §4: capture the screen BEFORE the dialog covers it.
+    screenshot.value = await captureScreenshot()
+  } catch (err) {
+    console.warn('[report] screenshot failed:', err)
+    screenshot.value = null
+  } finally {
+    capturing.value = false
+    dialogOpen.value = true
+  }
+}
+
+function closeDialog() {
+  dialogOpen.value = false
+  screenshot.value = null
+}
+
+// Bundle saved and prompt copied: close the dialog and flash a self-dismissing
+// toast, so the user's only remaining action is to paste into VS Code.
+function onSaved() {
+  closeDialog()
+  toast.value = '✓ Saved and prompt copied to clipboard'
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = '' }, 3500)
+}
+</script>
+
+<style scoped>
+.beetle-root {
+  position: fixed;
+  right: 16px;
+  bottom: 64px; /* lifted clear of the footer (Discord/GitHub) — it overlapped at narrow widths */
+  z-index: 2147483000; /* above app modals; this is a dev tool */
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.beetle-toast {
+  pointer-events: auto;
+  max-width: 280px;
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: var(--green-dark, #2d6a4f);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+}
+.beetle-fade-enter-active, .beetle-fade-leave-active { transition: opacity 0.25s ease; }
+.beetle-fade-enter-from, .beetle-fade-leave-to { opacity: 0; }
+.beetle-btn {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff8e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+.beetle-btn:hover { opacity: 1; }
+.beetle-btn:active { transform: scale(0.94); }
+.beetle-btn:disabled { cursor: progress; opacity: 0.4; }
+</style>
