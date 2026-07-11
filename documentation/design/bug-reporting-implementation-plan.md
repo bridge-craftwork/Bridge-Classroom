@@ -24,7 +24,7 @@ the repo as it stands on 2026-07-10.
 | Fixture engine + harness | **Exists** — `VITE_HARNESS` routes `/harness/scene/:scene`, `TableScene.vue`, `ServerTableScene.vue`, `fixtureDriver.test.js`, fixtures in `src/harness/fixtures/*.js` | **Fixtures are JS module literals today, not schema-validated JSON.** Spec wants `fixture.json` + a schema. Resolve in Slice 3 (below). **No `/harness/report/` loader route** yet — new. |
 | Screenshot / DOM rasterize | **Missing** — no `html2canvas`/`modern-screenshot` in `package.json` | New dependency (Slice 0). |
 | Shared top-bar to host the beetle | **Missing** — no single shell across all four apps; MainLayout, TableHostView, TeacherConsoleView each own their chrome; the shared shell is still converging (`integration-roadmap.md`) | Mount the beetle **per-shell as a fixed-position element**, not blocked on top-bar convergence (see Slice 1). |
-| Private artifacts repo `bridge-craftwork/bug-artifacts` | **Missing** — must be created; needs a PAT with Contents:write + Issues:write | Ops step before Slice 1's GitHub sink goes live. |
+| Private artifacts repo `bridge-craftwork/bridge-classroom-bug-artifacts` | **Missing** — must be created; needs a PAT with Contents:write + Issues:write | Ops step before Slice 1's GitHub sink goes live. |
 
 ---
 
@@ -107,20 +107,20 @@ a CC prompt on the clipboard. No sanitization, no consent, no network.
 - `bridge-classroom-api/src/routes/bug_reports.rs`:
   1. Sanitize (server-side is fine for the GitHub sink; the dev sink never hits
      this path).
-  2. Commit bundle to `bridge-craftwork/bug-artifacts` via the Contents API
+  2. Commit bundle to `bridge-craftwork/bridge-classroom-bug-artifacts` via the Contents API
      (screenshot as base64) — **before** issue creation so the body embeds final
      raw URLs (§6).
-  3. Create the issue **in `bug-artifacts`** (inline screenshot renders only
+  3. Create the issue **in `bridge-classroom-bug-artifacts`** (inline screenshot renders only
      because issue + image share the private repo — §6), body per §7, labels
      `bug-report` / `app:<name>` / `engine:<type>` / `phase:<phase>`.
   4. Second micro-commit writing the issue number into `context.json`.
 - Reuse the reqwest client + token loading from `reports.rs`. **New secret**
-  `BUG_ARTIFACTS_TOKEN` (fine-grained PAT: `bug-artifacts` Contents:write +
+  `BUG_ARTIFACTS_TOKEN` (fine-grained PAT: `bridge-classroom-bug-artifacts` Contents:write +
   Issues:write). Fails **closed → 503** when unset (mirror `reports.rs`), so the
   UI degrades to "reporting isn't set up." Adding the env var needs a full
   launchd `bootout`/`bootstrap` (per CLAUDE.md, `kickstart` won't pick it up).
 
-**Ops (before this ships):** create the private `bug-artifacts` repo; mint and
+**Ops (before this ships):** create the private `bridge-classroom-bug-artifacts` repo; mint and
 install `BUG_ARTIFACTS_TOKEN`.
 
 **Done when:** filing from any app creates an issue in the private repo with the
@@ -201,7 +201,7 @@ the loader refuse stale bundles legibly; no migration shims.
    into the shared top-bar if/when the integration-roadmap converges one; do not
    block bug reporting on that convergence.
 5. **Hand-report migration** (spec §5a) — moving the existing content-report
-   destination to `bug-artifacts` + pseudonymizing old public issues is
+   destination to `bridge-classroom-bug-artifacts` + pseudonymizing old public issues is
    **independent of all beetle slices** and can run whenever; not on this
    worktree's critical path.
 

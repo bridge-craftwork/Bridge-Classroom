@@ -166,7 +166,7 @@ wording, one remembered preference across both pipelines:
 
 ## 6. Artifact bundle & repository
 
-Dedicated **private** repo: **`bridge-craftwork/bug-artifacts`** (separate from
+Dedicated **private** repo: **`bridge-craftwork/bridge-classroom-bug-artifacts`** (separate from
 code repos; visible to maintainers only; lifecycle = delete-and-restart if ever
 needed; scale analysis says it never will be). Privacy boundary rationale:
 screenshots may contain player names and full deals; a single private repo wall

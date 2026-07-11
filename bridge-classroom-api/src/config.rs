@@ -58,6 +58,18 @@ pub struct Config {
     /// token, so it should be a repo that token owns.
     pub github_issues_repo: String,
 
+    /// PAT for the in-app bug-report "beetle" (issue path). Owned by Rick,
+    /// fine-grained, scoped to the private artifacts repo with Contents +
+    /// Issues read/write. When unset the /api/bug-report endpoint degrades
+    /// gracefully (503). Distinct from the content-report tokens above —
+    /// beetle reports are about the *app*, not lesson content.
+    pub bug_artifacts_token: Option<String>,
+
+    /// owner/repo the beetle commits bundles into and files issues in
+    /// (same repo, so inline screenshots render off the viewer's session).
+    /// Private; maintainers only.
+    pub bug_artifacts_repo: String,
+
     /// HMAC secret for minting table-service join tickets (optional).
     /// Shared with bridge-table-service, which verifies tickets offline.
     /// When unset, POST /api/table-tickets degrades gracefully (503).
@@ -128,6 +140,14 @@ impl Config {
         let github_issues_repo = env::var("GITHUB_ISSUES_REPO")
             .unwrap_or_else(|_| "bridge-craftwork/Bridge-Classroom".to_string());
 
+        // Beetle bug-report token (Rick's PAT for the private artifacts repo).
+        // Empty == unset == the /api/bug-report endpoint 503s.
+        let bug_artifacts_token = env::var("BUG_ARTIFACTS_TOKEN")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        let bug_artifacts_repo = env::var("BUG_ARTIFACTS_REPO")
+            .unwrap_or_else(|_| "bridge-craftwork/bridge-classroom-bug-artifacts".to_string());
+
         // Treat an empty TABLE_TICKET_SECRET the same as unset.
         let table_ticket_secret = env::var("TABLE_TICKET_SECRET")
             .ok()
@@ -153,6 +173,8 @@ impl Config {
             github_issues_token,
             github_issues_token_pbs,
             github_issues_repo,
+            bug_artifacts_token,
+            bug_artifacts_repo,
             table_ticket_secret,
             table_service_url,
         })
