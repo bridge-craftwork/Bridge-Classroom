@@ -6,6 +6,7 @@ import { useBoardStatus } from './useBoardStatus.js'
 import { useAssignmentStatus } from './useAssignmentStatus.js'
 import { logDiagnostic } from '../utils/diagnostics.js'
 import { API_URL } from '@/utils/apiUrl.js'
+import { apiFetch } from '@/utils/apiFetch.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 
@@ -71,11 +72,10 @@ async function registerUserWithServer(user) {
       payload.secret_key = user.secretKey
     }
 
-    const response = await fetch(`${API_URL}/users`, {
+    const response = await apiFetch(`${API_URL}/users`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     })
@@ -130,11 +130,10 @@ async function syncObservationsToServer(observations) {
       }))
     }
 
-    const response = await fetch(`${API_URL}/observations`, {
+    const response = await apiFetch(`${API_URL}/observations`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     })

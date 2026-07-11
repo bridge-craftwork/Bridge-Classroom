@@ -1,7 +1,6 @@
 import { ref, computed } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton state for teacher lobby dashboard
 const lobbyClassrooms = ref([])
@@ -27,9 +26,8 @@ async function loadTeacherLobbyData(teacherId, forceRefresh = false) {
   lobbyLoading.value = true
 
   try {
-    const response = await fetch(
-      `${API_URL}/teacher/dashboard?teacher_id=${encodeURIComponent(teacherId)}`,
-      { headers: { 'x-api-key': API_KEY } }
+    const response = await apiFetch(
+      `${API_URL}/teacher/dashboard?teacher_id=${encodeURIComponent(teacherId)}`
     )
 
     if (!response.ok) {
@@ -58,9 +56,9 @@ async function loadTeacherLobbyData(teacherId, forceRefresh = false) {
  */
 async function clearPanel(teacherId, panel) {
   try {
-    const response = await fetch(`${API_URL}/teacher/dashboard/clear`, {
+    const response = await apiFetch(`${API_URL}/teacher/dashboard/clear`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ teacher_id: teacherId, panel })
     })
 

@@ -12,8 +12,7 @@
 // Singleton pattern (module-level state) per project convention.
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 const entries = ref([]) // metadata list for the last-fetched owner/folder
 const loading = ref(false)
@@ -45,9 +44,7 @@ export function useDealLibrary() {
     try {
       const params = new URLSearchParams({ owner })
       if (parentId) params.set('parent_id', parentId)
-      const response = await fetch(`${API_URL}/deal-library?${params.toString()}`, {
-        headers: { 'x-api-key': API_KEY },
-      })
+      const response = await apiFetch(`${API_URL}/deal-library?${params.toString()}`)
       if (!response.ok) {
         error.value = (await response.text()) || `Server error (${response.status})`
         return null
@@ -71,9 +68,7 @@ export function useDealLibrary() {
   /** Fetch a single entry WITH its payload (PBN text or JSON descriptor). */
   async function fetchEntry(id) {
     try {
-      const response = await fetch(`${API_URL}/deal-library/${encodeURIComponent(id)}`, {
-        headers: { 'x-api-key': API_KEY },
-      })
+      const response = await apiFetch(`${API_URL}/deal-library/${encodeURIComponent(id)}`)
       if (!response.ok) {
         error.value = (await response.text()) || `Server error (${response.status})`
         return null
@@ -100,9 +95,9 @@ export function useDealLibrary() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_URL}/deal-library`, {
+      const response = await apiFetch(`${API_URL}/deal-library`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           owner,
           parent_id: parent_id || null,
@@ -138,9 +133,9 @@ export function useDealLibrary() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_URL}/deal-library/${encodeURIComponent(id)}`, {
+      const response = await apiFetch(`${API_URL}/deal-library/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
       if (!response.ok) {
@@ -168,9 +163,9 @@ export function useDealLibrary() {
       const params = new URLSearchParams()
       if (actorUserId) params.set('actor_user_id', actorUserId)
       const qs = params.toString()
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/deal-library/${encodeURIComponent(id)}${qs ? '?' + qs : ''}`,
-        { method: 'DELETE', headers: { 'x-api-key': API_KEY } }
+        { method: 'DELETE' }
       )
       if (!response.ok) {
         error.value = (await response.text()) || `Server error (${response.status})`

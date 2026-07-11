@@ -3,8 +3,7 @@ import { useUserStore } from './useUserStore.js'
 import { useObservationStore } from './useObservationStore.js'
 import { decryptObservation } from '../utils/crypto.js'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton state
 const observations = ref([])
@@ -22,11 +21,7 @@ const CACHE_DURATION_MS = 5 * 60 * 1000
  * @returns {Promise<Array>} Raw encrypted observations
  */
 async function fetchObservationsFromServer(userId) {
-  const response = await fetch(`${API_URL}/observations?user_id=${userId}&limit=10000`, {
-    headers: {
-      'x-api-key': API_KEY
-    }
-  })
+  const response = await apiFetch(`${API_URL}/observations?user_id=${userId}&limit=10000`)
 
   if (!response.ok) {
     throw new Error(`Server error: ${response.status}`)

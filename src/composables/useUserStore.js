@@ -8,6 +8,7 @@ import {
   decryptObservation
 } from '../utils/crypto.js'
 import { API_URL } from '@/utils/apiUrl.js'
+import { apiFetch } from '@/utils/apiFetch.js'
 
 const STORAGE_KEY = 'bridgePractice'
 
@@ -82,7 +83,7 @@ async function createUser({ firstName, lastName, email, classrooms = [], dataCon
   let adminGrantPayload = null
   if (apiUrl) {
     try {
-      const adminKeyResponse = await fetch(`${apiUrl}/keys/admin`)
+      const adminKeyResponse = await apiFetch(`${apiUrl}/keys/admin`)
       if (adminKeyResponse.ok) {
         const adminData = await adminKeyResponse.json()
         adminViewerId.value = adminData.viewer_id
@@ -382,7 +383,7 @@ async function createGrantForViewer(viewerPublicKey) {
  */
 async function requestRecovery(email, apiUrl) {
   try {
-    const response = await fetch(`${apiUrl}/recovery/request`, {
+    const response = await apiFetch(`${apiUrl}/recovery/request`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -435,7 +436,7 @@ async function requestRecovery(email, apiUrl) {
  */
 async function claimRecovery(userId, token, apiUrl) {
   try {
-    const response = await fetch(`${apiUrl}/recovery/claim`, {
+    const response = await apiFetch(`${apiUrl}/recovery/claim`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -524,11 +525,9 @@ function applyRecoveredUser(serverUser) {
  * keeper, and consume the row. Returns true if a swap happened (caller reloads).
  */
 async function checkAccountHandoff(awayUserId) {
-  const apiKey = import.meta.env.VITE_API_KEY || ''
   try {
-    const res = await fetch(
-      `${API_URL}/account-handoff?from_user_id=${encodeURIComponent(awayUserId)}`,
-      { headers: { 'x-api-key': apiKey } }
+    const res = await apiFetch(
+      `${API_URL}/account-handoff?from_user_id=${encodeURIComponent(awayUserId)}`
     )
     if (!res.ok) return false // 404 = no handoff pending
 
@@ -553,9 +552,9 @@ async function checkAccountHandoff(awayUserId) {
     saveToStorage()
 
     // Single-use marker (best-effort; the swap already happened locally).
-    fetch(`${API_URL}/account-handoff/consume`, {
+    apiFetch(`${API_URL}/account-handoff/consume`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from_user_id: awayUserId })
     }).catch(() => {})
 
@@ -568,7 +567,7 @@ async function checkAccountHandoff(awayUserId) {
 
 async function claimRecoveryByCode(email, code, apiUrl) {
   try {
-    const response = await fetch(`${apiUrl}/recovery/claim-code`, {
+    const response = await apiFetch(`${apiUrl}/recovery/claim-code`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -607,12 +606,8 @@ async function syncRole() {
   const user = users.value[currentUserId.value]
   if (!user) return
 
-  const apiKey = import.meta.env.VITE_API_KEY || ''
-
   try {
-    const res = await fetch(`${API_URL}/users/${encodeURIComponent(user.id)}`, {
-      headers: { 'x-api-key': apiKey }
-    })
+    const res = await apiFetch(`${API_URL}/users/${encodeURIComponent(user.id)}`)
     if (res.status === 404) {
       // Our account row is gone — most likely it was merged into a keeper.
       // If a handoff is staged, switch this device to the keeper and reload.
