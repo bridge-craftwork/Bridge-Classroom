@@ -47,19 +47,26 @@ for (const { component, specimen, capture } of walk) {
         deviceScaleFactor: 2,
       })
       const url = `${BASE}/#/harness/component/${component}/${specimen}?w=${wname}&scale=${sval}`
-      await page.goto(url, { waitUntil: 'networkidle' })
-      // `attached`, not the default `visible`: a floating-overlay specimen leaves
-      // the frame zero-height, but the ready flag is still in the DOM once rendered.
-      await page.waitForSelector('[data-harness-ready]', { state: 'attached', timeout: 15000 })
-      await page.evaluate(() => document.fonts.ready)
-      // Let ResizeObserver-driven fit measurements (HandDisplay) settle.
-      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
-      // Filename token: <width>@<scale>.png (e.g. panel@1.25.png).
-      const out = path.join(OUT_ROOT, component, specimen, `${wname}@${sval}.png`)
-      fs.mkdirSync(path.dirname(out), { recursive: true })
-      // `capture` targets a floating element by selector; otherwise crop the frame.
-      const target = capture ? page.locator(capture) : await page.$('.harness-frame')
-      await target.screenshot({ path: out })
+      try {
+        await page.goto(url, { waitUntil: 'networkidle' })
+        // `attached`, not the default `visible`: a floating-overlay specimen leaves
+        // the frame zero-height, but the ready flag is still in the DOM once rendered.
+        await page.waitForSelector('[data-harness-ready]', { state: 'attached', timeout: 15000 })
+        await page.evaluate(() => document.fonts.ready)
+        // Let ResizeObserver-driven fit measurements (HandDisplay) settle.
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+        // Filename token: <width>@<scale>.png (e.g. panel@1.25.png).
+        const out = path.join(OUT_ROOT, component, specimen, `${wname}@${sval}.png`)
+        fs.mkdirSync(path.dirname(out), { recursive: true })
+        // `capture` targets a floating element by selector; otherwise crop the frame.
+        const target = capture ? page.locator(capture) : await page.$('.harness-frame')
+        await target.screenshot({ path: out })
+      } catch (e) {
+        // Name the offending cell — the walk is otherwise silent about which of
+        // 500+ routes hung, which makes flakes/regressions painful to trace.
+        console.error('WALK-FAIL', url, capture ? '(capture)' : '', e.message.split('\n')[0])
+        throw e
+      }
       await page.close()
       shots++
     }

@@ -13,13 +13,16 @@
   <div ref="rootEl" class="holding" :class="[densityClass, { compact, 'hide-played': hidePlayedCards }]">
     <div v-if="hand" class="suits">
       <template v-for="suit in suits" :key="suit">
+        <!-- Rank cells ALWAYS play their card directly — truncation never
+             reroutes a rank tap (same-looking cell → same action; high cards
+             render first, so the visible ones are the frequently played). The
+             +N chip is the SOLE popup portal for the hidden low cards. -->
         <div
           v-if="!isPartialHand || hasSuitCards(suit)"
           class="suit-row"
-          :class="{ truncated: hiddenCount(suit) > 0, tappable: clickable && hiddenCount(suit) > 0 }"
+          :class="{ truncated: hiddenCount(suit) > 0 }"
           :style="rowStyle(suit)"
           :ref="el => setRowRef(suit, el)"
-          @click="clickable && hiddenCount(suit) > 0 && openPopup(suit)"
         >
           <span class="suit-symbol" :class="suitClass(suit)">{{ suitSymbol(suit) }}</span>
           <span class="cards" :ref="el => setCardsRef(suit, el)"><template v-for="(card, i) in visibleRanks(suit)" :key="card"><span
@@ -30,8 +33,9 @@
           >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>{{ i < visibleRanks(suit).length - 1 ? ' ' : '' }}</template><span
             v-if="hiddenCount(suit) > 0"
             class="cell chip"
+            :class="{ pill: clickable }"
             @click.stop="clickable ? openPopup(suit) : null"
-          > +{{ hiddenCount(suit) }}<span v-if="hiddenMarked(suit)" class="chip-dot">•</span></span></span>
+          >+{{ hiddenCount(suit) }}<span v-if="hiddenMarked(suit)" class="chip-dot">•</span></span></span>
         </div>
       </template>
     </div>
@@ -48,7 +52,7 @@
         <div v-if="!isPartialHand || hasSuitCards(suit)" class="suit-row">
           <span class="suit-symbol">{{ suitSymbol(suit) }}</span>
           <span class="cards" :ref="el => setProbeRef(suit, el)"><template v-for="(card, i) in renderedRanks(suit)" :key="card"><span class="cell">{{ formatCard(card) }}</span>{{ i < renderedRanks(suit).length - 1 ? ' ' : '' }}</template></span>
-          <span class="cell chip chip-probe" :ref="el => setChipRef(suit, el)"> +13</span>
+          <span class="cell chip chip-probe" :class="{ pill: clickable }" :ref="el => setChipRef(suit, el)">+13</span>
         </div>
       </template>
     </div>
@@ -269,8 +273,6 @@ function onPopupSelect(rank) {
      clips). At 1 this is calc(...*1) = today. */
   font-size: calc(24px * var(--table-scale) * var(--suit-scale, 1));
 }
-.suit-row.tappable { cursor: pointer; }
-
 .suit-symbol {
   font-size: calc(27px * var(--table-scale));
   width: calc(28px * var(--table-scale));
@@ -293,15 +295,47 @@ function onPopupSelect(rank) {
 /* One card. Plain inline run (no box model), tight space-joined layout. */
 .cell { display: inline; }
 
-/* +N truncation chip: a content-zone cell that scales with the row. Muted so
-   the real cards dominate. Inert on non-clickable hands (must not steal the
-   console tile's whole-surface click-through); a tap target on clickable. */
+/* +N truncation chip. Non-clickable (console tiles): undressed, full-weight ink
+   — it's information, not metadata-gray — and inert, so it never steals the
+   tile's whole-surface click-through. A real left gap separates it from the last
+   rank cell in both modes. */
 .cell.chip {
-  color: #7a7f78;
+  color: #1a1a1a;
   font-weight: 600;
   pointer-events: none;
+  margin-left: calc(6px * var(--table-scale) * var(--suit-scale, 1));
 }
-.suit-row.tappable .cell.chip { pointer-events: auto; cursor: pointer; }
+/* Clickable: the sole popup portal, dressed in the tappable vocabulary (kin to
+   bidding-box buttons + the popup's card cells) — bordered rounded pill, subtle
+   background, NOT purple (purple is the badge/annotation channel). Padding and
+   radius are in em so the pill compresses with the row like any cell. */
+.cell.chip.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.04em 0.32em;
+  border: 1px solid #cfd6ce;
+  border-radius: 0.42em;
+  background: #f2f6f1;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cell.chip.pill:hover { background: #e3efe6; border-color: #7cc59b; }
+.cell.chip.pill:active { background: #d3e7d9; }
+/* Extend the hit area into the row's trailing slack (rightward + a vertical
+   bleed) to a ≥44px effective target, WITHOUT crossing the pill's left edge:
+   left:0 keeps the target off the last visible rank cell (the margin-left gap is
+   real slack), so a tap near that boundary can't ambiguously play the last card
+   vs open the popup. Absolute → overflows without affecting row height. */
+.cell.chip.pill::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: calc(-30px * var(--table-scale));
+  top: calc(-8px * var(--table-scale));
+  bottom: calc(-8px * var(--table-scale));
+}
 .cell.chip .chip-dot { color: #6a1b9a; font-size: 0.8em; vertical-align: 0.15em; }
 
 .cell.played {
