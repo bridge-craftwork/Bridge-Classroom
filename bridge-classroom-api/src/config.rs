@@ -107,8 +107,12 @@ impl Config {
         let teacher_password = env::var("TEACHER_PASSWORD")
             .unwrap_or_else(|_| "changeme".to_string()); // Default for development
 
+        // Dev default covers the Vite dev ports (5173, and lane2's 5174) plus
+        // the Vite preview port (4173). Prod sets the full pinned list incl. the
+        // real domains via the launchd plist. Keep this list explicit (no "*")
+        // so the credentialed CORS branch (ADR-0004) is used by default.
         let allowed_origins = env::var("ALLOWED_ORIGINS")
-            .unwrap_or_else(|_| "http://localhost:5173,http://localhost:4173".to_string())
+            .unwrap_or_else(|_| "http://localhost:5173,http://localhost:5174,http://localhost:4173".to_string())
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
