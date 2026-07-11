@@ -36,7 +36,8 @@ tree has moved. Confirmed by reading the code:
 ## Phases
 
 Ordered so the two no-regret prerequisites can start immediately and independently,
-and the one lockstep coupling (CORS ↔ credentials) is isolated to a single phase.
+and the CORS change ships backend-first (backward-compatible), with the frontend's
+`credentials:'include'` following safely in a later phase — no coordinated deploy.
 
 ### Phase 0 — No-regret prerequisites (independent, start anytime)
 
@@ -51,31 +52,46 @@ does **not** become a new key-delivery channel, so this pattern must not exist.
 ~25 composables to it. Prerequisite for Phase 3 *and* pays down review §A1's copy-paste
 fetch problem. No behavior change on landing.
 
-### Phase 1 — Backend session layer
+### Phase 1 — Backend session layer ✅ DONE (`feat/phase1-backend-sessions`)
 
-- `sessions` table: `id` (cookie value), `user_id`, `created_at`, `expires_at`,
-  `revoked_at`, device/platform columns; created in `db.rs` migrations.
-- Set `__Host-bc_session` (`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=<long>`,
-  host-only) on successful `auth` and recovery-claim.
-- `GET /api/session` — active user + full identity roster for this browser.
-- `DELETE /api/session` — revoke / sign-out.
-- A `require_session` extractor returning a verified `user_id` (mirrors ADR-0003's
-  `verify_signed_request` shape, but keyed on the opaque cookie, not a signature).
+- `sessions` table: `id` = **sha256(token)** (raw token only in the cookie),
+  `user_id`, `created_at`, `expires_at`, `revoked_at`, device columns; in `db.rs`.
+- Sets `__Host-bc_session` (`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=180d`,
+  host-only) on **recovery-claim** success. `create_user` is deliberately not a
+  mint point (per-sync upsert); new-registration minting moves to Phase 3.
+- `GET /api/session` — active user, **identity only** (no key material). The
+  Switch-User roster is reconciled client-side (ADR-0004 caveat 1), not server-
+  enumerated.
+- `DELETE /api/session` — revoke + clear cookie.
+- `require_session(state, headers) -> Result<user_id>` helper (plain fn, matching
+  the codebase's `validate_api_key` style) — the proven id Phase 4 authorizes on.
+- `cookie_secure` config (`COOKIE_SECURE`, default true) for plain-http dev.
+- **Inert until Phase 3** (cookie is set, but doesn't round-trip cross-origin until
+  Phase 2's CORS `allow_credentials` **and** Phase 3's frontend `credentials:'include'`
+  both land). Verified e2e on an isolated instance + unit tests.
 
-### Phase 2 — CORS + credentials flip (the one lockstep deploy)
+### Phase 2 — CORS hardening (backend-first, backward-compatible)
 
-- [`build_cors_layer`](../../bridge-classroom-api/src/main.rs): pin the two real
-  origins + `allow_credentials(true)`; drop the `Any` fallback in prod. **Closes §S8.**
-- Frontend: `apiFetch` sends `credentials:'include'`.
-- **Must ship together** — a half-deploy breaks same-origin dev and both prod domains.
-  This is the highest-coordination step; treat it as one atomic release.
+- [`build_cors_layer`](../../bridge-classroom-api/src/main.rs): pin the real origins +
+  `allow_credentials(true)`; drop the `Any` fallback in prod. **Closes §S8.**
+- **Not a lockstep deploy.** `allow_credentials(true)` is invisible to the current
+  non-credentialed frontend (a request that sends no credentials only needs its Origin
+  reflected, which pinning does). So this ships **backend-first and soaks** on its own;
+  the frontend's `credentials:'include'` comes later, in Phase 3. The only unsafe order
+  is frontend-first (a credentialed request forbids `Access-Control-Allow-Origin: *`).
+- **Real risk = pin-list completeness, not timing.** The pins must cover *every* real
+  origin — both prod domains **and** dev `:5173` + lane2's `:5174` — since leaving `Any`
+  breaks any un-pinned origin immediately, even without credentials.
 
-### Phase 3 — Frontend session adoption
+### Phase 3 — Frontend session adoption (incl. `credentials:'include'`)
 
+- `apiFetch` sends `credentials:'include'` — safe now that Phase 2's backend already
+  accepts credentialed requests from the pinned origins.
 - On load, `apiFetch('/session')` **before** the localStorage/recovery fallback; an
   emailed `.org` link now recognizes the user automatically in Safari.
 - Reconcile with `Switch User`: cookie tracks the *active* user; `/session` returns the
   roster (ADR-0004 caveat 1).
+- New-registration session minting (deferred from Phase 1) lands here.
 - CSRF: rely on `SameSite=Lax` + CORS-pinned state-changing calls; confirm before
   shipping whether an explicit token is warranted (ADR-0004 open item).
 - **Identity only** — do **not** attempt to rehydrate E2E keys here; past-data
@@ -104,10 +120,13 @@ reads).
 0a §S5 fix ─────────────────────────┐ (independent; unblocks identity-only stance)
 0b apiFetch wrapper ────────┐        │
                             ▼        │
-Phase 1 backend session ──► Phase 2 CORS+credentials (LOCKSTEP) ──► Phase 3 frontend
-                                                                         │
-                                                                         ▼
-                                                              Phase 4 §S7 ownership
+Phase 1 backend session ──► Phase 2 CORS pin+creds (backend-first, back-compat)
+                                          │
+                                          ▼
+                            Phase 3 frontend (credentials:'include' + session-on-load)
+                                          │
+                                          ▼
+                            Phase 4 §S7 ownership checks
 ```
 
 ## Isolation note
