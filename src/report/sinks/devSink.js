@@ -11,6 +11,25 @@ import { buildCcPrompt } from '../ccPrompt.js'
 import { blobToDataUrl } from '../screenshot.js'
 import { writeClipboard } from '../clipboard.js'
 
+// Adjudication scaffold — the mutable verdict that gives a LOCAL bundle the
+// lifecycle a GitHub report gets from its issue state. `context.json` is the
+// immutable evidence (never edited); `adjudication.md` is written after triage.
+// Scaffolded at capture with `status: open` so every bundle dir has one, making
+// "list unresolved local reports" a frontmatter scan (no query tool needed).
+// Status vocabulary: open → triaged → resolved | wontfix | duplicate | rolled-into.
+const ADJUDICATION_SCAFFOLD = `---
+status: open
+resolution:
+refs: []
+adjudicated_by:
+adjudicated_at:
+---
+
+## Narrative
+
+_Untriaged._
+`
+
 const IDB_NAME = 'bug-report-devsink'
 const IDB_STORE = 'handles'
 const HANDLE_KEY = 'dir'
@@ -150,9 +169,11 @@ export async function saveToDevSink(bundle, opts = {}) {
   }
 
   if (singleFile) {
-    // Fallback: one JSON file, screenshot inlined as a data URL.
+    // Fallback: one JSON file, screenshot inlined as a data URL. No separate
+    // mutable file here, so inline the scaffold as a field (dir-bundles get the
+    // real adjudication.md; the lifecycle lives with the standard layout).
     const dataUrl = await blobToDataUrl(screenshot).catch(() => null)
-    const single = { context, fixture, screenshot: dataUrl }
+    const single = { context, fixture, screenshot: dataUrl, adjudication: ADJUDICATION_SCAFFOLD }
     triggerDownload(path, new Blob([JSON.stringify(single, null, 2)], { type: 'application/json' }))
   } else {
     // Standard layout: <picked>/YYYY/MM/<slug>-<stamp>/{context,fixture}.json + screenshot.jpg
@@ -162,6 +183,13 @@ export async function saveToDevSink(bundle, opts = {}) {
     await writeFile(bundleDir, 'context.json', JSON.stringify(context, null, 2))
     await writeFile(bundleDir, 'fixture.json', JSON.stringify(fixture, null, 2))
     if (screenshot) await writeFile(bundleDir, 'screenshot.jpg', screenshot)
+    // Adjudication scaffold last + guarded: the evidence is already saved, so a
+    // scaffold-write hiccup must never fail the report (robustness contract).
+    try {
+      await writeFile(bundleDir, 'adjudication.md', ADJUDICATION_SCAFFOLD)
+    } catch (err) {
+      console.warn('[report] adjudication scaffold write failed (bundle still saved):', err)
+    }
   }
 
   return { ok: true, path, singleFile, ccPrompt, copied }

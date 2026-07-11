@@ -220,6 +220,11 @@ When handed a bundle path (`dev-reports/YYYY/MM/<slug>-<ts>/`, gitignored):
 4. Once the harness `/harness/report/` loader exists (Slice 3), load
    `fixture.json` there at the env block's coordinates and compare to the
    screenshot. Until then, reason from `context.json` + the screenshot.
+5. **Record your verdict in `adjudication.md`** (scaffolded beside the evidence
+   with `status: open`): set `status` (`resolved`/`wontfix`/`duplicate`/
+   `rolled-into`/…), a one-line `resolution`, `refs` (PRs/issues/commits), and
+   append the diagnosis + decision to the **Narrative**. **Never edit
+   `context.json`** — it's the immutable evidence.
 
 **Diagnose before changing anything.** The single-file fallback (`*.bundle.json`,
 used when the File System Access API is unavailable) inlines all three as one JSON
