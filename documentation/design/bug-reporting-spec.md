@@ -255,6 +255,30 @@ YYYY/MM/<issue-slug>-<timestamp>/
   obligation attaches to it (see §9) — it exists so future loaders can decline
   old bundles legibly instead of mis-rendering them.
 
+## 6a. Adjudication (local reports)
+
+A dev-sink bundle is write-once evidence; a GitHub report carries its lifecycle
+in the issue's state/labels/comments. Local reports get the same, as a **second
+file beside the evidence** — two files, two lifecycles:
+
+- **`context.json`** — the immutable evidence the tool captured. **Never edited.**
+- **`adjudication.md`** — the mutable verdict, written after triage. Markdown +
+  YAML frontmatter (this repo's memory-file convention: readable and parseable).
+
+The dev sink **scaffolds `adjudication.md` at capture** with `status: open`, so a
+bundle dir always has one — "list unresolved local reports" is then a frontmatter
+scan for `status: open` (the field is guaranteed; the query tool is not built).
+
+- **Frontmatter:** `status` · `resolution` (one line) · `refs` (PRs/issues/
+  commits) · `adjudicated_by` · `adjudicated_at`. Body is an **append-only
+  Narrative** (diagnosis + decision).
+- **Status vocabulary:** `open → triaged → resolved | wontfix | duplicate |
+  rolled-into`.
+- **Local stays local:** these live under gitignored `dev-reports/`; no
+  cross-machine durability obligation — that's what the GitHub sink is for. The
+  single-file fallback inlines the scaffold as an `adjudication` field (only
+  dir-bundles get the standalone file).
+
 ## 7. GitHub issue format
 
 Created **in the private artifacts repo** via the existing issue-creation
