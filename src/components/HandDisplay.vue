@@ -10,7 +10,7 @@
        capability is lost: the hidden cards stay viewable/selectable through the
        floating CardSelectorPopup, which floats above the layout and may wrap
        freely without pushing anything. SeatPanel supplies the box + frame. -->
-  <div ref="rootEl" class="holding" :class="[densityClass, { compact, 'hide-played': hidePlayedCards }]">
+  <div ref="rootEl" class="holding" :class="[densityClass, { compact, 'hide-played': hidePlayedCards, 'has-badges': hasBadges }]">
     <div v-if="hand" class="suits">
       <template v-for="suit in suits" :key="suit">
         <!-- Rank cells ALWAYS play their card directly — truncation never
@@ -144,6 +144,13 @@ function cardMark(suit, rank) {
 }
 function isCardPlayed(suit, rank) { return !!cardMark(suit, rank)?.played }
 function cardBadge(suit, rank) { return cardMark(suit, rank)?.badge || null }
+// Any card carrying a badge → reserve overhang room on the holding (below). Kept
+// a whole-hand flag, not per-card, because the reservation is a holding-edge
+// concern. Badge-free hands (all of production a1) never get the class.
+const hasBadges = computed(() => {
+  const cards = props.marks?.cards
+  return !!cards && Object.values(cards).some((m) => m && m.badge)
+})
 function cellFill(suit, rank) {
   const fill = cardMark(suit, rank)?.fill
   return fill ? { backgroundColor: fill } : null
@@ -368,20 +375,35 @@ function onPopupSelect(rank) {
 .cell.interactive:active { background: #90caf9; }
 
 .cell.has-badge { position: relative; }
+/* Corner annotation chip. Offsets, font and padding ride BOTH scales —
+   --table-scale (design scale) and --suit-scale (this row's compression, which
+   custom props inherit into the cell) — so the badge stays glued to its glyph at
+   every size instead of floating oversized on a compressed row. At table-scale 1
+   / suit-scale 1 these equal the original px, so nothing shifts at 1×. */
 .cell-badge {
   position: absolute;
-  top: -7px;
-  right: -3px;
-  font-size: calc(10px * var(--table-scale));
+  top: calc(-7px * var(--table-scale) * var(--suit-scale, 1));
+  right: calc(-3px * var(--table-scale) * var(--suit-scale, 1));
+  font-size: calc(10px * var(--table-scale) * var(--suit-scale, 1));
   line-height: 1;
   font-weight: 700;
   letter-spacing: 0;
   color: #fff;
   background: #6a1b9a;
   border-radius: 8px;
-  padding: calc(1px * var(--table-scale)) calc(4px * var(--table-scale));
+  padding: calc(1px * var(--table-scale) * var(--suit-scale, 1)) calc(4px * var(--table-scale) * var(--suit-scale, 1));
 }
-.suit-row:first-child .cell-badge { top: 2px; }
+/* Containment: reserve the badge's overhang as holding padding, ONLY when the
+   hand carries badges (badge-free a1 hands stay pixel-identical). This replaces
+   the old first-row-only `top: 2px` nudge — the padding-top keeps a first-row
+   badge below the frame edge on EVERY row uniformly, and the padding-right both
+   keeps a right-edge badge inside the frame AND narrows the row's measured
+   `available`, so the suit-fit leaves room for that badge automatically. Sized
+   for the worst case (uncompressed) badge. */
+.holding.has-badges {
+  padding-top: calc(8px * var(--table-scale));
+  padding-right: calc(7px * var(--table-scale));
+}
 
 .hcp {
   margin-top: calc(8px * var(--table-scale));
