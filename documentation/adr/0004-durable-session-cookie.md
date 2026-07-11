@@ -1,21 +1,24 @@
 # ADR-0004: Durable per-user session via a first-party server-set cookie
 
-**Status:** Proposed (2026-07-10)
-**Date:** 2026-07-10
+**Status:** Accepted (2026-07-10) · Phases 0–2 deployed 2026-07-11 · key-redelivery
+revision 2026-07-11
+**Date:** 2026-07-10, revised 2026-07-11
 **Deciders:** Rick (Bridge Classroom)
 **Related:** GitHub #85 (durable iPad/Safari sessions), #83 (PWA stopgap), #33 (auth
 hardening), review §S5/§S6/§S7/§S8, [ADR-0003](0003-signed-request-auth-for-privileged-endpoints.md)
 (signed-request auth for privileged endpoints).
 
-**Decisions locked at proposal:** (1) Near-term durability is a **first-party,
-host-only, server-set session cookie** on the `api.*` host — **not** the PWA (#83)
-and **not** (yet) a native app. (2) Session restore is **identity-only**: the cookie
-re-establishes *who you are*; it does **not** re-deliver E2E decryption key material
-— that stays behind the existing recovery flow. This lets us **fix** review §S5
-rather than build on it. (3) The cookie is the **middle trust tier**, complementary
-to ADR-0003 signing (which stays for privileged mass-decrypt/merge ops), not a
-replacement for it. (4) Guests remain a **local-only, cookie-free** track (decided
-2026-07-10, #85).
+**Decisions locked:** (1) Near-term durability is a **first-party, host-only,
+server-set session cookie** on the `api.*` host — **not** the PWA (#83) and **not**
+(yet) a native app. (2) **[Revised 2026-07-11 — see §3.]** The session cookie
+**also gates redelivery of the user's escrowed AES key** (and, for teachers, their
+viewer private key): a valid session restores identity *and* silently rehydrates
+decryption capability, eliminating the email-recovery round-trip for lapsed-but-
+cookied users. *(This reverses the original 2026-07-10 "identity-only, keys stay
+recovery-gated" decision — the arc and reasoning are recorded in §3.)* (3) The cookie
+is the **middle trust tier**, complementary to ADR-0003 signing (which stays for
+privileged mass-decrypt/merge ops), not a replacement for it. (4) Guests remain a
+**local-only, cookie-free** track (decided 2026-07-10, #85).
 
 ## Context
 
@@ -91,26 +94,74 @@ A new `sessions` table: `id` (the cookie value), `user_id`, `created_at`,
 `expires_at`, `revoked_at`, plus device/platform columns stamped at creation. New
 surface:
 
-- **`GET /api/session`** — "who am I": returns the active user **and the full roster**
-  of identities known in this browser (see caveat 1). Called on load before the
-  localStorage/recovery fallback.
+- **`GET /api/session`** — "who am I": returns the active user, **identity only**
+  (no key material). The multi-identity roster (`Switch User`) is reconciled
+  client-side from localStorage; the cookie names the *active* user (caveat 1).
+  Called on load before the localStorage/recovery fallback. Kept cheap.
+- **`GET /api/session/key`** — session-gated **key redelivery** (see §3): unwraps the
+  session's *own* user's escrowed AES key (and teacher viewer private key). Separate
+  from `/session` so identity checks stay cheap and key delivery gets its own rate
+  limit + audit line.
 - **`DELETE /api/session`** — explicit sign-out / revoke (a capability the stateless
   model can't offer today).
-- Cookie is set on successful `auth`/recovery-claim; rotated on a policy TBD.
+- Cookie is set on successful recovery-claim (the proven-identity moment); new-user
+  registration minting and rotation policy are Phase 3 / TBD.
 
-### 3. Identity-only restore (keys stay recovery-gated)
+### 3. Session-gated key redelivery (supersedes the 2026-07-10 identity-only decision)
 
-The cookie restores **identity**, not **decryption capability**. The E2E AES
-`secretKey` and RSA `viewerPrivateKey` live in localStorage and are **also** purged by
-ITP; the cookie does **not** re-deliver them. A restored session can browse and record
-new work; decrypting *past* observations still requires the existing recovery step.
+**Decision arc.** The original proposal (**2026-07-10**) chose **identity-only**
+restore: the cookie would re-establish *who you are*, but the E2E AES `secretKey`
+(and teacher RSA `viewerPrivateKey`) would **not** be re-delivered by the session — a
+lapsed user would still complete an email-recovery step to decrypt past work, to avoid
+re-institutionalizing the §S5 "server hands out key material" pattern. On review
+(**2026-07-11**) that decision was **reversed**: the session cookie now **also gates
+redelivery of the user's escrowed AES key** (and, for teachers, their viewer private
+key), eliminating the email step for lapsed-but-cookied users entirely.
 
-This is a deliberate rejection of the tempting "have `/session` also hand back the
-escrowed key material." That convenience would re-institutionalize exactly the
-pattern review **§S5** flags — the server dispensing decrypted private-key material
-over the wire. Instead, §S5 gets **fixed** ([`get_user`](../../bridge-classroom-api/src/routes/users.rs)
-stops returning `viewer_private_key`), and key rehydration stays the recovery flow's
-job.
+**Why the recommendation flipped** (stated honestly):
+
+1. **Data classification.** The encrypted payload is per-prompt bid attempts and
+   correct answers — *not* credentials or financial data. The per-row pass/fail flags
+   are **already plaintext** in the DB, so the "performance profile" (a student's
+   ability and trajectory) is **not actually protected** by the encryption today; only
+   the specific wrong-bid detail is. We would be guarding low-sensitivity data harder
+   than its class warrants (see [Data classification](#data-classification)).
+2. **The system is server-trusted, not E2E.** The escrow (admin) key held server-side
+   can **already** unwrap every user's AES key — that is exactly how the existing
+   email-link recovery flow works. Cookie-gated redelivery **reuses that same
+   machinery** with a different authorization gate; **nothing new becomes decryptable
+   server-side.**
+3. **The security delta is precisely one thing:** what a user presents to get their key
+   back changes from *short-lived proof of email control* to *a durable session
+   cookie*. **Cookie theft is explicitly out of this application's threat model** (see
+   [Threat model](#threat-model)).
+4. **QoL driver.** Homework is assigned weekly; ITP purges script-writable storage
+   after ~7 idle days. Under identity-only, an infrequent Safari user hits an email
+   round-trip **nearly every week**. Under redelivery, a week-old emailed `.org`
+   homework link *just works*: the cookie authenticates, the key arrives silently over
+   the authenticated TLS channel, and the assignment opens.
+
+**The endpoint** (`GET /api/session/key`, separate from `/session`):
+
+- On a **valid session**, the server unwraps the **session's own** user's AES key (and
+  the teacher viewer private key, if the user is a teacher/admin) with the escrow key —
+  the *same* `decrypt_for_recovery` path the email-recovery flow uses — and returns it
+  **over the authenticated TLS channel**.
+- **Owner-only, load-bearing.** The handler decrypts **only** the key belonging to the
+  session's `user_id`, and **takes no `user_id` parameter**. This is the first concrete
+  application of the §S7 ownership principle: the identity is the *proven* session,
+  never a client-supplied id.
+- **Rate-limited** (reusing the §S4 in-memory limiter pattern) and **audit-logged**
+  (`user_id`, session id, timestamp) so anomalous redelivery is visible after the fact.
+- Kept **separate** from `GET /api/session` deliberately: `/session` stays a cheap
+  identity check; key delivery gets its own rate limit and log line.
+
+**§S5, restated.** The §S5 fix is no longer "never return key material." It is: **key
+material flows only to the owning authenticated session.** [`get_user`](../../bridge-classroom-api/src/routes/users.rs)
+still must not return keys — it is `x-api-key`-gated, not session-owner-gated — so that
+removal stands; `GET /api/session/key` is the sanctioned owner-gated channel. The
+**same rule binds the teacher key path**: a teacher's viewer private key is delivered
+only to that teacher's own session, never by user_id to any key holder.
 
 ### 4. CORS: backend-first, not lockstep (closes §S8)
 
@@ -142,6 +193,60 @@ URL + `x-api-key` + `credentials:'include'` + error handling, and migrate the ca
 sites to it. This is a prerequisite for #85 and independently pays down review §A1
 (fetch logic copy-pasted across 5+ sites).
 
+## Data classification
+
+What the observation encryption covers, and what it actually protects:
+
+- **Encrypted (per-observation ciphertext):** the specific bid attempts a student made
+  and the correct answers for a prompt.
+- **Already plaintext in the DB:** the per-row **pass/fail flags**. A student's
+  **performance profile** — their ability and trajectory — is therefore *derivable from
+  plaintext today*; the encryption does **not** protect it. Only the granular wrong-bid
+  detail is encrypted.
+- **Sensitivity class:** none of this is credentials, financial data, or PII beyond the
+  name/email already stored in plaintext. Treating the AES key as a high-value secret
+  would be miscalibrated to the data it guards — which is the premise behind the §3
+  reversal.
+
+## Threat model
+
+- **In scope — partial / backup DB exposure.** The nightly Google Drive backup is a
+  **database-only snapshot** (`sqlite3 .backup` → a `.db`, then copied to Drive)
+  containing ciphertext and *wrapped* keys. The **escrow key lives in the launchd
+  plist / env, not in the DB**, so it does **not** travel with the backup (verified
+  2026-07-11). Encryption-at-rest keeps a leaked backup from yielding the wrong-bid
+  detail.
+- **Out of scope — cookie theft.** `__Host-` / `Secure` / `HttpOnly` are the cookie's
+  protections; a *stolen valid cookie* is not defended against (browsers expose no
+  stable hardware identifier, so there is no meaningful device binding to add).
+- **Out of scope — home-server compromise.** The API + escrow key run on a Mac Mini
+  behind a Cloudflare Tunnel with **no inbound ports**. A full host compromise is not
+  defended by this design — it would expose the escrow key regardless of how sessions
+  work.
+
+## Key inventory
+
+The **escrow (admin) key** (`RECOVERY_SECRET`) that unwraps every user's stored AES key:
+
+- **Operational copy:** the launchd **plist** `EnvironmentVariables` on the server host
+  (currently Rick's Mac Mini). **At droplet migration:** an env var or a mode-`600`
+  properties file, **excluded from all backups**, never committed to any repo or baked
+  into any container image.
+- **Recovery copy:** 1Password.
+- **Zero copies** in: the database, the SQL/`.db` backup, any repo, any image.
+- **Standing backup invariant.** The DB backup must remain a **database-only** artifact
+  whose only key material is the *wrapped* per-user keys. If backup scope ever broadens
+  (folder sync, a volume snapshot that could sweep the plist/env) so the **escrow key
+  could land in the same artifact as the ciphertext it unwraps**, the
+  encryption-at-rest protection claim is **void**.
+
+## Migration note (droplet)
+
+At the droplet move (context `project_mac_api_moving_to_droplet`), the escrow-key
+placement above becomes a **deployment checklist item**: key in an env var / mode-`600`
+properties file, excluded from backups, kept out of the image — the same invariant,
+enforced at the new host.
+
 ## Alternatives considered and rejected
 
 - **PWA (#83).** Survives ITP, but as a *separate storage container* from Safari it
@@ -155,8 +260,12 @@ sites to it. This is a prerequisite for #85 and independently pays down review �
   iPad layouts, app repos in hand), but carries App Store review/update latency and
   dual web+app maintenance. **Deferred, not rejected** — longer-term product upgrade
   for the mobile segment; the cookie work is not wasted if the app ships after.
-- **Session also re-delivers escrowed keys.** Convenient but re-treads §S5 (server
-  hands out decrypted key material). Rejected — see §3.
+- **Identity-only restore (keys stay recovery-gated).** The **original 2026-07-10
+  decision**, since **superseded** (§3). It kept the email-recovery step for decryption
+  to avoid re-treading §S5, but on review that traded a weekly email round-trip for
+  Safari users against a security margin that — given the data class and the already-
+  server-trusted escrow model — wasn't actually buying much. Reversed 2026-07-11 in
+  favor of session-gated redelivery.
 - **JWT / bearer token instead of an opaque server-session cookie.** Adds a signing
   secret and a stateless-revocation problem; loses the `sessions` table's
   device-metrics and revoke capability that #85 explicitly wants. An opaque
@@ -174,6 +283,10 @@ sites to it. This is a prerequisite for #85 and independently pays down review �
 - Durable sessions across ITP for the whole Safari population, not just iPad.
 - Emailed homework/join/recovery links work natively in Safari (dissolves #83
   workarounds platform-wide).
+- **Silent key restoration** for lapsed-but-cookied Safari users: a week-old `.org`
+  homework link authenticates via the cookie and rehydrates the AES key with **no
+  recovery email** — the QoL payoff of the §3 reversal, and it collapses the weekly
+  email round-trip that identity-only would have imposed.
 - A server-verified per-user identity — the substrate that finally makes review §S7
   ownership checks landable, and a natural stepping stone alongside ADR-0003.
 - A `sessions` table unlocks **real** distinct-user/device metrics (server logs can't
@@ -193,8 +306,10 @@ sites to it. This is a prerequisite for #85 and independently pays down review �
 - CORS hardening deploys **backend-first** (backward-compatible), then the frontend adds
   `credentials:'include'`; no coordinated deploy — the only unsafe order is frontend-first.
   Requires the pin list to cover every real origin (both prod domains + dev `:5173`/`:5174`).
-- Key rehydration is still a recovery step (by design) — restored identity ≠ restored
-  decryption of past data.
+- **Key redelivery widens what a valid cookie yields** — from identity to the AES key.
+  This is a deliberate, bounded trade (see §3 / Threat model): the escrow key already
+  makes every key server-recoverable, and cookie theft is out of scope. The `/session/key`
+  endpoint is owner-only, rate-limited, and audit-logged to keep the surface visible.
 
 **Security invariants**
 - Cookie is `Secure; HttpOnly; SameSite=Lax`, host-only, `__Host-` prefixed, TLS-only
@@ -211,8 +326,10 @@ sites to it. This is a prerequisite for #85 and independently pays down review �
 - [ ] `Max-Age` target + rotation/expiry/revocation policy.
 - [ ] Guest IndexedDB quota cap (the only remaining #85 guest detail).
 - [ ] CSRF approach confirmation (SameSite=Lax + CORS-pin vs. adding a token).
-- [ ] Sequencing of §S7 ownership checks once identity is proven (which id-keyed
-      routes first).
+- [ ] Sequencing of the remaining §S7 ownership checks (`/session/key` is the first;
+      which id-keyed routes follow, and in what order).
+- [ ] Redelivery rate-limit thresholds (per-user/window) — start conservative, tune to
+      the observed silent-restore cadence.
 
 ## Rollout
 
