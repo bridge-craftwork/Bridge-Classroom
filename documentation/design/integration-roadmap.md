@@ -27,8 +27,17 @@ annotation architecture — all still binding)
 > **measured-fit suit model** (compress → truncate + `+N` chip → card-selector
 > popup) that retires the old width-reservation tiers, plus a `--table-scale`
 > design-scale axis. Full model in `rendering-harness-plan.md` → *Concept: Suit
-> fit, design-scale & the card-selector popup*. In-review stack #152→#153→#154;
-> a1 pixel-identity holds at `--table-scale: 1.0`.
+> fit, design-scale & the card-selector popup*. Shipped to `main` (#152/#154);
+> a1 pixel-identity holds at `--table-scale: 1.0`. *(This is a separate HandDisplay
+> hardening track, not one of the integration phases below.)*
+>
+> **Update (2026-07-11, Phase 2 status):** **Phase 2 is underway, not "not
+> started."** The status region shipped on both Practice-Table paths — local
+> (#101) and server header (#102) — on top of the pre-existing center/action slot
+> adoption on the local path. Remaining in Phase 2: **ContextPanel** (context
+> region, still 0× in BiddingPracticeView), the **instantiation collapse** (still
+> **4×** AuctionTable / 4× BiddingBox), and the `.bp-*` deletion. "Where we are"
+> and the Phase 2 slice markers below updated accordingly.
 
 ## Where we are
 
@@ -37,11 +46,18 @@ annotation architecture — all still binding)
   pixel-identical/spec'd from frozen specimens; two-tier harness (specimens + view
   scenarios); `useTableSlots` (center/action/**status/context**) + `useTableStatus`
   + the **server-path fixture driver** driving harness scenes only. **Phase 0 complete.**
-- **Not started:** contract adoption in production. Three surfaces
-  (MainLayout; BiddingPracticeView local + server paths; TableHostView /
-  TeacherConsoleView as thin wrappers) still wire components directly — **except**
-  BiddingPracticeView's local path, which already rides `localEngine` + `useTableSlots`
-  for center/action (so Phase 2 starts from the status/context slots).
+- **In progress — Phase 2 (BiddingPracticeView, local path):** the local path
+  already rides `localEngine` + `useTableSlots` for center/action, and the
+  **status region has shipped** on both the local (#101) and server-header (#102)
+  Practice Tables (StatusStrip, 3× in the view). What remains in Phase 2:
+  **ContextPanel** (context region — not yet wired, 0×), the **instantiation
+  collapse** (still **4×** AuctionTable / 4× BiddingBox → 2×), and the `.bp-*`
+  deletion (2.3).
+- **Not started:** the rest of contract adoption in production —
+  BiddingPracticeView's **server path** (Phase 3: `srv.*` mapping, collapse to 1×,
+  server context), the **Teacher console** (Phase 4), and **MainLayout /
+  Scenario Mastery** (Phase 1, the released app — runs last). These surfaces still
+  wire components directly.
 - **Gallery clipping debt:** cleared in Phase 0.1 (BridgeTable/AuctionTable/SeatPanel/
   HandDisplay), all via ResizeObserver / `min()` — never `container-type` (see the
   constraint in Component work · Row A; hotfix #88 is why).
@@ -211,16 +227,16 @@ view, different composable — so running it later breaks nothing.
 1.4 StatusStrip lands; DealInfo + old indicators removed same slice. **Visible change.**
 1.5 Commentary extraction → ContextPanel (feedback panel + inline commentary + step controls). Pixel-near; small visible deltas acceptable, named in PR.
 
-### Phase 2 — BiddingPracticeView, local path
+### Phase 2 — BiddingPracticeView, local path — 🟡 IN PROGRESS
 
 *(**Runs FIRST** — spike resolved, see Phase 1. Center/action slots are already adopted
 here via `localEngine` + `useTableSlots`, so this phase adds the **status/context** slots
 and collapses instantiations. Started with 2.2 — the status/context adoption — since that
 machinery is the freshest and this is its first production home.)*
 
-2.1 Local-bidding + local-review instantiations collapse onto slots (4× → 3×, then 2×). Pixel-identical. Fork-factor + `.bp-*` ratchets drop with each.
-2.2 StatusStrip + ContextPanel on local path; old chips removed. **Visible change.**
-2.3 Delete `.bp-*` component-internal rules. **Any rule that survives the audit as legitimate shell layout is renamed into `.shell-*`, not kept** — so the ratchet reads `.bp-* → 0` (grep-checkable; no "shell-layout-only" judgment call, and the rename forces a one-by-one audit of every survivor). Pixel-identical (gallery is canonical — divergences resolve toward the gallery, each named in the PR).
+2.1 Local-bidding + local-review instantiations collapse onto slots (4× → 3×, then 2×). Pixel-identical. Fork-factor + `.bp-*` ratchets drop with each. — ⬜ **not started** (still 4× AuctionTable / 4× BiddingBox).
+2.2 StatusStrip + ContextPanel on local path; old chips removed. **Visible change.** — 🟡 **partial: StatusStrip ✅ shipped** (#101 local, #102 server header); **ContextPanel ⬜** (context region not yet wired, 0× in the view).
+2.3 Delete `.bp-*` component-internal rules. — ⬜ **not started.** **Any rule that survives the audit as legitimate shell layout is renamed into `.shell-*`, not kept** — so the ratchet reads `.bp-* → 0` (grep-checkable; no "shell-layout-only" judgment call, and the rename forces a one-by-one audit of every survivor). Pixel-identical (gallery is canonical — divergences resolve toward the gallery, each named in the PR).
 
 ### Phase 3 — BiddingPracticeView, server path
 
