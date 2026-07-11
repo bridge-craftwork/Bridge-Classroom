@@ -123,7 +123,7 @@
           >
             <template #center>
               <TrickArea
-                v-if="srv.dealLoaded && srvCenterSlot === 'trick-area'"
+                v-if="srv.dealLoaded && (srvCenterSlot === 'trick-area' || srvCenterSlot === 'review')"
                 :current-trick="srv.currentTrick"
                 :last-finished-trick="srv.lastFinishedTrick"
                 :tricks-taken="srv.tricksTaken"
@@ -422,7 +422,7 @@
             >
               <template #center>
                 <TrickArea
-                  v-if="localCenterSlot === 'trick-area'"
+                  v-if="localCenterSlot === 'trick-area' || localCenterSlot === 'review'"
                   :current-trick="cardplay.currentTrick"
                   :last-finished-trick="cardplay.lastFinishedTrick.value"
                   :tricks-taken="cardplay.tricksTaken.value"

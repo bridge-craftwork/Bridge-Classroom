@@ -17,7 +17,7 @@
         :played-cards="f.playedCards || null"
         :hide-played-cards="phase === 'play'"
       >
-        <template v-if="center === 'trick-area'" #center>
+        <template v-if="center === 'trick-area' || center === 'review'" #center>
           <TrickArea
             :current-trick="f.currentTrick || []"
             :last-finished-trick="f.lastFinishedTrick || null"
