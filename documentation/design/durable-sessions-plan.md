@@ -83,19 +83,31 @@ fetch problem. No behavior change on landing.
   origin — both prod domains **and** dev `:5173` + lane2's `:5174` — since leaving `Any`
   breaks any un-pinned origin immediately, even without credentials.
 
-### Phase 3 — Frontend session adoption (incl. `credentials:'include'`)
+### Phase 3 — Frontend session adoption (incl. `credentials:'include'` + key redelivery)
 
 - `apiFetch` sends `credentials:'include'` — safe now that Phase 2's backend already
   accepts credentialed requests from the pinned origins.
 - On load, `apiFetch('/session')` **before** the localStorage/recovery fallback; an
   emailed `.org` link now recognizes the user automatically in Safari.
-- Reconcile with `Switch User`: cookie tracks the *active* user; `/session` returns the
-  roster (ADR-0004 caveat 1).
+- **Silent key rehydration (ADR-0004 §3, reversed 2026-07-11).** After `/session`
+  succeeds, if local key material is missing, call **`GET /api/session/key`** and
+  repopulate localStorage (`secretKey`, and teacher `viewerPrivateKey`) — **no
+  user-visible recovery prompt** in this path. The backend endpoint is **already built
+  and verified** (owner-only, rate-limited, audit-logged; shares `decrypt_for_recovery`
+  with the email flow); Phase 3 is just the frontend call + repopulate.
+- Email-link recovery remains the **fallback** for users with no valid session (new
+  device, cleared cookies).
+- Reconcile with `Switch User`: cookie tracks the *active* user; `/session` names it,
+  and `/session/key` serves the **active user only** — switches should be logged.
 - New-registration session minting (deferred from Phase 1) lands here.
 - CSRF: rely on `SameSite=Lax` + CORS-pinned state-changing calls; confirm before
   shipping whether an explicit token is warranted (ADR-0004 open item).
-- **Identity only** — do **not** attempt to rehydrate E2E keys here; past-data
-  decryption stays the recovery flow's job (ADR-0004 §3).
+
+**Acceptance test (whole feature):** in Safari, authenticate → wait past (or simulate)
+an ITP localStorage purge → tap an emailed `.org` homework link → confirm **silent key
+restoration with no recovery email**, assignment opens. Also verify the cookie itself
+survives >7 days in Safari (the Tunnel/orange-cloud topology should dodge the
+CNAME-cloaking cap — verify empirically).
 
 ### Phase 4 — Cash in proven identity for §S7 (the #33 payoff)
 

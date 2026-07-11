@@ -17,6 +17,10 @@
 //! backend-first; the two phases need not be coordinated — only frontend-first
 //! is unsafe.) The machinery is inert-but-correct until both land.
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
+
 use axum::{
     extract::State,
     http::{header, HeaderMap, StatusCode},
@@ -29,6 +33,7 @@ use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
 use crate::models::{User, UserInfo};
+use crate::routes::recovery::decrypt_for_recovery;
 use crate::AppState;
 
 /// Durable session lifetime. ADR-0004 open item — 180 days is the near-term
@@ -280,6 +285,131 @@ pub async fn delete_session(
         out.insert(header::SET_COOKIE, value);
     }
     (out, Json(unauthenticated()))
+}
+
+// --- Key redelivery (ADR-0004 §3) -----------------------------------------
+
+/// Per-user rate limit for key redelivery. Conservative to start (ADR-0004 open
+/// item — tune to the observed silent-restore cadence). In-memory; resets on
+/// restart; single instance — acceptable, same posture as the §S4 limiter.
+const KEY_REDELIVERY_MAX: u32 = 20;
+const KEY_REDELIVERY_WINDOW_SECS: u64 = 3600;
+
+static KEY_REDELIVERY_LIMITER: LazyLock<Mutex<HashMap<String, (Instant, u32)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Returns false once a user exceeds `KEY_REDELIVERY_MAX` in the window.
+fn allow_key_redelivery(user_id: &str) -> bool {
+    // Poison-tolerant (a panic elsewhere shouldn't wedge redelivery) — cf. §C12.
+    let mut limiter = KEY_REDELIVERY_LIMITER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let now = Instant::now();
+    limiter.retain(|_, (start, _)| now.duration_since(*start).as_secs() < KEY_REDELIVERY_WINDOW_SECS);
+    let entry = limiter.entry(user_id.to_string()).or_insert((now, 0));
+    if now.duration_since(entry.0).as_secs() >= KEY_REDELIVERY_WINDOW_SECS {
+        *entry = (now, 0);
+    }
+    entry.1 += 1;
+    entry.1 <= KEY_REDELIVERY_MAX
+}
+
+/// The redelivered key material — the AES key and, for teachers/admins, the
+/// viewer private key. Both unwrapped server-side from escrow, delivered only to
+/// the owning session.
+#[derive(Debug, Serialize)]
+pub struct SessionKeyResponse {
+    pub secret_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub viewer_private_key: Option<String>,
+}
+
+/// GET /api/session/key — session-gated redelivery of the caller's OWN escrowed
+/// AES key (and teacher viewer private key), over the authenticated TLS channel.
+///
+/// Owner-only and load-bearing (ADR-0004 §3, review §S7): the identity is the
+/// **proven session** — this handler takes NO `user_id` parameter and unwraps only
+/// the session user's key. Reuses `decrypt_for_recovery` — the exact escrow path
+/// the email-recovery flow uses — so there is one escrow-decryption implementation,
+/// not two. Nothing here becomes decryptable that the escrow key couldn't already
+/// unwrap; the only change from recovery is the authorization gate (cookie vs.
+/// email proof), and cookie theft is out of this app's threat model.
+pub async fn get_session_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<SessionKeyResponse>, (StatusCode, String)> {
+    // Authenticate the session — the owner identity, never a client-supplied id.
+    let token = parse_session_cookie(&headers, state.config.cookie_secure)
+        .ok_or((StatusCode::UNAUTHORIZED, "No session".to_string()))?;
+    let session_id = hash_session_token(&token);
+    let user_id = lookup_active_session(&state.db, &token)
+        .await
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid or expired session".to_string()))?;
+
+    let recovery_secret = state.config.recovery_secret.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Key recovery is not configured".to_string(),
+    ))?;
+
+    if !allow_key_redelivery(&user_id) {
+        tracing::warn!("Key redelivery rate-limited for user {}", user_id);
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many key requests. Please wait and try again.".to_string(),
+        ));
+    }
+
+    // The session's own user only.
+    let row = sqlx::query_as::<_, (Option<String>, String, String)>(
+        "SELECT recovery_encrypted_key, role, email FROM users WHERE id = ?",
+    )
+    .bind(&user_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "User not found".to_string()))?;
+
+    let (encrypted_key, role, email) = row;
+    let encrypted_key = encrypted_key.ok_or((
+        StatusCode::NOT_FOUND,
+        "No escrowed key for this account".to_string(),
+    ))?;
+
+    let secret_key = decrypt_for_recovery(&encrypted_key, recovery_secret).map_err(|e| {
+        tracing::error!("Key redelivery: failed to unwrap AES key for {}: {}", user_id, e);
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to recover key".to_string())
+    })?;
+
+    // Teachers/admins also get their viewer private key — the owner-gated channel
+    // that replaced the get_user leak (§S5, restated): only to the owning session.
+    let viewer_private_key = if role == "teacher" || role == "admin" {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT recovery_encrypted_private_key FROM viewers WHERE email = ?",
+        )
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .and_then(|enc| decrypt_for_recovery(&enc, recovery_secret).ok())
+    } else {
+        None
+    };
+
+    // Audit line so anomalous redelivery is visible after the fact.
+    tracing::info!(
+        "Key redelivery: user={} session={}… teacher_key={} at={}",
+        user_id,
+        &session_id[..16.min(session_id.len())],
+        viewer_private_key.is_some(),
+        chrono::Utc::now().to_rfc3339()
+    );
+
+    Ok(Json(SessionKeyResponse {
+        secret_key,
+        viewer_private_key,
+    }))
 }
 
 #[cfg(test)]

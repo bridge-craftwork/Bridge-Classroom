@@ -119,6 +119,10 @@ async fn main() -> anyhow::Result<()> {
         // Durable session (ADR-0004): who-am-I + sign-out. The cookie is minted
         // on recovery-claim (see recovery.rs); no login endpoint of its own yet.
         .route("/api/session", get(routes::get_session).delete(routes::delete_session))
+        // Session-gated key redelivery (ADR-0004 §3): owner-only; unwraps the
+        // session user's own escrowed AES key so lapsed Safari users rehydrate
+        // silently instead of via an email round-trip.
+        .route("/api/session/key", get(routes::get_session_key))
         // Convention card routes
         .route("/api/cards", get(routes::list_cards))
         .route("/api/cards", post(routes::create_card))
