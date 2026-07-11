@@ -58,13 +58,13 @@ function closeDialog() {
   screenshot.value = null
 }
 
-// Bundle saved and prompt copied: close the dialog and flash a self-dismissing
-// toast, so the user's only remaining action is to paste into VS Code.
-function onSaved() {
+// Report finished (local bundle saved + copied, or GitHub issue filed): close the
+// dialog and flash a self-dismissing toast with the sink-specific message.
+function onSaved(payload) {
   closeDialog()
-  toast.value = '✓ Saved and prompt copied to clipboard'
+  toast.value = payload?.message || '✓ Reported'
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { toast.value = '' }, 3500)
+  toastTimer = setTimeout(() => { toast.value = '' }, 4000)
 }
 </script>
 
@@ -72,7 +72,7 @@ function onSaved() {
 .beetle-root {
   position: fixed;
   right: 16px;
-  bottom: 64px; /* lifted clear of the footer (Discord/GitHub) — it overlapped at narrow widths */
+  bottom: 96px; /* lifted clear of the footer (Discord/GitHub) + its divider line */
   z-index: 2147483000; /* above app modals; this is a dev tool */
   display: flex;
   flex-direction: column-reverse;
