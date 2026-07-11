@@ -15,24 +15,39 @@ export const LEGIBILITY_FLOOR = 0.65
 
 /**
  * @param {object} o
- * @param {number[]} o.cumWidths  natural cumulative widths: cumWidths[i] = width
- *   of the first (i+1) cards. Ascending; last entry is the full suit width.
+ * @param {number[]} o.cumWidths  natural cumulative widths: cumWidths[i] = right
+ *   edge of the first (i+1) cards (excludes trailing letter-spacing/overhang).
+ *   Ascending; drives the fit DECISION and the truncation count.
  * @param {number} o.available    content-zone width in px.
  * @param {number} o.chipReserve  natural width the "+N" chip needs (0 if none).
+ * @param {number} [o.natural]    full content width incl. the trailing letter-
+ *   spacing after the last card (probe `.cards` box width). Used only to SIZE
+ *   compression so the last card doesn't spill; defaults to cumWidths[last].
+ * @param {number} [o.margin]     px shaved off `available` when compressing, to
+ *   clear the last glyph's right overhang. NOT applied to the fit decision, so
+ *   hands that already fit stay byte-identical. Default 0 (unit tests).
  * @param {number} [o.floor]      legibility floor (default LEGIBILITY_FLOOR).
  * @returns {{scale:number, visible:number, hidden:number}}
  */
-export function computeFit({ cumWidths, available, chipReserve = 0, floor = LEGIBILITY_FLOOR }) {
+export function computeFit({ cumWidths, available, chipReserve = 0, natural, margin = 0, floor = LEGIBILITY_FLOOR }) {
   const total = cumWidths.length
-  const natural = total ? cumWidths[total - 1] : 0
-  if (natural <= 0) return { scale: 1, visible: total, hidden: 0 }
+  const contentRight = total ? cumWidths[total - 1] : 0
+  if (contentRight <= 0) return { scale: 1, visible: total, hidden: 0 }
 
-  const scaleFull = Math.min(1, available / natural)
+  // Fit decision on the last card's right edge (unchanged): if the cards already
+  // fit, render at 1 — no compression, no margin — preserving a1 pixel identity.
+  if (contentRight <= available) return { scale: 1, visible: total, hidden: 0 }
+
+  // Compressing: size against the FULL content width (incl. trailing space) and
+  // leave the overhang margin, so the last card sits inside the frame edge.
+  const naturalFull = natural != null ? natural : contentRight
+  const room = Math.max(0, available - margin)
+  const scaleFull = Math.min(1, room / naturalFull)
   // Chip EXCLUDED from the truncation test — only the cards decide it.
   if (scaleFull >= floor) return { scale: scaleFull, visible: total, hidden: 0 }
 
   // Truncate at the floor; the COUNT includes the chip's reserved width.
-  const budget = available / floor // natural units at floor scale
+  const budget = room / floor // natural units at floor scale
   let visible = 0
   for (let i = 0; i < total; i++) {
     if (cumWidths[i] + chipReserve <= budget) visible = i + 1

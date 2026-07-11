@@ -194,23 +194,35 @@ function hiddenMarked(suit) {
   return list.slice(v).some((c) => !!cardMark(suit, c))
 }
 
+// Overhang margin (natural px, pre-table-scale) shaved off available when
+// compressing, so a compressed suit's last bold glyph clears the frame edge
+// instead of spilling. Scaled by --table-scale at the call site.
+const OVERHANG_MARGIN = 3
+
 function measure() {
   if (!props.hand) return
+  const tableScale = parseFloat(getComputedStyle(rootEl.value).getPropertyValue('--table-scale')) || 1
   for (const suit of suits) {
     const rowEl = rowEls[suit]
     const cardsEl = cardsEls[suit]
     const probeEl = probeEls[suit]
     if (!rowEl || !cardsEl || !probeEl) { if (fit[suit]) delete fit[suit]; continue }
-    const probeLeft = probeEl.getBoundingClientRect().left
+    const probeRect = probeEl.getBoundingClientRect()
+    const probeLeft = probeRect.left
     const cells = probeEl.querySelectorAll('.cell')
-    // cumWidths[i] = natural width of the first (i+1) cards (right edge of cell).
+    // cumWidths[i] = natural width of the first (i+1) cards (right edge of cell,
+    // excludes trailing letter-spacing) — drives the fit decision + trunc count.
     const cumWidths = Array.from(cells).map((c) => c.getBoundingClientRect().right - probeLeft)
+    // natural = the probe `.cards` box: full content incl. the trailing letter-
+    // spacing the last cell's right edge omits. Sizing compression against this
+    // (not cumWidths[last]) is what stops the last card clipping past the edge.
+    const natural = probeRect.width
     // available = row width minus the fixed label zone (cards' left offset).
     const rowRect = rowEl.getBoundingClientRect()
     const cardsRect = cardsEl.getBoundingClientRect()
     const available = rowRect.width - (cardsRect.left - rowRect.left)
     const chipReserve = chipEls[suit] ? chipEls[suit].getBoundingClientRect().width : 0
-    fit[suit] = computeFit({ cumWidths, available, chipReserve, floor: LEGIBILITY_FLOOR })
+    fit[suit] = computeFit({ cumWidths, available, natural, chipReserve, margin: OVERHANG_MARGIN * tableScale, floor: LEGIBILITY_FLOOR })
   }
 }
 
