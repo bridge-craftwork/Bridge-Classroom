@@ -51,16 +51,23 @@ does **not** become a new key-delivery channel, so this pattern must not exist.
 ~25 composables to it. Prerequisite for Phase 3 *and* pays down review §A1's copy-paste
 fetch problem. No behavior change on landing.
 
-### Phase 1 — Backend session layer
+### Phase 1 — Backend session layer ✅ DONE (`feat/phase1-backend-sessions`)
 
-- `sessions` table: `id` (cookie value), `user_id`, `created_at`, `expires_at`,
-  `revoked_at`, device/platform columns; created in `db.rs` migrations.
-- Set `__Host-bc_session` (`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=<long>`,
-  host-only) on successful `auth` and recovery-claim.
-- `GET /api/session` — active user + full identity roster for this browser.
-- `DELETE /api/session` — revoke / sign-out.
-- A `require_session` extractor returning a verified `user_id` (mirrors ADR-0003's
-  `verify_signed_request` shape, but keyed on the opaque cookie, not a signature).
+- `sessions` table: `id` = **sha256(token)** (raw token only in the cookie),
+  `user_id`, `created_at`, `expires_at`, `revoked_at`, device columns; in `db.rs`.
+- Sets `__Host-bc_session` (`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=180d`,
+  host-only) on **recovery-claim** success. `create_user` is deliberately not a
+  mint point (per-sync upsert); new-registration minting moves to Phase 3.
+- `GET /api/session` — active user, **identity only** (no key material). The
+  Switch-User roster is reconciled client-side (ADR-0004 caveat 1), not server-
+  enumerated.
+- `DELETE /api/session` — revoke + clear cookie.
+- `require_session(state, headers) -> Result<user_id>` helper (plain fn, matching
+  the codebase's `validate_api_key` style) — the proven id Phase 4 authorizes on.
+- `cookie_secure` config (`COOKIE_SECURE`, default true) for plain-http dev.
+- **Inert until Phase 2** (cookie set but doesn't round-trip cross-origin until
+  CORS `allow_credentials` + frontend `credentials:'include'`). Verified e2e on an
+  isolated instance + unit tests.
 
 ### Phase 2 — CORS + credentials flip (the one lockstep deploy)
 
