@@ -242,6 +242,12 @@ designs.
   SeatPanel; HandDisplay's guarantee simplifies to "geometry is a pure function
   of holding + marks + density." Acceptance test: step through a full auction and
   play; no glyph that isn't itself changing state moves by one pixel.
+  - **Scope note (2026-07-11):** this inertness is about *marks/indicators* not
+    shifting layout — it stands. It is distinct from, and not contradicted by, the
+    grid arranger's **amended no-reflow rule** (grid-arranger-spec §1), which
+    permits *content-driven monotone stage growth* mid-phase (the auction gaining
+    a round) to be absorbed by a reserved slack row without moving the hand/BB. A
+    mark must never move a neighbour; a growing stage may grow into reserved slack.
 
 ---
 

@@ -102,6 +102,27 @@ only its occupant's content/density does. During bidding, `ne` may be empty
 (the live auction is in `center`); during play, `center` hosts tricks and `ne`
 holds the completed auction.
 
+**Bidding-scene vertical model — bottom-anchored (2026-07-11, design direction).**
+During bidding the row model is `auto 1fr auto` (status band / flexible **slack** /
+stage+hand) and the center stage is **bottom-aligned**. The working cluster is
+bottom-anchored: the auction grows **upward** into the slack above it, its bottom
+edge (the current-round row) holding a fixed screen position adjacent to the
+stationary hand + bidding-box row. The hand and BiddingBox do not move as calls are
+added; they displace downward **only once the slack is exhausted** at the current
+viewport. Play/review keep the weighted-fr rows (centered stage). The grid must be
+given a height by its shell frame for the slack to exist (it fills via
+`min-height:100%`); with no sized parent it collapses to content height, harmless.
+Config-driven: `anchor: { bidding: 'bottom' }` (A1 opts in); default centered.
+
+> **No-reflow rule, amended (2026-07-11).** The original guarantee — "the grid
+> never reflows on visibility/phase change" and "no glyph that isn't itself
+> changing state moves by one pixel" — is refined: **content-driven, monotone
+> stage growth is permitted mid-phase, slack-absorbed first.** The auction gaining
+> a round is not a forbidden reflow; it is absorbed by the slack row without moving
+> the hand/BB, and only displaces the cluster when the slack is gone. Visibility
+> and phase-change reflow remain forbidden; what is newly allowed is the stage
+> growing into reserved slack. Acceptance for this is the len1/5/9 triptych (§7).
+
 **Orientation — one rotation, per-surface anchor (plus visibility, independent):**
 
 - **Rotation:** `seatToArea(seat, anchorSeat)` applied by the arranger before
@@ -169,6 +190,10 @@ computes everything. No layout decisions in views; none in leaves.
  *
  * @property {{ bidding: Object<Region,Density>, play: Object<Region,Density>, review: Object<Region,Density> }} densities
  *   per phase, per region — e.g. A1 { play: { ne: 'full' } } (pinned auction); tables Phase 5 { play: { ne: 'chip' } }
+ *
+ * @property {{ bidding?: 'bottom'|'center' }} [anchor]   vertical model per phase (§1 bidding-scene model).
+ *   'bottom' = bottom-anchored working cluster: rows become `auto 1fr auto`, the center stage bottom-aligns, and the
+ *   auction grows upward into the slack while the hand/BB row holds its screen position. Default (omitted) = centered.
  *
  * @property {{ perViewport: Array<{ minWidth?:number, maxWidth?:number, portrait?:boolean,
  *              mode:'two-column'|'stacked'|'drawer', companionPosition?:'left'|'right'|'above'|'below' }> }} shell
@@ -351,6 +376,13 @@ play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
 - Config-as-data check: the diff between `a1.tableConfig` and
   `tables.tableConfig` is the complete statement of their differences; grep
   confirms no surface-conditional branches inside the arranger.
+- **Bottom-anchor triptych (§1 bidding vertical model):** render the bidding
+  fixture at auction lengths **1, 5, and 9 calls** (same deal, three snapshots).
+  The hand row (`seat-s`) and bidding box (`se`) sit at **identical pixel `top`**
+  in len1 and len5 (slack absorbs the growth); len9 shows **graceful displacement
+  only if slack is exhausted** at that viewport. Measured by the walk
+  (`gallery-a1/anchor-acceptance.json`); len1↔len5 stability is the pass gate,
+  len9 displacement is permitted, not required.
 
 ## 8. Out of scope
 

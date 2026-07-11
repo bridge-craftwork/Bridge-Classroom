@@ -6,7 +6,7 @@
        leaves render at that scale, plus a `data-region-scale` attribute for the
        gallery captions. Legacy BridgeTable is untouched — this is the `grid`
        branch, dark until the A1 flip. -->
-  <div ref="root" class="grid-table" :style="gridStyle">
+  <div ref="root" class="grid-table" :class="{ 'bidding-anchored': biddingAnchored }" :style="gridStyle">
     <!-- Four seats, placed by rotation; every seat area is filled. -->
     <div
       v-for="seat in SEATS"
@@ -101,12 +101,24 @@ function marksFor(seat) {
   return { cards, activeSeat: props.clickableSeat === seat }
 }
 
+// Bidding-scene vertical model (grid-arranger-spec §1, amended no-reflow rule):
+// bottom-anchor the working cluster. When the config opts in for bidding, the row
+// model becomes `auto 1fr auto` — status band / flexible SLACK / stage+hand — and
+// the center stage bottom-aligns (see CSS), so the auction grows UPWARD into the
+// slack while the hand + BiddingBox row stays pinned to the bottom. The slack is
+// absorbed first; the cluster only displaces when the auction outgrows it.
+const biddingAnchored = computed(
+  () => props.phase === 'bidding' && props.config.anchor?.bidding === 'bottom',
+)
+
 const gridStyle = computed(() => {
   const c = props.config.tracks?.columns || [1, 1, 1]
   const r = props.config.tracks?.rows || [1, 1, 1]
   return {
     gridTemplateColumns: c.map((f) => f + 'fr').join(' '),
-    gridTemplateRows: r.map((f) => f + 'fr').join(' '),
+    // Anchored bidding: middle row is the flexible slack; top/bottom are
+    // content-sized (auto) so the status band and the hand/BB row don't stretch.
+    gridTemplateRows: biddingAnchored.value ? 'auto 1fr auto' : r.map((f) => f + 'fr').join(' '),
   }
 })
 
@@ -188,7 +200,14 @@ onBeforeUnmount(() => ro?.disconnect())
   padding: 14px;
   align-items: center;
   justify-items: center;
+  /* Fill a sized parent (the shell frame gives the grid a height) so the `1fr`
+     slack row has space to absorb the auction's upward growth. With no sized
+     parent this collapses to content height — harmless for the legacy fr rows. */
+  min-height: 100%;
 }
+/* Bottom-anchor bidding: the center stage sits at the BOTTOM of the tall 1fr row,
+   adjacent to the hand/BB row, and grows upward into the slack above it. */
+.grid-table.bidding-anchored .area-center { align-self: end; }
 .region { min-width: 0; }
 .area-nw { grid-area: nw; justify-self: start; align-self: start; }
 .area-n { grid-area: n; }

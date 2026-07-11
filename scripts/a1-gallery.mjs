@@ -25,6 +25,7 @@ for (const file of fs.readdirSync(FIX_DIR)) {
 const browser = await chromium.launch()
 let shots = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
+const rects = {}   // `${name}/${vp}` → { 'seat-s': {top,left,bottom}, se: {…} } — hand/BB screen positions (bottom-anchor acceptance)
 for (const { name } of fixtures) {
   for (const [vp, dim] of Object.entries(viewports)) {
     const page = await browser.newPage({ viewport: { width: dim.w, height: dim.h }, deviceScaleFactor: 1 })
@@ -46,6 +47,16 @@ for (const { name } of fixtures) {
     const label = { 'seat-s': 'seats' }
     capText[`${name}/${vp}`] = order.filter((r) => scales[r] != null)
       .map((r) => `${label[r] || r} ${scales[r]}×`).join(' · ')
+    // Hand (seat-s) + BiddingBox (se) screen positions — the bottom-anchor
+    // acceptance measures these across auction lengths 1/5/9 (same viewport).
+    rects[`${name}/${vp}`] = await page.evaluate(() => {
+      const out = {}
+      for (const sel of ['seat-s', 'se']) {
+        const el = document.querySelector(`[data-region="${sel}"]`)
+        if (el) { const b = el.getBoundingClientRect(); out[sel] = { top: Math.round(b.top), left: Math.round(b.left), bottom: Math.round(b.bottom) } }
+      }
+      return out
+    })
     const out = path.join(OUT, 'scenes', name, `${vp}.png`)
     fs.mkdirSync(path.dirname(out), { recursive: true })
     await page.screenshot({ path: out, fullPage: true })
@@ -55,6 +66,46 @@ for (const { name } of fixtures) {
 }
 await browser.close()
 console.log(`a1 scenes: ${fixtures.length} fixtures × ${Object.keys(viewports).length} viewports = ${shots} shots`)
+
+// ── Bottom-anchor acceptance ──────────────────────────────────────────────────
+// Same deal, three auction lengths (1/5/9 calls). The hand (seat-s) and bidding
+// box (se) must hold identical screen `top` across len1↔len5 (slack absorbs the
+// auction's upward growth); len9 may displace downward ONLY if slack is exhausted
+// at that viewport. Emits a table + writes anchor-acceptance.json.
+const TRIP = ['a1-bidding-len1', 'a1-bidding-len5', 'a1-bidding-len9']
+const haveTrip = TRIP.every((n) => fixtures.some((f) => f.name === n))
+const acceptance = { pass: null, rows: [] }
+if (haveTrip) {
+  console.log('\n── bottom-anchor acceptance (hand seat-s / BB se `top`, px) ──')
+  let allPass = true
+  for (const [vp] of Object.entries(viewports)) {
+    const r = (n) => rects[`${n}/${vp}`] || {}
+    const top = (n, sel) => (r(n)[sel] ? r(n)[sel].top : null)
+    const handStable = top('a1-bidding-len1', 'seat-s') === top('a1-bidding-len5', 'seat-s')
+    const bbStable = top('a1-bidding-len1', 'se') === top('a1-bidding-len5', 'se')
+    const len9Hand = top('a1-bidding-len9', 'seat-s')
+    const len9Disp = len9Hand != null && len9Hand !== top('a1-bidding-len1', 'seat-s')
+    const ok = handStable && bbStable // len9 displacement is permitted, not required
+    allPass = allPass && ok
+    const row = {
+      viewport: vp,
+      hand: [top('a1-bidding-len1', 'seat-s'), top('a1-bidding-len5', 'seat-s'), len9Hand],
+      bb: [top('a1-bidding-len1', 'se'), top('a1-bidding-len5', 'se'), top('a1-bidding-len9', 'se')],
+      handStable, bbStable, len9Displaced: len9Disp, ok,
+    }
+    acceptance.rows.push(row)
+    console.log(
+      `  ${vp.padEnd(18)} hand ${JSON.stringify(row.hand).padEnd(20)} bb ${JSON.stringify(row.bb).padEnd(20)}` +
+      ` ${ok ? 'PASS' : 'FAIL'}${len9Disp ? ' (len9 displaced — slack exhausted)' : ''}`,
+    )
+  }
+  acceptance.pass = allPass
+  fs.mkdirSync(OUT, { recursive: true })
+  fs.writeFileSync(path.join(OUT, 'anchor-acceptance.json'), JSON.stringify(acceptance, null, 2))
+  console.log(`  → ${allPass ? 'ALL PASS' : 'FAILURES'} · wrote ${OUT}/anchor-acceptance.json`)
+} else {
+  console.log('(bottom-anchor acceptance skipped — len1/5/9 fixtures not all present)')
+}
 
 // ── Generate ──────────────────────────────────────────────────────────────────
 const INLINE = process.argv.includes('--inline')
