@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     models::{CreateUserRequest, CreateUserResponse, SharingGrant, User, UserInfo, UsersListResponse},
-    routes::recovery::{encrypt_for_recovery, decrypt_for_recovery},
+    routes::recovery::encrypt_for_recovery,
     AppState,
 };
 
@@ -322,36 +322,18 @@ pub async fn get_user(
             .await
             .unwrap_or_default();
 
-            // For teachers/admins, include decrypted viewer private key if available
-            let viewer_private_key = if info.role == "teacher" || info.role == "admin" {
-                if let Some(ref recovery_secret) = state.config.recovery_secret {
-                    let viewer_row = sqlx::query_scalar::<_, Option<String>>(
-                        "SELECT recovery_encrypted_private_key FROM viewers WHERE email = ?"
-                    )
-                    .bind(&info.email)
-                    .fetch_optional(&state.db)
-                    .await
-                    .ok()
-                    .flatten()
-                    .flatten();
-
-                    if let Some(encrypted_pk) = viewer_row {
-                        decrypt_for_recovery(&encrypted_pk, recovery_secret).ok()
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
+            // SECURITY (§S5): this read endpoint deliberately does NOT return the
+            // teacher/admin viewer private key. It is only api-key gated (a
+            // non-secret, bundle-embedded key), so returning decrypted private-key
+            // material here let any key holder pull any teacher's key by user_id —
+            // a full observation-decryption compromise. Key rehydration on a new
+            // device happens through the recovery-claim flow instead (recovery.rs),
+            // which proves ownership via the emailed token/code before re-delivering
+            // the key. See ADR-0004 (identity-only session restore).
             Ok(Json(serde_json::json!({
                 "success": true,
                 "user": info,
-                "classrooms": classroom_ids,
-                "viewer_private_key": viewer_private_key
+                "classrooms": classroom_ids
             })))
         }
         None => Err((StatusCode::NOT_FOUND, "User not found".to_string())),

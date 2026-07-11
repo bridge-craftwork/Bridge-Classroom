@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton reactive state
 const teacherClassrooms = ref([])
@@ -17,9 +16,8 @@ export function useClassrooms() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/classrooms?teacher_id=${encodeURIComponent(teacherId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/classrooms?teacher_id=${encodeURIComponent(teacherId)}`
       )
       const data = await response.json()
       if (data.success) {
@@ -42,11 +40,10 @@ export function useClassrooms() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_URL}/classrooms`, {
+      const response = await apiFetch(`${API_URL}/classrooms`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': API_KEY
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           teacher_id: teacherId,
@@ -80,9 +77,8 @@ export function useClassrooms() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/classrooms/${encodeURIComponent(classroomId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/classrooms/${encodeURIComponent(classroomId)}`
       )
       const data = await response.json()
       if (data.success) {
@@ -103,11 +99,10 @@ export function useClassrooms() {
   /** Remove a member from a classroom (teacher action) */
   async function removeMember(classroomId, studentId) {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/classrooms/${encodeURIComponent(classroomId)}/members/${encodeURIComponent(studentId)}`,
         {
-          method: 'DELETE',
-          headers: { 'x-api-key': API_KEY }
+          method: 'DELETE'
         }
       )
       const data = await response.json()
@@ -136,9 +131,9 @@ export function useClassrooms() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/join/${encodeURIComponent(joinCode)}`
-        // No API key — public endpoint
+        // Public endpoint (API key not required); apiFetch attaches it harmlessly
       )
       if (response.status === 404) {
         error.value = 'Classroom not found'
@@ -160,13 +155,12 @@ export function useClassrooms() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/join/${encodeURIComponent(joinCode)}`,
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': API_KEY
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             student_id: studentId,
@@ -191,13 +185,12 @@ export function useClassrooms() {
   /** Student leaves a classroom */
   async function leaveClassroom(classroomId, studentId) {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/classrooms/${encodeURIComponent(classroomId)}/members/leave`,
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': API_KEY
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ student_id: studentId })
         }

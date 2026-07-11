@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton state
 const announcement = ref(null)
@@ -11,7 +10,7 @@ const dismissed = ref(null) // stores the dismissed announcement ID (session-onl
 async function loadAnnouncement() {
   loading.value = true
   try {
-    const res = await fetch(`${API_URL}/announcements/active`)
+    const res = await apiFetch(`${API_URL}/announcements/active`)
     if (!res.ok) return
     const data = await res.json()
     const prev = announcement.value
@@ -32,9 +31,9 @@ async function setAnnouncement(message, type = 'info', expiresAt = null) {
   const body = { message, type }
   if (expiresAt) body.expires_at = expiresAt
 
-  const res = await fetch(`${API_URL}/admin/announcement`, {
+  const res = await apiFetch(`${API_URL}/admin/announcement`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   })
   if (!res.ok) throw new Error(`Failed to set announcement: ${res.status}`)
@@ -45,9 +44,8 @@ async function setAnnouncement(message, type = 'info', expiresAt = null) {
 }
 
 async function clearAnnouncement() {
-  const res = await fetch(`${API_URL}/admin/announcement`, {
-    method: 'DELETE',
-    headers: { 'x-api-key': API_KEY }
+  const res = await apiFetch(`${API_URL}/admin/announcement`, {
+    method: 'DELETE'
   })
   if (!res.ok) throw new Error(`Failed to clear announcement: ${res.status}`)
   announcement.value = null

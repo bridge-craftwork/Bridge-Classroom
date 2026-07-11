@@ -1,7 +1,6 @@
 import { ref, reactive } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton cache: { "userId::assignmentId" → { entries: [...], fetchedAt } }
 // entries: AssignmentStatusEntry[] from /api/assignment-status
@@ -35,7 +34,7 @@ async function fetchAssignmentStatus(userId, assignmentId, force = false) {
   loading.value = true
   try {
     const url = `${API_URL}/assignment-status?user_id=${encodeURIComponent(userId)}&assignment_id=${encodeURIComponent(assignmentId)}`
-    const response = await fetch(url, { headers: { 'x-api-key': API_KEY } })
+    const response = await apiFetch(url)
 
     if (!response.ok) {
       console.error('Failed to fetch assignment status:', response.status)

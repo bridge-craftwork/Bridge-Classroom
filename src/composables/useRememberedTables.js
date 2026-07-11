@@ -8,6 +8,7 @@
 // first, deduped on kind+code, capped so the list stays skimmable.
 
 import { API_URL } from '../utils/apiUrl.js'
+import { apiFetch } from '../utils/apiFetch.js'
 
 const STORAGE_KEY = 'bridgeTableRememberedCodes'
 const MAX_ENTRIES = 12
@@ -46,7 +47,7 @@ function forget(kind, code) {
 // open session; ok:false means the code is unknown (404) or the API failed.
 async function resolveCode(kind, code) {
   try {
-    const res = await fetch(`${API_URL}/${kind}/${encodeURIComponent(code)}`)
+    const res = await apiFetch(`${API_URL}/${kind}/${encodeURIComponent(code)}`)
     if (!res.ok) return { ok: false, status: res.status, hostName: '', session: null }
     const data = await res.json()
     return { ok: true, status: res.status, hostName: data.host_name || '', session: data.session || null }

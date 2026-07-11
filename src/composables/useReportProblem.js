@@ -1,6 +1,6 @@
 import { API_URL } from '@/utils/apiUrl.js'
+import { apiFetch } from '@/utils/apiFetch.js'
 
-const API_KEY = import.meta.env.VITE_API_KEY || ''
 // Reports normally go to `${API_URL}/report`. VITE_REPORT_URL lets a local dev
 // build send them elsewhere (e.g. a local helper that files the GitHub issue
 // directly) without redirecting the rest of the API. Unset in production.
@@ -18,11 +18,10 @@ const REPORT_URL = import.meta.env.VITE_REPORT_URL || `${API_URL}/report`
  */
 async function submitReport(report) {
   try {
-    const response = await fetch(REPORT_URL, {
+    const response = await apiFetch(REPORT_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(report)
     })

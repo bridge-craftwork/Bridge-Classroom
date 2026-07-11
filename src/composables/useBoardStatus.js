@@ -2,8 +2,7 @@ import { ref, reactive } from 'vue'
 import { useObservationStore } from './useObservationStore.js'
 import { registerFreshPaws } from './usePawCelebration.js'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton cache: { "userId::subfolder" → { boards: [...], fetchedAt: timestamp } }
 const cache = reactive({})
@@ -57,9 +56,7 @@ async function fetchBoardStatus(userId, dealSubfolder = null, force = false, col
       url += `&collection_id=${encodeURIComponent(collectionId)}`
     }
 
-    const response = await fetch(url, {
-      headers: { 'x-api-key': API_KEY }
-    })
+    const response = await apiFetch(url)
 
     if (!response.ok) {
       console.error('Failed to fetch board status:', response.status)
@@ -314,9 +311,8 @@ async function fetchLessonMastery(userId, force = false) {
   }
 
   try {
-    const res = await fetch(
-      `${API_URL}/lesson-mastery?user_id=${encodeURIComponent(userId)}`,
-      { headers: { 'x-api-key': API_KEY } }
+    const res = await apiFetch(
+      `${API_URL}/lesson-mastery?user_id=${encodeURIComponent(userId)}`
     )
     if (!res.ok) {
       console.error('Failed to fetch lesson mastery:', res.status)

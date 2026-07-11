@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton state
 const stats = ref(null)
@@ -30,9 +29,7 @@ async function loadStats(forceRefresh = false) {
   error.value = null
 
   try {
-    const response = await fetch(`${API_URL}/admin/stats`, {
-      headers: { 'x-api-key': API_KEY }
-    })
+    const response = await apiFetch(`${API_URL}/admin/stats`)
 
     if (!response.ok) {
       throw new Error(`Failed to fetch admin stats: ${response.status}`)
@@ -59,9 +56,7 @@ async function loadStats(forceRefresh = false) {
  */
 async function loadHealth() {
   try {
-    const response = await fetch(`${API_URL}/admin/health`, {
-      headers: { 'x-api-key': API_KEY }
-    })
+    const response = await apiFetch(`${API_URL}/admin/health`)
 
     if (!response.ok) {
       throw new Error(`Failed to fetch health: ${response.status}`)

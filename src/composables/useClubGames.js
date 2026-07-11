@@ -7,8 +7,7 @@
 // Singleton pattern (module-level state) per project convention.
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 const games = ref([]) // metadata list for the last-fetched owner
 const loading = ref(false)
@@ -24,9 +23,8 @@ export function useClubGames() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/club-games?owner=${encodeURIComponent(owner)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/club-games?owner=${encodeURIComponent(owner)}`
       )
       if (!response.ok) {
         error.value = (await response.text()) || `Server error (${response.status})`
@@ -51,9 +49,7 @@ export function useClubGames() {
   /** Fetch one game WITH its native normalized JSON `payload`. */
   async function fetchGame(id) {
     try {
-      const response = await fetch(`${API_URL}/club-games/${encodeURIComponent(id)}`, {
-        headers: { 'x-api-key': API_KEY },
-      })
+      const response = await apiFetch(`${API_URL}/club-games/${encodeURIComponent(id)}`)
       if (!response.ok) {
         error.value = (await response.text()) || `Server error (${response.status})`
         return null
