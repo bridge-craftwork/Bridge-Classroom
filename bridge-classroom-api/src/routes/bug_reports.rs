@@ -42,6 +42,10 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
 pub struct BugReportRequest {
     /// Free-text narrative (also present in `context.note`); drives title/slug/body.
     pub note: String,
+    /// "bug" (default) or "feature" — reshapes the issue title + label. The
+    /// capture (screenshot, env, layout) is identical either way.
+    #[serde(default)]
+    pub kind: Option<String>,
     /// The full context.json object (env block, note, tape, identity display name).
     /// Committed as-is — must NOT contain an email (kept out of the repo).
     pub context: Value,
@@ -66,6 +70,7 @@ pub struct BugReportResponse {
 }
 
 const BUG_LABEL: &str = "bug-report";
+const FEATURE_LABEL: &str = "feature-request";
 const UA: &str = "bridge-classroom-beetle";
 
 /// POST /api/bug-report
@@ -101,6 +106,7 @@ pub async fn create_bug_report(
     scrub_emails(&mut context);
 
     let env = context.get("env").cloned().unwrap_or(Value::Null);
+    let layout = context.get("layout").cloned().unwrap_or(Value::Null);
     let now = chrono::Utc::now();
     let bundle_path = format!(
         "{}/{:02}/{}-{}",
@@ -146,17 +152,19 @@ pub async fn create_bug_report(
             "https://github.com/{repo}/blob/main/{bundle_path}/screenshot.jpg?raw=true"
         )
     });
-    let title = build_title(note, req.reporter_name.as_deref());
+    let is_feature = req.kind.as_deref() == Some("feature");
+    let title = build_title(note, req.reporter_name.as_deref(), is_feature);
     let body = build_issue_body(&BugBody {
         note,
         env: &env,
+        layout: &layout,
         reporter_name: req.reporter_name.as_deref(),
         contact_email: req.contact_email.as_deref(),
         repo,
         bundle_path: &bundle_path,
         screenshot_url: shot_url.as_deref(),
     });
-    let labels = build_labels(&env);
+    let labels = build_labels(&env, is_feature);
 
     let issue = create_issue(&client, repo, token, &title, &body, labels).await?;
 
@@ -286,6 +294,7 @@ async fn create_issue(
 struct BugBody<'a> {
     note: &'a str,
     env: &'a Value,
+    layout: &'a Value,
     reporter_name: Option<&'a str>,
     contact_email: Option<&'a str>,
     repo: &'a str,
@@ -293,16 +302,17 @@ struct BugBody<'a> {
     screenshot_url: Option<&'a str>,
 }
 
-fn build_title(note: &str, reporter_name: Option<&str>) -> String {
+fn build_title(note: &str, reporter_name: Option<&str>, is_feature: bool) -> String {
+    let prefix = if is_feature { "Feature" } else { "Bug" };
     let head = truncate(note.lines().next().unwrap_or(note).trim(), 80);
     match reporter_name.map(str::trim).filter(|n| !n.is_empty()) {
-        Some(name) => format!("Bug: {head} (from {name})"),
-        None => format!("Bug: {head}"),
+        Some(name) => format!("{prefix}: {head} (from {name})"),
+        None => format!("{prefix}: {head}"),
     }
 }
 
-fn build_labels(env: &Value) -> Vec<String> {
-    let mut labels = vec![BUG_LABEL.to_string()];
+fn build_labels(env: &Value, is_feature: bool) -> Vec<String> {
+    let mut labels = vec![if is_feature { FEATURE_LABEL } else { BUG_LABEL }.to_string()];
     if let Some(app) = env.get("app").and_then(Value::as_str).filter(|s| !s.is_empty()) {
         labels.push(format!("app:{app}"));
     }
@@ -338,6 +348,11 @@ fn build_issue_body(b: &BugBody) -> String {
         out.push_str(&format!("\n**Screenshot** (approximate rendering):\n\n![screenshot]({url})\n"));
     }
 
+    // Layout forensics — the highest-signal geometry, collapsed. The full block
+    // (all anchors) lives in context.json; here we surface the shrink-wrap/scope
+    // story a triager needs at a glance.
+    out.push_str(&build_layout_section(b.layout));
+
     let base = format!("https://github.com/{}/tree/main/{}", b.repo, b.bundle_path);
     out.push_str(&format!(
         "\n**Bundle:** [{path}]({base}) · \
@@ -349,17 +364,22 @@ fn build_issue_body(b: &BugBody) -> String {
     out
 }
 
-/// Flatten the env block into ordered `(label, value)` rows for the issue table.
+/// Preferred display order for the well-known env fields.
+const ENV_ORDER: &[&str] = &[
+    "app", "route", "commit", "version", "engine", "phase", "arrangement",
+    "tableScale", "browser", "platform", "platformVersion", "architecture",
+    "model", "language", "timezone", "connection", "timestamp",
+];
+
+/// Flatten the env block into `(label, value)` rows for the issue table: the
+/// known fields first (in ENV_ORDER), then any *other* scalar fields the client
+/// sent — so new env fields show up automatically without a backend change.
 fn env_rows(env: &Value) -> Vec<(String, String)> {
     let mut rows = Vec::new();
-    // Scalar fields, in display order.
-    for key in [
-        "app", "route", "commit", "version", "engine", "phase", "arrangement",
-        "tableScale", "platform", "connection", "timestamp",
-    ] {
-        push_scalar(&mut rows, key, env.get(key));
+    for key in ENV_ORDER {
+        push_scalar(&mut rows, key, env.get(*key));
     }
-    // viewport is composite → render inline between the scalar groups' natural spot.
+    // viewport is composite → render it explicitly.
     if let Some(vp) = env.get("viewport") {
         let w = vp.get("w").and_then(Value::as_i64);
         let h = vp.get("h").and_then(Value::as_i64);
@@ -369,7 +389,101 @@ fn env_rows(env: &Value) -> Vec<(String, String)> {
             rows.push(("viewport".to_string(), format!("{w}×{h}{dpr}")));
         }
     }
+    // Catch-all: any remaining scalar fields not already shown (future-proofing).
+    if let Value::Object(map) = env {
+        for (k, v) in map {
+            if k == "viewport" || k == "ua" || ENV_ORDER.contains(&k.as_str()) {
+                continue;
+            }
+            push_scalar(&mut rows, k, Some(v));
+        }
+    }
     rows
+}
+
+/// Max anchor rows rendered inline; the rest stay in context.json.
+const LAYOUT_ANCHOR_CAP: usize = 10;
+
+/// Render the highest-signal layout forensics as a collapsed `<details>`: the
+/// primary hand-box ancestry (widths + min-width + Vue scope flag — the
+/// shrink-wrap/dead-`:deep()` story) and a capped anchor table. Empty string
+/// when there's no layout block (legacy a1, or no table on screen).
+fn build_layout_section(layout: &Value) -> String {
+    let anchors = layout.get("anchors").and_then(Value::as_array);
+    let ancestry = layout.get("ancestry").and_then(Value::as_array);
+    let has_anchors = anchors.is_some_and(|a| !a.is_empty());
+    let has_ancestry = ancestry.is_some_and(|a| !a.is_empty());
+    if !has_anchors && !has_ancestry {
+        return String::new();
+    }
+
+    let n = anchors.map_or(0, |a| a.len());
+    let mut s = format!("\n<details><summary>Layout — {n} anchors</summary>\n\n");
+
+    if let Some(chain) = ancestry.filter(|c| !c.is_empty()) {
+        s.push_str("**Primary hand-box ancestry** (scope = carries `data-v-*`):\n\n");
+        s.push_str("| Element | width | min-width | scoped |\n|---|---|---|---|\n");
+        for lvl in chain {
+            s.push_str(&format!(
+                "| `{}` | {} | {} | {} |\n",
+                lvl.get("sel").and_then(Value::as_str).unwrap_or("?"),
+                num_or_dash(lvl.get("w")),
+                lvl.get("minW").and_then(Value::as_str).unwrap_or(""),
+                lvl.get("scoped").and_then(Value::as_bool)
+                    .map(|b| if b { "yes" } else { "**no**" }).unwrap_or(""),
+            ));
+        }
+        s.push('\n');
+    }
+
+    if let Some(list) = anchors.filter(|a| !a.is_empty()) {
+        s.push_str("**Anchors:**\n\n| Selector | width | min-width | vars |\n|---|---|---|---|\n");
+        for a in list.iter().take(LAYOUT_ANCHOR_CAP) {
+            s.push_str(&format!(
+                "| `{}` | {} | {} | {} |\n",
+                a.get("sel").and_then(Value::as_str).unwrap_or("?"),
+                num_or_dash(a.get("w")),
+                a.get("minW").and_then(Value::as_str).unwrap_or(""),
+                fmt_vars(a.get("vars")),
+            ));
+        }
+        if list.len() > LAYOUT_ANCHOR_CAP {
+            s.push_str(&format!("\n_(+{} more in context.json)_\n", list.len() - LAYOUT_ANCHOR_CAP));
+        }
+    }
+
+    s.push_str("\n</details>\n");
+    s
+}
+
+/// A JSON number as a compact string (integers without a trailing `.0`), or `–`.
+fn num_or_dash(v: Option<&Value>) -> String {
+    match v.and_then(Value::as_f64) {
+        Some(n) if n.fract() == 0.0 => format!("{}", n as i64),
+        Some(n) => format!("{n}"),
+        None => "–".to_string(),
+    }
+}
+
+/// The layout vars object (`{ts, ss, rs}`) as `ts=1.25 ss=0.65`, in a fixed
+/// meaningful order (not serde's alphabetical), else empty.
+fn fmt_vars(v: Option<&Value>) -> String {
+    let m = match v.and_then(Value::as_object) {
+        Some(m) if !m.is_empty() => m,
+        _ => return String::new(),
+    };
+    let known = ["ts", "ss", "rs"];
+    let mut parts: Vec<String> = known
+        .iter()
+        .filter_map(|k| m.get(*k).map(|val| format!("{k}={}", val.as_str().unwrap_or(""))))
+        .collect();
+    // Any unexpected keys, appended so nothing is silently dropped.
+    for (k, val) in m {
+        if !known.contains(&k.as_str()) {
+            parts.push(format!("{k}={}", val.as_str().unwrap_or("")));
+        }
+    }
+    parts.join(" ")
 }
 
 fn push_scalar(rows: &mut Vec<(String, String)>, key: &str, v: Option<&Value>) {
@@ -469,20 +583,23 @@ mod tests {
     }
 
     #[test]
-    fn title_includes_name_when_present() {
-        assert_eq!(build_title("hand overlaps", Some("Rick W")), "Bug: hand overlaps (from Rick W)");
-        assert_eq!(build_title("hand overlaps", None), "Bug: hand overlaps");
-        assert_eq!(build_title("hand overlaps", Some("  ")), "Bug: hand overlaps");
+    fn title_includes_name_and_kind() {
+        assert_eq!(build_title("hand overlaps", Some("Rick W"), false), "Bug: hand overlaps (from Rick W)");
+        assert_eq!(build_title("hand overlaps", None, false), "Bug: hand overlaps");
+        assert_eq!(build_title("hand overlaps", Some("  "), false), "Bug: hand overlaps");
+        assert_eq!(build_title("dark mode please", None, true), "Feature: dark mode please");
+        assert_eq!(build_title("dark mode", Some("Rick W"), true), "Feature: dark mode (from Rick W)");
     }
 
     #[test]
-    fn labels_derive_from_env() {
+    fn labels_derive_from_env_and_kind() {
         let env = json!({ "app": "a1", "engine": "local", "phase": "play" });
         assert_eq!(
-            build_labels(&env),
+            build_labels(&env, false),
             vec!["bug-report", "app:a1", "engine:local", "phase:play"]
         );
-        assert_eq!(build_labels(&json!({})), vec!["bug-report"]);
+        assert_eq!(build_labels(&json!({}), false), vec!["bug-report"]);
+        assert_eq!(build_labels(&json!({ "app": "a1" }), true), vec!["feature-request", "app:a1"]);
     }
 
     #[test]
@@ -491,5 +608,58 @@ mod tests {
         let rows = env_rows(&env);
         assert!(rows.iter().any(|(k, v)| k == "viewport" && v == "800×600@2"));
         assert!(rows.iter().any(|(k, v)| k == "app" && v == "a1"));
+    }
+
+    #[test]
+    fn layout_section_renders_ancestry_and_capped_anchors() {
+        let layout = json!({
+            "anchors": (0..14).map(|i| json!({ "sel": format!("div.a{i}"), "w": 119.0, "minW": "240px" })).collect::<Vec<_>>(),
+            "ancestry": [
+                { "sel": "div.holding", "w": 119.0, "minW": "none", "scoped": true },
+                { "sel": "div.practice-left", "w": 119.0, "minW": "240px", "scoped": false }
+            ],
+            "truncated": false
+        });
+        let s = build_layout_section(&layout);
+        assert!(s.contains("<details><summary>Layout — 14 anchors</summary>"));
+        assert!(s.contains("div.holding"));
+        assert!(s.contains("| 119 | 240px | **no** |")); // dead min-width + unscoped container = the tell
+        assert!(s.contains("(+4 more in context.json)")); // 14 anchors, cap 10
+        assert!(s.contains("</details>"));
+    }
+
+    #[test]
+    fn layout_section_empty_without_layout() {
+        assert_eq!(build_layout_section(&Value::Null), "");
+        assert_eq!(build_layout_section(&json!({ "anchors": [] })), "");
+    }
+
+    #[test]
+    fn fmt_vars_and_num_or_dash() {
+        assert_eq!(fmt_vars(Some(&json!({ "ts": "1.25", "ss": "0.65" }))), "ts=1.25 ss=0.65");
+        assert_eq!(fmt_vars(Some(&json!({}))), "");
+        assert_eq!(fmt_vars(None), "");
+        assert_eq!(num_or_dash(Some(&json!(119.0))), "119");
+        assert_eq!(num_or_dash(Some(&json!(119.5))), "119.5");
+        assert_eq!(num_or_dash(None), "–");
+    }
+
+    #[test]
+    fn env_rows_render_new_fields_and_catch_all() {
+        let env = json!({
+            "app": "a1", "browser": "Chrome 150", "platform": "macOS",
+            "architecture": "arm/64", "language": "en-US", "timezone": "America/Los_Angeles",
+            "ua": "Mozilla/5.0 ...long...", "somethingNew": "future"
+        });
+        let rows = env_rows(&env);
+        let has = |k: &str, v: &str| rows.iter().any(|(rk, rv)| rk == k && rv == v);
+        assert!(has("browser", "Chrome 150"));
+        assert!(has("platform", "macOS"));
+        assert!(has("architecture", "arm/64"));
+        assert!(has("language", "en-US"));
+        assert!(has("timezone", "America/Los_Angeles"));
+        // Unknown field rendered via catch-all; raw `ua` deliberately omitted.
+        assert!(has("somethingNew", "future"));
+        assert!(!rows.iter().any(|(k, _)| k == "ua"));
     }
 }

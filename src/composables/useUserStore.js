@@ -201,6 +201,9 @@ function switchUser(userId) {
 
   currentUserId.value = userId
   saveToStorage()
+  // Local + instant (as released). Bookmark the active member server-side for a
+  // correct post-purge resume — fire-and-forget, no await, failures tolerated.
+  pingActiveUser(userId)
   return true
 }
 
@@ -682,6 +685,96 @@ function stopViewingAs() {
   viewAsUser.value = null
 }
 
+/**
+ * ADR-0004 Phase 3: silently restore identity + key material from a surviving
+ * durable session cookie. Called at startup when localStorage was purged (e.g.
+ * Safari ITP after ~7 idle days) but the server-set `__Host-bc_session` cookie
+ * persists — the user is logged back in with **no recovery email**. No-op when
+ * there is no valid session cookie (falls through to the WelcomeScreen as today).
+ *
+ * Key material is re-fetched from `GET /api/session/key`, the owner-gated escrow
+ * channel — it delivers only the session's own user's key. Reconstruction reuses
+ * `applyRecoveredUser` (the same path the recovery-claim flow uses).
+ *
+ * @returns {Promise<boolean>} true if a session was restored / made active
+ */
+async function restoreSessionFromCookie() {
+  try {
+    const sessRes = await apiFetch(`${API_URL}/session`)
+    if (!sessRes.ok) return false
+    const sess = await sessRes.json()
+    const roster = Array.isArray(sess.roster) ? sess.roster : []
+    if (!sess.authenticated || roster.length === 0) return false
+
+    // Fetch the batch key packet only if any roster member lacks usable local keys.
+    const needKeys = roster.some((m) => !users.value[m.user_id]?.secretKey)
+    const keyMap = {}
+    if (needKeys) {
+      const keyRes = await apiFetch(`${API_URL}/session/key`)
+      if (keyRes.ok) {
+        const kr = await keyRes.json()
+        for (const k of kr.keys || []) keyMap[k.user_id] = k
+      }
+    }
+
+    // Reconstruct each roster member's localStorage record (reproduce pre-purge
+    // multi-user state). Keep members we already hold with a key untouched.
+    for (const m of roster) {
+      const existing = users.value[m.user_id]
+      if (existing && existing.secretKey) continue
+      const keys = keyMap[m.user_id]
+      if (!keys || !keys.secret_key) continue
+      users.value[m.user_id] = {
+        id: m.user_id,
+        firstName: m.first_name,
+        lastName: m.last_name,
+        email: m.email,
+        classrooms: m.classroom ? [m.classroom] : (existing?.classrooms || []),
+        dataConsent: true,
+        secretKey: keys.secret_key,
+        role: m.role || existing?.role || 'student',
+        viewerPrivateKey: keys.viewer_private_key || existing?.viewerPrivateKey || null,
+        serverRegistered: true,
+        recoveredAt: new Date().toISOString(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }
+
+    // Resume-as (ADR-0004 §3a): active_user_id if it's a restored member, else the
+    // newest-active member (roster is ordered last_active desc).
+    const restoredIds = roster.map((m) => m.user_id).filter((id) => users.value[id]?.secretKey)
+    if (restoredIds.length === 0) return false
+    currentUserId.value =
+      sess.active_user_id && restoredIds.includes(sess.active_user_id)
+        ? sess.active_user_id
+        : restoredIds[0]
+    saveToStorage()
+    return true
+  } catch {
+    // Best-effort — never block startup; WelcomeScreen handles the no-session case.
+    return false
+  }
+}
+
+/**
+ * ADR-0004 §3a: fire-and-forget bookmark of the active roster member on the
+ * server, so a post-purge restore resumes as the right user. A convenience, never
+ * an authority — failures are ignored, no await on the caller's critical path.
+ */
+function pingActiveUser(userId) {
+  if (!userId) return
+  try {
+    apiFetch(`${API_URL}/session/active-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    }).catch(() => {})
+  } catch {
+    // ignore — bookmark only
+  }
+}
+
 export function useUserStore() {
   // Computed properties
   const currentUser = computed(() => {
@@ -763,6 +856,10 @@ export function useUserStore() {
 
     // Role sync
     syncRole,
+
+    // ADR-0004 Phase 3: device-session restore + active-user bookmark
+    restoreSessionFromCookie,
+    pingActiveUser,
 
     // Account merge handoff (admin merged this account into a keeper)
     checkAccountHandoff

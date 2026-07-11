@@ -667,9 +667,19 @@ onMounted(async () => {
   // If a recovery link was clicked while another user is logged in,
   // clear current user so WelcomeScreen renders and handles the claim
   const urlParams = new URLSearchParams(window.location.search)
-  if (urlParams.get('recover') && urlParams.get('user_id') && userStore.isAuthenticated.value) {
+  const claimingRecovery = !!(urlParams.get('recover') && urlParams.get('user_id'))
+  if (claimingRecovery && userStore.isAuthenticated.value) {
     userStore.stopViewingAs()
     userStore.currentUserId.value = null
+  }
+
+  // ADR-0004 Phase 3: if localStorage was purged (Safari ITP) but the durable
+  // session cookie survives, silently restore identity + key material before we
+  // decide to show the WelcomeScreen — a week-old emailed link just logs in. Skip
+  // when a recovery link is being claimed (that flow owns identity) or when we're
+  // already authenticated locally. No-op if there is no valid session cookie.
+  if (!claimingRecovery && !userStore.isAuthenticated.value) {
+    await userStore.restoreSessionFromCookie()
   }
 
   assignmentStore.initializeFromUrl()

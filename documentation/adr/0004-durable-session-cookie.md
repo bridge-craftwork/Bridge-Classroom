@@ -18,7 +18,11 @@ cookied users. *(This reverses the original 2026-07-10 "identity-only, keys stay
 recovery-gated" decision — the arc and reasoning are recorded in §3.)* (3) The cookie
 is the **middle trust tier**, complementary to ADR-0003 signing (which stays for
 privileged mass-decrypt/merge ops), not a replacement for it. (4) Guests remain a
-**local-only, cookie-free** track (decided 2026-07-10, #85).
+**local-only, cookie-free** track (decided 2026-07-10, #85). (5) **[2026-07-11]** The
+cookie is a **device session with a server-side roster** (`session_users`), not a
+per-user cookie: every user *proven on a device* (via registration or email recovery)
+is restorable after a purge; restore returns the roster + all members' keys in one
+batch + an active-user hint. See §3a.
 
 ## Context
 
@@ -94,18 +98,18 @@ A new `sessions` table: `id` (the cookie value), `user_id`, `created_at`,
 `expires_at`, `revoked_at`, plus device/platform columns stamped at creation. New
 surface:
 
-- **`GET /api/session`** — "who am I": returns the active user, **identity only**
-  (no key material). The multi-identity roster (`Switch User`) is reconciled
-  client-side from localStorage; the cookie names the *active* user (caveat 1).
-  Called on load before the localStorage/recovery fallback. Kept cheap.
-- **`GET /api/session/key`** — session-gated **key redelivery** (see §3): unwraps the
-  session's *own* user's escrowed AES key (and teacher viewer private key). Separate
-  from `/session` so identity checks stay cheap and key delivery gets its own rate
-  limit + audit line.
-- **`DELETE /api/session`** — explicit sign-out / revoke (a capability the stateless
-  model can't offer today).
-- Cookie is set on successful recovery-claim (the proven-identity moment); new-user
-  registration minting and rotation policy are Phase 3 / TBD.
+- **`GET /api/session`** — restore identity: returns the **roster** (member `user_id`,
+  name, email) and `active_user_id`, **no key material**. Called on load before the
+  localStorage/recovery fallback. (See §3a for the device-session/roster model.)
+- **`GET /api/session/key`** — **batch** key redelivery (§3/§3a): unwraps the escrowed
+  AES key (+ teacher viewer private key) for **every roster member**, server-determined,
+  **no user_id accepted**. Separate from `/session` so it gets its own rate limit + one
+  audit line per restore.
+- **`POST /api/session/active-user`** — fire-and-forget bookmark of the active member
+  (`{ user_id }`, must be a roster member). Never an authorization input.
+- **`DELETE /api/session`** — revoke the **whole device session** (all memberships).
+- Cookie is set / the roster is joined on successful **recovery-claim or registration**
+  (the two proven-identity admission gates — §3a). Rotation policy TBD.
 
 ### 3. Session-gated key redelivery (supersedes the 2026-07-10 identity-only decision)
 
@@ -162,6 +166,68 @@ still must not return keys — it is `x-api-key`-gated, not session-owner-gated 
 removal stands; `GET /api/session/key` is the sanctioned owner-gated channel. The
 **same rule binds the teacher key path**: a teacher's viewer private key is delivered
 only to that teacher's own session, never by user_id to any key holder.
+
+### 3a. Device-session model — a server-side roster (revised 2026-07-11)
+
+The cookie represents a **device session, not a user.** Multiple users are **members**
+of that session, tracked server-side. This makes *every proven user on a device*
+auto-restorable after an ITP purge — email recovery is needed only on a genuinely new
+browser/device, **once per user per device** — instead of stranding every identity but
+the last one in a near-weekly email round-trip.
+
+**Schema** (additive to the deployed single-user sessions work):
+
+- `sessions`: add **`active_user_id`** (nullable FK to `users`) — the resume-as hint.
+  Everything already deployed stays.
+- **`session_users`** (new): `(session_id, user_id, added_at, last_active)` — the
+  membership / authorization set.
+- `users`: add **`last_visit`** — bumped on authenticated activity (independent
+  analytics metric, wanted regardless).
+
+**The one hard security boundary.** A user is admitted to a session's roster **only** by
+completing **registration** or **email-link recovery** in that browser. This admission
+gate is the single security boundary of the whole design — **never add a proof-free path
+onto the roster.** (Escape hatch, if ever needed and *not built now*: a `requires_reproof`
+flag on a membership row, e.g. teacher accounts on shared devices.)
+
+**Semantics:**
+
+- **One cookie per device.** No per-user cookies, no re-minting on switch. Multiplicity
+  lives in `session_users`, not the cookie jar.
+- **Restoration packet.** On restore the server returns: the **roster** (`user_id`,
+  name, email per member), the **AES keys for all roster members in one batch**, and
+  `active_user_id` as the resume hint. The client repopulates localStorage to reproduce
+  the exact pre-purge multi-user state. *Restore reconstructs the device's local state;
+  it does not change how the app behaves after restore.*
+- **Batch keys, deliberately.** Per-switch key delivery adds no security — a cookie
+  holder could switch-and-fetch in a loop and harvest the roster anyway, and roster
+  admission already required email proof on this device. `GET /api/session/key` accepts
+  **no user identifiers**; it returns keys for exactly the session's roster members,
+  determined server-side. Rate-limited (§S4); one audit line per restore listing
+  `session_id` and the `user_id`s delivered.
+- **Switch User stays local and instant** (as released). It additionally fires
+  `POST /api/session/active-user` as a **background, fire-and-forget** ping (no await, no
+  spinner, failures tolerated). The server pointer is a **bookmark, not an authority** —
+  **no authorization may ever key off `active_user_id`.** (Tightening key delivery to the
+  active user only would reintroduce a per-switch server dependency for *zero* security.)
+- **Resume-as.** On restore: use `active_user_id` if it's a current roster member; else
+  the member with the newest `last_active`; else show the user picker. `active_user_id`
+  is written on **explicit events only** — login, recovery, restore, switch.
+  `last_active` is diagnostic, bumped on the switch ping and authenticated activity.
+- **`DELETE /api/session`** revokes the **whole device session** — all memberships at
+  once ("log everyone out of this device").
+
+**Why not the simpler options:** a *single active session* strands every roster member
+but the last one in email recovery after each purge — the exact toll we're removing. A
+*full swap on every switch* re-mints the cookie, so still only one user is restorable
+post-purge (just a different one), and it couples switching to a round-trip. A
+`session_id` column *on `users`* can't model user↔session **many-to-many** (a user with
+two devices needs two membership rows) — a column would silently evict a user's older
+device on next login elsewhere, causing surprise email re-proof weeks later.
+
+**Security statement.** Anyone holding the device can act as any roster member **without
+re-proving**. This is intended for shared-device households and the classroom-iPad case,
+and is consistent with the threat model (cookie/device theft out of scope).
 
 ### 4. CORS: backend-first, not lockstep (closes §S8)
 

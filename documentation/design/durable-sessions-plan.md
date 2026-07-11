@@ -103,11 +103,14 @@ fetch problem. No behavior change on landing.
 - CSRF: rely on `SameSite=Lax` + CORS-pinned state-changing calls; confirm before
   shipping whether an explicit token is warranted (ADR-0004 open item).
 
-**Acceptance test (whole feature):** in Safari, authenticate → wait past (or simulate)
-an ITP localStorage purge → tap an emailed `.org` homework link → confirm **silent key
-restoration with no recovery email**, assignment opens. Also verify the cookie itself
-survives >7 days in Safari (the Tunnel/orange-cloud topology should dodge the
-CNAME-cloaking cap — verify empirically).
+**Acceptance test (whole feature, device-session model — ADR-0004 §3a):** **two** users
+complete email proof on **one** Safari device → wait past (or simulate) an ITP
+localStorage purge → tap a stale emailed `.org` homework link → the device **restores
+silently**, resumes as the **last-active** user, and **Switch User shows both** users and
+switches instantly **with no email and no network dependency in the switch itself**. Also
+verify the cookie survives >7 days in Safari (the Tunnel/orange-cloud topology should
+dodge the CNAME-cloaking cap — verify empirically). An automated Playwright version runs
+the same flow against a local stack (`COOKIE_SECURE=false`).
 
 ### Phase 4 — Cash in proven identity for §S7 (the #33 payoff)
 

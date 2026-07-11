@@ -123,6 +123,8 @@ async fn main() -> anyhow::Result<()> {
         // session user's own escrowed AES key so lapsed Safari users rehydrate
         // silently instead of via an email round-trip.
         .route("/api/session/key", get(routes::get_session_key))
+        // Fire-and-forget bookmark of the active roster member (never an authz input).
+        .route("/api/session/active-user", post(routes::set_active_user))
         // Convention card routes
         .route("/api/cards", get(routes::list_cards))
         .route("/api/cards", post(routes::create_card))
