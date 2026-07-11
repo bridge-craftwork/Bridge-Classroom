@@ -21,11 +21,28 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
 
 /// POST /api/users
 /// Register a new user
+/// POST /api/users — thin wrapper that admits a GENUINELY NEW registration to the
+/// device session (ADR-0004 §3a: registration is an admission gate). Minting is
+/// gated to fresh inserts only — never the existing-user upsert path, which is an
+/// api-key-only sync and must NOT put an unproven identity onto a roster.
 pub async fn create_user(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: String,
-) -> Result<Json<CreateUserResponse>, (StatusCode, String)> {
+) -> Result<(HeaderMap, Json<CreateUserResponse>), (StatusCode, String)> {
+    let (resp, newly_created) = create_user_inner(State(state.clone()), headers.clone(), body).await?;
+    let mut out = HeaderMap::new();
+    if newly_created && resp.0.success {
+        out = crate::routes::session::mint_cookie_header(&state, &headers, &resp.0.user_id).await;
+    }
+    Ok((out, resp))
+}
+
+async fn create_user_inner(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: String,
+) -> Result<(Json<CreateUserResponse>, bool), (StatusCode, String)> {
     if !validate_api_key(&headers, &state.config.api_key) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
     }
@@ -84,12 +101,15 @@ pub async fn create_user(
             "Email {} already exists with user_id {}, client sent {} - needs recovery",
             req.email, existing_user.id, req.user_id
         );
-        return Ok(Json(CreateUserResponse {
+        return Ok((Json(CreateUserResponse {
             success: false,
             user_id: existing_user.id,
             existing_user: Some(true),
-        }));
+        }), false));
     }
+
+    // Set true only on the genuine new-insert branch below (admission gate).
+    let mut newly_created = false;
 
     // Encrypt secret key for recovery if provided and recovery is configured
     let recovery_encrypted_key = if let (Some(secret_key), Some(recovery_secret)) =
@@ -217,6 +237,7 @@ pub async fn create_user(
         tracing::info!("Updated existing user: {} (name_protected: {})", req.user_id, name_protected);
     } else {
         // Create new user
+        newly_created = true;
         let user = User::from_request(&req);
 
         sqlx::query(
@@ -282,11 +303,11 @@ pub async fn create_user(
         }
     }
 
-    Ok(Json(CreateUserResponse {
+    Ok((Json(CreateUserResponse {
         success: true,
         user_id: req.user_id,
         existing_user: None,
-    }))
+    }), newly_created))
 }
 
 /// GET /api/users/:user_id

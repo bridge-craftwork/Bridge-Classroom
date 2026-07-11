@@ -342,6 +342,59 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         .await
         .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // Device-session roster (ADR-0004 §3a): a session is a DEVICE session with
+    // multiple member users. `session_users` is the membership/authorization set —
+    // a user is admitted ONLY by registration or email-link recovery in that browser
+    // (the one hard security boundary). user↔session is many-to-many.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS session_users (
+            session_id  TEXT NOT NULL,
+            user_id     TEXT NOT NULL,
+            added_at    TEXT NOT NULL,
+            last_active TEXT NOT NULL,
+            PRIMARY KEY (session_id, user_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_session_users_user ON session_users(user_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // sessions.active_user_id — the resume-as hint (a bookmark, never an authz input).
+    // Guarded ALTER: prod already has the sessions table from the deployed Phase 1.
+    let has_active_user: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM pragma_table_info('sessions') WHERE name = 'active_user_id'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_active_user {
+        sqlx::query(r#"ALTER TABLE sessions ADD COLUMN active_user_id TEXT"#)
+            .execute(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
+    }
+
+    // users.last_visit — independent analytics metric, bumped on authenticated activity.
+    let has_last_visit: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM pragma_table_info('users') WHERE name = 'last_visit'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_last_visit {
+        sqlx::query(r#"ALTER TABLE users ADD COLUMN last_visit TEXT"#)
+            .execute(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
+    }
+
     // Add recovery_encrypted_key column to users table if it doesn't exist
     // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
     let has_recovery_column: bool = sqlx::query_scalar(
