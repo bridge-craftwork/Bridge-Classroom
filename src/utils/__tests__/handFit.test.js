@@ -33,6 +33,18 @@ describe('computeFit', () => {
     expect(f.visible + f.hidden).toBe(11)
   })
 
+  it('allowTruncate:false never truncates — compresses the whole suit below the floor', () => {
+    // Same cramped input that truncates by default, but no popup to reach hidden
+    // cards → show ALL of them, compressed under the floor (bug-artifacts #6).
+    const widths = Array(5).fill(12) // natural 60; available 35 → 0.58 < floor
+    const d = computeFit({ cumWidths: cum(widths), available: 35, chipReserve: 8 })
+    expect(d.hidden).toBeGreaterThan(0) // default truncates
+    const f = computeFit({ cumWidths: cum(widths), available: 35, chipReserve: 8, allowTruncate: false })
+    expect(f.hidden).toBe(0)           // all visible
+    expect(f.visible).toBe(5)
+    expect(f.scale).toBeLessThan(LEGIBILITY_FLOOR) // and it went below the floor to fit them
+  })
+
   it('COUNT includes the chip: visible cards + chip never exceed the floor budget', () => {
     const widths = Array(11).fill(10)
     const f = computeFit({ cumWidths: cum(widths), available: 50, chipReserve: 8 })

@@ -229,7 +229,9 @@ function measure() {
     const cardsRect = cardsEl.getBoundingClientRect()
     const available = rowRect.width - (cardsRect.left - rowRect.left)
     const chipReserve = chipEls[suit] ? chipEls[suit].getBoundingClientRect().width : 0
-    fit[suit] = computeFit({ cumWidths, available, natural, chipReserve, margin: OVERHANG_MARGIN * tableScale, floor: LEGIBILITY_FLOOR })
+    // Truncate only when the popup is reachable (clickable) — otherwise the +N
+    // strands cards with no way to see them. Non-clickable rows compress-to-fit.
+    fit[suit] = computeFit({ cumWidths, available, natural, chipReserve, margin: OVERHANG_MARGIN * tableScale, floor: LEGIBILITY_FLOOR, allowTruncate: props.clickable })
   }
 }
 
