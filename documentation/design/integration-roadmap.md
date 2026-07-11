@@ -66,11 +66,11 @@ annotation architecture — all still binding)
   **ContextPanel** (context region — not yet wired, 0×), the **instantiation
   collapse** (still **4×** AuctionTable / 4× BiddingBox → 2×), and the `.bp-*`
   deletion (2.3).
-- **Not started:** the rest of contract adoption in production —
-  BiddingPracticeView's **server path** (Phase 3: `srv.*` mapping, collapse to 1×,
-  server context), the **Teacher console** (Phase 4), and **MainLayout /
-  Scenario Mastery** (Phase 1, the released app — runs last). These surfaces still
-  wire components directly.
+- **Not started (but Phase 1 is next):** contract adoption in production —
+  **MainLayout / Scenario Mastery** (Phase 1, the released app) now runs **NEXT**
+  under the A1-first reorder (🟡 kicked off gallery-first, #159), then
+  BiddingPracticeView's **server path** (Phase 3), and the **Teacher console**
+  (Phase 4). These surfaces still wire components directly.
 - **Gallery clipping debt:** cleared in Phase 0.1 (BridgeTable/AuctionTable/SeatPanel/
   HandDisplay), all via ResizeObserver / `min()` — never `container-type` (see the
   constraint in Component work · Row A; hotfix #88 is why).
