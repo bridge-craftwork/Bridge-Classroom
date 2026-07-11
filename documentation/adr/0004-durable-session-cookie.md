@@ -112,13 +112,27 @@ over the wire. Instead, §S5 gets **fixed** ([`get_user`](../../bridge-classroom
 stops returning `viewer_private_key`), and key rehydration stays the recovery flow's
 job.
 
-### 4. CORS must change in lockstep (closes §S8)
+### 4. CORS: backend-first, not lockstep (closes §S8)
 
-Credentialed requests forbid `allow_origin(Any)`. [`build_cors_layer`](../../bridge-classroom-api/src/main.rs)
-switches to the pinned-origins branch **plus `allow_credentials(true)`**. This is a
-hard coupling: the backend cookie work and the frontend `credentials:'include'` must
-deploy together, or same-origin dev and both prod domains break. Pinning the two real
-origins also closes review §S8 (CORS-falls-open).
+[`build_cors_layer`](../../bridge-classroom-api/src/main.rs) switches from
+`allow_origin(Any)` to the pinned-origins branch **plus `allow_credentials(true)`**.
+This is **backward-compatible with the current non-credentialed frontend**, so it does
+**not** require a coordinated deploy — the earlier "lockstep" framing was wrong:
+
+- A request that sends **no** credentials only needs `Access-Control-Allow-Origin` to be
+  `*` **or** to match its Origin. tower-http reflects the caller's Origin when it's in
+  the pin list, so those requests keep passing; the extra
+  `Access-Control-Allow-Credentials: true` header is simply ignored by a non-credentialed
+  request. `allow_credentials(true)` breaks nothing that doesn't opt in.
+- The **only** genuinely breaking order is **frontend-first**: a *credentialed* request
+  forbids `Access-Control-Allow-Origin: *`, so `credentials:'include'` against today's
+  `Any` config fails. Hence the safe sequence is **backend-first → soak → frontend
+  `credentials:'include'`** (folded into Phase 3, not a separate atomic release).
+
+The real requirement is therefore **pin-list completeness**, not deploy timing: the pins
+must cover *every* real origin — both prod domains **and** the dev origin(s) (`:5173`
+and lane2's `:5174`) — because moving off `Any` means any un-pinned origin breaks
+immediately, even without credentials. Pinning also closes review §S8 (CORS-falls-open).
 
 ### 5. Frontend adopts a central fetch wrapper first
 
@@ -176,7 +190,9 @@ sites to it. This is a prerequisite for #85 and independently pays down review �
 - **Multi-user-per-browser** — the app's `Switch User` supports several identities in
   one browser; one cookie is one active identity. Reconciled by the cookie tracking
   the *active* user while `GET /api/session` returns the roster.
-- Backend + frontend must deploy in lockstep for the CORS/credentials flip.
+- CORS hardening deploys **backend-first** (backward-compatible), then the frontend adds
+  `credentials:'include'`; no coordinated deploy — the only unsafe order is frontend-first.
+  Requires the pin list to cover every real origin (both prod domains + dev `:5173`/`:5174`).
 - Key rehydration is still a recovery step (by design) — restored identity ≠ restored
   decryption of past data.
 

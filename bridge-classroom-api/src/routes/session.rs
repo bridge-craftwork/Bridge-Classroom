@@ -11,10 +11,11 @@
 //! verified `user_id` on every request, which is what the §S7 ownership checks
 //! will authorize against in Phase 4.
 //!
-//! NOTE: until Phase 2 flips CORS to `allow_credentials(true)` with pinned
-//! origins and the frontend sends `credentials: 'include'`, this cookie is set
-//! but does not round-trip cross-origin in prod. The machinery is inert-but-
-//! correct until then.
+//! NOTE: this cookie is set but does not round-trip cross-origin in prod until
+//! Phase 2 pins CORS with `allow_credentials(true)` AND Phase 3 has the frontend
+//! send `credentials: 'include'`. (Phase 2 is backward-compatible and ships
+//! backend-first; the two phases need not be coordinated — only frontend-first
+//! is unsafe.) The machinery is inert-but-correct until both land.
 
 use axum::{
     extract::State,
