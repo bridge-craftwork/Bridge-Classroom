@@ -1,21 +1,21 @@
 /* Bounding-box diagnostic overlay (grid-arranger-spec §5.1) — the arranger's
    internal ledger made visible: grid tracks, region boxes, component reserves, and
    the bidding growth-reserve band. HARNESS-ONLY (imported by HarnessSceneView, not
-   the app) → zero production bytes. Activated by `data-bb` on <html> (set from
-   `?bounding-boxes=1` / `?bb=1`).
+   the app) → zero production bytes. Activated by `data-bounding-boxes` on <html>
+   (set from `?bounding-boxes=1`, or the `b` key).
 
    CRITICAL: outline, never border — outlines don't participate in layout, so the
    diagnostic cannot perturb the geometry it inspects (same trap the popup avoided
    with cs-static). */
 
 /* Layer 1 — the grid skeleton (where the fr weights landed). */
-html[data-bb] .grid-table {
+html[data-bounding-boxes] .grid-table {
   outline: 1px dashed rgba(90, 100, 120, 0.55);
   outline-offset: -1px;
 }
 
 /* Layer 2 — region content boxes (what each named area received). */
-html[data-bb] .grid-table .region {
+html[data-bounding-boxes] .grid-table .region {
   outline: 1px solid rgba(20, 140, 105, 0.7);
   outline-offset: -1px;
   position: relative;
@@ -23,9 +23,10 @@ html[data-bb] .grid-table .region {
 
 /* Layer 3 — the ledger label: region · received W×H · scale× · reserve. A reserve
    larger than the box = encroachment; a box far larger than its reserve = dead
-   space. Pseudo-element, so it adds nothing to layout. */
-html[data-bb] .grid-table .region::after {
-  content: attr(data-bb-label);
+   space. Pseudo-element, so it adds nothing to layout. Collapsed (zero-size)
+   regions do NOT get a floating label — they're listed in the corner legend. */
+html[data-bounding-boxes] .grid-table .region.occupied::after {
+  content: attr(data-bounding-box-label);
   position: absolute;
   top: 0;
   left: 0;
@@ -39,14 +40,11 @@ html[data-bb] .grid-table .region::after {
   pointer-events: none;
   border-bottom-right-radius: 3px;
 }
-/* Empty seat areas (chips-only / absent) still carry a box + label but no content —
-   dim them so the occupied regions read first. */
-html[data-bb] .grid-table .region.seat:empty::after { opacity: 0.5; }
 
 /* Layer 4 — the bidding growth-reserve band. The center stage reserves a bounded
    height; the auction bottom-anchors within it, so the HATCHED area above the
-   auction is the reserve the auction grows upward into. Amber = reserve/slack. */
-html[data-bb] .grid-table.bidding-anchored .area-center {
+   auction is the reserve the auction grows into. Amber = reserve/slack. */
+html[data-bounding-boxes] .grid-table.bidding-anchored .area-center {
   outline-color: rgba(200, 120, 20, 0.85);
   background: repeating-linear-gradient(
     45deg,
@@ -56,6 +54,39 @@ html[data-bb] .grid-table.bidding-anchored .area-center {
     rgba(200, 120, 20, 0.09) 14px
   );
 }
-html[data-bb] .grid-table.bidding-anchored .area-center::after {
+html[data-bounding-boxes] .grid-table.bidding-anchored .area-center::after {
   background: rgba(160, 92, 12, 0.92);
 }
+
+/* Corner legend — the collapsed (zero-size) regions, so they're accounted for
+   without floating 0×0 labels over the layout. Hidden unless the diagnostic is on. */
+.grid-table .bounding-box-legend { display: none; }
+html[data-bounding-boxes] .grid-table .bounding-box-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 60;
+  max-width: 40vw;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(20, 28, 24, 0.9);
+  font: 600 10px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #cfe6da;
+  pointer-events: none;
+}
+html[data-bounding-boxes] .grid-table .bounding-box-legend .bbl-title {
+  color: #7fd3aa;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+html[data-bounding-boxes] .grid-table .bounding-box-legend .bbl-item {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+html[data-bounding-boxes] .grid-table .bounding-box-legend .bbl-none { opacity: 0.6; }

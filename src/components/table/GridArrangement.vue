@@ -12,12 +12,12 @@
       v-for="seat in SEATS"
       :key="seat"
       class="region seat"
-      :class="'area-' + seatArea(seat)"
+      :class="['area-' + seatArea(seat), { occupied: seatVisible(seat) }]"
       :style="regionStyle('seats')"
       :data-region="'seat-' + seatArea(seat)"
       :data-region-scale="fmt(scales.seats)"
       :data-region-reserve="Math.round(rowReservePx(7))"
-      :data-bb-label="bbLabel('seat-' + seatArea(seat), 'seats', rowReservePx(7))"
+      :data-bounding-box-label="bbLabel('seat-' + seatArea(seat), 'seats', rowReservePx(7))"
     >
       <SeatPanel
         v-if="seatVisible(seat)"
@@ -33,13 +33,24 @@
     </div>
 
     <!-- center + peripheral regions: shell-provided content, scaled per region. -->
-    <div class="region area-center" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bb-label="bbLabel('center', 'center', biddingAnchored ? stageReservePx : regionReserve('center'), biddingAnchored ? 'h' : 'w')">
+    <div class="region area-center occupied" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bounding-box-label="bbLabel('center', 'center', biddingAnchored ? stageReservePx : regionReserve('center'), biddingAnchored ? 'h' : 'w')">
       <slot name="center" />
     </div>
-    <div v-if="hasRegion('nw')" class="region area-nw" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bb-label="bbLabel('nw', 'nw', regionReserve('nw'))"><slot name="nw" /></div>
-    <div v-if="hasRegion('ne')" class="region area-ne" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bb-label="bbLabel('ne', 'ne', regionReserve('ne'))"><slot name="ne" /></div>
-    <div v-if="hasRegion('se')" class="region area-se" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bb-label="bbLabel('se', 'se', regionReserve('se'))"><slot name="se" /></div>
-    <div v-if="hasRegion('sw')" class="region area-sw" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bb-label="bbLabel('sw', 'sw', regionReserve('sw'))"><slot name="sw" /></div>
+    <div v-if="hasRegion('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw', 'nw', regionReserve('nw'))"><slot name="nw" /></div>
+    <div v-if="hasRegion('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne', 'ne', regionReserve('ne'))"><slot name="ne" /></div>
+    <div v-if="hasRegion('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se', 'se', regionReserve('se'))"><slot name="se" /></div>
+    <div v-if="hasRegion('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw', 'sw', regionReserve('sw'))"><slot name="sw" /></div>
+
+    <!-- Bounding-box diagnostic legend: collapsed (zero-size) regions listed here
+         instead of as floating 0×0 labels over the layout. Hidden unless the
+         diagnostic is on (boundingBoxes.css keys off html[data-bounding-boxes]). -->
+    <div class="bounding-box-legend" aria-hidden="true">
+      <span class="bbl-title">collapsed</span>
+      <template v-if="collapsedRegions.length">
+        <span v-for="k in collapsedRegions" :key="k" class="bbl-item">{{ k }}</span>
+      </template>
+      <span v-else class="bbl-item bbl-none">none</span>
+    </div>
   </div>
 </template>
 
@@ -114,7 +125,7 @@ function marksFor(seat) {
 const biddingAnchored = computed(
   () => props.phase === 'bidding' && props.config.anchor?.bidding === 'bottom',
 )
-const reserveRounds = computed(() => props.config.anchor?.reserveRounds ?? 6)
+const reserveRounds = computed(() => props.config.reserveRounds ?? 1)
 
 const gridStyle = computed(() => {
   const c = props.config.tracks?.columns || [1, 1, 1]
@@ -148,6 +159,11 @@ function bbLabel(key, scaleKey, reservePx, dim = 'w') {
   const rv = reservePx ? ` · r${Math.round(reservePx)}${dim}` : ''
   return `${key} · ${sz}${sc}${rv}`
 }
+// Collapsed (zero-size) regions — listed in the diagnostic's corner legend rather
+// than as floating 0×0 labels cluttering the layout.
+const collapsedRegions = computed(() =>
+  Object.entries(sizes).filter(([, v]) => !v || !v.w || !v.h).map(([k]) => k).sort(),
+)
 
 // Column index each area sits in (left/center/right). A region's AVAILABLE width
 // is its column's resolved track width — NOT the region's own (content-sized,
@@ -239,21 +255,31 @@ onBeforeUnmount(() => ro?.disconnect())
     "nw n  ne"
     "w  center e"
     "sw s  se";
-  gap: 10px;
+  /* gap: 0 — spacing is expressed as margins on OCCUPIED regions only (below), so
+     gutters collapse with occupancy. A grid gap still reserves a gutter around a
+     collapsed 0-height/0-width track, which is what left a phantom band between the
+     status strip and the stage; margins on non-empty regions don't. */
+  gap: 0;
   padding: 14px;
   align-items: center;
   justify-items: center;
+  --cell-gap: 6px;
   /* The grid SHRINK-WRAPS to its content + reserves — it never reads the viewport.
      The shell owns where this block sits (grid-arranger-spec §1: grid sizes to
      content/reserves, shell owns the viewport). */
 }
+/* Designed spacing lives on occupied regions only (`:not(:empty)`); empty seat/
+   corner areas collapse to nothing, so no phantom gutters. */
+.grid-table .region:not(:empty) { margin: var(--cell-gap); }
 /* Bottom-anchor bidding: the center stage reserves a bounded growth height (min-
    height set inline = stageReservePx) and bottom-anchors the auction within it, so
-   the auction grows UPWARD into the reserve without moving the hand/BB row. */
+   the auction grows into the reserve. Full width + centered so the stage cluster is
+   horizontally centered even when the side columns collapse. */
 .grid-table.bidding-anchored .area-center {
   display: flex;
   align-items: flex-end;    /* auction pinned to the bottom of the reserved band */
   justify-content: center;
+  justify-self: stretch;
   width: 100%;
 }
 .region { min-width: 0; }

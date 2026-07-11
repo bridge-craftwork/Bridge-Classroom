@@ -22,7 +22,7 @@ for (const file of fs.readdirSync(FIX_DIR)) {
 }
 
 // ── Walk ────────────────────────────────────────────────────────────────────
-const BB_ALL = process.argv.includes('--bounding-boxes')
+const boundingBoxesAll = process.argv.includes('--bounding-boxes')
 const browser = await chromium.launch()
 let shots = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
@@ -67,11 +67,11 @@ for (const { name } of fixtures) {
     await page.screenshot({ path: out, fullPage: true })
     // Bounding-box variant (grid-arranger-spec §5.1): the arranger's ledger made
     // visible. Always for the bidding triptych (the reserve-band demo); all scenes
-    // with --bounding-boxes. Toggled via <html data-bb> — no re-navigation.
-    if (BB_ALL || /^a1-bidding-len/.test(name)) {
-      await page.evaluate(() => document.documentElement.toggleAttribute('data-bb', true))
+    // with --bounding-boxes. Toggled via <html data-bounding-boxes> — no re-nav.
+    if (boundingBoxesAll || /^a1-bidding-len/.test(name)) {
+      await page.evaluate(() => document.documentElement.toggleAttribute('data-bounding-boxes', true))
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
-      await page.screenshot({ path: path.join(OUT, 'scenes', name, `${vp}__bb.png`), fullPage: true })
+      await page.screenshot({ path: path.join(OUT, 'scenes', name, `${vp}__bounding-boxes.png`), fullPage: true })
     }
     await page.close()
     shots++
@@ -80,37 +80,38 @@ for (const { name } of fixtures) {
 await browser.close()
 console.log(`a1 scenes: ${fixtures.length} fixtures × ${Object.keys(viewports).length} viewports = ${shots} shots`)
 
-// ── Bottom-anchor + bounded-reserve acceptance ───────────────────────────────
-// Same deal, three auction lengths (1/5/9 calls = 1/2/3 call-rounds). The auction
-// is bottom-anchored in a bounded growth reserve: it grows UPWARD (its `top` rises
-// = decreases) while its BOTTOM edge and the hand (seat-s) + BB (se) hold position
-// (until a freak auction exceeds the reserve). Pass gate: hand + BB `top` stable
-// across all three AND auction top strictly rises (len1 > len5 > len9).
+// ── Bottom-anchor + reserve acceptance (A1 reserveRounds = 1) ─────────────────
+// Same deal, three auction lengths (1/5/9 calls = 1/2/3 call-rounds). The stage is
+// sized to a single-row reserve, so the auction's TOP is fixed just below the
+// status strip, and each extra round takes the MONOTONE DISPLACEMENT path: the
+// auction bottom, hand (seat-s) and BB (se) are pushed DOWN one round at a time.
+// Pass gate: auction top stable AND hand/BB strictly rise (len1 < len5 < len9).
 const TRIP = ['a1-bidding-len1', 'a1-bidding-len5', 'a1-bidding-len9']
 const haveTrip = TRIP.every((n) => fixtures.some((f) => f.name === n))
-const acceptance = { model: 'bottom-anchor+reserve', pass: null, rows: [] }
+const acceptance = { model: 'bottom-anchor+reserve(1)', pass: null, rows: [] }
 if (haveTrip) {
-  console.log('\n── bottom-anchor acceptance (hand/BB stable; auction grows upward) ──')
+  console.log('\n── bottom-anchor acceptance (auction top fixed; hand/BB displace down) ──')
   let allPass = true
   for (const [vp] of Object.entries(viewports)) {
     const r = (n) => rects[`${n}/${vp}`] || {}
     const top = (n, sel) => (r(n)[sel] ? r(n)[sel].top : null)
     const aucTops = TRIP.map((n) => (r(n).auction ? r(n).auction.top : null))
-    const aucBottoms = TRIP.map((n) => (r(n).auction ? r(n).auction.bottom : null))
     const handTops = TRIP.map((n) => top(n, 'seat-s'))
     const bbTops = TRIP.map((n) => top(n, 'se'))
-    const stable = (a) => a.every((v) => v != null && v === a[0])
-    const falling = (a) => a.every((v, i) => v != null && (i === 0 || v < a[i - 1]))
-    const handStable = stable(handTops)
-    const bbStable = stable(bbTops)
-    const growsUp = falling(aucTops)
-    const bottomStable = stable(aucBottoms)
-    const ok = handStable && bbStable && growsUp && bottomStable
+    // ±2px tolerance absorbs sub-pixel layout rounding; displacement (~one round,
+    // ≈33px) is far above it, so `rising` stays a real signal.
+    const stable = (a) => a.every((v) => v != null && Math.abs(v - a[0]) <= 2)
+    const rising = (a) => a.every((v, i) => v != null && (i === 0 || v - a[i - 1] > 2))
+    const aucTopStable = stable(aucTops)
+    const handPush = rising(handTops)
+    const bbPush = rising(bbTops)
+    const ok = aucTopStable && handPush && bbPush
     allPass = allPass && ok
-    acceptance.rows.push({ viewport: vp, auctionTop: aucTops, auctionBottom: aucBottoms, hand: handTops, bb: bbTops, handStable, bbStable, growsUp, bottomStable, ok })
+    const step = handTops[1] != null && handTops[0] != null ? handTops[1] - handTops[0] : null
+    acceptance.rows.push({ viewport: vp, auctionTop: aucTops, hand: handTops, bb: bbTops, aucTopStable, handPush, bbPush, pushPerRound: step, ok })
     console.log(
-      `  ${vp.padEnd(18)} auc-top ${JSON.stringify(aucTops).padEnd(20)} auc-bot ${JSON.stringify(aucBottoms).padEnd(18)}` +
-      ` hand ${JSON.stringify(handTops).padEnd(18)} bb ${JSON.stringify(bbTops).padEnd(18)} ${ok ? 'PASS' : 'FAIL'}`,
+      `  ${vp.padEnd(18)} auc-top ${JSON.stringify(aucTops).padEnd(18)} hand ${JSON.stringify(handTops).padEnd(18)}` +
+      ` bb ${JSON.stringify(bbTops).padEnd(18)} push/round≈${step} ${ok ? 'PASS' : 'FAIL'}`,
     )
   }
   acceptance.pass = allPass
@@ -135,10 +136,10 @@ for (const { name, label, phase } of fixtures) {
   body += `<section class="fx"><h2>${label}${phase ? ` <span class="ph">${phase}</span>` : ''}</h2><div class="row">`
   for (const [vp, dim] of vpEntries) {
     const rel = `scenes/${name}/${vp}.png`
-    const relBb = `scenes/${name}/${vp}__bb.png`
+    const relBb = `scenes/${name}/${vp}__bounding-boxes.png`
     const hasBb = fs.existsSync(path.join(OUT, relBb))
     const caps = capText[`${name}/${vp}`] || ''
-    const bbImg = hasBb ? `<div class="shot bb"><span class="bblabel">bounding boxes</span><img src="${imgSrc(relBb)}" alt="${name} ${vp} bounding boxes" loading="lazy"></div>` : ''
+    const bbImg = hasBb ? `<div class="shot bounding-boxes"><span class="bounding-box-label">bounding boxes</span><img src="${imgSrc(relBb)}" alt="${name} ${vp} bounding boxes" loading="lazy"></div>` : ''
     body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span>${caps ? `<br><span class="scales">${caps}</span>` : ''}</figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div>${bbImg}</figure>`
   }
   body += `</div></section>`
@@ -161,8 +162,8 @@ figcaption { font-size:11px; color:var(--mut); margin-bottom:6px; } .rep { opaci
 @media (prefers-color-scheme: dark){ .scales { color:#5fd39b; } }
 .shot { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
 .shot img { display:block; max-height:520px; width:auto; }
-.shot.bb { margin-top:8px; position:relative; }
-.bblabel { position:absolute; top:6px; right:6px; z-index:2; font:700 10px/1 ui-monospace,monospace; color:#fff; background:rgba(160,92,12,.92); padding:3px 6px; border-radius:5px; }
+.shot.bounding-boxes { margin-top:8px; position:relative; }
+.bounding-box-label { position:absolute; top:6px; right:6px; z-index:2; font:700 10px/1 ui-monospace,monospace; color:#fff; background:rgba(160,92,12,.92); padding:3px 6px; border-radius:5px; }
 </style></head><body>
 <header><h1>A1 Scene Gallery <span class="ph">Scenario Mastery target composition</span></h1>
 <p>The three A1 states modeled from frozen fixtures — AuctionTable in center, BiddingBox at SE, TableInfo at NW, pinned auction at NE (play/review), narrative floated right. Separate from the component gallery. Walked across the five named viewports.</p></header>

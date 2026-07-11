@@ -27,14 +27,15 @@ export default {
   },
 
   // Bidding-scene vertical model (design direction 2026-07-11, final): BOTTOM-anchor
-  // the working cluster with a BOUNDED growth reserve. The hand + bidding box stay
-  // at the floor (BB never above the hand); the AuctionTable is sized to its actual
-  // content (one row initially) and bottom-anchored, with a small empty reserve band
-  // above it for the auction to grow UPWARD into as rounds are added — hand/BB hold
-  // position until a freak auction exceeds the reserve. The reserve is bounded
-  // (`reserveRounds`, NOT the viewport); the grid shrink-wraps and the shell owns
-  // placement. Play/review keep the weighted-fr rows. See grid-arranger-spec §1.
-  anchor: { bidding: 'bottom', reserveRounds: 4 },
+  // the working cluster (hand + bidding box at the floor; BB never above the hand).
+  // The AuctionTable is sized to its content — one row initially — and grows as
+  // calls are added. Play/review keep the weighted-fr rows. See grid-arranger-spec §1.
+  anchor: { bidding: 'bottom' },
+  // Bidding growth reserve, in call-rounds (tableConfig field). A1 = 1: the stage
+  // is sized to a single-row auction; longer auctions take the monotone displacement
+  // path (the cluster is pushed down one round at a time). The grid shrink-wraps and
+  // the shell owns placement (the arranger never reads the viewport).
+  reserveRounds: 1,
 
   scale: {
     wishVar: '--table-scale',

@@ -12,12 +12,14 @@ export const AUCTION_UNIT = {
   // keeps NE ≈ 1.0 and contained.
   minWidthPx: 220,
   columns: 4,
-  // Vertical footprint (px, 1.0×), measured from the gallery: the W/N/E/S header
-  // band and one call-round row. Used by the arranger to reserve a BOUNDED growth
-  // band above a bottom-anchored bidding auction (grid-arranger-spec §1) — the
-  // auction grows upward into this reserve without moving the hand/BB.
-  headerRowPx: 34,
-  roundRowPx: 42,
+  // Vertical footprint (px, 1.0×), MEASURED from the gallery (scripts/measure):
+  // the W/N/E/S header band and one call-round row. Used by the arranger to size
+  // the bidding stage's growth reserve (grid-arranger-spec §1). These must track the
+  // real AuctionTable row heights — if they overshoot, `growthReservePx(1)` exceeds
+  // a one-round auction and the bottom-anchored auction floats down inside the
+  // reserve (a per-round wobble); if they undershoot, it clips.
+  headerRowPx: 26,
+  roundRowPx: 33,
 }
 
 // Natural width (px, 1.0×) the auction needs — its four-column grid min-width.

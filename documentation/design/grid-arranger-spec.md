@@ -102,17 +102,34 @@ only its occupant's content/density does. During bidding, `ne` may be empty
 (the live auction is in `center`); during play, `center` hosts tricks and `ne`
 holds the completed auction.
 
-**Bidding-scene vertical model — bottom-anchored, bounded growth reserve
+**Bidding-scene vertical model — bottom-anchored, `reserveRounds`-sized stage
 (2026-07-11, final).** During bidding the working cluster is **bottom-anchored**:
 the hand + bidding box sit at the floor (the BB is never above the hand — the whole
 reason to anchor at the bottom, not the top), and the AuctionTable — **sized to its
-actual content, one row initially** — bottom-anchors directly above them. Above the
-auction is a **bounded growth reserve**: the center stage reserves a fixed height
-(`reserveRounds` × the auction's round-row, from `auctionMetrics.auctionGrowthReservePx`,
-scaled by the center's own scale), and the auction grows **upward** into that reserve
-as calls are added, its bottom edge and the hand/BB holding position. Only a freak
-auction that exceeds the reserve pushes them down. Play/review keep the weighted-fr
-rows (centered stage). Config-driven: `anchor: { bidding: 'bottom', reserveRounds }`.
+actual content, one row initially** — sits directly above them, its top fixed just
+below the status strip. The center stage reserves a fixed height of **`reserveRounds`
+call-rounds** (`auctionMetrics.auctionGrowthReservePx`, scaled by the center's own
+scale). While the auction fits the reserve it grows into it with the hand/BB holding
+position; once it exceeds the reserve the cluster takes the **monotone displacement
+path** — auction top fixed, the auction bottom + hand + BB pushed down one round at a
+time. **A1 sets `reserveRounds: 1`** (final): the stage is one row, so every extra
+round displaces — the auction top stays pinned below the status and the cluster
+slides down as the auction lengthens. A larger `reserveRounds` (another surface)
+buys upward-growth room before displacement. Play/review keep the weighted-fr rows.
+`reserveRounds` is a top-level tableConfig field; `anchor: { bidding: 'bottom' }`
+selects the model.
+
+Two spacing/sizing rules this model requires (verified with the bounding-box
+diagnostic, §5.1):
+- **Grid `gap: 0`; spacing is margins on occupied regions only.** A grid gap still
+  reserves a gutter around a *collapsed* 0-size track (empty seat/corner), which
+  put a phantom band between the status strip and the stage. Margins on
+  `:not(:empty)`/`.occupied` regions collapse with occupancy; the check is
+  `center top = one designed margin below NW`.
+- **`auctionMetrics.headerRowPx`/`roundRowPx` must track the real AuctionTable row
+  heights** (measured, not guessed): if the reserve overshoots a one-round auction,
+  the bottom-anchored auction floats down inside it — a per-round wobble in the
+  auction top. Measure with `scripts/` and correct the metric, don't fudge the CSS.
 
 > **The slack bug, and the ruling (2026-07-11).** The first cut made the *shell
 > frame* viewport-height and used a `1fr` slack row, so "slack renders above the
@@ -207,8 +224,10 @@ computes everything. No layout decisions in views; none in leaves.
  *   per phase, per region — e.g. A1 { play: { ne: 'full' } } (pinned auction); tables Phase 5 { play: { ne: 'chip' } }
  *
  * @property {{ bidding?: 'bottom'|'center' }} [anchor]   vertical model per phase (§1 bidding-scene model).
- *   'bottom' = bottom-anchored working cluster: rows become `auto 1fr auto`, the center stage bottom-aligns, and the
- *   auction grows upward into the slack while the hand/BB row holds its screen position. Default (omitted) = centered.
+ *   'bottom' = bottom-anchored working cluster: the AuctionTable is sized to content, its top fixed below the status,
+ *   and the hand/BB take the monotone displacement path as the auction lengthens. Default (omitted) = centered.
+ * @property {number} [reserveRounds]   bidding stage reserve, in call-rounds (top-level; §1). A1 = 1 (single-row stage,
+ *   pure displacement). Larger values buy upward-growth room before the cluster displaces. Default 1.
  *
  * @property {{ perViewport: Array<{ minWidth?:number, maxWidth?:number, portrait?:boolean,
  *              mode:'two-column'|'stacked'|'drawer', companionPosition?:'left'|'right'|'above'|'below' }> }} shell
@@ -333,24 +352,26 @@ its internal ledger visible**. (Named for the same overlay in `pbn-to-pdf`.)
   **growth-reserve / slack band** (the bidding stage's reserved height, hatched
   above the bottom-anchored auction).
 - **Labels via pseudo-elements** carry the ledger:
-  `center · 280×257 · 1.27× · r257h` — region · received W×H · computed scale ·
+  `center · 287×99 · 1.31× · r99h` — region · received W×H · computed scale ·
   reserve (with `w`/`h` suffix). The arranger sets `data-region`,
-  `data-region-scale`, `data-region-reserve`, `data-region-size`, `data-bb-label`;
-  a stylesheet renders them.
+  `data-region-scale`, `data-region-reserve`, `data-bounding-box-label`; a
+  stylesheet renders them. **Zero-size (collapsed) regions are listed in a corner
+  legend**, not floated as `0×0` labels over the layout.
 - **Outline, never border** — outlines don't participate in layout, so the debug
   mode cannot perturb the geometry it inspects (the same trap the popup avoided
   with `cs-static`).
 - **Zero production bytes** — the stylesheet (`src/harness/boundingBoxes.css`) is
   imported only by the harness scene view, gated exactly like the animation-disabling
   harness CSS. The data attributes on the arranger are inert and negligible.
-- **Three consumption points:** `?bounding-boxes=1` (or `?bb=1`, or the `b` key) in
-  a harness build for live inspection; the a1-gallery walk captures a `__bb.png`
+- **Three consumption points:** `?bounding-boxes=1` (or the `b` key) in a harness
+  build for live inspection; the a1-gallery walk captures a `__bounding-boxes.png`
   variant per scene (always for the bidding triptych; all scenes with
   `--bounding-boxes`) so review shows the skeleton beside the skin; and (planned)
-  the dev-report bundle captures a second hairline screenshot when the flag is
+  the dev-report bundle captures a second bounding-boxes screenshot when the flag is
   available, so every bug bundle ships its own layout X-ray. The **first render is
-  the bidding scene** — it visibly confirms the slack fix: a modest labeled reserve
-  band above the auction where the viewport-sized void used to be.
+  the bidding scene** — it visibly confirms the fix: a single-row stage under the
+  status where the viewport-sized void used to be. **Name: "bounding boxes"
+  everywhere** (flag, gallery variant, labels, the planned dev-report screenshot).
 
 ## 6. Initial config drafts (starting points, tuned in gallery)
 
@@ -424,15 +445,15 @@ play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
 - Config-as-data check: the diff between `a1.tableConfig` and
   `tables.tableConfig` is the complete statement of their differences; grep
   confirms no surface-conditional branches inside the arranger.
-- **Bottom-anchor triptych (§1 bidding vertical model):** render the bidding
-  fixture at auction lengths **1, 5, and 9 calls** (same deal, three snapshots).
-  The hand row (`seat-s`) and bidding box (`se`) hold **identical pixel `top`**
-  across all three, and the auction **grows upward** — its `top` strictly rises
-  (len1 > len5 > len9) while its **bottom edge stays fixed** adjacent to the hand.
-  A freak auction exceeding the reserve is the only thing that displaces the
-  cluster. Measured by the walk (`gallery-a1/anchor-acceptance.json`, model
-  `bottom-anchor+reserve`); pass gate = hand/BB stable ∧ auction top rising ∧
-  auction bottom fixed. The `__bb.png` variant shows the reserve band explicitly.
+- **Bottom-anchor triptych (§1 bidding vertical model, A1 `reserveRounds: 1`):**
+  render the bidding fixture at auction lengths **1, 5, and 9 calls** (same deal,
+  three snapshots). The auction **top is fixed** (`seat-s`/`se` aside, the auction
+  `top` is identical across all three, ±2px), and the hand (`seat-s`) + bidding box
+  (`se`) take the **monotone displacement path** — pushed down one round each round
+  (`top` strictly rises len1 < len5 < len9, ≈ one round-row per step). Measured by
+  the walk (`gallery-a1/anchor-acceptance.json`, model `bottom-anchor+reserve(1)`);
+  pass gate = auction top stable ∧ hand/BB rising. The `__bounding-boxes.png`
+  variant shows the single-row stage reserve explicitly.
 
 ## 8. Out of scope
 

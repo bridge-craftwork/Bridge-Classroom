@@ -246,10 +246,11 @@ designs.
     shifting layout — it stands. It is distinct from, and not contradicted by, the
     grid arranger's **amended no-reflow rule** (grid-arranger-spec §1), which
     permits *content-driven monotone stage growth* mid-phase (the auction gaining
-    a round) to grow upward into a **bounded growth reserve** without moving the
-    hand/BB. A mark must never move a neighbour; a growing stage may grow into its
-    reserve. (The reserve is bounded and shell-independent — the grid never reads
-    the viewport; see the slack-bug ruling in grid-arranger-spec §1.)
+    a round): it grows within a `reserveRounds`-sized stage, and past that pushes
+    the cluster down the **monotone displacement path** (A1 `reserveRounds:1` = one
+    row, so it displaces per round). A mark must never move a neighbour; a growing
+    stage may lengthen and push the cluster monotonically. (The stage is bounded and
+    shell-independent — the grid never reads the viewport; see grid-arranger-spec §1.)
 
 ---
 

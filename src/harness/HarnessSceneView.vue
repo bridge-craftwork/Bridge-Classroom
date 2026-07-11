@@ -36,16 +36,15 @@ const route = useRoute()
 const scene = computed(() => route.params.scene)
 const fixture = computed(() => scenes[scene.value] || null)
 
-// Bounding-box diagnostic toggle: `?bounding-boxes=1` (or `?bb=1`) sets `data-bb`
+// Bounding-box diagnostic toggle: `?bounding-boxes=1` sets `data-bounding-boxes`
 // on <html>, which the harness-only boundingBoxes.css keys off. Also live-toggled
 // with the `b` key for interactive inspection.
 function applyBoundingBoxes() {
-  const q = route.query
-  const on = q['bounding-boxes'] != null || q.bb != null
-  document.documentElement.toggleAttribute('data-bb', on)
+  const on = route.query['bounding-boxes'] != null
+  document.documentElement.toggleAttribute('data-bounding-boxes', on)
 }
 function onKey(e) {
-  if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) document.documentElement.toggleAttribute('data-bb')
+  if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) document.documentElement.toggleAttribute('data-bounding-boxes')
 }
 
 const ready = ref(false)

@@ -1,6 +1,7 @@
 // Acceptance probe — SAME deal as `a1-bidding-exercise`, auction at 9 calls (3
-// call-rounds). See a1-bidding-len1.js for the contract: the auction has grown two
-// rounds UPWARD into its reserve, while the hand + BB hold the same position as len1.
+// call-rounds). See a1-bidding-len1.js for the contract: the auction top is at the
+// same position as len1, grown two rounds DOWNWARD, with the hand + BB displaced
+// two rounds below their len1 position.
 import base from './a1-bidding-exercise.js'
 export default {
   ...base,
