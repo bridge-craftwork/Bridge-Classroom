@@ -4,7 +4,7 @@
        the earlier band mockup. The shell owns the companion (narrative) placement
        per config.shell; BridgeTable owns the 3×3 grid + per-region scale clamp.
        Harness-only; production a1 stays on 'legacy'. -->
-  <div class="a1-scene">
+  <div class="a1-scene" :style="sceneStyle">
     <div class="a1-frame">
       <BridgeTable
         arrangement="grid"
@@ -63,6 +63,7 @@
     <ContextPanel
       v-if="f.context"
       class="a1-narrative"
+      :style="{ order: narrativeOrder }"
       :mode="f.context.mode || 'commentary'"
       :title="f.context.title || null"
       :text="f.context.text || ''"
@@ -74,7 +75,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -104,6 +105,32 @@ const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext })
 const action = slots.action
 const center = slots.center
 
+// Fix 4: the SHELL consumes config.shell.perViewport (it was ignored — a
+// hardcoded 720px breakpoint left tablet-portrait two-column). Match by real
+// viewport width + portrait, first hit wins; apply two-column/stacked +
+// companion side. Plumbing fix, config unchanged.
+const winW = ref(1440)
+const winH = ref(900)
+function readWin() { winW.value = window.innerWidth; winH.value = window.innerHeight }
+const shell = computed(() => {
+  const portrait = winH.value > winW.value
+  const rules = a1Config.shell?.perViewport || []
+  return rules.find((r) =>
+    (r.minWidth == null || winW.value >= r.minWidth) &&
+    (r.maxWidth == null || winW.value <= r.maxWidth) &&
+    (r.portrait == null || r.portrait === portrait),
+  ) || { mode: 'stacked', companionPosition: 'below' }
+})
+const sceneStyle = computed(() => {
+  if (shell.value.mode !== 'two-column') return { gridTemplateColumns: '1fr' }
+  return shell.value.companionPosition === 'left'
+    ? { gridTemplateColumns: '320px minmax(0, 1fr)' }
+    : { gridTemplateColumns: 'minmax(0, 1fr) 320px' }
+})
+const narrativeOrder = computed(() => (['left', 'above'].includes(shell.value.companionPosition) ? -1 : 1))
+onMounted(() => { readWin(); window.addEventListener('resize', readWin) })
+onBeforeUnmount(() => window.removeEventListener('resize', readWin))
+
 const pinnedAuction = computed(() => (phase.value === 'play' || phase.value === 'review') && (f.value.bids || []).length > 0)
 const auctionProps = computed(() => ({
   bids: f.value.bids || [],
@@ -114,15 +141,13 @@ const auctionProps = computed(() => ({
 </script>
 
 <style scoped>
-/* Shell: table + narrative floated right on landscape (per config.shell —
-   companionPosition 'right'; see the config's §6 discrepancy note), collapsing
-   to one column below the breakpoint. */
+/* Shell layout is driven by config.shell.perViewport (grid-template-columns +
+   narrative order come from `sceneStyle`/`narrativeOrder`, not a media query). */
 .a1-scene {
   max-width: 1180px;
   margin: 0 auto;
   padding: 20px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
   align-items: start;
   font-family: 'DM Sans', system-ui, sans-serif;
@@ -151,8 +176,4 @@ const auctionProps = computed(() => ({
 }
 .a1-ctl-primary { background: #1d6a4f; border-color: #1d6a4f; color: #fff; }
 .a1-narrative { align-self: stretch; }
-
-@media (max-width: 720px) {
-  .a1-scene { grid-template-columns: 1fr; }
-}
 </style>

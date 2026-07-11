@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="auction-table" :class="{ dense }">
+  <div ref="root" class="auction-table" :class="{ dense }" :style="{ '--at-min-w': AUCTION_UNIT.minWidthPx + 'px' }">
     <div class="header">
       <div class="header-cell">W</div>
       <div class="header-cell">N</div>
@@ -56,6 +56,7 @@
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { formatBid } from '../utils/cardFormatting.js'
 import { getSeatOrder } from '../utils/pbnParser.js'
+import { AUCTION_UNIT } from './auctionMetrics.js'
 
 const hoveredIdx = ref(null)
 
@@ -282,7 +283,7 @@ function tooltipFor(bidIdx) {
      padding = 308px) so a shrink-wrapped auction lines up with the bidding box
      below it and stays stable from empty through a full auction, instead of
      tracking bid content. `dense` (console tiles) drops this to 0. */
-  min-width: calc(308px * var(--table-scale));
+  min-width: calc(var(--at-min-w, 308px) * var(--table-scale));
 }
 
 /* Console-tile density (< 280px): drop the min-width floor so all four columns
@@ -340,12 +341,15 @@ function tooltipFor(bidIdx) {
   min-width: 0;
   text-align: center;
   padding: calc(10px * var(--table-scale)) calc(6px * var(--table-scale));
-  /* Big by default: seniors reported bids were too small to read. A plain cell
-     has one bid and plenty of room, so fill it (with margin). The rare 4-row
-     diverged cell overrides this down to a compact size (.bid-cell.stacked). */
-  font-size: 26px;
+  /* Component-standard size, scaled by --table-scale so the arranger's clamp is
+     the ONLY size authority (grid-arranger fix 1a). The former hardcoded 26px
+     enlargement is removed — prominence is now the center region's generous cap
+     under the grid; in the legacy bands layout the auction returns to standard
+     size (a named a1-visible change). The rare 4-row diverged cell still
+     overrides down to compact (.bid-cell.stacked). */
+  font-size: calc(18px * var(--table-scale));
   font-weight: 500;
-  min-height: calc(48px * var(--table-scale));
+  min-height: calc(36px * var(--table-scale));
   display: flex;
   align-items: center;
   justify-content: center;
