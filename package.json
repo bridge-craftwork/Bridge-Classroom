@@ -12,7 +12,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "harness:gallery": "bash scripts/harness-gallery.sh",
-    "a1:gallery": "bash scripts/a1-gallery.sh"
+    "a1:gallery": "bash scripts/a1-gallery.sh",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "jspdf": "^4.2.1",
@@ -22,6 +23,7 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vitest/coverage-v8": "^4.0.17",
     "@vue/test-utils": "^2.4.6",

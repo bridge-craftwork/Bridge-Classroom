@@ -45,6 +45,12 @@ activity-log.json
 # Playwright MCP session artifacts
 .playwright-mcp/
 
+# Playwright e2e artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Private security & code review (documents live vulnerabilities — never commit)
 SECURITY-AND-CODE-REVIEW.md
 
