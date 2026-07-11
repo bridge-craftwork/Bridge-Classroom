@@ -484,9 +484,34 @@ pub async fn request_recovery(
     }))
 }
 
-/// POST /api/recovery/claim
-/// Claim account recovery - verify token and return decrypted secret key
+/// POST /api/recovery/claim — thin wrapper that mints a durable session cookie
+/// (ADR-0004) when the claim proves identity; the claim logic is unchanged in
+/// `claim_recovery_inner`. No cookie is set on any failure/`success:false` arm.
 pub async fn claim_recovery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Json<RecoveryClaimRequest>,
+) -> Result<(HeaderMap, Json<RecoveryClaimResponse>), (StatusCode, String)> {
+    let resp = claim_recovery_inner(State(state.clone()), body).await?;
+    let cookie = session_cookie_for_claim(&state, &headers, &resp).await;
+    Ok((cookie, resp))
+}
+
+/// Build a `Set-Cookie` header for a successful claim, empty otherwise.
+async fn session_cookie_for_claim(
+    state: &AppState,
+    headers: &HeaderMap,
+    resp: &Json<RecoveryClaimResponse>,
+) -> HeaderMap {
+    match resp.0.user.as_ref() {
+        Some(user) if resp.0.success => {
+            crate::routes::session::mint_cookie_header(state, headers, &user.id).await
+        }
+        _ => HeaderMap::new(),
+    }
+}
+
+async fn claim_recovery_inner(
     State(state): State<AppState>,
     Json(req): Json<RecoveryClaimRequest>,
 ) -> Result<Json<RecoveryClaimResponse>, (StatusCode, String)> {
@@ -632,9 +657,20 @@ pub async fn claim_recovery(
     }))
 }
 
-/// POST /api/recovery/claim-code
-/// Claim account recovery using a 6-digit numeric code from the email
+/// POST /api/recovery/claim-code — thin wrapper that mints a durable session
+/// cookie (ADR-0004) on a successful claim; logic unchanged in
+/// `claim_by_code_inner`.
 pub async fn claim_by_code(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Json<RecoveryClaimByCodeRequest>,
+) -> Result<(HeaderMap, Json<RecoveryClaimResponse>), (StatusCode, String)> {
+    let resp = claim_by_code_inner(State(state.clone()), body).await?;
+    let cookie = session_cookie_for_claim(&state, &headers, &resp).await;
+    Ok((cookie, resp))
+}
+
+async fn claim_by_code_inner(
     State(state): State<AppState>,
     Json(req): Json<RecoveryClaimByCodeRequest>,
 ) -> Result<Json<RecoveryClaimResponse>, (StatusCode, String)> {

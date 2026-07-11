@@ -81,6 +81,12 @@ pub struct Config {
     /// session-close admin calls. The Mac↔droplet seam is deliberately
     /// thin: this plus the ticket mint are the only integration points.
     pub table_service_url: String,
+
+    /// Whether the durable session cookie (ADR-0004) is marked `Secure` and
+    /// uses the `__Host-` prefix. True in prod (behind Cloudflare HTTPS).
+    /// Set `COOKIE_SECURE=false` for plain-http local dev if the browser
+    /// refuses to store the cookie; defaults to true.
+    pub cookie_secure: bool,
 }
 
 impl Config {
@@ -158,6 +164,11 @@ impl Config {
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "https://tables.bridge-craftwork.com".to_string());
 
+        // Defaults to true (prod). Only an explicit "false"/"0" disables it.
+        let cookie_secure = env::var("COOKIE_SECURE")
+            .map(|v| !matches!(v.trim(), "false" | "0"))
+            .unwrap_or(true);
+
         Ok(Config {
             database_url,
             api_key,
@@ -177,6 +188,7 @@ impl Config {
             bug_artifacts_repo,
             table_ticket_secret,
             table_service_url,
+            cookie_secure,
         })
     }
 
