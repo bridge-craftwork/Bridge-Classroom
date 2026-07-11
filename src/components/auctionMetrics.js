@@ -12,9 +12,26 @@ export const AUCTION_UNIT = {
   // keeps NE ≈ 1.0 and contained.
   minWidthPx: 220,
   columns: 4,
+  // Vertical footprint (px, 1.0×), measured from the gallery: the W/N/E/S header
+  // band and one call-round row. Used by the arranger to reserve a BOUNDED growth
+  // band above a bottom-anchored bidding auction (grid-arranger-spec §1) — the
+  // auction grows upward into this reserve without moving the hand/BB.
+  headerRowPx: 34,
+  roundRowPx: 42,
 }
 
 // Natural width (px, 1.0×) the auction needs — its four-column grid min-width.
 export function auctionReservePx(u = AUCTION_UNIT) {
   return u.minWidthPx
+}
+
+// Growth-reserve HEIGHT (px, 1.0×) for a bottom-anchored bidding auction: enough
+// vertical room for a realistic `rounds`-round auction (default 6 — real lesson
+// auctions rarely exceed it). This is the stage's reserved height; the auction
+// bottom-anchors within it and grows upward into the reserve, so the hand/BB hold
+// position through any normal auction and only displace on a freak one. Bounded by
+// design — NOT the viewport (the grid never reads viewport dimensions; the shell
+// owns placement).
+export function auctionGrowthReservePx(rounds = 6, u = AUCTION_UNIT) {
+  return u.headerRowPx + rounds * u.roundRowPx
 }

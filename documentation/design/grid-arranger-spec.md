@@ -102,26 +102,41 @@ only its occupant's content/density does. During bidding, `ne` may be empty
 (the live auction is in `center`); during play, `center` hosts tricks and `ne`
 holds the completed auction.
 
-**Bidding-scene vertical model — bottom-anchored (2026-07-11, design direction).**
-During bidding the row model is `auto 1fr auto` (status band / flexible **slack** /
-stage+hand) and the center stage is **bottom-aligned**. The working cluster is
-bottom-anchored: the auction grows **upward** into the slack above it, its bottom
-edge (the current-round row) holding a fixed screen position adjacent to the
-stationary hand + bidding-box row. The hand and BiddingBox do not move as calls are
-added; they displace downward **only once the slack is exhausted** at the current
-viewport. Play/review keep the weighted-fr rows (centered stage). The grid must be
-given a height by its shell frame for the slack to exist (it fills via
-`min-height:100%`); with no sized parent it collapses to content height, harmless.
-Config-driven: `anchor: { bidding: 'bottom' }` (A1 opts in); default centered.
+**Bidding-scene vertical model — bottom-anchored, bounded growth reserve
+(2026-07-11, final).** During bidding the working cluster is **bottom-anchored**:
+the hand + bidding box sit at the floor (the BB is never above the hand — the whole
+reason to anchor at the bottom, not the top), and the AuctionTable — **sized to its
+actual content, one row initially** — bottom-anchors directly above them. Above the
+auction is a **bounded growth reserve**: the center stage reserves a fixed height
+(`reserveRounds` × the auction's round-row, from `auctionMetrics.auctionGrowthReservePx`,
+scaled by the center's own scale), and the auction grows **upward** into that reserve
+as calls are added, its bottom edge and the hand/BB holding position. Only a freak
+auction that exceeds the reserve pushes them down. Play/review keep the weighted-fr
+rows (centered stage). Config-driven: `anchor: { bidding: 'bottom', reserveRounds }`.
+
+> **The slack bug, and the ruling (2026-07-11).** The first cut made the *shell
+> frame* viewport-height and used a `1fr` slack row, so "slack renders above the
+> stage" became *the entire screen minus content*, and bottom-anchoring shoved the
+> cluster to the floor with a ~500px void above it. The fix is not tuning that
+> uncapped quantity — it is **capping it by its purpose**: the slack exists to
+> absorb auction growth, so its size is the *expected growth reserve* (a realistic
+> long auction, ~6 rounds ≈ 150–200px, not the viewport). **The grid shrink-wraps
+> to its content + reserves; the shell owns where the block sits in the viewport**
+> (A1: top-weighted, matching today). **Principle — the grid never reads viewport
+> dimensions.** Any time the arranger reaches for `100vh`/`window`, something is
+> miswired (the seat-tracks-for-absent-hands bug was the same disease). The
+> arranger measures its own received boxes (ResizeObserver) and its components'
+> exported reserves; nothing else.
 
 > **No-reflow rule, amended (2026-07-11).** The original guarantee — "the grid
 > never reflows on visibility/phase change" and "no glyph that isn't itself
 > changing state moves by one pixel" — is refined: **content-driven, monotone
-> stage growth is permitted mid-phase, slack-absorbed first.** The auction gaining
-> a round is not a forbidden reflow; it is absorbed by the slack row without moving
-> the hand/BB, and only displaces the cluster when the slack is gone. Visibility
-> and phase-change reflow remain forbidden; what is newly allowed is the stage
-> growing into reserved slack. Acceptance for this is the len1/5/9 triptych (§7).
+> stage growth is permitted mid-phase, reserve-absorbed first.** The auction
+> gaining a round is not a forbidden reflow; it grows upward into the bounded
+> reserve without moving the hand/BB, and only displaces the cluster when the
+> reserve is exhausted. Visibility and phase-change reflow remain forbidden. The
+> acceptance is the len1/5/9 triptych (§7): hand/BB stable, auction top rising,
+> auction bottom fixed.
 
 **Orientation — one rotation, per-surface anchor (plus visibility, independent):**
 
@@ -304,6 +319,39 @@ obstacle to code around.
   auction; huge reference auction at laptop-half cardplay) dissolve under the real
   clamp and area map?
 
+## 5.1 Bounding-box diagnostic (the layout X-ray)
+
+The arranger already computes every number a layout debugger needs — region
+boxes, reserves, scales, the growth reserve — so the diagnostic is just **making
+its internal ledger visible**. (Named for the same overlay in `pbn-to-pdf`.)
+
+- **Four layers**, each an overlay, color-coded: **grid tracks** (where the fr
+  weights landed), **region content boxes** (what each named area received),
+  **component reserves** (the exported need each component declared — the killer
+  layer: *reserve larger than its box = encroachment* (the NE auction overflow);
+  *box far larger than its reserve = dead space* (the empty seat tracks)), and the
+  **growth-reserve / slack band** (the bidding stage's reserved height, hatched
+  above the bottom-anchored auction).
+- **Labels via pseudo-elements** carry the ledger:
+  `center · 280×257 · 1.27× · r257h` — region · received W×H · computed scale ·
+  reserve (with `w`/`h` suffix). The arranger sets `data-region`,
+  `data-region-scale`, `data-region-reserve`, `data-region-size`, `data-bb-label`;
+  a stylesheet renders them.
+- **Outline, never border** — outlines don't participate in layout, so the debug
+  mode cannot perturb the geometry it inspects (the same trap the popup avoided
+  with `cs-static`).
+- **Zero production bytes** — the stylesheet (`src/harness/boundingBoxes.css`) is
+  imported only by the harness scene view, gated exactly like the animation-disabling
+  harness CSS. The data attributes on the arranger are inert and negligible.
+- **Three consumption points:** `?bounding-boxes=1` (or `?bb=1`, or the `b` key) in
+  a harness build for live inspection; the a1-gallery walk captures a `__bb.png`
+  variant per scene (always for the bidding triptych; all scenes with
+  `--bounding-boxes`) so review shows the skeleton beside the skin; and (planned)
+  the dev-report bundle captures a second hairline screenshot when the flag is
+  available, so every bug bundle ships its own layout X-ray. The **first render is
+  the bidding scene** — it visibly confirms the slack fix: a modest labeled reserve
+  band above the auction where the viewport-sized void used to be.
+
 ## 6. Initial config drafts (starting points, tuned in gallery)
 
 **a1.tableConfig:** `arrangement: 'grid'`, `orientation: 'south'`; tracks columns
@@ -378,11 +426,13 @@ play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
   confirms no surface-conditional branches inside the arranger.
 - **Bottom-anchor triptych (§1 bidding vertical model):** render the bidding
   fixture at auction lengths **1, 5, and 9 calls** (same deal, three snapshots).
-  The hand row (`seat-s`) and bidding box (`se`) sit at **identical pixel `top`**
-  in len1 and len5 (slack absorbs the growth); len9 shows **graceful displacement
-  only if slack is exhausted** at that viewport. Measured by the walk
-  (`gallery-a1/anchor-acceptance.json`); len1↔len5 stability is the pass gate,
-  len9 displacement is permitted, not required.
+  The hand row (`seat-s`) and bidding box (`se`) hold **identical pixel `top`**
+  across all three, and the auction **grows upward** — its `top` strictly rises
+  (len1 > len5 > len9) while its **bottom edge stays fixed** adjacent to the hand.
+  A freak auction exceeding the reserve is the only thing that displaces the
+  cluster. Measured by the walk (`gallery-a1/anchor-acceptance.json`, model
+  `bottom-anchor+reserve`); pass gate = hand/BB stable ∧ auction top rising ∧
+  auction bottom fixed. The `__bb.png` variant shows the reserve band explicitly.
 
 ## 8. Out of scope
 

@@ -16,6 +16,8 @@
       :style="regionStyle('seats')"
       :data-region="'seat-' + seatArea(seat)"
       :data-region-scale="fmt(scales.seats)"
+      :data-region-reserve="Math.round(rowReservePx(7))"
+      :data-bb-label="bbLabel('seat-' + seatArea(seat), 'seats', rowReservePx(7))"
     >
       <SeatPanel
         v-if="seatVisible(seat)"
@@ -31,13 +33,13 @@
     </div>
 
     <!-- center + peripheral regions: shell-provided content, scaled per region. -->
-    <div class="region area-center" :style="regionStyle('center')" data-region="center" :data-region-scale="fmt(scales.center)">
+    <div class="region area-center" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bb-label="bbLabel('center', 'center', biddingAnchored ? stageReservePx : regionReserve('center'), biddingAnchored ? 'h' : 'w')">
       <slot name="center" />
     </div>
-    <div v-if="hasRegion('nw')" class="region area-nw" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)"><slot name="nw" /></div>
-    <div v-if="hasRegion('ne')" class="region area-ne" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)"><slot name="ne" /></div>
-    <div v-if="hasRegion('se')" class="region area-se" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)"><slot name="se" /></div>
-    <div v-if="hasRegion('sw')" class="region area-sw" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)"><slot name="sw" /></div>
+    <div v-if="hasRegion('nw')" class="region area-nw" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bb-label="bbLabel('nw', 'nw', regionReserve('nw'))"><slot name="nw" /></div>
+    <div v-if="hasRegion('ne')" class="region area-ne" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bb-label="bbLabel('ne', 'ne', regionReserve('ne'))"><slot name="ne" /></div>
+    <div v-if="hasRegion('se')" class="region area-se" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bb-label="bbLabel('se', 'se', regionReserve('se'))"><slot name="se" /></div>
+    <div v-if="hasRegion('sw')" class="region area-sw" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bb-label="bbLabel('sw', 'sw', regionReserve('sw'))"><slot name="sw" /></div>
   </div>
 </template>
 
@@ -45,7 +47,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
 import { seatToArea, anchorFor, computeRegionScale, uniformSeatScale, rowReservePx } from '../../utils/gridArranger.js'
-import { auctionReservePx } from '../auctionMetrics.js'
+import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 
 const props = defineProps({
   hands: { type: Object, required: true },
@@ -102,30 +104,50 @@ function marksFor(seat) {
 }
 
 // Bidding-scene vertical model (grid-arranger-spec §1, amended no-reflow rule):
-// bottom-anchor the working cluster. When the config opts in for bidding, the row
-// model becomes `auto 1fr auto` — status band / flexible SLACK / stage+hand — and
-// the center stage bottom-aligns (see CSS), so the auction grows UPWARD into the
-// slack while the hand + BiddingBox row stays pinned to the bottom. The slack is
-// absorbed first; the cluster only displaces when the auction outgrows it.
+// BOTTOM-anchor the working cluster with a BOUNDED growth reserve. During bidding
+// the rows are content-sized (`auto auto auto`); the center stage reserves a fixed
+// height (`stageReservePx`, sized to a realistic auction, NOT the viewport) and
+// bottom-anchors the auction within it. The auction grows UPWARD into the reserve
+// while the hand + BiddingBox row hold position; only a freak auction exceeding the
+// reserve pushes them down. The grid shrink-wraps vertically — the shell owns where
+// the resulting block sits in the viewport (the arranger never reads viewport dims).
 const biddingAnchored = computed(
   () => props.phase === 'bidding' && props.config.anchor?.bidding === 'bottom',
 )
+const reserveRounds = computed(() => props.config.anchor?.reserveRounds ?? 6)
 
 const gridStyle = computed(() => {
   const c = props.config.tracks?.columns || [1, 1, 1]
   const r = props.config.tracks?.rows || [1, 1, 1]
   return {
     gridTemplateColumns: c.map((f) => f + 'fr').join(' '),
-    // Anchored bidding: middle row is the flexible slack; top/bottom are
-    // content-sized (auto) so the status band and the hand/BB row don't stretch.
-    gridTemplateRows: biddingAnchored.value ? 'auto 1fr auto' : r.map((f) => f + 'fr').join(' '),
+    // Bottom-anchored bidding: content-sized rows — the center's min-height (the
+    // reserve, see centerStyle) creates the growth band above the bottom-anchored
+    // auction. Otherwise the config's weighted-fr rows (play/review centered stage).
+    gridTemplateRows: biddingAnchored.value ? 'auto auto auto' : r.map((f) => f + 'fr').join(' '),
   }
 })
 
 // ── The §3 scale clamp, per region, from measured geometry ──────────────────
 const scales = reactive({ seats: 1, center: 1, nw: 1, ne: 1, se: 1, sw: 1 })
+// Received box (px) per region — the arranger's ledger, surfaced for the
+// bounding-box diagnostic (grid-arranger-spec §5.1): reserve-vs-received is the
+// encroachment / dead-space diagnosis.
+const sizes = reactive({})
 const root = ref(null)
 const fmt = (x) => (x == null ? '' : Number(x).toFixed(2))
+
+// Bounding-box label: `region · WxH · scale× · r<reserve><w|h>`. The reserve is the
+// component's declared need (width unless flagged 'h' for the bidding stage's
+// height reserve); WxH is what the region received. A reserve that exceeds its box
+// is the encroachment tell; a box far larger than its reserve is dead space.
+function bbLabel(key, scaleKey, reservePx, dim = 'w') {
+  const s = sizes[key]
+  const sz = s ? `${s.w}×${s.h}` : '—'
+  const sc = scales[scaleKey] != null ? ` · ${fmt(scales[scaleKey])}×` : ''
+  const rv = reservePx ? ` · r${Math.round(reservePx)}${dim}` : ''
+  return `${key} · ${sz}${sc}${rv}`
+}
 
 // Column index each area sits in (left/center/right). A region's AVAILABLE width
 // is its column's resolved track width — NOT the region's own (content-sized,
@@ -170,6 +192,13 @@ function measure() {
     if (!hasRegion(area)) continue
     scales[area] = computeRegionScale({ available: availOf(area), reserve: regionReserve(area), cap: resolveCap(area, 1.0), floor: floor.value })
   }
+  // Record each region's received box for the bounding-box ledger (cheap; the
+  // rects are already laid out). Attribute reads/writes never perturb layout.
+  el.querySelectorAll('[data-region]').forEach((r) => {
+    const key = r.getAttribute('data-region')
+    const b = r.getBoundingClientRect()
+    sizes[key] = { w: Math.round(b.width), h: Math.round(b.height) }
+  })
 }
 
 // Apply a region's scale locally as --table-scale (leaves read it) + expose
@@ -178,6 +207,20 @@ function regionStyle(kind) {
   const s = scales[kind] ?? 1
   return { '--table-scale': s, '--region-scale': s }
 }
+
+// Bidding stage reserve HEIGHT (px) — the bounded growth band above the
+// bottom-anchored auction, scaled by the center region's own scale so the reserve
+// matches the rendered auction. Fixed (not viewport-derived): the auction grows
+// upward into it without moving the hand/BB until it's exhausted.
+const stageReservePx = computed(() =>
+  biddingAnchored.value ? Math.round(auctionGrowthReservePx(reserveRounds.value) * (scales.center || 1)) : 0,
+)
+// Center region: scale vars + (bidding only) the reserved min-height that holds the
+// growth band. `data-region-reserve` exposes it for the bounding-box diagnostic.
+const centerStyle = computed(() => {
+  const base = regionStyle('center')
+  return biddingAnchored.value ? { ...base, minHeight: stageReservePx.value + 'px' } : base
+})
 
 let ro = null
 onMounted(async () => {
@@ -200,14 +243,19 @@ onBeforeUnmount(() => ro?.disconnect())
   padding: 14px;
   align-items: center;
   justify-items: center;
-  /* Fill a sized parent (the shell frame gives the grid a height) so the `1fr`
-     slack row has space to absorb the auction's upward growth. With no sized
-     parent this collapses to content height — harmless for the legacy fr rows. */
-  min-height: 100%;
+  /* The grid SHRINK-WRAPS to its content + reserves — it never reads the viewport.
+     The shell owns where this block sits (grid-arranger-spec §1: grid sizes to
+     content/reserves, shell owns the viewport). */
 }
-/* Bottom-anchor bidding: the center stage sits at the BOTTOM of the tall 1fr row,
-   adjacent to the hand/BB row, and grows upward into the slack above it. */
-.grid-table.bidding-anchored .area-center { align-self: end; }
+/* Bottom-anchor bidding: the center stage reserves a bounded growth height (min-
+   height set inline = stageReservePx) and bottom-anchors the auction within it, so
+   the auction grows UPWARD into the reserve without moving the hand/BB row. */
+.grid-table.bidding-anchored .area-center {
+  display: flex;
+  align-items: flex-end;    /* auction pinned to the bottom of the reserved band */
+  justify-content: center;
+  width: 100%;
+}
 .region { min-width: 0; }
 .area-nw { grid-area: nw; justify-self: start; align-self: start; }
 .area-n { grid-area: n; }

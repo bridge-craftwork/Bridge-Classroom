@@ -14,12 +14,13 @@
 // ServerTableScene (the Phase-0.2 fixture driver → real srv state); everything
 // else is a plain TableScene. Reached at /harness/scene/:scene, behind
 // VITE_HARNESS.
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import TableScene from './TableScene.vue'
 import ServerTableScene from './ServerTableScene.vue'
 import A1Scene from './A1Scene.vue'
 import './harness.css'
+import './boundingBoxes.css'
 
 // Both fixture dirs resolve by name: the shared `fixtures/` set (component
 // gallery) and the A1-only `fixtures-a1/` set (its own separate gallery). Keeping
@@ -35,11 +36,26 @@ const route = useRoute()
 const scene = computed(() => route.params.scene)
 const fixture = computed(() => scenes[scene.value] || null)
 
+// Bounding-box diagnostic toggle: `?bounding-boxes=1` (or `?bb=1`) sets `data-bb`
+// on <html>, which the harness-only boundingBoxes.css keys off. Also live-toggled
+// with the `b` key for interactive inspection.
+function applyBoundingBoxes() {
+  const q = route.query
+  const on = q['bounding-boxes'] != null || q.bb != null
+  document.documentElement.toggleAttribute('data-bb', on)
+}
+function onKey(e) {
+  if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) document.documentElement.toggleAttribute('data-bb')
+}
+
 const ready = ref(false)
 onMounted(async () => {
+  applyBoundingBoxes()
+  window.addEventListener('keydown', onKey)
   try { await document.fonts.ready } catch { /* jsdom */ }
   ready.value = true
 })
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <style scoped>

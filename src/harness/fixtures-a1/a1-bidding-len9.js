@@ -1,7 +1,6 @@
-// Acceptance probe — SAME deal as `a1-bidding-exercise`, auction at 9 calls (the
-// slack-exhaustion case). See a1-bidding-len1.js for the hand/BB position contract:
-// hand + BB may displace downward here ONLY if the 9-round auction outgrows the
-// viewport's slack.
+// Acceptance probe — SAME deal as `a1-bidding-exercise`, auction at 9 calls (3
+// call-rounds). See a1-bidding-len1.js for the contract: the auction has grown two
+// rounds UPWARD into its reserve, while the hand + BB hold the same position as len1.
 import base from './a1-bidding-exercise.js'
 export default {
   ...base,

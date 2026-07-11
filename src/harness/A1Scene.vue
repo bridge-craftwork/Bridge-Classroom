@@ -156,15 +156,11 @@ const auctionProps = computed(() => ({
   background: #fff;
   border: 1px solid #e6e8e3;
   border-radius: 14px;
-  /* Give the grid a viewport-tied height so the bidding-anchored `1fr` slack row
-     has room to absorb the auction's upward growth (and so the hand/BB row holds a
-     stable screen position across auction lengths). The grid fills this via
-     min-height:100%; a short auction floats near the bottom with slack above, a
-     long one grows up into it and only displaces the cluster once it's exhausted. */
-  min-height: calc(100vh - 40px);
-  display: flex;
+  /* The frame does NOT tie its height to the viewport — that was the slack bug
+     (viewport-height frame → 1fr slack ballooned to the whole screen). The grid
+     shrink-wraps to its content + the bidding growth reserve; the shell (this
+     scene) owns placement, top-weighting the block via .a1-scene align-items. */
 }
-.a1-frame > * { flex: 1; }
 .a1-nw { display: flex; flex-direction: column; gap: 6px; }
 .a1-board {
   font-size: 12px; font-weight: 700; color: #4a5550;

@@ -26,15 +26,15 @@ export default {
     rows: [0.85, 1.15, 1.3],  // top short, middle stage, bottom heaviest (hero row)
   },
 
-  // Bidding-scene vertical model (design direction 2026-07-11): bottom-anchor the
-  // working cluster. During bidding the row model becomes `auto 1fr auto` (status
-  // / slack / stage+hand) and the center stage is BOTTOM-aligned — so the auction
-  // grows UPWARD into the slack above it while its bottom edge (current-round row)
-  // stays adjacent to the stationary hand + bidding-box row. Slack is absorbed
-  // first; the hand/BB only displace downward once slack is exhausted at a given
-  // viewport. Play/review keep the weighted-fr rows (centered stage). See the
-  // amended no-reflow rule in grid-arranger-spec.md §1 / rendering-harness-plan.md.
-  anchor: { bidding: 'bottom' },
+  // Bidding-scene vertical model (design direction 2026-07-11, final): BOTTOM-anchor
+  // the working cluster with a BOUNDED growth reserve. The hand + bidding box stay
+  // at the floor (BB never above the hand); the AuctionTable is sized to its actual
+  // content (one row initially) and bottom-anchored, with a small empty reserve band
+  // above it for the auction to grow UPWARD into as rounds are added — hand/BB hold
+  // position until a freak auction exceeds the reserve. The reserve is bounded
+  // (`reserveRounds`, NOT the viewport); the grid shrink-wraps and the shell owns
+  // placement. Play/review keep the weighted-fr rows. See grid-arranger-spec §1.
+  anchor: { bidding: 'bottom', reserveRounds: 4 },
 
   scale: {
     wishVar: '--table-scale',

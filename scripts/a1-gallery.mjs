@@ -22,6 +22,7 @@ for (const file of fs.readdirSync(FIX_DIR)) {
 }
 
 // ── Walk ────────────────────────────────────────────────────────────────────
+const BB_ALL = process.argv.includes('--bounding-boxes')
 const browser = await chromium.launch()
 let shots = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
@@ -47,19 +48,31 @@ for (const { name } of fixtures) {
     const label = { 'seat-s': 'seats' }
     capText[`${name}/${vp}`] = order.filter((r) => scales[r] != null)
       .map((r) => `${label[r] || r} ${scales[r]}×`).join(' · ')
-    // Hand (seat-s) + BiddingBox (se) screen positions — the bottom-anchor
-    // acceptance measures these across auction lengths 1/5/9 (same viewport).
+    // Auction top + hand (seat-s) + BiddingBox (se) screen positions — the
+    // top-anchor acceptance measures these across auction lengths 1/5/9 (same
+    // viewport): auction top stable, hand/BB push DOWN one round each round.
     rects[`${name}/${vp}`] = await page.evaluate(() => {
       const out = {}
+      const rect = (el) => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height) } }
       for (const sel of ['seat-s', 'se']) {
         const el = document.querySelector(`[data-region="${sel}"]`)
-        if (el) { const b = el.getBoundingClientRect(); out[sel] = { top: Math.round(b.top), left: Math.round(b.left), bottom: Math.round(b.bottom) } }
+        if (el) out[sel] = rect(el)
       }
+      const auc = document.querySelector('.a1-center-auction')
+      if (auc) out.auction = rect(auc)
       return out
     })
     const out = path.join(OUT, 'scenes', name, `${vp}.png`)
     fs.mkdirSync(path.dirname(out), { recursive: true })
     await page.screenshot({ path: out, fullPage: true })
+    // Bounding-box variant (grid-arranger-spec §5.1): the arranger's ledger made
+    // visible. Always for the bidding triptych (the reserve-band demo); all scenes
+    // with --bounding-boxes. Toggled via <html data-bb> — no re-navigation.
+    if (BB_ALL || /^a1-bidding-len/.test(name)) {
+      await page.evaluate(() => document.documentElement.toggleAttribute('data-bb', true))
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+      await page.screenshot({ path: path.join(OUT, 'scenes', name, `${vp}__bb.png`), fullPage: true })
+    }
     await page.close()
     shots++
   }
@@ -67,36 +80,37 @@ for (const { name } of fixtures) {
 await browser.close()
 console.log(`a1 scenes: ${fixtures.length} fixtures × ${Object.keys(viewports).length} viewports = ${shots} shots`)
 
-// ── Bottom-anchor acceptance ──────────────────────────────────────────────────
-// Same deal, three auction lengths (1/5/9 calls). The hand (seat-s) and bidding
-// box (se) must hold identical screen `top` across len1↔len5 (slack absorbs the
-// auction's upward growth); len9 may displace downward ONLY if slack is exhausted
-// at that viewport. Emits a table + writes anchor-acceptance.json.
+// ── Bottom-anchor + bounded-reserve acceptance ───────────────────────────────
+// Same deal, three auction lengths (1/5/9 calls = 1/2/3 call-rounds). The auction
+// is bottom-anchored in a bounded growth reserve: it grows UPWARD (its `top` rises
+// = decreases) while its BOTTOM edge and the hand (seat-s) + BB (se) hold position
+// (until a freak auction exceeds the reserve). Pass gate: hand + BB `top` stable
+// across all three AND auction top strictly rises (len1 > len5 > len9).
 const TRIP = ['a1-bidding-len1', 'a1-bidding-len5', 'a1-bidding-len9']
 const haveTrip = TRIP.every((n) => fixtures.some((f) => f.name === n))
-const acceptance = { pass: null, rows: [] }
+const acceptance = { model: 'bottom-anchor+reserve', pass: null, rows: [] }
 if (haveTrip) {
-  console.log('\n── bottom-anchor acceptance (hand seat-s / BB se `top`, px) ──')
+  console.log('\n── bottom-anchor acceptance (hand/BB stable; auction grows upward) ──')
   let allPass = true
   for (const [vp] of Object.entries(viewports)) {
     const r = (n) => rects[`${n}/${vp}`] || {}
     const top = (n, sel) => (r(n)[sel] ? r(n)[sel].top : null)
-    const handStable = top('a1-bidding-len1', 'seat-s') === top('a1-bidding-len5', 'seat-s')
-    const bbStable = top('a1-bidding-len1', 'se') === top('a1-bidding-len5', 'se')
-    const len9Hand = top('a1-bidding-len9', 'seat-s')
-    const len9Disp = len9Hand != null && len9Hand !== top('a1-bidding-len1', 'seat-s')
-    const ok = handStable && bbStable // len9 displacement is permitted, not required
+    const aucTops = TRIP.map((n) => (r(n).auction ? r(n).auction.top : null))
+    const aucBottoms = TRIP.map((n) => (r(n).auction ? r(n).auction.bottom : null))
+    const handTops = TRIP.map((n) => top(n, 'seat-s'))
+    const bbTops = TRIP.map((n) => top(n, 'se'))
+    const stable = (a) => a.every((v) => v != null && v === a[0])
+    const falling = (a) => a.every((v, i) => v != null && (i === 0 || v < a[i - 1]))
+    const handStable = stable(handTops)
+    const bbStable = stable(bbTops)
+    const growsUp = falling(aucTops)
+    const bottomStable = stable(aucBottoms)
+    const ok = handStable && bbStable && growsUp && bottomStable
     allPass = allPass && ok
-    const row = {
-      viewport: vp,
-      hand: [top('a1-bidding-len1', 'seat-s'), top('a1-bidding-len5', 'seat-s'), len9Hand],
-      bb: [top('a1-bidding-len1', 'se'), top('a1-bidding-len5', 'se'), top('a1-bidding-len9', 'se')],
-      handStable, bbStable, len9Displaced: len9Disp, ok,
-    }
-    acceptance.rows.push(row)
+    acceptance.rows.push({ viewport: vp, auctionTop: aucTops, auctionBottom: aucBottoms, hand: handTops, bb: bbTops, handStable, bbStable, growsUp, bottomStable, ok })
     console.log(
-      `  ${vp.padEnd(18)} hand ${JSON.stringify(row.hand).padEnd(20)} bb ${JSON.stringify(row.bb).padEnd(20)}` +
-      ` ${ok ? 'PASS' : 'FAIL'}${len9Disp ? ' (len9 displaced — slack exhausted)' : ''}`,
+      `  ${vp.padEnd(18)} auc-top ${JSON.stringify(aucTops).padEnd(20)} auc-bot ${JSON.stringify(aucBottoms).padEnd(18)}` +
+      ` hand ${JSON.stringify(handTops).padEnd(18)} bb ${JSON.stringify(bbTops).padEnd(18)} ${ok ? 'PASS' : 'FAIL'}`,
     )
   }
   acceptance.pass = allPass
@@ -121,8 +135,11 @@ for (const { name, label, phase } of fixtures) {
   body += `<section class="fx"><h2>${label}${phase ? ` <span class="ph">${phase}</span>` : ''}</h2><div class="row">`
   for (const [vp, dim] of vpEntries) {
     const rel = `scenes/${name}/${vp}.png`
+    const relBb = `scenes/${name}/${vp}__bb.png`
+    const hasBb = fs.existsSync(path.join(OUT, relBb))
     const caps = capText[`${name}/${vp}`] || ''
-    body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span>${caps ? `<br><span class="scales">${caps}</span>` : ''}</figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div></figure>`
+    const bbImg = hasBb ? `<div class="shot bb"><span class="bblabel">bounding boxes</span><img src="${imgSrc(relBb)}" alt="${name} ${vp} bounding boxes" loading="lazy"></div>` : ''
+    body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span>${caps ? `<br><span class="scales">${caps}</span>` : ''}</figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div>${bbImg}</figure>`
   }
   body += `</div></section>`
 }
@@ -144,6 +161,8 @@ figcaption { font-size:11px; color:var(--mut); margin-bottom:6px; } .rep { opaci
 @media (prefers-color-scheme: dark){ .scales { color:#5fd39b; } }
 .shot { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
 .shot img { display:block; max-height:520px; width:auto; }
+.shot.bb { margin-top:8px; position:relative; }
+.bblabel { position:absolute; top:6px; right:6px; z-index:2; font:700 10px/1 ui-monospace,monospace; color:#fff; background:rgba(160,92,12,.92); padding:3px 6px; border-radius:5px; }
 </style></head><body>
 <header><h1>A1 Scene Gallery <span class="ph">Scenario Mastery target composition</span></h1>
 <p>The three A1 states modeled from frozen fixtures — AuctionTable in center, BiddingBox at SE, TableInfo at NW, pinned auction at NE (play/review), narrative floated right. Separate from the component gallery. Walked across the five named viewports.</p></header>
