@@ -42,6 +42,10 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
 pub struct BugReportRequest {
     /// Free-text narrative (also present in `context.note`); drives title/slug/body.
     pub note: String,
+    /// "bug" (default) or "feature" — reshapes the issue title + label. The
+    /// capture (screenshot, env, layout) is identical either way.
+    #[serde(default)]
+    pub kind: Option<String>,
     /// The full context.json object (env block, note, tape, identity display name).
     /// Committed as-is — must NOT contain an email (kept out of the repo).
     pub context: Value,
@@ -66,6 +70,7 @@ pub struct BugReportResponse {
 }
 
 const BUG_LABEL: &str = "bug-report";
+const FEATURE_LABEL: &str = "feature-request";
 const UA: &str = "bridge-classroom-beetle";
 
 /// POST /api/bug-report
@@ -147,7 +152,8 @@ pub async fn create_bug_report(
             "https://github.com/{repo}/blob/main/{bundle_path}/screenshot.jpg?raw=true"
         )
     });
-    let title = build_title(note, req.reporter_name.as_deref());
+    let is_feature = req.kind.as_deref() == Some("feature");
+    let title = build_title(note, req.reporter_name.as_deref(), is_feature);
     let body = build_issue_body(&BugBody {
         note,
         env: &env,
@@ -158,7 +164,7 @@ pub async fn create_bug_report(
         bundle_path: &bundle_path,
         screenshot_url: shot_url.as_deref(),
     });
-    let labels = build_labels(&env);
+    let labels = build_labels(&env, is_feature);
 
     let issue = create_issue(&client, repo, token, &title, &body, labels).await?;
 
@@ -296,16 +302,17 @@ struct BugBody<'a> {
     screenshot_url: Option<&'a str>,
 }
 
-fn build_title(note: &str, reporter_name: Option<&str>) -> String {
+fn build_title(note: &str, reporter_name: Option<&str>, is_feature: bool) -> String {
+    let prefix = if is_feature { "Feature" } else { "Bug" };
     let head = truncate(note.lines().next().unwrap_or(note).trim(), 80);
     match reporter_name.map(str::trim).filter(|n| !n.is_empty()) {
-        Some(name) => format!("Bug: {head} (from {name})"),
-        None => format!("Bug: {head}"),
+        Some(name) => format!("{prefix}: {head} (from {name})"),
+        None => format!("{prefix}: {head}"),
     }
 }
 
-fn build_labels(env: &Value) -> Vec<String> {
-    let mut labels = vec![BUG_LABEL.to_string()];
+fn build_labels(env: &Value, is_feature: bool) -> Vec<String> {
+    let mut labels = vec![if is_feature { FEATURE_LABEL } else { BUG_LABEL }.to_string()];
     if let Some(app) = env.get("app").and_then(Value::as_str).filter(|s| !s.is_empty()) {
         labels.push(format!("app:{app}"));
     }
@@ -576,20 +583,23 @@ mod tests {
     }
 
     #[test]
-    fn title_includes_name_when_present() {
-        assert_eq!(build_title("hand overlaps", Some("Rick W")), "Bug: hand overlaps (from Rick W)");
-        assert_eq!(build_title("hand overlaps", None), "Bug: hand overlaps");
-        assert_eq!(build_title("hand overlaps", Some("  ")), "Bug: hand overlaps");
+    fn title_includes_name_and_kind() {
+        assert_eq!(build_title("hand overlaps", Some("Rick W"), false), "Bug: hand overlaps (from Rick W)");
+        assert_eq!(build_title("hand overlaps", None, false), "Bug: hand overlaps");
+        assert_eq!(build_title("hand overlaps", Some("  "), false), "Bug: hand overlaps");
+        assert_eq!(build_title("dark mode please", None, true), "Feature: dark mode please");
+        assert_eq!(build_title("dark mode", Some("Rick W"), true), "Feature: dark mode (from Rick W)");
     }
 
     #[test]
-    fn labels_derive_from_env() {
+    fn labels_derive_from_env_and_kind() {
         let env = json!({ "app": "a1", "engine": "local", "phase": "play" });
         assert_eq!(
-            build_labels(&env),
+            build_labels(&env, false),
             vec!["bug-report", "app:a1", "engine:local", "phase:play"]
         );
-        assert_eq!(build_labels(&json!({})), vec!["bug-report"]);
+        assert_eq!(build_labels(&json!({}), false), vec!["bug-report"]);
+        assert_eq!(build_labels(&json!({ "app": "a1" }), true), vec!["feature-request", "app:a1"]);
     }
 
     #[test]

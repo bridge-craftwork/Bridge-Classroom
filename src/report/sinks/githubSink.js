@@ -16,11 +16,12 @@ const API_KEY = import.meta.env.VITE_API_KEY || ''
  * @param {object} args.fixture        fixture.json (stub until Slice 3/4)
  * @param {Blob|null} args.screenshotBlob
  * @param {string} args.note
+ * @param {'bug'|'feature'} [args.kind='bug']  bug report or feature request (title/label)
  * @param {string|null} args.reporterName   display name, or null when anonymous
  * @param {string|null} args.contactEmail   email for the issue body, or null
  * @returns {Promise<{ok:boolean, issueUrl?:string, issueNumber?:number, bundlePath?:string, reason?:string}>}
  */
-export async function fileGithubIssue({ context, fixture, screenshotBlob, note, reporterName, contactEmail }) {
+export async function fileGithubIssue({ context, fixture, screenshotBlob, note, kind = 'bug', reporterName, contactEmail }) {
   try {
     const screenshot_base64 = screenshotBlob ? await blobToBase64(screenshotBlob) : null
     const resp = await fetch(`${API_URL}/bug-report`, {
@@ -28,6 +29,7 @@ export async function fileGithubIssue({ context, fixture, screenshotBlob, note, 
       headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
       body: JSON.stringify({
         note,
+        kind,
         context,
         fixture,
         screenshot_base64,

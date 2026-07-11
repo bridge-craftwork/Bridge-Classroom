@@ -16,13 +16,25 @@
   <div class="br-overlay" @click.self="onCancel">
     <div class="br-dialog" role="dialog" aria-labelledby="br-title">
       <div class="br-header">
-        <h2 id="br-title" class="br-title">🐞 Report a bug</h2>
+        <h2 id="br-title" class="br-title">{{ kind === 'feature' ? '💡 Request a feature' : '🐞 Report a bug' }}</h2>
         <button class="br-x" aria-label="Close" @click="onCancel">×</button>
       </div>
 
       <div class="br-body">
         <!-- Compose -->
         <template v-if="phase === 'compose'">
+          <!-- Bug vs Feature: reshapes the title/labels; capture is identical -->
+          <div class="br-toggle" role="tablist" aria-label="Report type">
+            <button
+              class="br-toggle-btn" :class="{ active: kind === 'bug' }"
+              role="tab" :aria-selected="kind === 'bug'" @click="kind = 'bug'"
+            >🐞 Bug</button>
+            <button
+              class="br-toggle-btn" :class="{ active: kind === 'feature' }"
+              role="tab" :aria-selected="kind === 'feature'" @click="kind = 'feature'"
+            >💡 Feature</button>
+          </div>
+
           <!-- Sink toggle (only when Local is enabled) -->
           <div v-if="localEnabled" class="br-toggle" role="tablist" aria-label="Where to send">
             <button
@@ -42,7 +54,7 @@
 
           <textarea
             ref="noteEl" v-model="note" class="br-textarea" rows="4"
-            placeholder="What went wrong? What did you expect?"
+            :placeholder="kind === 'feature' ? 'What would you like to see? Why would it help?' : 'What went wrong? What did you expect?'"
           ></textarea>
 
           <!-- Identity + privacy (issue path only) -->
@@ -138,6 +150,11 @@ const currentUser = userStore.currentUser
 const localEnabled = localReportsEnabled()
 const sink = ref(localEnabled ? loadSink() : 'issue')
 
+// Bug vs feature request — both capture identically (screenshot + context);
+// only the issue title/label differ. Defaults to 'bug' each open (deliberate: a
+// feature request is a conscious pick, never a sticky default that mis-files).
+const kind = ref('bug')
+
 const phase = ref('compose') // compose | manual | error
 const note = ref('')
 const busy = ref(false)
@@ -162,7 +179,10 @@ const env = {
 }
 const screenshotUrl = props.screenshot ? URL.createObjectURL(props.screenshot) : null
 
-const submitLabel = computed(() => (sink.value === 'issue' ? 'Submit report' : 'Submit'))
+const submitLabel = computed(() => {
+  if (sink.value !== 'issue') return 'Submit'
+  return kind.value === 'feature' ? 'Submit request' : 'Submit report'
+})
 const busyLabel = computed(() => (sink.value === 'issue' ? 'Filing…' : 'Saving…'))
 
 const envSummary = computed(() => {
@@ -219,7 +239,7 @@ async function submit() {
 async function submitLocal() {
   let dirHandle = null
   try { dirHandle = await ensureDirHandle() } catch { dirHandle = null }
-  const bundle = collectReport({ note: note.value, screenshot: props.screenshot, enrich: { env, layout: props.layout } })
+  const bundle = collectReport({ note: note.value, screenshot: props.screenshot, enrich: { env, layout: props.layout, context: { kind: kind.value } } })
   result.value = await saveToDevSink(bundle, { dirHandle })
   if (result.value.copied) emit('saved', { message: '✓ Saved and prompt copied to clipboard' })
   else phase.value = 'manual'
@@ -238,10 +258,11 @@ async function submitIssue() {
   const bundle = collectReport({
     note: note.value,
     screenshot: props.screenshot,
-    enrich: { env, layout: props.layout, context: { reporter: reporterRecord } }
+    enrich: { env, layout: props.layout, context: { reporter: reporterRecord, kind: kind.value } }
   })
 
   const res = await fileGithubIssue({
+    kind: kind.value,
     context: bundle.context,
     fixture: bundle.fixture,
     screenshotBlob: props.screenshot,
@@ -251,7 +272,8 @@ async function submitIssue() {
   })
 
   if (res.ok) {
-    emit('saved', { message: `✓ Bug reported — issue #${res.issueNumber}` })
+    const what = kind.value === 'feature' ? 'Feature requested' : 'Bug reported'
+    emit('saved', { message: `✓ ${what} — issue #${res.issueNumber}` })
   } else if (res.reason === 'not_configured') {
     errorMessage.value = "Bug reporting isn't set up on this server yet."
     canRetry.value = false
