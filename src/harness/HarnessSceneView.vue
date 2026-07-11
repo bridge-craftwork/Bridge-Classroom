@@ -1,6 +1,7 @@
 <template>
   <div class="scene-page" :data-harness-ready="ready ? '' : null">
     <div v-if="!fixture" class="scene-miss">no scene: {{ scene }}</div>
+    <A1Scene v-else-if="fixture.surface === 'a1'" :fixture="fixture" />
     <ServerTableScene v-else-if="fixture.surface === 'server'" :fixture="fixture" />
     <TableScene v-else :fixture="fixture" />
   </div>
@@ -17,9 +18,13 @@ import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import TableScene from './TableScene.vue'
 import ServerTableScene from './ServerTableScene.vue'
+import A1Scene from './A1Scene.vue'
 import './harness.css'
 
-const modules = import.meta.glob('./fixtures/*.js', { eager: true })
+// Both fixture dirs resolve by name: the shared `fixtures/` set (component
+// gallery) and the A1-only `fixtures-a1/` set (its own separate gallery). Keeping
+// them in separate dirs is what lets each gallery walk only its own scenes.
+const modules = { ...import.meta.glob('./fixtures/*.js', { eager: true }), ...import.meta.glob('./fixtures-a1/*.js', { eager: true }) }
 const scenes = {}
 for (const [p, m] of Object.entries(modules)) {
   const name = p.match(/\/([^/]+)\.js$/)?.[1]
