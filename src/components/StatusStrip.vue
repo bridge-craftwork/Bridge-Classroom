@@ -86,25 +86,25 @@ const resultLabel = computed(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--table-scale));
   font-family: 'DM Sans', system-ui, sans-serif;
 }
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: calc(6px * var(--table-scale));
+  font-size: calc(13px * var(--table-scale));
   font-weight: 600;
   color: #4a5550;
   background: #eef1ee;
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: calc(4px * var(--table-scale)) calc(12px * var(--table-scale));
   white-space: nowrap;
 }
 .chip-contract {
   color: #fff;
   background: #1d9e75;
-  font-size: 15px;
+  font-size: calc(15px * var(--table-scale));
 }
 .chip-contract .ct :deep(.red) { color: #ffe3e0; }
 .chip-contract .dbl { font-weight: 800; letter-spacing: 0.02em; }
@@ -115,7 +115,7 @@ const resultLabel = computed(() => {
 .chip-vul.vul-ns, .chip-vul.vul-ew, .chip-vul.vul-all { color: #b1352a; background: #fbe6e3; }
 .chip-vul.vul-none { color: #5b665f; background: #eef1ee; }
 .vul-dot {
-  width: 10px; height: 10px; border-radius: 50%;
+  width: calc(10px * var(--table-scale)); height: calc(10px * var(--table-scale)); border-radius: 50%;
   background: #c8cec9; flex: none;
 }
 .vul-dot.vul-ns, .vul-dot.vul-ew, .vul-dot.vul-all { background: #d43f30; }

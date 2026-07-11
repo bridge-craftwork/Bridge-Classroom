@@ -5,11 +5,14 @@
 import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
+import { pathToFileURL } from 'url'
 
 const BASE = process.env.HARNESS_URL || 'http://localhost:4173'
 const SPECIMEN_ROOT = 'src/harness/specimens'
 const OUT_ROOT = 'gallery/components'
 const widths = JSON.parse(fs.readFileSync('src/harness/widths.json', 'utf8'))
+// Design-scale axis (--table-scale): capture each specimen×width at every scale.
+const scales = JSON.parse(fs.readFileSync('src/harness/scales.json', 'utf8'))
 // Tier 2 — view scenarios: fixtures walked at named viewports.
 const FIXTURE_ROOT = 'src/harness/fixtures'
 const SCENE_OUT = 'gallery/scenes'
@@ -23,31 +26,53 @@ for (const comp of fs.readdirSync(SPECIMEN_ROOT)) {
   const dir = path.join(SPECIMEN_ROOT, comp)
   if (!fs.statSync(dir).isDirectory()) continue
   for (const f of fs.readdirSync(dir)) {
-    if (f.endsWith('.js')) walk.push({ component: comp, specimen: f.replace(/\.js$/, '') })
+    if (!f.endsWith('.js')) continue
+    // Specimens are plain ESM objects — import to read optional walk metadata.
+    // `capture`: a CSS selector to screenshot instead of the frame. Needed for
+    // floating overlays (e.g. CardSelectorPopup) whose fixed positioning
+    // collapses the frame to zero size; we photograph the element where it lives.
+    const mod = await import(pathToFileURL(path.resolve(dir, f)).href)
+    walk.push({ component: comp, specimen: f.replace(/\.js$/, ''), capture: mod.default?.capture || null })
   }
 }
 
 const browser = await chromium.launch()
 let shots = 0
-for (const { component, specimen } of walk) {
+for (const { component, specimen, capture } of walk) {
   for (const [wname, wpx] of Object.entries(widths)) {
-    const page = await browser.newPage({
-      viewport: { width: Math.max(wpx + 120, 600), height: 900 },
-      deviceScaleFactor: 2,
-    })
-    const url = `${BASE}/#/harness/component/${component}/${specimen}?w=${wname}`
-    await page.goto(url, { waitUntil: 'networkidle' })
-    await page.waitForSelector('[data-harness-ready]', { timeout: 15000 })
-    await page.evaluate(() => document.fonts.ready)
-    const frame = await page.$('.harness-frame')
-    const out = path.join(OUT_ROOT, component, specimen, `${wname}.png`)
-    fs.mkdirSync(path.dirname(out), { recursive: true })
-    await frame.screenshot({ path: out })
-    await page.close()
-    shots++
+    for (const sval of scales) {
+      const page = await browser.newPage({
+        // Give the frame room even when the scaled content grows past wpx.
+        viewport: { width: Math.max(Math.ceil(wpx * sval) + 120, 600), height: 900 },
+        deviceScaleFactor: 2,
+      })
+      const url = `${BASE}/#/harness/component/${component}/${specimen}?w=${wname}&scale=${sval}`
+      try {
+        await page.goto(url, { waitUntil: 'networkidle' })
+        // `attached`, not the default `visible`: a floating-overlay specimen leaves
+        // the frame zero-height, but the ready flag is still in the DOM once rendered.
+        await page.waitForSelector('[data-harness-ready]', { state: 'attached', timeout: 15000 })
+        await page.evaluate(() => document.fonts.ready)
+        // Let ResizeObserver-driven fit measurements (HandDisplay) settle.
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+        // Filename token: <width>@<scale>.png (e.g. panel@1.25.png).
+        const out = path.join(OUT_ROOT, component, specimen, `${wname}@${sval}.png`)
+        fs.mkdirSync(path.dirname(out), { recursive: true })
+        // `capture` targets a floating element by selector; otherwise crop the frame.
+        const target = capture ? page.locator(capture) : await page.$('.harness-frame')
+        await target.screenshot({ path: out })
+      } catch (e) {
+        // Name the offending cell — the walk is otherwise silent about which of
+        // 500+ routes hung, which makes flakes/regressions painful to trace.
+        console.error('WALK-FAIL', url, capture ? '(capture)' : '', e.message.split('\n')[0])
+        throw e
+      }
+      await page.close()
+      shots++
+    }
   }
 }
-console.log(`components: ${walk.length} specimens × ${Object.keys(widths).length} widths = ${shots} shots`)
+console.log(`components: ${walk.length} specimens × ${Object.keys(widths).length} widths × ${scales.length} scales = ${shots} shots`)
 
 // Tier 2: each fixture full-page at each named viewport.
 let sceneShots = 0
@@ -58,6 +83,8 @@ for (const scene of scenes) {
     await page.goto(url, { waitUntil: 'networkidle' })
     await page.waitForSelector('[data-harness-ready]', { timeout: 15000 })
     await page.evaluate(() => document.fonts.ready)
+      // Let ResizeObserver-driven fit measurements (HandDisplay) settle.
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
     const out = path.join(SCENE_OUT, scene, `${vpName}.png`)
     fs.mkdirSync(path.dirname(out), { recursive: true })
     await page.screenshot({ path: out, fullPage: true })

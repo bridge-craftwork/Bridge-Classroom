@@ -14,10 +14,9 @@ const SPEC_ROOT = 'src/harness/specimens'
 // physically smaller than a 480px drill and font-size judgments are meaningful.
 const widthsMap = JSON.parse(fs.readFileSync('src/harness/widths.json', 'utf8'))
 const widths = Object.keys(widthsMap)
-// Design scale axis (--table-scale). Only 1.0 is captured today; item 2 adds
-// [1.0, 1.25, 1.5] as a real axis. Shown in each caption badge now so the
-// format is stable when the axis lands.
-const SCALE = 1.0
+// Design scale axis (--table-scale): each specimen×width is captured at every
+// scale and stacked in its cell, each at native size, with a {px·scale×} caption.
+const scales = JSON.parse(fs.readFileSync('src/harness/scales.json', 'utf8'))
 
 // `--inline` embeds every PNG as a base64 data: URI and writes a SELF-CONTAINED
 // gallery/index-inline.html — the form a claude.ai Artifact needs (its CSP
@@ -91,9 +90,15 @@ for (const comp of fs.readdirSync(ROOT).sort()) {
     body += `<tr><td class="spec">${specCell}</td>`
     for (const w of widths) {
       const px = widthsMap[w]
-      const rel = `components/${comp}/${name}/${w}.png`
-      body += fs.existsSync(path.join('gallery', rel))
-        ? `<td style="width:${px}px"><img class="spec-img" style="width:${px}px" src="${imgSrc(rel)}" alt="${esc(name)} @ ${esc(w)}"><div class="cap">${px}px · ${SCALE.toFixed(2)}×</div></td>`
+      // Stack the scale renders in one cell — same container width, content
+      // scaled by --table-scale. Each shown at native size (item 1).
+      const stack = scales.map((s) => {
+        const rel = `components/${comp}/${name}/${w}@${s}.png`
+        if (!fs.existsSync(path.join('gallery', rel))) return ''
+        return `<figure class="scale-shot"><img class="spec-img" style="width:${px}px" src="${imgSrc(rel)}" alt="${esc(name)} @ ${esc(w)} @ ${s}×"><figcaption class="cap">${px}px · ${Number(s).toFixed(2)}×</figcaption></figure>`
+      }).join('')
+      body += stack
+        ? `<td style="width:${px}px">${stack}</td>`
         : `<td class="missing">—</td>`
     }
     body += `</tr>\n`
@@ -135,6 +140,9 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Component 
      No shared clamp — that was the normalization bug. */
   .spec-img { display: block; height: auto; cursor: zoom-in; }
   .cap { font: 10px 'Courier New', monospace; color: #b0b4ac; margin-top: 4px; text-align: center; }
+  /* Scale renders stacked in one width cell (1.0 / 1.25 / 1.5), separated. */
+  .scale-shot { margin: 0 0 14px; padding: 0; }
+  .scale-shot:last-child { margin-bottom: 0; }
   td.missing { color: #c00; }
   /* Click-to-zoom lightbox — any gallery image (specimen or scene) opens full
      size; click anywhere / Esc to close. Lives in the generator so it survives

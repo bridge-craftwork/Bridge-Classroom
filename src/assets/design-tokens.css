@@ -5,6 +5,14 @@
   --font-heading: 'Source Serif 4', serif;
   --font-body: 'DM Sans', sans-serif;
 
+  /* Table component scale. Multiplies the font/spacing/box sizes of the table
+     components (HandDisplay, SeatChip/SeatPanel/SeatIndicator, AuctionTable,
+     BiddingBox, TrickArea, StatusStrip) via calc(<px> * var(--table-scale)).
+     Default 1.0 = today's sizes exactly (pixel-identical). The harness sets it
+     per the scale axis (1.0 / 1.25 / 1.5); production keeps 1.0 until a surface
+     opts in. */
+  --table-scale: 1.0;
+
   /* Primary green palette */
   --green-dark: #2d6a4f;
   --green-mid: #40916c;

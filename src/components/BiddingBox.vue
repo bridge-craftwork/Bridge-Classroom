@@ -138,10 +138,10 @@ function makeBid(level, strain) {
 .bidding-box {
   background: #e8e8e8;
   border-radius: 8px;
-  padding: 16px;
+  padding: calc(16px * var(--table-scale));
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--table-scale));
 }
 
 /* Not this player's turn: same layout, greyed and non-interactive. */
@@ -153,22 +153,22 @@ function makeBid(level, strain) {
 .bid-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--table-scale));
 }
 
 .levels {
   display: flex;
-  gap: 4px;
+  gap: calc(4px * var(--table-scale));
   justify-content: center;
 }
 
 .level-btn {
-  width: 36px;
-  height: 36px;
+  width: calc(36px * var(--table-scale));
+  height: calc(36px * var(--table-scale));
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: 18px;
+  font-size: calc(18px * var(--table-scale));
   font-weight: bold;
   cursor: pointer;
   transition: all 0.15s;
@@ -186,17 +186,17 @@ function makeBid(level, strain) {
 
 .strains {
   display: flex;
-  gap: 4px;
+  gap: calc(4px * var(--table-scale));
   justify-content: center;
 }
 
 .strain-btn {
-  width: 48px;
-  height: 42px;
+  width: calc(48px * var(--table-scale));
+  height: calc(42px * var(--table-scale));
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: 20px;
+  font-size: calc(20px * var(--table-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -221,23 +221,23 @@ function makeBid(level, strain) {
 }
 
 .strain-btn.suit-nt {
-  font-size: 14px;
+  font-size: calc(14px * var(--table-scale));
   font-weight: bold;
   color: #1a1a1a;
 }
 
 .special-bids {
   display: flex;
-  gap: 8px;
+  gap: calc(8px * var(--table-scale));
   justify-content: center;
 }
 
 .special-btn {
-  min-width: 64px;
-  padding: 10px 16px;
+  min-width: calc(64px * var(--table-scale));
+  padding: calc(10px * var(--table-scale)) calc(16px * var(--table-scale));
   border: none;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: calc(14px * var(--table-scale));
   font-weight: bold;
   cursor: pointer;
   transition: all 0.15s;

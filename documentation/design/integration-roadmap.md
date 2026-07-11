@@ -4,7 +4,7 @@
 **Status:** Proposed
 **Companion to:** `rendering-harness-plan.md` (rules of engagement, harness mechanics,
 annotation architecture — all still binding)
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-10
 
 > **Revision (2026-07-08):** review deltas applied after repo fact-check — server-path
 > fixture driver added to Phase 0 (the referee for Phase 3); `wantsCall` promoted to a
@@ -22,6 +22,13 @@ annotation architecture — all still binding)
 > all alpha surfaces first to settle the look-and-feel, Scenario Mastery integration
 > last (but not frozen). Status region already shipped on both Practice Tables
 > (#101 local, #102 server).
+>
+> **Update (2026-07-10, suit-fit + design-scale):** HandDisplay gained a
+> **measured-fit suit model** (compress → truncate + `+N` chip → card-selector
+> popup) that retires the old width-reservation tiers, plus a `--table-scale`
+> design-scale axis. Full model in `rendering-harness-plan.md` → *Concept: Suit
+> fit, design-scale & the card-selector popup*. In-review stack #152→#153→#154;
+> a1 pixel-identity holds at `--table-scale: 1.0`.
 
 ## Where we are
 
@@ -121,7 +128,7 @@ the careful Scenario Mastery integration. See the execution order below.
 | **BridgeTable** | Responsive arranger: per-density seat arrangement (SeatChips-only at `tile`), fix `tile` clipping. This is the console-tile forcing function. **Constraint: density must come from a ResizeObserver size-class, NOT `container-type`.** Inline-size containment breaks the solo view's shrink-wrap layout (the `.bidding-box-wrapper` centers via `align-items`, so the box sizes to content — containment collapses it). That is the root cause of the #88 revert, and the `tile`-clipping fix (0.1) is exactly where someone would otherwise reach for container queries again. | Gallery-first, then pixel-identical where prod already uses it |
 | **BiddingBox** | Touch-target audit at tablet widths. (Sizing is width-independent post-#88 — no responsive step to fix; if narrow-tightening is ever wanted, use the same ResizeObserver size-class as BridgeTable, never `container-type`.) | Gallery-first |
 | **AuctionTable** | Add density modes: `full` (bidding), `compact` (play reference), `chip` (contract only, tap-to-expand). Divergence display already shipped | Gallery-first; lands with play-phase compression (Phase 5) |
-| **HandDisplay** | No structural work. Absorb review-mode channels as producers arrive (trick fills, DD outlines already placeholdered) | Incremental, specimen-driven |
+| **HandDisplay** | **Suit-fit rewrite shipped (in-review #154):** measured per-row compression → truncation + `+N` chip → floating `CardSelectorPopup`, on the `--table-scale` axis. Retires the width-reservation tiers. a1-identical at scale 1.0. Remaining: absorb review-mode channels as producers arrive (trick fills, DD outlines already placeholdered) | Specimen-driven; `handFit.js` + unit/hit-area tests |
 | **SeatPanel / SeatChip / TrickArea** | Stable. TrickArea gains contract-relative trick framing via StatusStrip data (display only) | Minor |
 
 ### B. Create fresh (new visualizations — no pixel-match obligation)

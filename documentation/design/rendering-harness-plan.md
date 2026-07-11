@@ -2,7 +2,7 @@
 
 **Location:** `documentation/design/rendering-harness-plan.md`
 **Status:** Active
-**Last updated:** 2026-07-06
+**Last updated:** 2026-07-10
 
 ## Purpose
 
@@ -216,9 +216,13 @@ designs.
 - **Fixed-width cells** per rank; "10" fits the cell via tabular figures/kerning
   (do not use "T" — wrong for this audience). Constant width per suit length
   regardless of ranks present.
-- **Width reservation tiers:** reserve layout width for a 7-card suit (~99.5% of
-  hands render with zero variation); compress within reserved width for 8–10;
-  genuinely grow and let the arranger's `minmax` absorb 11+.
+- **Suit fit — SUPERSEDED 2026-07-10.** The original "reserve a 7-card width;
+  compress 8–10 inside it; grow past it for 11+" model is retired. Rows no longer
+  reserve, grow, or wrap — they **measure their container and fit into it**:
+  compress to a legibility floor, then truncate with a `+N` chip whose hidden
+  cards live in a floating card-selector popup. Full model in **Concept: Suit fit,
+  design-scale & the card-selector popup** below (shipped as the gallery/suit-fit
+  work, in-review stack #152→#153→#154).
 - **Played cards:** live play = collapse the cell (remaining shape reads true);
   review = keep the cell, trick fill, opacity step. The old strikethrough is
   removed (Slice 4, not before). `playedCards`/`hidePlayedCards` props collapse
@@ -229,6 +233,97 @@ designs.
   SeatPanel; HandDisplay's guarantee simplifies to "geometry is a pure function
   of holding + marks + density." Acceptance test: step through a full auction and
   play; no glyph that isn't itself changing state moves by one pixel.
+
+---
+
+## Concept: Suit fit, design-scale & the card-selector popup (2026-07-10)
+
+The measured-fit model that **replaces** the width-reservation tiers. Rows are
+always exactly one line tall and never wrap, never clip, never grow past their
+container. Shipped as the gallery/suit-fit work (in-review stack
+#152 native-scale → #153 design-scale axis → #154 suit-fit + amendment + clip).
+
+### Design-scale axis (`--table-scale`)
+
+A single root custom property, `--table-scale` (default `1.0`), multiplies the
+sizes of every table component. Table components express sizes as
+`calc(<px> * var(--table-scale))` — chosen over `em` because `calc(21px * 1.0)`
+is *exactly* 21px, so **at scale 1.0 the render is byte-identical to before the
+variable existed** (verified 148/148 specimens). The Tier-1 walk now sweeps a
+**scale axis** (`src/harness/scales.json` = `[1, 1.25, 1.5]`) as a third axis
+beside input × width, so every specimen is proved at each design scale.
+
+`a1` (Scenario Mastery) is pinned at `--table-scale: 1.0`; **all a1 pixel-identity
+requirements refer to scale 1.0 only.** Scales 1.25/1.5 are the harness exploring
+headroom, not a production surface.
+
+### Per-row measured fit (`src/utils/handFit.js`)
+
+Fit is a **pure function of one row's measured geometry** — no reserved abstract
+width. `computeFit({cumWidths, available, natural, chipReserve, margin, floor})`
+runs this cascade per suit row:
+
+| condition | behavior |
+|---|---|
+| cards fit (`contentRight ≤ available`) | **scale 1** — untouched (this is the a1-identity branch) |
+| don't fit, but `floor ≤ scale < 1` | **compress** to that scale, one line, all cards |
+| `scale < floor` (`LEGIBILITY_FLOOR = 0.65`) | hold at the floor, **truncate** the tail, append a `+N` chip |
+
+Mechanics that matter:
+- **Hidden probe.** Natural (scale-1) widths are read from an off-flow, unpainted
+  probe row, so measurement is stable regardless of the scale currently applied
+  to the visible row (no measure/apply feedback loop).
+- **Compression sizes from the full content width** (probe `.cards` box, incl.
+  trailing letter-spacing) and shaves an overhang margin (`3px × --table-scale`)
+  off `available`; the *fit decision* still uses the last card's right edge, so
+  hands that already fit stay byte-identical. (This is the clip fix — without it a
+  compressed suit's last bold glyph spilled past the frame edge.)
+- **Truncation test excludes the chip** (only the cards decide whether to
+  truncate); the **count of visible cards includes the chip's reserve** — computed
+  in that order so it never truncates one card too many.
+
+Invariants (unit-tested, `handFit.test.js`, 9/9):
+- **Monotone un-truncation** — as cards are played (removed), `+N` only ever
+  shrinks, never grows; playing a card only frees width.
+- **Per-row independence** — one suit's fit never depends on another's.
+- **Clean vacate** — once the remainder fits, the chip disappears entirely.
+
+### The `+N` chip and the card-selector popup
+
+Wrapping exists in exactly one place: a floating `CardSelectorPopup`, anchored to
+the row, out of flow, that shows the full suit as ≥44px cells wrapped across
+continuation lines. In-grid rows never wrap.
+
+- **Rank cells always play their card directly.** Truncation never reroutes a rank
+  tap (same-looking cell → same action; high cards render first, so the visible
+  ones are the frequently-played). **The `+N` chip is the sole popup portal.**
+- **Chip hit area** extends into the row's trailing slack (rightward + a vertical
+  bleed, via an absolute `::after` that doesn't change row height) to a ≥44px
+  effective target, with a real left gap so a tap at the last-rank/chip boundary
+  can't ambiguously play-vs-open. Proven by a Playwright hit-area test
+  (`scripts/harness-hittest.mjs`, 3/3: trailing-slack→popup, last-rank→plays,
+  boundary-gap→inert).
+- **Chip vocabulary is clickability-scoped.** Clickable hands: a dressed pill in
+  the tappable vocabulary (bordered, subtle bg, full-weight, **not** purple —
+  purple stays the badge/annotation channel), scaling with the row. Non-clickable
+  console tiles: plain full-weight ink (information, not metadata-gray) and inert —
+  never intercepts the tile's whole-surface click-through. A hidden card that
+  carries a mark surfaces a small indicator dot on the chip.
+
+### Harness patterns added for this work
+
+- **Native-scale gallery + inline mode.** The gallery renders each specimen at its
+  captured pixel size (no blanket `max-width` downscale); `--inline` emits a
+  single self-contained HTML with base64 images for publishing as a claude.ai
+  Artifact (CSP blocks external requests).
+- **Capture-by-locator.** A specimen may declare `capture: '<selector>'`; the walk
+  screenshots that element (via `locator.screenshot()`) instead of cropping the
+  frame — the honest way to photograph a floating overlay whose fixed positioning
+  collapses the frame to zero height. The walk's ready-wait is `state:'attached'`
+  for the same reason, and it now names the offending cell on failure.
+- **`@card-click` bridge** in `HarnessComponentView` surfaces a component's emits
+  on `window.__harnessEvents` so interaction tests can assert a tap *played* vs
+  *opened the popup*.
 
 ---
 
@@ -377,6 +472,26 @@ rows: `auction-mid-competitive` × UnifiedTable × all five viewports;
   suit, long names, disconnected player, everything-alerted auction) are cheap to
   add.
 
+### Gallery & HandDisplay suit-fit (2026-07-09/10) — 🔵 IN REVIEW (stack #152→#153→#154)
+
+Not a pre-planned slice — the design-partner-driven gallery work that produced the
+measured-fit model above. Three stacked branches off `main`:
+
+- **#152 native-scale rendering** — gallery renders specimens at captured size;
+  `--inline` self-contained (Artifact) output. Harness-only.
+- **#153 design-scale axis** — `--table-scale` root var; 8 table components moved to
+  `calc(px * var(--table-scale))`; scale axis `[1,1.25,1.5]` walked. **a1 byte-identical
+  at 1.0 (148/148).** AuctionTable dense-threshold scaled with the var (panel-clip fix).
+- **#154 suit-fit** — `handFit.js` + in-grid truncation + `+N` chip + `CardSelectorPopup`;
+  the **amendment** (chip = sole popup portal, rank-cells-always-play, dressed-pill vs
+  plain-text vocabulary, ≥44px hit area); the **clip fix** (compress from full content
+  width + overhang margin). Evidence: 9/9 `handFit` unit tests, 3/3 Playwright hit-area
+  test, a1 fitting-hands byte-identical at scale 1.0.
+
+Acceptance verified in the gallery: 8-card monotone no-clip; 11-card floor+chip;
+play-sequence `+5→+3→gone` (frozen geometry); popup wraps all 11 at ≥44px; marked-hidden
+dot; 6-4-2-1 one line at tile; flat-4333 byte-identical at 1.0.
+
 ### Directional (not yet sliced)
 
 - **SeatChip/SeatPanel extraction:** ✅ SHIPPED (PR #81; BridgeTable+scenes 0-diff). create SeatChip (identity) and SeatPanel
@@ -399,9 +514,15 @@ rows: `auction-mid-competitive` × UnifiedTable × all five viewports;
 
 ## Specimen Inputs (initial set for HandDisplay)
 
-Geometry stressors: flat `4333`; `6421`; 7-card suit (reserve boundary); 8-card suit
-(compression trigger); 11-card freak (growth path); all-four-tens (width jitter);
-mid-play hand with 5 cards gone (collapse behavior).
+Geometry stressors: flat `4333`; `6421`; 7-card suit (fit boundary); 8-card suit
+(compression trigger); **11-card freak (truncation path — floor + `+N` chip)**;
+all-four-tens (width jitter); mid-play hand with 5 cards gone (collapse behavior).
+
+Suit-fit acceptance specimens (2026-07-10): `eleven-card-clickable` (dressed pill)
+beside `eleven-card` (plain chip); `eleven-card-play-2/4/6` (monotone `+N` over a
+play sequence, frozen row geometry); `eleven-card-marked-hidden` (chip indicator
+dot); `CardSelectorPopup/eleven-card` (full suit wrapped, ≥44px, one mark —
+captured by locator, not frame crop).
 
 Configurations: `chip` bare; `compact` + played; `full-everything` (trick fills,
 badges, won/led glyphs, DD outlines, one group bar) — the permanent noise-ceiling
