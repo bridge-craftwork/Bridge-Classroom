@@ -682,6 +682,59 @@ function stopViewingAs() {
   viewAsUser.value = null
 }
 
+/**
+ * ADR-0004 Phase 3: silently restore identity + key material from a surviving
+ * durable session cookie. Called at startup when localStorage was purged (e.g.
+ * Safari ITP after ~7 idle days) but the server-set `__Host-bc_session` cookie
+ * persists — the user is logged back in with **no recovery email**. No-op when
+ * there is no valid session cookie (falls through to the WelcomeScreen as today).
+ *
+ * Key material is re-fetched from `GET /api/session/key`, the owner-gated escrow
+ * channel — it delivers only the session's own user's key. Reconstruction reuses
+ * `applyRecoveredUser` (the same path the recovery-claim flow uses).
+ *
+ * @returns {Promise<boolean>} true if a session was restored / made active
+ */
+async function restoreSessionFromCookie() {
+  try {
+    const sessRes = await apiFetch(`${API_URL}/session`)
+    if (!sessRes.ok) return false
+    const sess = await sessRes.json()
+    if (!sess.authenticated || !sess.user) return false
+
+    const su = sess.user
+    const existing = users.value[su.id]
+
+    // Already hold this identity with usable key material — just make it active.
+    if (existing && existing.secretKey) {
+      currentUserId.value = su.id
+      saveToStorage()
+      return true
+    }
+
+    // Rehydrate the escrowed key material for the session's OWN user.
+    const keyRes = await apiFetch(`${API_URL}/session/key`)
+    if (!keyRes.ok) return false
+    const keys = await keyRes.json()
+    if (!keys.secret_key) return false
+
+    applyRecoveredUser({
+      id: su.id,
+      first_name: su.first_name,
+      last_name: su.last_name,
+      email: su.email,
+      classroom: su.classroom || null,
+      role: su.role || 'student',
+      secret_key: keys.secret_key,
+      viewer_private_key: keys.viewer_private_key || null
+    })
+    return true
+  } catch {
+    // Best-effort — never block startup; WelcomeScreen handles the no-session case.
+    return false
+  }
+}
+
 export function useUserStore() {
   // Computed properties
   const currentUser = computed(() => {
@@ -763,6 +816,9 @@ export function useUserStore() {
 
     // Role sync
     syncRole,
+
+    // ADR-0004 Phase 3: silent restore from a surviving durable session cookie
+    restoreSessionFromCookie,
 
     // Account merge handoff (admin merged this account into a keeper)
     checkAccountHandoff

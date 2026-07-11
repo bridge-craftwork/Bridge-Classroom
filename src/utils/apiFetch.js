@@ -40,9 +40,11 @@ export function apiFetch(url, options = {}) {
   return fetch(url, {
     ...options,
     headers,
-    // ADR-0004 Phase 2 will add `credentials: 'include'` here (in lockstep with
-    // the CORS `allow_credentials(true)` / pinned-origins change), so the
-    // session cookie rides on every API call from this single site.
+    // ADR-0004 Phase 3: send the durable session cookie on every API call. Safe
+    // because Phase 2 deployed `allow_credentials(true)` on the pinned-origins
+    // CORS branch (both prod domains + dev origins), which reflects the caller's
+    // Origin rather than `*`. Callers may still override via `options.credentials`.
+    credentials: options.credentials || 'include',
   })
 }
 
