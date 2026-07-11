@@ -116,6 +116,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/recovery/request", post(routes::request_recovery))
         .route("/api/recovery/claim", post(routes::claim_recovery))
         .route("/api/recovery/claim-code", post(routes::claim_by_code))
+        // Durable session (ADR-0004): who-am-I + sign-out. The cookie is minted
+        // on recovery-claim (see recovery.rs); no login endpoint of its own yet.
+        .route("/api/session", get(routes::get_session).delete(routes::delete_session))
+        // Session-gated key redelivery (ADR-0004 §3): owner-only; unwraps the
+        // session user's own escrowed AES key so lapsed Safari users rehydrate
+        // silently instead of via an email round-trip.
+        .route("/api/session/key", get(routes::get_session_key))
         // Convention card routes
         .route("/api/cards", get(routes::list_cards))
         .route("/api/cards", post(routes::create_card))
@@ -229,12 +236,27 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Build CORS layer from configuration
+/// Build CORS layer from configuration.
+///
+/// ADR-0004 Phase 2: the pinned-origins branch allows credentials so the
+/// durable session cookie rides on same-site API calls from the real origins.
+/// This is **backward-compatible** — `allow_credentials(true)` is inert for
+/// callers that send no credentials, and the explicit method/header/origin
+/// lists keep it CORS-spec-legal (credentials forbid wildcards). The only
+/// unsafe order is the frontend sending `credentials:'include'` *before* this
+/// deploys; backend-first is safe.
 fn build_cors_layer(config: &Config) -> CorsLayer {
     let origins = config.allowed_origins.clone();
 
     if origins.is_empty() || origins.iter().any(|o| o == "*") {
-        // Allow any origin (for development)
+        // §S8 dev-only open fallback. Deliberately **without** credentials: an
+        // `Any` (`*`) origin cannot carry a session cookie (the spec forbids
+        // `*` + credentials), so this mode can never leak one. It should never
+        // be reached in prod — prod pins an explicit origin list.
+        tracing::warn!(
+            "CORS is OPEN (allow_origin=Any) because ALLOWED_ORIGINS is empty or contains '*'. \
+             Session cookies will NOT work in this mode; set an explicit origin list in prod (§S8)."
+        );
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
@@ -248,6 +270,7 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
 
         CorsLayer::new()
             .allow_origin(allowed)
+            .allow_credentials(true)
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, "x-api-key".parse().unwrap()])
     }

@@ -237,23 +237,44 @@ function measure() {
     const rowRect = rowEl.getBoundingClientRect()
     const cardsRect = cardsEl.getBoundingClientRect()
     const available = rowRect.width - (cardsRect.left - rowRect.left)
+    // Guard: a mid-transition / pre-layout measurement (the row not yet sized —
+    // happens on client-side navigation back to a board) reads ~0 width. Never
+    // commit a collapsed fit from it — skip, leaving the suit full until a real
+    // (settled) measurement lands. Committing here is what stranded/compressed a
+    // hand that a full refresh renders correctly.
+    if (rowRect.width <= 0 || available <= 0) continue
     const chipReserve = chipEls[suit] ? chipEls[suit].getBoundingClientRect().width : 0
-    fit[suit] = computeFit({ cumWidths, available, natural, chipReserve, margin: OVERHANG_MARGIN * tableScale, floor: LEGIBILITY_FLOOR })
+    // Truncate only when the popup is reachable (clickable) — otherwise the +N
+    // strands cards with no way to see them. Non-clickable rows compress-to-fit.
+    fit[suit] = computeFit({ cumWidths, available, natural, chipReserve, margin: OVERHANG_MARGIN * tableScale, floor: LEGIBILITY_FLOOR, allowTruncate: props.clickable })
   }
 }
 
+// Measure AFTER layout settles, not just after Vue's nextTick. On a fresh page
+// load the layout is already settled when the component mounts, so a nextTick
+// measure reads the right width — but on client-side navigation back to a board
+// the container is still resolving at nextTick, so the measure reads a narrow box
+// and, the box then being stable, the ResizeObserver never re-fires to correct
+// it. A double rAF waits for the browser's layout/paint (the same settle the
+// harness walk does before it screenshots).
+function scheduleMeasure() {
+  nextTick(() => {
+    if (typeof requestAnimationFrame === 'undefined') { measure(); return }
+    requestAnimationFrame(() => requestAnimationFrame(measure))
+  })
+}
+
 let ro = null
-onMounted(async () => {
-  await nextTick()
-  measure()
+onMounted(() => {
+  scheduleMeasure()
   const el = rootEl.value?.parentElement || rootEl.value
   if (typeof ResizeObserver === 'undefined' || !el) return
   ro = new ResizeObserver(() => measure())
   ro.observe(el)
 })
 onBeforeUnmount(() => ro?.disconnect())
-watch(() => [props.hand, props.density, props.compact, props.hidePlayedCards, props.marks], async () => {
-  await nextTick(); measure()
+watch(() => [props.hand, props.density, props.compact, props.hidePlayedCards, props.marks], () => {
+  scheduleMeasure()
 }, { deep: true })
 
 // ── Card-selector popup (reaches the truncated cards) ───────────────────────

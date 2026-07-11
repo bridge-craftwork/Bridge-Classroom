@@ -17,8 +17,7 @@
 
 import { ref } from 'vue'
 import { API_URL } from '../utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '../utils/apiFetch.js'
 
 // Default is the production service; override for local dev with
 // VITE_TABLE_WS_URL=ws://localhost:8004/ws in .env.
@@ -106,9 +105,9 @@ async function mintTicket({ sessionId, userId, guestName }) {
   const body = userId
     ? { user_id: userId, session_id: sessionId }
     : { guest_name: guestName, session_id: sessionId }
-  const res = await fetch(`${API_URL}/table-tickets`, {
+  const res = await apiFetch(`${API_URL}/table-tickets`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (res.status === 503) {

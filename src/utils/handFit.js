@@ -27,9 +27,15 @@ export const LEGIBILITY_FLOOR = 0.65
  *   clear the last glyph's right overhang. NOT applied to the fit decision, so
  *   hands that already fit stay byte-identical. Default 0 (unit tests).
  * @param {number} [o.floor]      legibility floor (default LEGIBILITY_FLOOR).
+ * @param {boolean} [o.allowTruncate]  may this row truncate to a +N chip?
+ *   Truncation's ONLY escape hatch is the card-selector popup, which opens only
+ *   on clickable rows — so a non-clickable row that truncates strands its hidden
+ *   cards with no way to see them. When false, never truncate: compress the whole
+ *   suit to fit even below the floor (small-but-complete beats stranded). Default
+ *   true.
  * @returns {{scale:number, visible:number, hidden:number}}
  */
-export function computeFit({ cumWidths, available, chipReserve = 0, natural, margin = 0, floor = LEGIBILITY_FLOOR }) {
+export function computeFit({ cumWidths, available, chipReserve = 0, natural, margin = 0, floor = LEGIBILITY_FLOOR, allowTruncate = true }) {
   const total = cumWidths.length
   const contentRight = total ? cumWidths[total - 1] : 0
   if (contentRight <= 0) return { scale: 1, visible: total, hidden: 0 }
@@ -43,8 +49,13 @@ export function computeFit({ cumWidths, available, chipReserve = 0, natural, mar
   const naturalFull = natural != null ? natural : contentRight
   const room = Math.max(0, available - margin)
   const scaleFull = Math.min(1, room / naturalFull)
-  // Chip EXCLUDED from the truncation test — only the cards decide it.
-  if (scaleFull >= floor) return { scale: scaleFull, visible: total, hidden: 0 }
+  // Chip EXCLUDED from the truncation test — only the cards decide it. And with
+  // no popup to reach hidden cards (allowTruncate=false), NEVER truncate: compress
+  // the whole suit to fit even below the floor rather than strand cards behind an
+  // unreachable +N. This also breaks the shrink-wrap feedback loop that let a
+  // non-clickable a1 hand collapse (truncate → narrower content → measure narrower
+  // → truncate more).
+  if (scaleFull >= floor || !allowTruncate) return { scale: scaleFull, visible: total, hidden: 0 }
 
   // Truncate at the floor; the COUNT includes the chip's reserved width.
   const budget = room / floor // natural units at floor scale

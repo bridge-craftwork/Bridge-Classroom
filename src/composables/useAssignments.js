@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton reactive state
 const studentAssignments = ref([])
@@ -18,9 +17,8 @@ export function useAssignments() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/assignments?student_id=${encodeURIComponent(studentId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/assignments?student_id=${encodeURIComponent(studentId)}`
       )
       if (!response.ok) {
         const text = await response.text()
@@ -59,9 +57,8 @@ export function useAssignments() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/assignments?assigned_by=${encodeURIComponent(teacherId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/assignments?assigned_by=${encodeURIComponent(teacherId)}`
       )
       if (!response.ok) {
         const text = await response.text()
@@ -89,9 +86,8 @@ export function useAssignments() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/assignments?classroom_id=${encodeURIComponent(classroomId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/assignments?classroom_id=${encodeURIComponent(classroomId)}`
       )
       if (!response.ok) {
         const text = await response.text()
@@ -119,9 +115,8 @@ export function useAssignments() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(
-        `${API_URL}/assignments/${encodeURIComponent(assignmentId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/assignments/${encodeURIComponent(assignmentId)}`
       )
       if (!response.ok) {
         const text = await response.text()
@@ -149,11 +144,10 @@ export function useAssignments() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_URL}/assignments`, {
+      const response = await apiFetch(`${API_URL}/assignments`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': API_KEY
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           exercise_id,
@@ -188,11 +182,10 @@ export function useAssignments() {
   /** Delete an assignment */
   async function deleteAssignment(assignmentId) {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/assignments/${encodeURIComponent(assignmentId)}`,
         {
-          method: 'DELETE',
-          headers: { 'x-api-key': API_KEY }
+          method: 'DELETE'
         }
       )
       if (!response.ok) {
@@ -215,9 +208,8 @@ export function useAssignments() {
   /** Fetch exercise boards for loading into practice mode */
   async function fetchExerciseBoards(exerciseId) {
     try {
-      const response = await fetch(
-        `${API_URL}/exercises/${encodeURIComponent(exerciseId)}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const response = await apiFetch(
+        `${API_URL}/exercises/${encodeURIComponent(exerciseId)}`
       )
       if (!response.ok) return null
       const data = await response.json()

@@ -4,8 +4,7 @@ import { useBoardMastery } from './useBoardMastery.js'
 import { useAccomplishments } from './useAccomplishments.js'
 import { decryptSharingGrant, decryptObservation } from '../utils/crypto.js'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton state
 const isTeacher = ref(false)
@@ -41,9 +40,8 @@ async function checkTeacherStatus() {
 
   try {
     // 1. Look up viewer by email
-    const viewerRes = await fetch(
-      `${API_URL}/viewers?email=${encodeURIComponent(currentUser.email)}`,
-      { headers: { 'x-api-key': API_KEY } }
+    const viewerRes = await apiFetch(
+      `${API_URL}/viewers?email=${encodeURIComponent(currentUser.email)}`
     )
     if (!viewerRes.ok) return
 
@@ -54,9 +52,8 @@ async function checkTeacherStatus() {
     viewerId.value = viewer.id
 
     // 2. Fetch grants where this viewer is grantee
-    const grantsRes = await fetch(
-      `${API_URL}/grants?grantee_id=${viewer.id}`,
-      { headers: { 'x-api-key': API_KEY } }
+    const grantsRes = await apiFetch(
+      `${API_URL}/grants?grantee_id=${viewer.id}`
     )
     if (!grantsRes.ok) return
 
@@ -73,9 +70,8 @@ async function checkTeacherStatus() {
     if (studentIds.size === 0) return
 
     // 3. Fetch user details
-    const usersRes = await fetch(
-      `${API_URL}/users`,
-      { headers: { 'x-api-key': API_KEY } }
+    const usersRes = await apiFetch(
+      `${API_URL}/users`
     )
     if (!usersRes.ok) return
 
@@ -99,9 +95,9 @@ async function checkTeacherStatus() {
       userStore.updateUser(currentUser.id, { role: 'teacher' })
       // Also sync to server so backend checks (e.g. create classroom) work
       try {
-        await fetch(`${API_URL}/users/me`, {
+        await apiFetch(`${API_URL}/users/me`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: currentUser.id, action: 'become_teacher' })
         })
       } catch { /* best-effort sync */ }
@@ -123,9 +119,8 @@ async function fetchStudentObservations(userId) {
   }
 
   try {
-    const res = await fetch(
-      `${API_URL}/observations?user_id=${encodeURIComponent(userId)}&limit=10000`,
-      { headers: { 'x-api-key': API_KEY } }
+    const res = await apiFetch(
+      `${API_URL}/observations?user_id=${encodeURIComponent(userId)}&limit=10000`
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
@@ -174,7 +169,7 @@ async function loadAllStudentSummaries() {
     // top-3 recent lessons from board_status — exactly what the
     // roster view needs. See CORRECTNESS_AND_MASTERY.md §14.
     const url = `${API_URL}/student-summaries?user_ids=${encodeURIComponent(userIds.join(','))}`
-    const res = await fetch(url, { headers: { 'x-api-key': API_KEY } })
+    const res = await apiFetch(url)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
 
@@ -308,9 +303,8 @@ async function getStudentKey(studentUserId) {
   // Fetch grants if not cached
   if (!grantsCache && viewerId.value) {
     try {
-      const res = await fetch(
-        `${API_URL}/grants?grantee_id=${viewerId.value}`,
-        { headers: { 'x-api-key': API_KEY } }
+      const res = await apiFetch(
+        `${API_URL}/grants?grantee_id=${viewerId.value}`
       )
       if (res.ok) {
         const data = await res.json()

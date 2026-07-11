@@ -314,6 +314,34 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // Durable per-user sessions (ADR-0004). `id` is sha256(token) hex — the raw
+    // token lives only in the cookie, so a DB read can't reconstruct a usable
+    // session (mirrors recovery_tokens). `revoked_at IS NULL` = active. The
+    // device columns exist for real distinct-user/device metrics at session
+    // creation (something the current stateless model can't measure).
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sessions (
+            id          TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            expires_at  TEXT NOT NULL,
+            revoked_at  TEXT,
+            ip          TEXT,
+            user_agent  TEXT,
+            platform    TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Add recovery_encrypted_key column to users table if it doesn't exist
     // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
     let has_recovery_column: bool = sqlx::query_scalar(

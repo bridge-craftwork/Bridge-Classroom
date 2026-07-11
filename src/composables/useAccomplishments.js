@@ -4,8 +4,7 @@ import { useUserStore } from './useUserStore.js'
 import { useTeacherRole } from './useTeacherRole.js'
 import { getSkillFromPath, getCategoryFromPath, getCategoryInfo } from '../utils/skillPath.js'
 import { API_URL } from '@/utils/apiUrl.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
+import { apiFetch } from '@/utils/apiFetch.js'
 
 // Singleton state
 const loading = ref(false)
@@ -72,16 +71,12 @@ async function fetchAccessibleUsers() {
   // If user has teacher/admin access, fetch other users they can view
   if (teacherRole.isTeacher.value && teacherRole.viewerId.value) {
     try {
-      const response = await fetch(`${API_URL}/grants?grantee_id=${teacherRole.viewerId.value}`, {
-        headers: { 'x-api-key': API_KEY }
-      })
+      const response = await apiFetch(`${API_URL}/grants?grantee_id=${teacherRole.viewerId.value}`)
 
       if (response.ok) {
         const { grants } = await response.json()
 
-        const usersResponse = await fetch(`${API_URL}/users`, {
-          headers: { 'x-api-key': API_KEY }
-        })
+        const usersResponse = await apiFetch(`${API_URL}/users`)
 
         if (usersResponse.ok) {
           const { users: allUsers } = await usersResponse.json()
@@ -146,9 +141,7 @@ async function loadAccomplishments(forceRefresh = false) {
       // deal_subfolder, deal_number, assignment_id, timestamp) are enough to
       // compute mastery; the encrypted blob is not needed here.
       const targetId = viewingAs ? userStore.effectiveUserId.value : selectedUserId.value
-      const response = await fetch(`${API_URL}/observations?user_id=${targetId}&limit=10000`, {
-        headers: { 'x-api-key': API_KEY }
-      })
+      const response = await apiFetch(`${API_URL}/observations?user_id=${targetId}&limit=10000`)
 
       if (!response.ok) {
         throw new Error(`Failed to fetch observations: ${response.status}`)
