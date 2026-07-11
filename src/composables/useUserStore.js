@@ -651,11 +651,10 @@ async function syncRole() {
       }
     }
 
-    // Sync viewer private key for teachers/admins (enables observation decryption on new devices)
-    if (data.viewer_private_key && !user.viewerPrivateKey) {
-      user.viewerPrivateKey = data.viewer_private_key
-      changed = true
-    }
+    // NOTE (§S5): the viewer private key is intentionally NOT rehydrated here.
+    // GET /api/users/:id no longer returns it (it's only api-key gated, so doing
+    // so leaked every teacher's decryption key). Teachers regain their key through
+    // the recovery-claim flow, which proves ownership first. See ADR-0004.
 
     if (changed) saveToStorage()
   } catch {
