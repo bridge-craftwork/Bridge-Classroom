@@ -105,11 +105,14 @@ describe('cardplayPhase re-expression reproduces the pre-Slice-5 formula exactly
     expect(checked).toBe(32)
   })
 
-  // The Slice-6 slot decision must show the trick area for exactly the states
-  // the pre-slice local shell did (cardplayPhase ∈ {playing, complete}) and hide
-  // it for the rest (bidding/off/unsupported). This proves the collapse onto
-  // deriveSlots is behavior-identical for the local center slot.
-  it("deriveSlots.center reproduces the local shell's trick-area gate", () => {
+  // The slot decision must show the CARDPLAY STAGE for exactly the states the
+  // pre-slice local shell did (cardplayPhase ∈ {playing, complete}) and hide it
+  // for the rest (bidding/off/unsupported). The stage is 'trick-area' in play and
+  // 'review' post-play; a legacy shell renders TrickArea for either, so the gate
+  // is `center ∈ {'trick-area','review'}` — identical truth to the old
+  // `center === 'trick-area'` because review used to emit 'trick-area' too.
+  const isCardplayCenter = (c) => c === 'trick-area' || c === 'review'
+  it("deriveSlots.center reproduces the local shell's cardplay-stage gate", () => {
     const bools = [false, true]
     for (const auctionComplete of bools)
       for (const playCardplay of bools)
@@ -120,24 +123,27 @@ describe('cardplayPhase re-expression reproduces the pre-Slice-5 formula exactly
               const cp = original(inp) // the 5-state cardplayPhase
               const phase = derivePhase({ auctionComplete, cardplayActive: isActive, cardplayComplete: playComplete })
               // Local `hasCardplay` = cardplay engaged for this board (NOT playComplete):
-              // the trick area lives for the whole post-auction life of a playable deck.
+              // the stage lives for the whole post-auction life of a playable deck.
               const hasCardplay = playCardplay && cardplayPossible
               const { center } = deriveSlots({ phase, wantsCall: false, hasCardplay })
               const shownBefore = cp === 'playing' || cp === 'complete'
-              expect(center === 'trick-area', JSON.stringify(inp)).toBe(shownBefore)
+              expect(isCardplayCenter(center), JSON.stringify(inp)).toBe(shownBefore)
             }
   })
 })
 
 describe('deriveSlots (Slice 6 — mutually-exclusive slots)', () => {
-  it('center: trick area owns play+review when cardplay is engaged, never otherwise', () => {
-    // Bidding: never a trick area, engaged or not.
-    expect(deriveSlots({ phase: 'bidding', wantsCall: false, hasCardplay: true }).center).toBe(null)
-    // Engaged board (hasCardplay): trick area through play AND review.
+  it('center reports the phase stage: auction / trick-area / review / null', () => {
+    // Bidding: the stage is the live auction (a legacy shell keeps it in the rail
+    // and paints no center — see the consumer note; grid renders it centrally).
+    expect(deriveSlots({ phase: 'bidding', wantsCall: false, hasCardplay: true }).center).toBe('auction')
+    expect(deriveSlots({ phase: 'bidding', wantsCall: false, hasCardplay: false }).center).toBe('auction')
+    // Engaged board (hasCardplay): the cardplay stage — 'trick-area' in play,
+    // 'review' post-play (both render TrickArea under legacy).
     expect(deriveSlots({ phase: 'play', wantsCall: false, hasCardplay: true }).center).toBe('trick-area')
-    expect(deriveSlots({ phase: 'review', wantsCall: false, hasCardplay: true }).center).toBe('trick-area')
-    // Non-playing deck (bidding-only / unsupported / toggled-off): no trick area
-    // even post-auction. This is the note-2 per-source reveal.
+    expect(deriveSlots({ phase: 'review', wantsCall: false, hasCardplay: true }).center).toBe('review')
+    // Non-playing deck (bidding-only / unsupported / toggled-off): no cardplay
+    // stage even post-auction. This is the note-2 per-source reveal.
     expect(deriveSlots({ phase: 'play', wantsCall: false, hasCardplay: false }).center).toBe(null)
     expect(deriveSlots({ phase: 'review', wantsCall: false, hasCardplay: false }).center).toBe(null)
   })
@@ -149,14 +155,15 @@ describe('deriveSlots (Slice 6 — mutually-exclusive slots)', () => {
     expect(deriveSlots({ phase: 'play', wantsCall: false, hasCardplay: false }).action).toBe(null)
   })
 
-  it("center reproduces the server shell's trick-area gate (play || complete)", () => {
+  it("center reproduces the server shell's cardplay-stage gate (play || complete)", () => {
     // Server raw phase is 'bidding' | 'play' | 'complete'; the seam maps
     // 'complete' → 'review' and a served board always plays (hasCardplay=true).
+    const isCardplayCenter = (c) => c === 'trick-area' || c === 'review'
     for (const raw of ['bidding', 'play', 'complete']) {
       const phase = raw === 'complete' ? 'review' : raw
       const { center } = deriveSlots({ phase, wantsCall: false, hasCardplay: true })
       const shownBefore = raw === 'play' || raw === 'complete'
-      expect(center === 'trick-area', raw).toBe(shownBefore)
+      expect(isCardplayCenter(center), raw).toBe(shownBefore)
     }
   })
 })

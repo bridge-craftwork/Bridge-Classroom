@@ -3,17 +3,25 @@
 // same swap from the same engine state instead of re-deriving it per branch.
 //
 // Two slots, both time-exclusive by the nature of the game:
-//   • center — the table middle: the trick area during/after play, otherwise the
-//     shell's own fallback chrome (dealer/vul, "waiting for a deal", …).
+//   • center — WHAT THE STAGE IS, per phase: 'auction' (bidding) | 'trick-area'
+//     (play) | 'review' (post-play reveal) | null. The derivation reports the
+//     content; the ARRANGEMENT decides WHERE it renders (grid-arranger-spec §1,
+//     Reconciliation 2): the `grid` arrangement puts 'auction' in the center
+//     region, while `legacy` keeps the auction in the rail and treats 'auction'
+//     as "no center content" (its center only ever paints the cardplay stage).
+//     'trick-area' and 'review' are both the cardplay stage — a `legacy` shell
+//     renders TrickArea for either; a later review slice can make 'review' a
+//     distinct annotated reveal. This split is inert under `legacy` today (see
+//     the consumer updates) and is what the grid flip consumes.
 //   • action — the right-rail input: the bidding box, driven by `wantsCall`
 //     ("the experience wants a bid from you now"), NEVER a literal turn flag —
 //     that distinction (Slice 5) is what lets the coached track later feed
 //     `hasBidPrompt → wantsCall` without touching this contract.
 //
-// Returns discriminant STRINGS ('trick-area' | 'bidding-box' | null), not Vue
-// component references — each shell owns the string→component map, so a console
-// tile can map 'trick-area' to a compact TrickArea while this module stays
-// Vue-free and unit-testable.
+// Returns discriminant STRINGS ('auction' | 'trick-area' | 'review' |
+// 'bidding-box' | null), not Vue component references — each shell owns the
+// string→component map, so a console tile can map 'trick-area' to a compact
+// TrickArea while this module stays Vue-free and unit-testable.
 
 import { computed } from 'vue'
 
@@ -29,11 +37,18 @@ import { computed } from 'vue'
  *   shows through the pre-first-card moment and stays hidden on a bidding-only /
  *   unsupported / toggled-off deck. This is the note-2 per-source reveal.
  *
- * The trick area therefore owns the center for the whole post-auction life of an
- * engaged board (play → review), and never for bidding or a non-playing deck.
+ * The cardplay stage therefore owns the center for the whole post-auction life
+ * of an engaged board — 'trick-area' in play, 'review' post-play — and never for
+ * a non-playing deck. Bidding always reports 'auction' (the live auction is the
+ * stage); a `legacy` shell ignores that for its center (auction is in the rail),
+ * so bidding paints no center exactly as before.
  */
 export function deriveSlots({ phase, wantsCall, hasCardplay, hasContext }) {
-  const center = (phase === 'play' || phase === 'review') && hasCardplay ? 'trick-area' : null
+  const center =
+    phase === 'bidding' ? 'auction'
+    : phase === 'play' && hasCardplay ? 'trick-area'
+    : phase === 'review' && hasCardplay ? 'review'
+    : null
   const action = wantsCall ? 'bidding-box' : null
   // Two more first-class slots (roadmap Phase 0.4):
   //   • status  — the phase-aware reference strip (dealer+vul → contract+tricks

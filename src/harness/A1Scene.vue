@@ -108,9 +108,10 @@ const props = defineProps({ fixture: { type: Object, required: true } })
 const f = computed(() => props.fixture)
 const phase = computed(() => f.value.phase || 'bidding')
 
-// Real derivations — the scene exercises the same status + action contract the
-// shell will. (center here is A1-specific: 'auction' during bidding is a
-// proposed extension of the slot's semantics, not today's useTableSlots.center.)
+// Real derivations — the scene exercises the same status + action + center
+// contract the shell will. center now comes straight from useTableSlots (the
+// extended discriminant: 'auction' | 'trick-area' | 'review' | null); under the
+// grid arrangement the A1 scene renders 'auction' in the center region.
 const { status } = useTableStatus({
   phase,
   dealer: computed(() => f.value.dealer),
@@ -124,8 +125,8 @@ const hasCardplay = computed(() => phase.value === 'play' || phase.value === 're
 const hasContext = computed(() => !!f.value.context)
 const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext })
 const action = slots.action
+const center = slots.center
 
-const center = computed(() => (phase.value === 'bidding' ? 'auction' : phase.value === 'play' ? 'trick-area' : null))
 const pinnedAuction = computed(() => (phase.value === 'play' || phase.value === 'review') && (f.value.bids || []).length > 0)
 </script>
 
