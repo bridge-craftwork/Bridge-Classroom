@@ -119,7 +119,9 @@ import { localReportsEnabled, loadSink, saveSink } from './flags.js'
 import { useUserStore } from '@/composables/useUserStore.js'
 
 const props = defineProps({
-  screenshot: { type: Object, default: null }
+  screenshot: { type: Object, default: null },
+  // Async UA client hints (architecture, platformVersion) captured on the tap.
+  clientHints: { type: Object, default: null }
 })
 const emit = defineEmits(['close', 'saved'])
 
@@ -148,7 +150,14 @@ const contactable = ref(readBool(CONTACT_KEY, false))
 const displayName = ref(loadStr(NAME_KEY) || defaultName())
 const sessionEmail = computed(() => (currentUser.value?.email || '').trim())
 
-const env = collectEnv()
+// Base env + the async client hints (architecture/platformVersion) folded in, so
+// both the on-screen summary and the committed bundle carry them.
+const env = {
+  ...collectEnv(),
+  ...(props.clientHints
+    ? { architecture: props.clientHints.architecture, platformVersion: props.clientHints.platformVersion, model: props.clientHints.model }
+    : {})
+}
 const screenshotUrl = props.screenshot ? URL.createObjectURL(props.screenshot) : null
 
 const submitLabel = computed(() => (sink.value === 'issue' ? 'Submit report' : 'Submit'))
@@ -158,7 +167,8 @@ const envSummary = computed(() => {
   const v = env.viewport || {}
   return [
     env.app && `app: ${env.app}`,
-    env.route && `route: ${env.route}`,
+    env.browser && env.browser,
+    env.architecture && env.architecture,
     v.w && `${v.w}×${v.h}@${v.dpr}`,
     env.commit && `commit: ${env.commit}`
   ].filter(Boolean).join('  ·  ')

@@ -24,17 +24,19 @@
       <div v-if="toast" class="beetle-toast">{{ toast }}</div>
     </transition>
   </div>
-  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" @close="closeDialog" @saved="onSaved" />
+  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :client-hints="clientHints" @close="closeDialog" @saved="onSaved" />
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { captureScreenshot } from './screenshot.js'
+import { collectClientHints } from './env.js'
 import ReportDialog from './ReportDialog.vue'
 
 const capturing = ref(false)
 const dialogOpen = ref(false)
 const screenshot = ref(null)
+const clientHints = ref(null)
 const toast = ref('')
 let toastTimer = null
 
@@ -42,11 +44,14 @@ async function onClick() {
   if (capturing.value || dialogOpen.value) return
   capturing.value = true
   try {
-    // §4: capture the screen BEFORE the dialog covers it.
-    screenshot.value = await captureScreenshot()
-  } catch (err) {
-    console.warn('[report] screenshot failed:', err)
-    screenshot.value = null
+    // §4: capture the screen BEFORE the dialog covers it. Grab the async UA
+    // client hints (architecture etc.) in the same beat.
+    const [shot, hints] = await Promise.all([
+      captureScreenshot().catch((err) => { console.warn('[report] screenshot failed:', err); return null }),
+      collectClientHints()
+    ])
+    screenshot.value = shot
+    clientHints.value = hints
   } finally {
     capturing.value = false
     dialogOpen.value = true

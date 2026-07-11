@@ -349,17 +349,22 @@ fn build_issue_body(b: &BugBody) -> String {
     out
 }
 
-/// Flatten the env block into ordered `(label, value)` rows for the issue table.
+/// Preferred display order for the well-known env fields.
+const ENV_ORDER: &[&str] = &[
+    "app", "route", "commit", "version", "engine", "phase", "arrangement",
+    "tableScale", "browser", "platform", "platformVersion", "architecture",
+    "model", "language", "timezone", "connection", "timestamp",
+];
+
+/// Flatten the env block into `(label, value)` rows for the issue table: the
+/// known fields first (in ENV_ORDER), then any *other* scalar fields the client
+/// sent — so new env fields show up automatically without a backend change.
 fn env_rows(env: &Value) -> Vec<(String, String)> {
     let mut rows = Vec::new();
-    // Scalar fields, in display order.
-    for key in [
-        "app", "route", "commit", "version", "engine", "phase", "arrangement",
-        "tableScale", "platform", "connection", "timestamp",
-    ] {
-        push_scalar(&mut rows, key, env.get(key));
+    for key in ENV_ORDER {
+        push_scalar(&mut rows, key, env.get(*key));
     }
-    // viewport is composite → render inline between the scalar groups' natural spot.
+    // viewport is composite → render it explicitly.
     if let Some(vp) = env.get("viewport") {
         let w = vp.get("w").and_then(Value::as_i64);
         let h = vp.get("h").and_then(Value::as_i64);
@@ -367,6 +372,15 @@ fn env_rows(env: &Value) -> Vec<(String, String)> {
         if let (Some(w), Some(h)) = (w, h) {
             let dpr = dpr.map(|d| format!("@{d}")).unwrap_or_default();
             rows.push(("viewport".to_string(), format!("{w}×{h}{dpr}")));
+        }
+    }
+    // Catch-all: any remaining scalar fields not already shown (future-proofing).
+    if let Value::Object(map) = env {
+        for (k, v) in map {
+            if k == "viewport" || k == "ua" || ENV_ORDER.contains(&k.as_str()) {
+                continue;
+            }
+            push_scalar(&mut rows, k, Some(v));
         }
     }
     rows
@@ -491,5 +505,24 @@ mod tests {
         let rows = env_rows(&env);
         assert!(rows.iter().any(|(k, v)| k == "viewport" && v == "800×600@2"));
         assert!(rows.iter().any(|(k, v)| k == "app" && v == "a1"));
+    }
+
+    #[test]
+    fn env_rows_render_new_fields_and_catch_all() {
+        let env = json!({
+            "app": "a1", "browser": "Chrome 150", "platform": "macOS",
+            "architecture": "arm/64", "language": "en-US", "timezone": "America/Los_Angeles",
+            "ua": "Mozilla/5.0 ...long...", "somethingNew": "future"
+        });
+        let rows = env_rows(&env);
+        let has = |k: &str, v: &str| rows.iter().any(|(rk, rv)| rk == k && rv == v);
+        assert!(has("browser", "Chrome 150"));
+        assert!(has("platform", "macOS"));
+        assert!(has("architecture", "arm/64"));
+        assert!(has("language", "en-US"));
+        assert!(has("timezone", "America/Los_Angeles"));
+        // Unknown field rendered via catch-all; raw `ua` deliberately omitted.
+        assert!(has("somethingNew", "future"));
+        assert!(!rows.iter().any(|(k, _)| k == "ua"));
     }
 }
