@@ -6,7 +6,7 @@
        leaves render at that scale, plus a `data-region-scale` attribute for the
        gallery captions. Legacy BridgeTable is untouched — this is the `grid`
        branch, dark until the A1 flip. -->
-  <div ref="root" class="grid-table" :class="{ 'bidding-anchored': biddingAnchored }" :style="gridStyle" :data-layout-ledger="ledgerJson">
+  <div ref="root" class="grid-table" :class="{ anchored, 'bidding-anchored': biddingAnchored, 'play-anchored': playAnchored }" :style="gridStyle" :data-layout-ledger="ledgerJson">
     <!-- Occupied seats only — an unoccupied seat area doesn't render (occupancy
          model); its cell is either absorbed by the stage or left empty. -->
     <div
@@ -73,7 +73,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
-import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
+import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, computeLayoutLedger, actionCornerFor } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 import { biddingBoxReservePx } from '../biddingBoxMetrics.js'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../boardIndicatorMetrics.js'
@@ -125,9 +125,23 @@ const CELL_GAP = 6
 
 const anchor = computed(() => anchorFor(props.config.orientation, props.heroSeat))
 function seatArea(seat) { return seatToArea(seat, anchor.value) }
+const heroArea = computed(() => seatArea(props.heroSeat))
+// The bottom corner the action cluster rides in — hero-relative (§ play bottom-pack).
+const actionArea = computed(() => actionCornerFor(heroArea.value))
 
 const floor = computed(() => props.config.scale?.legibilityFloor ?? 0.65)
-const regions = computed(() => props.config.regions || {})
+// Effective region map: the configured 'action' role is RELOCATED to the bottom
+// corner on the hero's side, so the action cluster (bidding box / Undo·Claim) rides
+// with the hero instead of a fixed compass corner. A South/East hero keeps 'se'
+// (no move); a West defender (screen-left) moves it to 'sw'. The scene provides its
+// action slot in the same computed corner (shared actionCornerFor), so the slot and
+// the occupancy/reserve agree.
+const regions = computed(() => {
+  const base = { ...(props.config.regions || {}) }
+  const from = CORNERS.find((c) => base[c] === 'action')
+  if (from && actionArea.value !== from) { base[actionArea.value] = 'action'; base[from] = 'none' }
+  return base
+})
 function hasRegion(area) { return regions.value[area] && regions.value[area] !== 'none' }
 
 function hasCards(seat) {
@@ -163,6 +177,17 @@ function marksFor(seat) {
 const biddingAnchored = computed(
   () => props.phase === 'bidding' && props.config.anchor?.bidding === 'bottom',
 )
+// Play bottom-pack (grid-arranger-spec § play bottom-pack): the play phase takes the
+// SAME content-sized-rows treatment as bidding — the fr rows over-expand a tall
+// frame into slack (the "phantom South" dead band), so anchoring collapses the rows
+// to content and flips the stage to shrink-wrap. Unlike bidding there's no growth
+// reserve (the trick area doesn't grow like an auction); the difference is only the
+// bidding-specific auction top-pin + reserve, kept under `.bidding-anchored`.
+const playAnchored = computed(
+  () => props.phase === 'play' && props.config.anchor?.play === 'bottom',
+)
+// Either anchored model → content-sized rows + shrink-wrap stage binding.
+const anchored = computed(() => biddingAnchored.value || playAnchored.value)
 const reserveRounds = computed(() => props.config.reserveRounds ?? 1)
 
 // ── Occupancy model (evaluated per deal, at load) ────────────────────────────
@@ -217,12 +242,19 @@ function reserveForArea(area) {
   return rowReservePx(7) // seat
 }
 
-// Fix 1 — occupancy-driven area template: when the top-centre seat `n` is
-// unoccupied, `center` absorbs its cell (spans rows 1–2 in the centre column), so
-// the stage lifts to align with the top-row status instead of sitting a row below.
+// Occupancy-driven area template: the stage absorbs an empty CENTRE-column seat so
+// there's no phantom band. When the top-centre seat `n` is unoccupied, `center`
+// absorbs its cell (spans rows 1–2), lifting the stage to align with the top-row
+// status (bidding). Symmetrically, when the bottom-centre seat `s` is unoccupied —
+// a hidden declarer in a defence scene — `center` absorbs THAT cell (spans rows
+// 2–3), dropping the stage into what was the "phantom South" dead band (play
+// bottom-pack cure). Both can apply at once (only side hands shown → full-height
+// stage). In bidding/review `s` is the hero/revealed, so s-absorption never fires
+// there; the bidding triptych is unaffected.
 function areaTemplate() {
   const rows = AREA_ROWS.map((r) => r.slice())
   if (!areaOccupied('n')) rows[0][1] = 'center'
+  if (!areaOccupied('s')) rows[2][1] = 'center'
   return rows.map((r) => `"${r.join(' ')}"`).join(' ')
 }
 // Column widths are computed in relayout() (budget allocation), not here — see the
@@ -240,10 +272,11 @@ const gridStyle = computed(() => {
   return {
     gridTemplateAreas: areaTemplate(),
     gridTemplateColumns: cols,
-    // Bottom-anchored bidding: content-sized rows — the center's min-height (the
-    // reserve, see centerStyle) sets the stage height. Otherwise the config's
-    // weighted-fr rows (play/review centered stage).
-    gridTemplateRows: biddingAnchored.value ? 'auto auto auto' : r.map((f) => f + 'fr').join(' '),
+    // Anchored (bidding OR play bottom-pack): content-sized rows so the tracks
+    // shrink-wrap to content (+ the bidding reserve via centerStyle) instead of the
+    // fr weights over-expanding a tall frame into slack. Otherwise (review) the
+    // config's weighted-fr rows keep the centered stage.
+    gridTemplateRows: anchored.value ? 'auto auto auto' : r.map((f) => f + 'fr').join(' '),
     '--action-hand-gap': actionHandGap.value + 'px',
   }
 })
@@ -405,7 +438,9 @@ function measureVertical(el) {
   })
   const total = Math.round(el.clientHeight)
   const slack = rows.reduce((s, r) => s + r.slack, 0)
-  const binding = biddingAnchored.value ? 'shrink-wrap' : (slack > SLACK_EPS ? 'viewport-fill' : 'shrink-wrap')
+  // Anchored (content-sized rows) → shrink-wrap: any residual slack is designed
+  // margins, not fr over-expansion. Un-anchored fr rows over-expand → viewport-fill.
+  const binding = anchored.value ? 'shrink-wrap' : (slack > SLACK_EPS ? 'viewport-fill' : 'shrink-wrap')
   vert.rows = rows
   vert.stage = { total, content: Math.max(0, total - slack), slack, binding }
 }
@@ -489,9 +524,12 @@ onBeforeUnmount(() => ro?.disconnect())
   justify-content: center;
   justify-self: center;
 }
-/* Fix 4: the action cluster gets a designed gap on its hand-facing (left) side —
-   a config constant (`--action-hand-gap`), per spacing-as-margins-on-occupied. */
-.grid-table.bidding-anchored .area-se { margin-left: var(--action-hand-gap, 14px); }
+/* The action cluster gets a designed gap on its CENTRE-facing side — a config
+   constant (`--action-hand-gap`), per spacing-as-margins-on-occupied. At 'se' (right
+   column, bidding box / a South·East hero's controls) the centre is to the LEFT; at
+   'sw' (left column, a screen-left defender's Undo·Claim) it's to the RIGHT. */
+.grid-table.anchored .area-se { margin-left: var(--action-hand-gap, 14px); }
+.grid-table.anchored .area-sw { margin-right: var(--action-hand-gap, 14px); }
 .region { min-width: 0; }
 .area-nw { grid-area: nw; justify-self: start; align-self: start; }
 .area-n { grid-area: n; }

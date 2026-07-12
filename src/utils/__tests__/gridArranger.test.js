@@ -1,8 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import {
   seatToArea, anchorFor, partnerOf, seatRole, computeRegionScale, uniformSeatScale,
-  rowReservePx, computeLayoutLedger,
+  rowReservePx, computeLayoutLedger, actionCornerFor,
 } from '../gridArranger.js'
+
+describe('actionCornerFor (§ play bottom-pack — hero-relative action corner)', () => {
+  it('South/East hero → SE (the bidding-box position / adjacent corner)', () => {
+    expect(actionCornerFor('s')).toBe('se')
+    expect(actionCornerFor('e')).toBe('se')
+  })
+  it('a screen-left West defender → SW (Undo/Claim ride under the hero)', () => {
+    expect(actionCornerFor('w')).toBe('sw')
+  })
+  it('North hero → SE default', () => {
+    expect(actionCornerFor('n')).toBe('se')
+  })
+})
 
 describe('seatRole / partnerOf (item 4 — badges by role)', () => {
   it('partnerOf faces across the table', () => {
@@ -180,22 +193,28 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     for (const r of starved) expect(r.allocated).toBeLessThan(Math.round(0.65 * r.reserve))
   })
 
-  // Ledger assertion 6 — row bands + phantom seats: a hidden seat (the declarer's
-  // South in a defence scene) leaves an empty bottom band, flagged `phantom`.
-  it('row bands flag a hidden seat as a phantom band', () => {
+  // Ledger assertion 6 — row bands + phantom seats (play bottom-pack, 2026-07-12).
+  // A hidden CENTRE-column seat (the declarer's South in a defence scene) is ABSORBED
+  // by the stage (s-absorption), so it's NOT a phantom band — that's the cure. Only a
+  // hidden SIDE seat (East, middle row) leaves a genuine dead band the stage can't
+  // absorb sideways. Occupancy reflects the relocated action cluster (Undo/Claim at
+  // SW under the West hero, not SE).
+  it('centre-seat absorption clears the phantom; a hidden side seat still phantoms', () => {
     const l = computeLayoutLedger({
       budget: 650,
-      occupied: ['center', 'w', 'n', 'nw', 'ne', 'se'], // hero W + dummy N; E/S hidden
-      reserves: { center: 200, w: SEAT, n: SEAT, nw: 89, ne: 220, se: 222 },
+      occupied: ['center', 'w', 'n', 'nw', 'ne', 'sw'], // hero W + dummy N; E/S hidden; controls at SW
+      reserves: { center: 200, w: SEAT, n: SEAT, nw: 89, ne: 220, sw: 222 },
       tiers: A1_TIERS,
       seatReserve: SEAT,
       handBearingAreas: ['w', 'n'],
     })
     expect(l.rows).toHaveLength(3)
+    const mid = l.rows[1] // [w, center, e]
+    expect(mid.phantom).toContain('e') // hidden East (side seat) → genuine phantom band
     const bot = l.rows[2] // [sw, s, se]
-    expect(bot.occupied).toEqual(['se'])
-    expect(bot.phantom).toContain('s') // hidden South → phantom band
-    expect(bot.collapsed).toEqual(expect.arrayContaining(['sw', 's']))
+    expect(bot.occupied).toEqual(['sw'])
+    expect(bot.phantom).toEqual([]) // hidden South is absorbed by the stage, not a void
+    expect(bot.collapsed).toEqual(expect.arrayContaining(['s', 'se']))
     // Top row is fully occupied (status + dummy + auction) — no phantom.
     expect(l.rows[0].phantom).toEqual([])
   })

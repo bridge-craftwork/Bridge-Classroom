@@ -40,7 +40,11 @@ export default {
   // the working cluster (hand + bidding box at the floor; BB never above the hand).
   // The AuctionTable is sized to its content — one row initially — and grows as
   // calls are added. Play/review keep the weighted-fr rows. See grid-arranger-spec §1.
-  anchor: { bidding: 'bottom' },
+  // Play bottom-pack (grid-arranger-spec § play bottom-pack): the play phase takes
+  // the same content-sized-rows treatment, collapsing the "phantom South" dead band
+  // (the empty declarer row under weighted-fr rows) and flipping the stage to
+  // shrink-wrap. Undo/Claim ride the hero's bottom corner (relocated from SE).
+  anchor: { bidding: 'bottom', play: 'bottom' },
   // Bidding growth reserve, in call-rounds (tableConfig field). A1 = 1: the stage
   // is sized to a single-row auction; longer auctions take the monotone displacement
   // path (the cluster is pushed down one round at a time). The grid shrink-wraps and
