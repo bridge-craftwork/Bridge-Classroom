@@ -173,20 +173,23 @@ const visibleSeats = computed(() => SEATS.filter((s) => areaOccupied(seatArea(s)
 // Seat identity BADGE (item 4 + item 5). config.seatBadges maps the seat's role
 // relative to the hero → 'name' (hero's first name) | 'label' ("Partner") |
 // 'off'. On a played/reviewed deal the declarer and its dummy are additionally
-// named by compass ("S: Declarer" / "N: Dummy"), overriding the neutral opponent
-// 'off' — but never the hero (the student always sees their own name). 'off' /
-// no match → null, so SeatChip renders the plain compass label. Roles derive from
-// heroSeat, so badges rotate with the orientation anchor.
+// named "Declarer" / "Dummy", overriding the neutral opponent 'off' — but never
+// the hero (the student always sees their own name). The name field carries the
+// role word only; the SeatIndicator circle already shows the compass letter.
+// 'off' / no match → null, so SeatChip renders the plain compass label. Roles
+// derive from heroSeat, so badges rotate with the orientation anchor.
 function firstNameOf(full) {
   return (full || '').trim().split(/\s+/)[0] || null
 }
 function seatBadge(seat) {
   const role = seatRole(seat, props.heroSeat)
   if (role === 'hero') return props.config.seatBadges?.hero === 'name' ? firstNameOf(props.heroName) : null
+  // Declarer + its dummy named by ROLE only — the SeatIndicator circle already
+  // carries the compass letter, so no compass prefix in the name field.
   const decl = props.declarer
   if (decl) {
-    if (seat === decl) return `${seat}: Declarer`
-    if (seat === partnerOf(decl)) return `${seat}: Dummy`
+    if (seat === decl) return 'Declarer'
+    if (seat === partnerOf(decl)) return 'Dummy'
   }
   const mode = props.config.seatBadges?.[role] || 'off'
   return mode === 'label' ? 'Partner' : mode === 'name' ? firstNameOf(props.heroName) : null
