@@ -1,5 +1,5 @@
 <template>
-  <div class="bidding-box" :class="{ disabled }">
+  <div ref="root" class="bidding-box" :class="{ disabled, tight }" :style="fitStyle">
     <div class="bid-section">
       <!-- Level buttons -->
       <div class="levels">
@@ -55,7 +55,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { biddingBoxReservePx } from './biddingBoxMetrics.js'
 
 const props = defineProps({
   lastBid: {
@@ -89,6 +90,46 @@ const props = defineProps({
 const emit = defineEmits(['bid'])
 
 const selectedLevel = ref(1)
+
+// ── Responsive fit (Rick, 2026-07-11): when the box is crowded, GIVE UP THE GAPS
+// between cards before shrinking the cards. Most bidding boxes have no gap anyway,
+// so adjacent cards at tight widths is fine. Only if even the no-gap form won't fit
+// (e.g. 1.5× in a narrow tile) do we "cheat on the font increase" — cap the
+// effective scale so the structure fits, buttons and all. Measured on the PARENT
+// (never our own width, never container-type — the #88 rule).
+const root = ref(null)
+const containerW = ref(Infinity)
+const tableScale = ref(1)
+let ro = null
+onMounted(() => {
+  if (root.value) {
+    const s = parseFloat(getComputedStyle(root.value).getPropertyValue('--table-scale'))
+    if (s > 0) tableScale.value = s
+  }
+  const el = root.value?.parentElement || root.value
+  if (typeof ResizeObserver === 'undefined' || !el) return
+  ro = new ResizeObserver((e) => { containerW.value = e[0].contentRect.width })
+  ro.observe(el)
+})
+onBeforeUnmount(() => ro?.disconnect())
+
+const NAT_GAPS = biddingBoxReservePx()                    // ~222 (with inter-card gaps)
+const NAT_NOGAP = biddingBoxReservePx(undefined, { gaps: false }) // ~210 (cards adjacent)
+// Step 1: collapse the gaps once the gapped form no longer fits.
+const tight = computed(() => containerW.value < NAT_GAPS * tableScale.value)
+// Step 2: only if the no-gap form still overflows, cap the effective scale so it
+// fits (never above the requested scale, never below a legibility floor).
+const fitScale = computed(() => {
+  const want = tableScale.value
+  if (containerW.value >= NAT_NOGAP * want) return want
+  return Math.max(0.65, containerW.value / NAT_NOGAP)
+})
+// The box drives its sizes off --bb-scale (= the capped effective scale) instead of
+// the raw --table-scale, and zeroes the gap when tight.
+const fitStyle = computed(() => ({
+  '--bb-scale': fitScale.value,
+  '--btn-gap': tight.value ? '0px' : `calc(3px * ${fitScale.value})`,
+}))
 
 const strains = [
   { value: 'C', display: '♣', colorClass: 'suit-black' },
@@ -138,10 +179,12 @@ function makeBid(level, strain) {
 .bidding-box {
   background: #e8e8e8;
   border-radius: 8px;
-  padding: calc(16px * var(--table-scale));
+  /* Glyph-ratio restyle (2026-07-11): tighter container padding + gaps for an
+     honestly narrower natural form (documentation/design/biddingbox-glyph-restyle.md). */
+  padding: calc(10px * var(--bb-scale, var(--table-scale)));
   display: flex;
   flex-direction: column;
-  gap: calc(12px * var(--table-scale));
+  gap: calc(8px * var(--bb-scale, var(--table-scale)));
 }
 
 /* Not this player's turn: same layout, greyed and non-interactive. */
@@ -153,23 +196,30 @@ function makeBid(level, strain) {
 .bid-section {
   display: flex;
   flex-direction: column;
-  gap: calc(8px * var(--table-scale));
+  gap: calc(6px * var(--bb-scale, var(--table-scale)));
 }
 
 .levels {
   display: flex;
-  gap: calc(4px * var(--table-scale));
+  gap: var(--btn-gap, calc(3px * var(--bb-scale, var(--table-scale))));
   justify-content: center;
 }
 
 .level-btn {
-  width: calc(36px * var(--table-scale));
-  height: calc(36px * var(--table-scale));
+  /* Narrow (a digit doesn't need a wide box), 44px tall for the ≥44px touch target.
+     Numeral at the UNIFIED glyph scale (documentation/design/glyph-scale.md): the
+     hand-rank reference — 'Segoe UI'/system-ui, MEDIUM (500), 24px — not a
+     button-fill ratio. A number is a number wherever it is on the table. */
+  width: calc(26px * var(--bb-scale, var(--table-scale)));
+  height: calc(44px * var(--bb-scale, var(--table-scale)));
+  padding: 0;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: calc(18px * var(--table-scale));
-  font-weight: bold;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(24px * var(--bb-scale, var(--table-scale)));
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -186,17 +236,23 @@ function makeBid(level, strain) {
 
 .strains {
   display: flex;
-  gap: calc(4px * var(--table-scale));
+  gap: var(--btn-gap, calc(3px * var(--bb-scale, var(--table-scale))));
   justify-content: center;
 }
 
 .strain-btn {
-  width: calc(48px * var(--table-scale));
-  height: calc(42px * var(--table-scale));
+  width: calc(38px * var(--bb-scale, var(--table-scale)));
+  height: calc(44px * var(--bb-scale, var(--table-scale)));
+  padding: 0;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: calc(20px * var(--table-scale));
+  /* Suit symbol at 100% of the level digit's character extents (glyph-scale rule):
+     a suit is sized to match the numbers it sits beside. 28px renders the ♠♥♦♣ at
+     the 24px digit's visual height. */
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(28px * var(--bb-scale, var(--table-scale)));
+  line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -221,23 +277,26 @@ function makeBid(level, strain) {
 }
 
 .strain-btn.suit-nt {
-  font-size: calc(14px * var(--table-scale));
-  font-weight: bold;
+  /* NT set at the same scale as the strain symbols (item 2), medium weight; "NT" is
+     two chars so it sits a touch smaller to fit the button. */
+  font-size: calc(22px * var(--bb-scale, var(--table-scale)));
+  font-weight: 500;
   color: #1a1a1a;
 }
 
 .special-bids {
   display: flex;
-  gap: calc(8px * var(--table-scale));
+  gap: calc(8px * var(--bb-scale, var(--table-scale)));
   justify-content: center;
 }
 
 .special-btn {
-  min-width: calc(64px * var(--table-scale));
-  padding: calc(10px * var(--table-scale)) calc(16px * var(--table-scale));
+  min-width: calc(58px * var(--bb-scale, var(--table-scale)));
+  height: calc(44px * var(--bb-scale, var(--table-scale))); /* ≥44px touch target */
+  padding: calc(4px * var(--bb-scale, var(--table-scale))) calc(12px * var(--bb-scale, var(--table-scale)));
   border: none;
   border-radius: 4px;
-  font-size: calc(14px * var(--table-scale));
+  font-size: calc(16px * var(--bb-scale, var(--table-scale)));
   font-weight: bold;
   cursor: pointer;
   transition: all 0.15s;
