@@ -59,6 +59,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots
 import SeatPanel from '../SeatPanel.vue'
 import { seatToArea, anchorFor, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
+import { biddingBoxReservePx } from '../biddingBoxMetrics.js'
 
 const slots = useSlots()
 
@@ -87,11 +88,12 @@ const CORNERS = ['nw', 'ne', 'sw', 'se']
 // reserve that let the NE auction overflow its track at computed 1.0×.
 const TRICK_RESERVE = 200
 const STATUS_RESERVE = 150
-// BiddingBox natural width at 1.0× (measured): 7 level buttons + gaps. The BB is
-// fixed-width (no container-responsive narrow form), so its column must hold this
-// or it overflows the hand. A genuinely narrow BB is a BiddingBox change (touch
-// targets rule out shrinking by scale), tracked separately.
-const BOX_RESERVE = 308
+// BiddingBox natural width at 1.0×, single-sourced from biddingBoxMetrics (same
+// pattern as auction: render and provisioning share the number, can't drift).
+// Post glyph-ratio restyle this is ~222 (down from the pre-restyle 308) — the BB
+// now collapses inter-card gaps before shrinking cards, so the honestly narrower
+// form is what the action column must hold.
+const BOX_RESERVE = biddingBoxReservePx()
 const PERIPH_RESERVE = 160
 // Designed inter-region gap (px) — mirrors the --cell-gap CSS var; used to size
 // occupancy-driven columns wide enough for their region PLUS its margins.

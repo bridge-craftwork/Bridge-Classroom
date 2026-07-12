@@ -38,11 +38,21 @@
           </div>
         </template>
 
-        <!-- NW: table info (board / vul / phase-aware status) -->
+        <!-- NW: board·dealer·vul in one BoardIndicator glyph (replaces the old
+             "Board N" pill). Fixtures carry their own dealer/vulnerable, which
+             the glyph honours via override props — so non-standard practice
+             boards render correctly. StatusStrip stays only for play/review,
+             where it adds contract/tricks/result the glyph doesn't carry; in
+             bidding it would only repeat dealer+vul, so it's suppressed. -->
         <template #nw>
           <div class="a1-nw">
-            <div class="a1-board">Board {{ f.board ?? 1 }}</div>
-            <StatusStrip :status="status" />
+            <BoardIndicator
+              :board-number="f.board ?? 1"
+              :dealer="f.dealer || null"
+              :vulnerable="f.vulnerable || null"
+              :size="78"
+            />
+            <StatusStrip v-if="phase !== 'bidding'" :status="status" />
           </div>
         </template>
 
@@ -91,6 +101,7 @@ import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import StatusStrip from '../components/StatusStrip.vue'
+import BoardIndicator from '../components/BoardIndicator.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
@@ -175,11 +186,7 @@ const auctionProps = computed(() => ({
 }
 .a1-center-review { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .a1-result { font: 700 15px 'DM Sans', system-ui, sans-serif; color: #1d6a4f; }
-.a1-nw { display: flex; flex-direction: column; gap: 6px; }
-.a1-board {
-  font-size: 12px; font-weight: 700; color: #4a5550;
-  background: #eef1ee; border-radius: 999px; padding: 3px 11px; align-self: flex-start;
-}
+.a1-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .a1-ne { background: #f7f9f6; border: 1px solid #e6e8e3; border-radius: 10px; padding: 8px 10px; }
 .a1-corner-label {
   font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
