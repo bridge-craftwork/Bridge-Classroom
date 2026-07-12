@@ -291,14 +291,14 @@ function tooltipFor(bidIdx) {
    full-size big bids. */
 .auction-table.dense { min-width: 0; }
 .auction-table.dense .bid-cell {
-  font-size: calc(15px * var(--table-scale));
-  padding: calc(6px * var(--table-scale)) calc(3px * var(--table-scale));
-  min-height: calc(32px * var(--table-scale));
+  font-size: calc(20px * var(--table-scale));
+  padding: calc(4px * var(--table-scale)) calc(3px * var(--table-scale));
+  min-height: calc(30px * var(--table-scale));
 }
 .auction-table.dense .bid-cell :deep(.red),
-.auction-table.dense .bid-cell :deep(.black) { font-size: 1.1em; }
-.auction-table.dense .turn-indicator { font-size: calc(15px * var(--table-scale)); }
-.auction-table.dense .header-cell { font-size: calc(11px * var(--table-scale)); padding: calc(5px * var(--table-scale)) calc(3px * var(--table-scale)); }
+.auction-table.dense .bid-cell :deep(.black) { font-size: 1.28em; }
+.auction-table.dense .turn-indicator { font-size: calc(20px * var(--table-scale)); }
+.auction-table.dense .header-cell { font-size: calc(10px * var(--table-scale)); padding: calc(2px * var(--table-scale)) calc(3px * var(--table-scale)); }
 .auction-table.dense .bid-cell.stacked { font-size: calc(11px * var(--table-scale)); }
 
 /* Header and every round share ONE set of four rigid column tracks. Because the
@@ -317,9 +317,12 @@ function tooltipFor(bidIdx) {
 .header-cell {
   min-width: 0;
   text-align: center;
-  padding: calc(8px * var(--table-scale)) calc(4px * var(--table-scale));
-  font-weight: bold;
-  font-size: calc(14px * var(--table-scale));
+  /* Header band compressed to ~⅓ (glyph-scale restyle, item 1): the W-N-E-S band
+     is a label, not a stage — reclaim its height for the calls. */
+  padding: calc(2px * var(--table-scale)) calc(4px * var(--table-scale));
+  font-weight: 600;
+  font-size: calc(11px * var(--table-scale));
+  line-height: 1.2;
 }
 
 .rounds {
@@ -340,16 +343,16 @@ function tooltipFor(bidIdx) {
 .bid-cell {
   min-width: 0;
   text-align: center;
-  padding: calc(10px * var(--table-scale)) calc(6px * var(--table-scale));
-  /* Component-standard size, scaled by --table-scale so the arranger's clamp is
-     the ONLY size authority (grid-arranger fix 1a). The former hardcoded 26px
-     enlargement is removed — prominence is now the center region's generous cap
-     under the grid; in the legacy bands layout the auction returns to standard
-     size (a named a1-visible change). The rare 4-row diverged cell still
-     overrides down to compact (.bid-cell.stacked). */
-  font-size: calc(18px * var(--table-scale));
+  padding: calc(6px * var(--table-scale)) calc(6px * var(--table-scale));
+  /* Unified glyph scale (documentation/design/glyph-scale.md): a call renders at
+     the hand-rank reference — 'Segoe UI'/system-ui, medium (500), ~24px at 1.0×.
+     The arranger's clamp is the only size authority above that (scaled by
+     --table-scale). The rare 4-row diverged cell overrides to compact
+     (.bid-cell.stacked). */
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(24px * var(--table-scale));
   font-weight: 500;
-  min-height: calc(36px * var(--table-scale));
+  min-height: calc(34px * var(--table-scale));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -410,11 +413,13 @@ function tooltipFor(bidIdx) {
   color: #555;
 }
 
-/* Suit symbol a touch larger than the level digit: at a bigger size the club vs
-   spade shapes read apart, which is exactly what seniors confuse. */
+/* Suit symbols at 100% of the digit's character extents (glyph-scale amendment):
+   in the auction suits are READ, not recognised by position, so spade/club/heart/
+   diamond discrimination at call-glyph size is a comprehension requirement. Sized
+   so the symbol's cap-to-baseline matches the level digit's. */
 .bid-cell :deep(.red),
 .bid-cell :deep(.black) {
-  font-size: 1.2em;
+  font-size: 1.28em;
   line-height: 1;
 }
 
