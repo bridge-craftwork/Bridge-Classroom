@@ -102,6 +102,81 @@ only its occupant's content/density does. During bidding, `ne` may be empty
 (the live auction is in `center`); during play, `center` hosts tricks and `ne`
 holds the completed auction.
 
+**Bidding-scene vertical model — bottom-anchored, `reserveRounds`-sized stage
+(2026-07-11, final).** During bidding the working cluster is **bottom-anchored**:
+the hand + bidding box sit at the floor (the BB is never above the hand — the whole
+reason to anchor at the bottom, not the top), and the AuctionTable — **sized to its
+actual content, one row initially** — sits directly above them, its top fixed just
+below the status strip. The center stage reserves a fixed height of **`reserveRounds`
+call-rounds** (`auctionMetrics.auctionGrowthReservePx`, scaled by the center's own
+scale). While the auction fits the reserve it grows into it with the hand/BB holding
+position; once it exceeds the reserve the cluster takes the **monotone displacement
+path** — auction top fixed, the auction bottom + hand + BB pushed down one round at a
+time. **A1 sets `reserveRounds: 1`** (final): the stage is one row, so every extra
+round displaces — the auction top stays pinned below the status and the cluster
+slides down as the auction lengthens. A larger `reserveRounds` (another surface)
+buys upward-growth room before displacement. Play/review keep the weighted-fr rows.
+`reserveRounds` is a top-level tableConfig field; `anchor: { bidding: 'bottom' }`
+selects the model.
+
+**Occupancy model (2026-07-11) — the grid collapses around what isn't there.** A
+region is *occupied* iff it renders content this deal (evaluated at load): the
+centre stage always; a corner iff its role is configured AND the shell provided its
+slot; a seat iff it's visible (the deal's display directive). Unoccupied regions
+don't render, and three things are pure functions of occupancy:
+- **Area template.** When the top-centre seat `n` is unoccupied, `center` absorbs
+  its cell (spans rows 1–2 in the centre column), lifting the stage so the auction
+  top aligns with the top-row status instead of sitting a row below. The stage is
+  **top-anchored** in its span (`align-self/align-items: start`) so its top is fixed
+  regardless of reserve/scale — no wobble.
+- **Column widths from whole-column occupancy** (NOT just the seat). The centre
+  column is the flexible stage (`1fr`); a side column is sized to the widest
+  *reserve* among the regions occupying it, plus its margin box — so an occupied
+  corner (the bidding box) sets the column and never overflows the hand, and an
+  empty column collapses to `0`. **Caveat:** BiddingBox is fixed-width with no
+  container-responsive narrow form (touch targets rule out shrinking by scale), so
+  its reserve is its real footprint (~308px); a genuinely narrow BB is a separate
+  BiddingBox change. At the primary teaching viewport the fat BB squeezes the stage
+  column — the strongest argument for building that narrow form.
+- **The legend** lists the unoccupied areas (diagnostic).
+
+Two spacing/sizing rules this model requires (verified with the bounding-box
+diagnostic, §5.1):
+- **Grid `gap: 0`; spacing is margins on occupied (`.occupied`) regions only.** A
+  grid gap still reserves a gutter around a *collapsed* 0-size track (empty
+  seat/corner), which put a phantom band between the status strip and the stage.
+  Margins on occupied regions collapse with occupancy; the check is `center top =
+  one designed margin below NW`. Per-relationship gaps are config constants
+  (`spacing.actionHandGap` ≈ 14px on the bidding box's hand-facing side).
+- **`auctionMetrics.headerRowPx`/`roundRowPx` must track the real AuctionTable row
+  heights** (measured, not guessed): if the reserve overshoots a one-round auction,
+  the bottom-anchored auction floats down inside it — a per-round wobble in the
+  auction top. Measure with `scripts/` and correct the metric, don't fudge the CSS.
+
+> **The slack bug, and the ruling (2026-07-11).** The first cut made the *shell
+> frame* viewport-height and used a `1fr` slack row, so "slack renders above the
+> stage" became *the entire screen minus content*, and bottom-anchoring shoved the
+> cluster to the floor with a ~500px void above it. The fix is not tuning that
+> uncapped quantity — it is **capping it by its purpose**: the slack exists to
+> absorb auction growth, so its size is the *expected growth reserve* (a realistic
+> long auction, ~6 rounds ≈ 150–200px, not the viewport). **The grid shrink-wraps
+> to its content + reserves; the shell owns where the block sits in the viewport**
+> (A1: top-weighted, matching today). **Principle — the grid never reads viewport
+> dimensions.** Any time the arranger reaches for `100vh`/`window`, something is
+> miswired (the seat-tracks-for-absent-hands bug was the same disease). The
+> arranger measures its own received boxes (ResizeObserver) and its components'
+> exported reserves; nothing else.
+
+> **No-reflow rule, amended (2026-07-11).** The original guarantee — "the grid
+> never reflows on visibility/phase change" and "no glyph that isn't itself
+> changing state moves by one pixel" — is refined: **content-driven, monotone
+> stage growth is permitted mid-phase, reserve-absorbed first.** The auction
+> gaining a round is not a forbidden reflow; it grows upward into the bounded
+> reserve without moving the hand/BB, and only displaces the cluster when the
+> reserve is exhausted. Visibility and phase-change reflow remain forbidden. The
+> acceptance is the len1/5/9 triptych (§7): hand/BB stable, auction top rising,
+> auction bottom fixed.
+
 **Orientation — one rotation, per-surface anchor (plus visibility, independent):**
 
 - **Rotation:** `seatToArea(seat, anchorSeat)` applied by the arranger before
@@ -170,6 +245,12 @@ computes everything. No layout decisions in views; none in leaves.
  * @property {{ bidding: Object<Region,Density>, play: Object<Region,Density>, review: Object<Region,Density> }} densities
  *   per phase, per region — e.g. A1 { play: { ne: 'full' } } (pinned auction); tables Phase 5 { play: { ne: 'chip' } }
  *
+ * @property {{ bidding?: 'bottom'|'center' }} [anchor]   vertical model per phase (§1 bidding-scene model).
+ *   'bottom' = bottom-anchored working cluster: the AuctionTable is sized to content, its top fixed below the status,
+ *   and the hand/BB take the monotone displacement path as the auction lengthens. Default (omitted) = centered.
+ * @property {number} [reserveRounds]   bidding stage reserve, in call-rounds (top-level; §1). A1 = 1 (single-row stage,
+ *   pure displacement). Larger values buy upward-growth room before the cluster displaces. Default 1.
+ *
  * @property {{ perViewport: Array<{ minWidth?:number, maxWidth?:number, portrait?:boolean,
  *              mode:'two-column'|'stacked'|'drawer', companionPosition?:'left'|'right'|'above'|'below' }> }} shell
  *   consumed by the APP SHELL, not BridgeTable (see below), matched top-down, first hit wins:
@@ -198,7 +279,50 @@ Semantics and rules:
   hosts `slots.action` during bidding (BiddingBox) and the play-controls cluster
   during play (shell-owned discriminant mapping, per the roadmap's rule).
 
-## 3. Scale clamp (the heart of this slice)
+## 3. Scale clamp → one-directional budget allocator + layout ledger (2026-07-11)
+
+**Superseded model below; this is the shipped one.** The clamp is now a single
+**pure function** (`computeLayoutLedger` in `gridArranger.js`) that returns a
+**layout ledger** — the complete accounting the render applies, the bounding-box
+diagnostic reads, and the walker saves beside every capture (`*.ledger.json`).
+
+The four rules, in order:
+
+1. **Budget flows down.** The shell hands the grid a width **budget** (its offered
+   content width). This is the *only* geometric input — measured once from the grid
+   container's `clientWidth` (stable: the grid fills the frame, which never
+   shrink-wraps horizontally). **The arranger never measures rendered content, and
+   never reads the viewport.** Applying a scale therefore cannot feed back into the
+   budget — verified: successive clamp passes are byte-identical, not a descending
+   ratchet. (Vertical is a separate shrink-wrap from reserves; it never touches scale.)
+2. **Reserves drive allocation.** Each column's **need** = the widest exported
+   reserve among the regions occupying it (+ its margin box). Columns size to need,
+   **not** stretched to fill the budget; the surplus becomes **outer margin**
+   (`justify-content:center`), so hands cluster one gutter from the stage rather
+   than spreading to its extremes.
+3. **When the budget is short, importance decides who shrinks — and importance is
+   config.** `allocationPriority` is an array of **tiers**. A higher tier is
+   satisfied whole before a lower one gets anything; the first tier that can't fit
+   **shares** the remainder (its members compress *together*, proportionally). So
+   the working set (stage + hero hand) holds 1.0× while the periphery (bidding box,
+   status) compress together — the hand yields a pixel only after they have. Tiers
+   differ per surface, so they're data (A1: `[['center','n','e','s','w'],
+   ['se','nw','ne','sw']]`).
+4. **scale = min(1, allocated / reserve)**, floored. Natural size (1.0×) when it
+   fits; below only when the budget genuinely can't; never above 1.0 (no
+   enlargement — the earlier "grow to cap" is retired). Seat uniformity = the min
+   fit over hand-bearing seats, applied to all of them.
+
+**The ledger** (per stage): `budget`, `inputs` (occupancy, tiers), per-`columns`
+(need, margin, tier, allocated, width), per-`regions` (`reserve`, `allocated`,
+`scale`, `tier`, **`binding`** — which constraint set the scale: `natural` |
+`budget` | `floor` — and the losing candidates), `seats.scale`, `outerMargin`.
+Unit-tested directly (`computeLayoutLedger`): no floor-bound regions at laptop-half
+bidding, uniform seat scales across columns, review clustering (surplus → margin).
+
+---
+
+### Superseded: the original per-region clamp
 
 Per region, per render. **Input:** `--table-scale` (the *wish* — global
 preference/design axis, harness-plan meaning unchanged). **Output:** a per-region
@@ -279,6 +403,52 @@ obstacle to code around.
   auction; huge reference auction at laptop-half cardplay) dissolve under the real
   clamp and area map?
 
+## 5.1 Bounding-box diagnostic (the layout X-ray)
+
+The arranger already computes every number a layout debugger needs — region
+boxes, reserves, scales, the growth reserve — so the diagnostic is just **making
+its internal ledger visible**. (Named for the same overlay in `pbn-to-pdf`.)
+
+- **Four layers**, each an overlay, color-coded: **grid tracks** (where the fr
+  weights landed), **region content boxes** (what each named area received),
+  **component reserves** (the exported need each component declared — the killer
+  layer: *reserve larger than its box = encroachment* (the NE auction overflow);
+  *box far larger than its reserve = dead space* (the empty seat tracks)), and the
+  **growth-reserve / slack band** (the bidding stage's reserved height, hatched
+  above the bottom-anchored auction).
+- **Labels via pseudo-elements** are the LAYOUT LEDGER (§3), read straight from the
+  pure allocator: `center · 115×60 · 1× · r220 · a260 · natural` — region · received
+  W×H · scale · reserve · allocated · **binding constraint**. reserve-vs-allocated
+  (and vs received) is the encroachment / dead-space / who-won-the-budget diagnosis.
+  The arranger sets `data-bounding-box-label` (from the ledger) and
+  `data-layout-ledger` (the whole ledger JSON, which the walker saves as
+  `*.ledger.json` beside each capture). **Zero-size (collapsed) regions are listed
+  in a corner legend**, not floated as `0×0` labels over the layout.
+- **Gallery ledger table.** Each grid capture in the gallery HTML gets a `<details>`
+  ledger (plus a page-level toggle-all): an inputs header (budget · occupancy ·
+  tiers · outerMargin) over a `region · reserve · alloc · scale · tier · binding`
+  table, the **binding cell colour-coded** (natural neutral · cap blue · budget
+  amber · floor red) so a page scan reveals every floor-bound region at a glance.
+  The walker **asserts the on-image labels equal the ledger file** number-for-number
+  so the overlay can't drift from the saved accounting. Static HTML, no framework.
+  *(Follow-up: a `gallery-prev/` ledger-diff dimension — changed rows highlighted,
+  `se: 0.74×→0.88×, binding budget→natural` — riding the existing diff-mode infra.)*
+- **Outline, never border** — outlines don't participate in layout, so the debug
+  mode cannot perturb the geometry it inspects (the same trap the popup avoided
+  with `cs-static`).
+- **Zero production bytes** — the stylesheet (`src/harness/boundingBoxes.css`) is
+  imported only by the harness scene view, gated exactly like the animation-disabling
+  harness CSS. The data attributes on the arranger are inert and negligible.
+- **Three consumption points:** `?bounding-boxes=1` (or the `b` key) in a harness
+  build for live inspection; the a1-gallery walk captures a `__bounding-boxes.png`
+  variant per scene (always for the bidding triptych; all scenes with
+  `--bounding-boxes`) so review shows the skeleton beside the skin; and (planned)
+  the dev-report bundle captures a second bounding-boxes screenshot when the flag is
+  available, so every bug bundle ships its own layout X-ray. The **first render is
+  the bidding scene** — it visibly confirms the fix: a single-row stage under the
+  status where the viewport-sized void used to be. **Name: "bounding boxes"
+  everywhere** (flag, gallery variant, labels, the planned dev-report screenshot).
+
 ## 6. Initial config drafts (starting points, tuned in gallery)
 
 **a1.tableConfig:** `arrangement: 'grid'`, `orientation: 'south'`; tracks columns
@@ -351,6 +521,28 @@ play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
 - Config-as-data check: the diff between `a1.tableConfig` and
   `tables.tableConfig` is the complete statement of their differences; grep
   confirms no surface-conditional branches inside the arranger.
+- **Allocator ledger (§3), checked from `*.ledger.json` beside each capture:** at
+  laptop-half **bidding** no region is floor-bound — the working set (centre + hero
+  hand) is `binding: natural` at 1.0×, the periphery (bidding box, status) is
+  `binding: budget`, compressing *together*. Seat scales are **uniform** across
+  columns. In **review** the centre hosts the auction + result (NE freed), the four
+  hands cluster compass-style around it (surplus → outer margin, not stretched to
+  the extremes), and no seat is floor-bound. Three of these are unit tests on the
+  pure `computeLayoutLedger`.
+- **Known reserve debt:** the bidding box has no responsive narrow form (fixed
+  ~308px; the roadmap records sizing as width-independent and touch targets rule
+  out scaling it down), so its reserve starves the stage column at laptop-half more
+  than an honest narrow form would. The priority rule keeps the *hand* at 1.0×
+  regardless (periphery yields first); a narrow BB would lift the periphery too.
+- **Bottom-anchor triptych (§1 bidding vertical model, A1 `reserveRounds: 1`):**
+  render the bidding fixture at auction lengths **1, 5, and 9 calls** (same deal,
+  three snapshots). The auction **top is fixed** (`seat-s`/`se` aside, the auction
+  `top` is identical across all three, ±2px), and the hand (`seat-s`) + bidding box
+  (`se`) take the **monotone displacement path** — pushed down one round each round
+  (`top` strictly rises len1 < len5 < len9, ≈ one round-row per step). Measured by
+  the walk (`gallery-a1/anchor-acceptance.json`, model `bottom-anchor+reserve(1)`);
+  pass gate = auction top stable ∧ hand/BB rising. The `__bounding-boxes.png`
+  variant shows the single-row stage reserve explicitly.
 
 ## 8. Out of scope
 

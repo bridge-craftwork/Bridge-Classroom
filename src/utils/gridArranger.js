@@ -70,3 +70,101 @@ export function capSide(cap) {
 
 /** Reserve width (px, 1.0×) for an N-card seat row — re-exported for the component. */
 export { rowReservePx }
+
+// ── Layout ledger (the one-directional allocator, as a pure function) ─────────
+// The 3×3 column topology is fixed (n-absorption is a ROW change, not a column
+// one), so it's hardcoded here; everything else is input.
+const LEDGER_COLUMNS = [['nw', 'w', 'sw'], ['n', 'center', 's'], ['ne', 'e', 'se']]
+const LEDGER_COL_OF = { nw: 0, w: 0, sw: 0, n: 1, center: 1, s: 1, ne: 2, e: 2, se: 2 }
+const round2 = (x) => Math.round(x * 100) / 100
+
+/**
+ * Compute the full layout ledger from a width budget, occupancy, reserves and
+ * priority tiers — no DOM, no measurement of rendered content (grid-arranger-spec
+ * §3, one-directional sizing). The render path applies this; the bounding-box
+ * diagnostic reads it; the walker saves it beside each capture.
+ *
+ * @param {Object} o
+ * @param {number} o.budget                 px the shell handed the grid (content box)
+ * @param {string[]} o.occupied             occupied area names this deal
+ * @param {Object<string,number>} o.reserves per-area reserve WIDTH (px, 1.0×)
+ * @param {Array<string[]|string>} o.tiers  importance tiers (each a list of areas)
+ * @param {number} o.seatReserve            a 7-card row reserve (px, 1.0×)
+ * @param {string[]} [o.handBearingAreas]   seat areas currently showing a hand
+ * @param {number} [o.cellGap]   designed inter-region gap (px), default 6
+ * @param {number} [o.actionHandGap]  extra gap on the bidding box's hand side, default 14
+ * @param {number} [o.floor]     legibility floor, default 0.65
+ * @returns {LayoutLedger}
+ */
+export function computeLayoutLedger(o) {
+  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65 } = o
+  const occ = new Set(occupied)
+  const tierList = (tiers && tiers.length ? tiers : [['center'], ['n', 'e', 's', 'w'], ['nw', 'ne', 'se', 'sw']]).map((t) => (Array.isArray(t) ? t : [t]))
+  const tierOf = (areas) => { let best = tierList.length; for (const a of areas) { const i = tierList.findIndex((t) => t.includes(a)); if (i >= 0 && i < best) best = i } return best }
+
+  const columns = LEDGER_COLUMNS.map((areas, index) => {
+    const cOcc = areas.filter((a) => occ.has(a))
+    const need = cOcc.length ? Math.max(...cOcc.map((a) => reserves[a] ?? 0)) : 0
+    const margin = cOcc.length ? 2 * cellGap + (cOcc.includes('se') ? actionHandGap : 0) : 0
+    return { index, occupied: cOcc, need, margin, full: need ? need + margin : 0, tier: cOcc.length ? tierOf(cOcc) : tierList.length, allocated: 0 }
+  })
+
+  // Tier allocation: a higher tier is satisfied whole before a lower one; the first
+  // tier that can't fit SHARES the remainder (members compress proportionally).
+  const content = [0, 0, 0]
+  const occCols = columns.filter((c) => c.full > 0)
+  let remaining = budget
+  for (const t of [...new Set(occCols.map((c) => c.tier))].sort((a, b) => a - b)) {
+    const cols = occCols.filter((c) => c.tier === t)
+    const tierFull = cols.reduce((s, c) => s + c.full, 0)
+    if (remaining >= tierFull) {
+      for (const c of cols) content[c.index] = c.need
+      remaining -= tierFull
+    } else {
+      const tierMargin = cols.reduce((s, c) => s + c.margin, 0)
+      const tierNeed = cols.reduce((s, c) => s + c.need, 0)
+      const ratio = tierNeed > 0 ? Math.max(0, remaining - tierMargin) / tierNeed : 0
+      for (const c of cols) content[c.index] = c.need * ratio
+      break
+    }
+  }
+  columns.forEach((c) => { c.allocated = content[c.index] })
+  const colWidths = columns.map((c) => (content[c.index] ? content[c.index] + c.margin : 0))
+  const outerMargin = Math.max(0, budget - colWidths.reduce((a, b) => a + b, 0))
+
+  // Per-region scale = min(1, allocated/reserve), floored. Record the BINDING
+  // constraint and the losing candidates — the diagnosis the ledger exists for.
+  const entry = (area, reserve, colContent, tier) => {
+    const fit = reserve > 0 ? colContent / reserve : 1
+    const scale = Math.max(floor, Math.min(1, fit))
+    let binding, losing
+    if (fit >= 1) { binding = 'natural'; losing = [`budget:${round2(fit)}`] }
+    else if (Math.min(1, fit) <= floor) { binding = 'floor'; losing = [`budget:${round2(fit)}`, 'natural:1'] }
+    else { binding = 'budget'; losing = ['natural:1', `floor:${floor}`] }
+    return { reserve, allocated: Math.round(colContent), scale: round2(scale), tier, binding, losing }
+  }
+  const regions = {}
+  for (const c of columns) for (const a of c.occupied) regions[a] = entry(a, reserves[a] ?? 0, content[c.index], c.tier)
+
+  // Uniform seat scale over the hand-bearing seats (min fit); overrides each seat's
+  // individual scale so hands never differ in size on one deal.
+  const hb = handBearingAreas.filter((a) => occ.has(a))
+  let seatScale = 1
+  if (hb.length) {
+    seatScale = Math.max(floor, Math.min(1, ...hb.map((a) => (content[LEDGER_COL_OF[a]] || 0) / seatReserve)))
+    hb.forEach((a) => { if (regions[a]) regions[a].scale = round2(seatScale) })
+  }
+
+  return {
+    schemaVersion: 1,
+    budget: Math.round(budget),
+    // Inputs block first — the stage's CAUSES (budget, occupancy, tiers, reserve
+    // versions), so a ledger diff shows which input changed, not just the outputs.
+    inputs: { budget: Math.round(budget), occupied: [...occ].sort(), tiers: tierList, reserves: Object.fromEntries([...occ].sort().map((a) => [a, Math.round(reserves[a] ?? 0)])) },
+    columns: columns.map((c) => ({ index: c.index, occupied: c.occupied, need: Math.round(c.need), margin: c.margin, tier: c.tier, allocated: Math.round(c.allocated), width: Math.round(colWidths[c.index]) })),
+    regions,
+    seats: { scale: round2(seatScale), handBearing: hb },
+    outerMargin: Math.round(outerMargin),
+    colWidths: colWidths.map((w) => Math.round(w)),
+  }
+}

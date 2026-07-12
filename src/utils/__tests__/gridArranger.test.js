@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   seatToArea, anchorFor, computeRegionScale, uniformSeatScale, rowReservePx,
+  computeLayoutLedger,
 } from '../gridArranger.js'
 
 describe('seatToArea (§1 rotation)', () => {
@@ -77,5 +78,63 @@ describe('uniformSeatScale (§3 refined — hand-bearing only)', () => {
 describe('rowReservePx (shared with handMetrics)', () => {
   it('7-card reserve ≈ the spec estimate (~260px)', () => {
     expect(rowReservePx(7)).toBe(260) // 28 + 8 + 7·32
+  })
+})
+
+describe('computeLayoutLedger (§3 one-directional allocator)', () => {
+  const A1_TIERS = [['center', 'n', 'e', 's', 'w'], ['se', 'nw', 'ne', 'sw']]
+  const SEAT = rowReservePx(7) // 260
+
+  // Ledger assertion 1 — no floor-bound regions at laptop-half bidding: the working
+  // set (centre + hero hand) holds 1.0×, and the periphery (BB, status) compress
+  // TOGETHER but stay above the floor. (Holds even with the wide-form BB reserve;
+  // a narrower BB only lifts the periphery further.)
+  it('laptop-half bidding: no region hits the floor; hand stays 1.0×', () => {
+    const l = computeLayoutLedger({
+      budget: 652,
+      occupied: ['center', 's', 'se', 'nw'],
+      reserves: { center: 220, s: SEAT, se: 308, nw: 150 },
+      tiers: A1_TIERS,
+      seatReserve: SEAT,
+      handBearingAreas: ['s'],
+    })
+    expect(l.seats.scale).toBe(1) // hero protected
+    expect(l.regions.center.scale).toBe(1)
+    for (const a of ['center', 's', 'se', 'nw']) expect(l.regions[a].scale).toBeGreaterThan(0.65)
+    // periphery compresses together (same tier → same ratio)
+    expect(l.regions.se.scale).toBeCloseTo(l.regions.nw.scale, 2)
+    expect(l.regions.se.scale).toBeLessThan(1)
+  })
+
+  // Ledger assertion 2 — uniform seat scales: hands in different columns still get
+  // ONE size (the min fit), never differing on a single deal.
+  it('uniform seat scale across hand-bearing seats in different columns', () => {
+    const l = computeLayoutLedger({
+      budget: 560, // tight enough that a side-column hand can't reach 1.0×
+      occupied: ['center', 's', 'w'], // hero south (col1) + west defender (col0)
+      reserves: { center: 220, s: SEAT, w: SEAT },
+      tiers: [['center', 'n', 'e', 's', 'w'], ['se', 'nw', 'ne', 'sw']],
+      seatReserve: SEAT,
+      handBearingAreas: ['s', 'w'],
+    })
+    expect(l.regions.s.scale).toBe(l.regions.w.scale) // identical, both = uniform seat scale
+    expect(l.regions.s.scale).toBe(l.seats.scale)
+  })
+
+  // Ledger assertion 3 — review clustering: with a generous budget the columns size
+  // to need (not stretched), leaving OUTER MARGIN, so the revealed hands cluster
+  // beside the centred auction rather than at the stage extremes.
+  it('review clustering: surplus becomes outer margin (not stretched into tracks)', () => {
+    const l = computeLayoutLedger({
+      budget: 1000,
+      occupied: ['center', 'n', 's', 'nw'], // auction centre + N/S hands revealed + status
+      reserves: { center: 220, n: SEAT, s: SEAT, nw: 150 },
+      tiers: [['center', 'n', 'e', 's', 'w'], ['se', 'nw', 'ne', 'sw']],
+      seatReserve: SEAT,
+      handBearingAreas: ['n', 's'],
+    })
+    expect(l.outerMargin).toBeGreaterThan(0) // clustered, surplus is margin
+    expect(l.colWidths.reduce((a, b) => a + b, 0)).toBeLessThan(l.budget)
+    for (const a of ['center', 'n', 's', 'nw']) expect(l.regions[a].scale).toBe(1) // all natural
   })
 })

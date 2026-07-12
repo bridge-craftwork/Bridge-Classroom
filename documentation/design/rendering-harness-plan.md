@@ -127,6 +127,12 @@ need classroom states.
   same script with a different flag; output paths already structured for baseline
   blessing. Do not start blessing baselines during active design iteration.
   Component-tier assertions get promoted to CI first — they drift least.
+  - **Ledger promotion (intent, not now):** grid-scene captures save a
+    `*.ledger.json` (the allocator's accounting, §5.1) beside the PNG, following the
+    same lifecycle — same directory, gitignore, and `gallery-prev/` rotation. When
+    baseline promotion happens, blessed **ledgers** are promoted alongside (or
+    instead of) blessed PNGs: ledger assertions fail on *causes* (a region went
+    floor-bound, a binding flipped budget→natural) rather than on rendering noise.
 
 ---
 
@@ -242,6 +248,15 @@ designs.
   SeatPanel; HandDisplay's guarantee simplifies to "geometry is a pure function
   of holding + marks + density." Acceptance test: step through a full auction and
   play; no glyph that isn't itself changing state moves by one pixel.
+  - **Scope note (2026-07-11):** this inertness is about *marks/indicators* not
+    shifting layout — it stands. It is distinct from, and not contradicted by, the
+    grid arranger's **amended no-reflow rule** (grid-arranger-spec §1), which
+    permits *content-driven monotone stage growth* mid-phase (the auction gaining
+    a round): it grows within a `reserveRounds`-sized stage, and past that pushes
+    the cluster down the **monotone displacement path** (A1 `reserveRounds:1` = one
+    row, so it displaces per round). A mark must never move a neighbour; a growing
+    stage may lengthen and push the cluster monotonically. (The stage is bounded and
+    shell-independent — the grid never reads the viewport; see grid-arranger-spec §1.)
 
 ---
 

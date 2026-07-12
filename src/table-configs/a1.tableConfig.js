@@ -26,6 +26,28 @@ export default {
     rows: [0.85, 1.15, 1.3],  // top short, middle stage, bottom heaviest (hero row)
   },
 
+  // Bidding-scene vertical model (design direction 2026-07-11, final): BOTTOM-anchor
+  // the working cluster (hand + bidding box at the floor; BB never above the hand).
+  // The AuctionTable is sized to its content — one row initially — and grows as
+  // calls are added. Play/review keep the weighted-fr rows. See grid-arranger-spec §1.
+  anchor: { bidding: 'bottom' },
+  // Bidding growth reserve, in call-rounds (tableConfig field). A1 = 1: the stage
+  // is sized to a single-row auction; longer auctions take the monotone displacement
+  // path (the cluster is pushed down one round at a time). The grid shrink-wraps and
+  // the shell owns placement (the arranger never reads the viewport).
+  reserveRounds: 1,
+
+  // Designed spacing (px) expressed as margins on occupied regions (§1 spacing rule).
+  // actionHandGap: the gap on the bidding box's hand-facing side.
+  spacing: { actionHandGap: 14 },
+
+  // Allocation priority as TIERS (§3): when the budget can't satisfy every reserve
+  // at 1.0×, higher tiers are satisfied first and the first tier that can't fit
+  // shares the remainder (its members compress together). A1: the working set
+  // (stage + hero hand) is protected; the periphery (bidding box, status, reference
+  // auction) compress together before the hand yields a pixel.
+  allocationPriority: [['center', 'n', 'e', 's', 'w'], ['se', 'nw', 'ne', 'sw']],
+
   scale: {
     wishVar: '--table-scale',
     // se cap is a RELATIONSHIP, not a constant (fix 2): the action cluster belongs
@@ -41,7 +63,7 @@ export default {
   densities: {
     bidding: { ne: 'none' },
     play: { ne: 'full' },   // pinned auction, full density
-    review: { ne: 'full' },
+    review: { ne: 'none' }, // review hosts auction+result in CENTER; NE freed
   },
 
   shell: {
