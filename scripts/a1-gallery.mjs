@@ -7,6 +7,7 @@ import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
 import { pathToFileURL } from 'url'
+import { auctionGrowthReservePx } from '../src/components/auctionMetrics.js'
 
 const BASE = process.env.HARNESS_URL || 'http://localhost:4173'
 const FIX_DIR = 'src/harness/fixtures-a1'
@@ -31,6 +32,7 @@ let shots = 0
 let labelLedgerMismatches = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
 const rects = {}   // `${name}/${vp}` → { 'seat-s': {top,left,bottom}, se: {…} } — hand/BB screen positions (bottom-anchor acceptance)
+const centerScale = {} // `${name}/${vp}` → the center region's --region-scale (auction-height honesty check)
 for (const { name, boxes } of fixtures) {
   for (const [vp, dim] of Object.entries(viewports)) {
     const page = await browser.newPage({ viewport: { width: dim.w, height: dim.h }, deviceScaleFactor: 1 })
@@ -58,6 +60,7 @@ for (const { name, boxes } of fixtures) {
     if (seatsScale != null) parts.push(`seats ${seatsScale}×`)
     for (const r of ['ne', 'se', 'nw']) if (scales[r] != null) parts.push(`${r} ${scales[r]}×`)
     capText[`${name}/${vp}`] = parts.join(' · ')
+    centerScale[`${name}/${vp}`] = scales.center != null ? parseFloat(scales.center) : 1
     // Auction top + hand (seat-s) + BiddingBox (se) screen positions — the
     // top-anchor acceptance measures these across auction lengths 1/5/9 (same
     // viewport): auction top stable, hand/BB push DOWN one round each round.
@@ -162,6 +165,37 @@ if (haveTrip) {
 } else {
   console.log('(bottom-anchor acceptance skipped — len1/5/9 fixtures not all present)')
 }
+
+// ── Auction-reserve honesty (metric provenance guard) ─────────────────────────
+// The rendered AuctionTable height must equal the metric-derived reserve
+// `auctionGrowthReservePx(rounds)` (grid-arranger-spec §1: "headerRowPx/roundRowPx
+// must track the real AuctionTable row heights"). This turns a future typography
+// pass that shifts the row heights — the exact drift that left the 26/33 metric
+// overshooting the compressed auction — into a red walk instead of a silently
+// floating auction. Checked at 1.0× only (the metric's definition point; the
+// table's 2px borders don't scale, so it isn't expected to hold under a scaled
+// center — the honest place to assert the constants is where they're defined).
+const AUCTION_ROUNDS = { 'a1-bidding-len1': 1, 'a1-bidding-len5': 2, 'a1-bidding-len9': 3 }
+let heightMismatches = 0
+let heightChecks = 0
+for (const [name, rounds] of Object.entries(AUCTION_ROUNDS)) {
+  if (!fixtures.some((f) => f.name === name)) continue
+  for (const [vp] of Object.entries(viewports)) {
+    const scale = centerScale[`${name}/${vp}`] ?? 1
+    if (Math.abs(scale - 1) > 0.01) continue // metric is defined at 1.0× (borders don't scale)
+    const r = rects[`${name}/${vp}`]
+    if (!r || !r.auction) continue
+    heightChecks++
+    const expected = auctionGrowthReservePx(rounds)
+    if (Math.abs(r.auction.h - expected) > 2) {
+      console.error(`  AUCTION-HEIGHT MISMATCH ${name}/${vp}: rendered ${r.auction.h}px vs reserve ${expected}px (rounds=${rounds}) — re-measure auctionMetrics headerRowPx/roundRowPx`)
+      heightMismatches++
+    }
+  }
+}
+console.log(heightMismatches === 0
+  ? `  auction-height: reserve matches rendered in all ${heightChecks} 1.0× checks (metric honest)`
+  : `  auction-height: ${heightMismatches}/${heightChecks} MISMATCHES — update auctionMetrics headerRowPx/roundRowPx`)
 
 // ── Generate ──────────────────────────────────────────────────────────────────
 const INLINE = process.argv.includes('--inline')
