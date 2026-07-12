@@ -15,8 +15,12 @@ export const BIDDINGBOX_UNIT = {
 
 // Natural width (px, 1.0×): the widest inner row (levels vs strains) + container
 // padding. Levels dominate (7 narrow buttons); strains are close behind.
-export function biddingBoxReservePx(u = BIDDINGBOX_UNIT) {
-  const levels = u.levels * u.levelBtnPx + (u.levels - 1) * u.btnGapPx
-  const strains = u.strains * u.strainBtnPx + (u.strains - 1) * u.btnGapPx
+// `gaps: false` gives the compressed form — cards adjacent, no inter-button space —
+// which the component falls back to at tight widths BEFORE shrinking the cards
+// (most physical bidding boxes have no gap between cards anyway).
+export function biddingBoxReservePx(u = BIDDINGBOX_UNIT, { gaps = true } = {}) {
+  const g = gaps ? u.btnGapPx : 0
+  const levels = u.levels * u.levelBtnPx + (u.levels - 1) * g
+  const strains = u.strains * u.strainBtnPx + (u.strains - 1) * g
   return Math.max(levels, strains) + 2 * u.padPx
 }
