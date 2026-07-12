@@ -309,9 +309,14 @@ The four rules, in order:
    differ per surface, so they're data (A1: `[['center','n','e','s','w'],
    ['se','nw','ne','sw']]`).
 4. **scale = min(1, allocated / reserve)**, floored. Natural size (1.0×) when it
-   fits; below only when the budget genuinely can't; never above 1.0 (no
-   enlargement — the earlier "grow to cap" is retired). Seat uniformity = the min
-   fit over hand-bearing seats, applied to all of them.
+   fits; below only when the budget genuinely can't. Seat uniformity = the min fit
+   over hand-bearing seats, applied to all of them. ⚠️ **The `min(1, …)` upper
+   clamp is a known regression** (center/stage growth to the `caps` value existed
+   pre-rewrite — see the `1.27×`/`1.40×` captions in earlier gallery runs — and was
+   lost here). §2's `caps.center: 1.8` is the intent; restoring `min(cap, fit)` is
+   the queued caps-wiring slice (see *Review decisions §2*, 2026-07-12). Until then
+   the "grow-to-cap retired" phrasing is the artifact of the regression, not a
+   ruling.
 
 **The ledger** (per stage): `budget`, `inputs` (occupancy, tiers), per-`columns`
 (need, margin, tier, allocated, width), per-`regions` (`reserve`, `allocated`,
@@ -329,22 +334,38 @@ natural need by tier. A lone corner (NW/NE/SE/SW) rides at its floor minimum
 instead of starving under a heavier sibling column while the budget has room; a
 region only reports `overflow` when even the floor-minimums can't all fit.
 
-### Review decisions (2026-07-12) — accepted tradeoffs & deferred slices
+### Review decisions (2026-07-12) — accepted tradeoffs & queued slices
 
-- **Working-set protection wins over the periphery floor.** At extreme tightness
-  (defensive cardplay at laptop-half) the pinned auction / controls (NE/SE) sit at
-  the 0.65 floor rather than shrink the hero/dummy hands. This is **accepted and
-  flagged in the ledger** (red `floor`/`overflow`), not forced away — "no floor
-  bindings" is not a hard invariant at every viewport. A future *auction-compact
-  capability* (the pinned auction collapsing to a denser form when starved) is the
-  intended lever if we ever want NE off the floor there.
-- **`scale.caps > 1.0` is currently unused by design** (§3.4 retired "grow to cap":
-  the allocator caps at `min(1, fit)`). The `caps` object in §2 is therefore
-  aspirational, not wired. Reviving center/stage enlargement (~1.5, the §6
-  prediction) is a **separate slice with a spec reconciliation**, not a bug.
-- **Bottom-packing the play cluster** (trick + hands + Undo/Claim riding the bottom
-  like bidding) is a **separate slice** — it improves the play scene's vertical
-  packing but does not affect the NE/SE horizontal budget above.
+1. **NE/SE floor at laptop-half: accepted and flagged, not forced.** At extreme
+   tightness (defensive cardplay at laptop-half) the pinned auction / controls
+   (NE/SE) sit at the 0.65 floor rather than shrink the hero/dummy hands —
+   working-set protection wins. This is **accepted and shown honestly** in the
+   ledger (red `floor`/`overflow`); "no floor bindings" is not a hard invariant at
+   every viewport. **Re-evaluate after the auction glyph restyle lands** — a
+   narrower auction may lift NE on its own. **If it's still floored, the response
+   is Phase 5's compact AuctionTable density (§ roadmap Phase 5) pulled forward as
+   a starvation response — existing planned machinery, not new capability.**
+
+2. **Caps wiring — regression repair, queued as its own slice.** `scale.caps > 1.0`
+   is **not wired** (the allocator caps at `min(1, fit)`), but this is a
+   **regression, not a design choice**: center/stage growth *existed pre-rewrite*
+   (earlier gallery runs show `1.27×` / `1.40×` center captions) and was **lost in
+   the pure-allocator rewrite**. So §2's `caps.center: 1.8` is the **intent**, and
+   the allocator's `min(1, fit)` is the **bug**; §3.4's "grow-to-cap retired" line
+   is itself the incorrect artifact of the regression and gets reconciled in this
+   slice. The slice **validates against the §6 prediction table** (center ≈ 1.5).
+
+3. **Play-cluster bottom-pack — queued as its own slice.** Scope: **extend the
+   bidding anchor model to play** (content-sized rows, cluster packed at the
+   floor), with **Undo/Claim riding the cluster** (relocated from the SE corner to
+   the hero's bottom cluster). Improves the play scene's vertical packing; does not
+   affect the NE/SE horizontal budget above.
+
+4. **Generalize the seats-caption fix.** The gallery caption keyed "seats" to a
+   literal `seat-s`, so it vanished when the hero sits W/N/E (fixed 2026-07-12).
+   **Audit every caption/label keyed to a literal seat** for hero-relative
+   correctness — the same latent bug can hide anywhere a fixed compass seat is
+   assumed instead of a role derived from `heroSeat`.
 
 ---
 
