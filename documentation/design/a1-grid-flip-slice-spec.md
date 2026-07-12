@@ -1,0 +1,115 @@
+# Slice spec — A1 grid flip (production adopts `arrangement: 'grid'`)
+
+Location: `documentation/design/a1-grid-flip-slice-spec.md`
+Status: Proposed
+Companion to: `integration-roadmap.md` (Phase 1), `grid-arranger-spec.md`, `rendering-harness-plan.md`
+Gate: Rick's gallery sign-off on the A1 gallery artifact (three states × three widths, incl. the NE 0.65-floor defense scene) — **not yet passed as of this writing**
+Deadline context: must complete (flipped + soak started) before Thursday 2026-07-16; Rick out of town 5 days from Thursday. Homework for the week is intentionally held until post-flip.
+
+This is the first slice in the A1 sequence that changes what students see in the released app. Invariants 1 (pixel-identical XOR visible) and 6 (referee) bind. The slice is split into two moves so that the risky part (live behavior against prod server + prod repos + real decks) is exercised while production remains untouched, and the visible part reduces to a one-line default change with a one-line remote-operable revert.
+
+---
+
+## Slice 1.6a — Dark deploy with per-client override
+
+**Type:** Plumbing / production-invisible (ships dark, same class as #159/#190). Zero diff for all clients not carrying the override.
+
+**Statement.** Merge the grid-arrangement branch to prod with the A1 default still `legacy`. Honor a per-client override selecting `arrangement: 'grid'` for the current client only:
+
+- Mechanism: `?arrangement=grid` query param, persisted to `localStorage` for the session so navigation within the app doesn't shed it; `?arrangement=legacy` (or clearing the key) reverts the client. Prefer localStorage persistence over a visible sticky query string — less discoverable by a curious student who shares a URL.
+- Scope: the override selects the arrangement axis only. No other behavior forks on it.
+- The override is permanent dev apparatus, not scaffolding to delete in 1.6b — it's the standing mechanism for previewing any future arrangement candidate against prod.
+
+**Diff assertion:** zero pixel diff on all A1 states without the override. With the override: rendering matches the signed-off gallery composition; deltas from gallery are named per the visible-change discipline even though production defaults are untouched.
+
+**Referee:** prod-before vs branch, same fixture, no override (must be zero). Override-on vs gallery rendering (gallery canonical) for the grid path.
+
+**Contract tests:** none required if the slice is pure config/arrangement plumbing; if any engine or derivation file is touched to thread the override, Invariant 7 applies and the slice ships contract tests alongside.
+
+**Ratchet impact:** none (all metrics flat is acceptable here — this is a config axis, not a migration slice).
+
+### Live verification protocol (the actual iterative loop)
+
+The outer loop is **prod-with-override**: real deployed build, real bridge-classroom.org origin, real magic-link session cookie, real Mac server, real lesson repos. The inner loop is the **local gallery/fixtures** (fast HMR, no auth): reproduce → fix → gallery-verify → redeploy dark → re-verify live with the override. No localhost-against-prod-server configuration; no CORS or auth exceptions on the prod server.
+
+1. **Test identity.** Create/switch to a dedicated test user via Switch User (`session_users`) before any grinding. All repeated exercise runs happen under the test identity so Rick's own mastery history stays clean and later participation analysis isn't polluted.
+2. **Deck-driven, not state-driven.** Run complete real exercises end-to-end from **each lesson family currently assigned or about to be assigned in this homework cycle** (all four classes' decks). The gallery's three fixtures are shapes; the live risk is MainLayout's derived phase (`auctionComplete` + `isDeclarerPlay` + `showOpeningLead` + `hasSteps`) hitting a combination the fixtures don't model. Specific attention: the opening-lead moment, step-control edges, review entry/exit, and whatever the real defensive-signals decks do that `a1-cardplay-exercise` approximates.
+3. **Fixture-first bug handling.** Any live breakage: capture the state as a fixture *before* fixing (via the 1.6c snapshot serializer — see below), reproduce in the A1 gallery, fix against the fixture, then re-verify live. Every live bug permanently widens fixture coverage; no fix lands verified only "by eyeball on prod."
+4. **Embedded-path check.** Load the embedded bidding `?pbn=` path (the Game Analysis integration) with and without the override. This is the one hard functional constraint from the maturity model — break layout, not that integration. Confirm the override key does not leak into or alter the embedded rendering.
+5. **Second pair of eyes.** Give David the override key and ask for at least one full exercise run on his hardware/browser before 1.6b.
+
+**Exit criteria for 1.6a:** every currently-assigned lesson family completes end-to-end under the override with no layout breakage or unnamed visual delta; `?pbn=` path verified; David has run clean at least once.
+
+---
+
+## Slice 1.6b — Flip the default
+
+**Type:** Visible change (the named region is the entire A1 arrangement — this is the look-and-feel integration the roadmap sequenced everything toward).
+
+**Statement.** Change the A1 default from `legacy` to `grid`. One line. `legacy` remains fully intact and selectable via the same override axis (`?arrangement=legacy`) — this satisfies Invariant 5 (no dual rendering: a config axis is not dual rendering; exactly one arrangement renders per client) while making revert trivial and *remote-operable*.
+
+**Rollback:** the same one line back (or a server-side default if the axis is read from config — prefer whichever is operable from a laptop in a hotel in ≤ 5 minutes without repo-state context). Rollback procedure written into the PR description verbatim, so it's executable by David if Rick is unreachable.
+
+**Diff assertion:** nonzero only within the A1 arrangement (the named region); grid rendering identical to the signed-off gallery composition at all three widths. All non-A1 surfaces zero-diff.
+
+**Referee:** gallery canonical (branch vs gallery rendering).
+
+**Post-flip smoke (same day, before homework goes out):**
+1. One complete exercise **under Rick's real account** confirming the mastery record writes correctly to the Mac server post-flip (the only released app recording practice history — two minutes to turn "no reason it would break" into "verified").
+2. `?pbn=` embedded path re-check on the flipped default.
+3. Quick pass on an iPad/tablet if one is handy — the student population skews toward tablets and large-font settings; laptop-half in the gallery approximates but does not equal a real iPad Safari viewport.
+
+**Then:** send the week's homework. The homework cycle *is* the beta feedback mechanism for the trip window.
+
+**Ratchet impact:** none of the numeric ratchets move; the qualitative milestone is A1 = first production surface on the grid arranger.
+
+---
+
+## Slice 1.6c — A1 diagnostic snapshot: one serializer, two consumers
+
+**Type:** Production-invisible dev apparatus (ships dark alongside or immediately after 1.6a; no render change). Rides the same deploy — it is the capture half of 1.6a's fixture-first protocol made real, and the A1 sibling of the Phase 0.2 capture hook (same rationale: hand-authored state drifts; captured snapshots are honest).
+
+**Statement.** A single `captureA1Snapshot()` serializer producing one JSON payload with two consumers:
+
+- **(a) Bug report context file** — registered as the A1 app-specific context provider per `bug-reporting-spec.md`'s contract. When the beetle button lands, it consumes this provider unchanged.
+- **(b) Importable A1 gallery fixture** — the gallery (`gallery-a1/`) gains a load-snapshot path so a captured payload renders directly as a scene.
+
+Because (a) and (b) are the same artifact, a bug report *is* a reproducible fixture — "reconstruct the state" is replaced by "open the attachment."
+
+**Payload contents:**
+
+| Field | Why |
+|---|---|
+| `arrangement` + provenance (default / localStorage / query) | First triage question during the soak: was the reporter on grid at all |
+| `computeLayoutLedger` output | The numeric answer to "why does it look like that" — scales, binding reasons, caps, margins; the existing observability artifact, serialized |
+| Phase quad (`auctionComplete`, `isDeclarerPlay`, `showOpeningLead`, `hasSteps`) + derived phase | Phase derivation is A1's flagged hard part; every report answers "what phase did the view think it was in" |
+| Content identity: lesson family, board, step index, deal-repo content hash | Compact; the hash catches repo drift between report and repro |
+| Fixture-grade rendered-state essentials (same shape as existing `gallery-a1` fixtures) | Direct gallery import without re-deriving from deck content |
+| Environment: viewport, `--table-scale`, devicePixelRatio, user agent | The student population's iPads and font settings live here |
+| ActionTape tail (ring buffer per `bug-reporting-spec.md`) | The semantic path into the state |
+| Identity: user id + class context only | Deliberately minimal — no further student PII in the payload |
+
+**Interim affordance (this window):** the beetle button need not ship for 1.6c to pay off. A low-key dev affordance — keystroke or dev-menu "copy diagnostic snapshot" — gives Rick and David capture capability throughout 1.6a testing and the trip window. The beetle, whenever it lands, registers the same provider; nothing is rebuilt.
+
+**Acceptance (round-trip):** capture a snapshot from a live prod session (override on), load it in the A1 gallery, and the render reproduces the captured state at the captured viewport/scale. Passing this makes the bug-report context file trustworthy by construction. Secondary: payload serializes/parses clean, size sane (target < ~50KB — content by hash, not by value).
+
+**Diff assertion:** zero (production-invisible).
+
+**Referee:** the round-trip itself (live capture vs gallery render of the same payload).
+
+**Ratchet impact:** none numeric; qualitative — fixture coverage now grows automatically from real usage instead of by hand-authoring.
+
+---
+
+## Slice 1.7 (deferred, explicitly out of scope for this window) — Legacy retirement
+
+Delete the `legacy` arrangement path once grid has soaked through **at least one full homework cycle plus Rick's return from the trip** (earliest ~2026-07-27). Not before, and never bundled into 1.6b — the PR reviewer should reject any "cleanup" of legacy in the flip PR. Standard deletion-slice discipline applies when it runs (zero diff, gallery canonical).
+
+---
+
+## Trip-window contingency notes
+
+- **Remote rollback** is the designed safety net: `?arrangement=legacy` per-client for triage, the one-line default revert for the fleet. Both documented in the 1.6b PR.
+- **David briefed** on: the override axis, the rollback one-liner, and where the A1 gallery lives — he is the on-call path Thursday→Tuesday.
+- **Bug intake:** 1.6c ships the diagnostic-snapshot capability regardless of the beetle button's fate. If a minimal beetle is shippable before Thursday, it rides along and consumes the 1.6c provider — student reports arrive as loadable gallery fixtures, diagnosable from the road. If not, students report via the usual email path; David reproduces with the override, captures a 1.6c snapshot at the failure, and attaches it — same repro pipeline, one manual hop.
+- **Do not** hot-patch grid layout from the road except for outright breakage; visual polish waits for return. The revert lever exists precisely so remote fixes don't have to.
