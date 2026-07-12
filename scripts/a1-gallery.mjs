@@ -45,10 +45,16 @@ for (const { name } of fixtures) {
       })
       return out
     })
-    const order = ['center', 'seat-s', 'ne', 'se', 'nw']
-    const label = { 'seat-s': 'seats' }
-    capText[`${name}/${vp}`] = order.filter((r) => scales[r] != null)
-      .map((r) => `${label[r] || r} ${scales[r]}×`).join(' · ')
+    // All hand-bearing seats share ONE scale (uniformSeatScale) — report it from
+    // whichever seat region exists (the hero may sit W/N/E, not only S; keying on
+    // seat-s alone dropped the value from defensive/rotated scenes).
+    const seatKey = Object.keys(scales).find((k) => k.startsWith('seat-'))
+    const seatsScale = seatKey ? scales[seatKey] : null
+    const parts = []
+    if (scales.center != null) parts.push(`center ${scales.center}×`)
+    if (seatsScale != null) parts.push(`seats ${seatsScale}×`)
+    for (const r of ['ne', 'se', 'nw']) if (scales[r] != null) parts.push(`${r} ${scales[r]}×`)
+    capText[`${name}/${vp}`] = parts.join(' · ')
     // Auction top + hand (seat-s) + BiddingBox (se) screen positions — the
     // top-anchor acceptance measures these across auction lengths 1/5/9 (same
     // viewport): auction top stable, hand/BB push DOWN one round each round.
