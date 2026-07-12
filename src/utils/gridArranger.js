@@ -130,19 +130,44 @@ const round2 = (x) => Math.round(x * 100) / 100
  * @param {number} [o.cellGap]   designed inter-region gap (px), default 6
  * @param {number} [o.actionHandGap]  extra gap on the bidding box's hand side, default 14
  * @param {number} [o.floor]     legibility floor, default 0.65
+ * @param {[number,number,number]} [o.columnWeights]  the config's `tracks.columns` fr weights,
+ *   the PROPORTIONAL growth basis for the caps pass: a column grows only toward its fr share of
+ *   the budget (not greedily to its cap), so the stage stays geometry-bound (~1.3 at desktop) and
+ *   the cap is a ceiling that binds only on very wide screens. Default [1,1,1] (equal). This is why
+ *   the growth restores the pre-rewrite fr behaviour (center a fixed fraction of the budget) rather
+ *   than ballooning to the cap the moment there's surplus.
+ * @param {Object<string,number|string>} [o.caps]  per-role scale CEILINGS (§2 scale.caps):
+ *   { center, seats, nw, ne, se, sw }. `center` caps the stage; `seats` caps the four seat
+ *   areas (n/e/s/w); a corner caps that corner. A corner value of the STRING `'seats'` is
+ *   the SE↔seats RELATIONSHIP (the action cluster never renders larger than the seats) →
+ *   resolved to min(1, seatScale). Omitted / any missing role defaults to 1.0, which makes
+ *   the caps pass a no-op — so a caller that passes no caps gets the pre-caps `min(1, fit)`
+ *   behaviour byte-for-byte (grid-arranger-spec §3.4 caps-wiring, 2026-07-12).
  * @returns {LayoutLedger}
  */
 export function computeLayoutLedger(o) {
-  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65 } = o
+  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65, caps = {}, columnWeights = [1, 1, 1] } = o
   const occ = new Set(occupied)
+  // Per-role cap resolution (§2 scale.caps). A seat area (n/e/s/w) uses caps.seats; the
+  // stage uses caps.center; a corner its own. The 'seats' RELATIONSHIP string caps at 1.0
+  // for column GROWTH (its real ceiling min(1, seatScale) can only be ≤ 1) and applies the
+  // seat-relationship at scale time (below). Missing → 1.0 (no growth above natural).
+  const capRaw = (area) => (area === 'center' ? caps.center : SEAT_AREAS.has(area) ? caps.seats : caps[area])
+  const isSeatsRel = (area) => { const v = capRaw(area); return v === 'seats' || v === 'seat' }
+  const numericCap = (area) => { const v = capRaw(area); if (isSeatsRel(area)) return 1; return typeof v === 'number' && v > 0 ? v : 1 }
+  const seatsCap = (typeof caps.seats === 'number' && caps.seats > 0) ? caps.seats : 1
   const tierList = (tiers && tiers.length ? tiers : [['center'], ['n', 'e', 's', 'w'], ['nw', 'ne', 'se', 'sw']]).map((t) => (Array.isArray(t) ? t : [t]))
   const tierOf = (areas) => { let best = tierList.length; for (const a of areas) { const i = tierList.findIndex((t) => t.includes(a)); if (i >= 0 && i < best) best = i } return best }
 
   const columns = LEDGER_COLUMNS.map((areas, index) => {
     const cOcc = areas.filter((a) => occ.has(a))
     const need = cOcc.length ? Math.max(...cOcc.map((a) => reserves[a] ?? 0)) : 0
+    // capTarget = the widest the column can usefully grow to: the max over its regions of
+    // cap×reserve (each region clamps to its OWN cap, so the column grows to satisfy the
+    // greediest). ≥ need always (numericCap ≥ 1). Drives the caps growth pass below.
+    const capTarget = cOcc.length ? Math.max(...cOcc.map((a) => numericCap(a) * (reserves[a] ?? 0))) : 0
     const margin = cOcc.length ? 2 * cellGap + (cOcc.includes('se') ? actionHandGap : 0) : 0
-    return { index, occupied: cOcc, need, margin, full: need ? need + margin : 0, tier: cOcc.length ? tierOf(cOcc) : tierList.length, allocated: 0 }
+    return { index, occupied: cOcc, need, capTarget, margin, full: need ? need + margin : 0, tier: cOcc.length ? tierOf(cOcc) : tierList.length, allocated: 0 }
   })
 
   // Allocation (§3, amended 2026-07-12 — floor-protection / corner rule). Every
@@ -160,57 +185,90 @@ export function computeLayoutLedger(o) {
   const contentBudget = budget - occCols.reduce((s, c) => s + c.margin, 0)
   const floorContent = (c) => floor * c.need
   const sumFloor = occCols.reduce((s, c) => s + floorContent(c), 0)
+  const orderedTiers = [...new Set(occCols.map((c) => c.tier))].sort((a, b) => a - b)
+  // Grow occupied columns from their current allocation toward `target(c)` by TIER
+  // priority: a higher tier is satisfied whole before a lower one, and the first tier
+  // that can't fit SHARES the remaining surplus proportionally. Returns leftover surplus.
+  const growByTier = (surplus, target) => {
+    for (const t of orderedTiers) {
+      if (surplus <= 0) break
+      const cols = occCols.filter((c) => c.tier === t)
+      const growth = cols.reduce((s, c) => s + Math.max(0, target(c) - content[c.index]), 0)
+      if (growth <= 0) continue
+      if (surplus >= growth) { for (const c of cols) content[c.index] = target(c); surplus -= growth }
+      else { const r = surplus / growth; for (const c of cols) content[c.index] += Math.max(0, target(c) - content[c.index]) * r; surplus = 0 }
+    }
+    return surplus
+  }
   if (contentBudget <= sumFloor) {
     // Not even the floor-minimums fit — shrink them proportionally (all starve).
     const ratio = sumFloor > 0 ? Math.max(0, contentBudget) / sumFloor : 0
     for (const c of occCols) content[c.index] = floorContent(c) * ratio
   } else {
     for (const c of occCols) content[c.index] = floorContent(c)
-    let surplus = contentBudget - sumFloor
-    for (const t of [...new Set(occCols.map((c) => c.tier))].sort((a, b) => a - b)) {
-      if (surplus <= 0) break
-      const cols = occCols.filter((c) => c.tier === t)
-      const growth = cols.reduce((s, c) => s + (c.need - floorContent(c)), 0)
-      if (surplus >= growth) {
-        for (const c of cols) content[c.index] = c.need
-        surplus -= growth
-      } else {
-        const r = growth > 0 ? surplus / growth : 0
-        for (const c of cols) content[c.index] = floorContent(c) + (c.need - floorContent(c)) * r
-        surplus = 0
-      }
-    }
+    // Pass 1 — grow to NATURAL need (1.0×) by tier. This is the whole allocation when no
+    // caps are supplied (caps default 1.0 → capTarget == need → pass 2 is a no-op), so the
+    // tight-budget invariants — floor protection, periphery-compresses-together — are
+    // unchanged from the pre-caps allocator.
+    let surplus = growByTier(contentBudget - sumFloor, (c) => c.need)
+    // Pass 2 — caps (grid-arranger-spec §3.4, 2026-07-12). Only reached once every column
+    // has its natural need AND surplus remains: grow columns BEYOND need toward their fr
+    // SHARE of the budget, capped at capTarget, by the same tier priority, BEFORE the
+    // leftover spills to outer margin. Growing to the fr share (not straight to the cap) is
+    // what restores the pre-rewrite behaviour: the stage is a fixed fraction of the budget
+    // (geometry-bound, ~1.3 desktop), and the cap only binds on a very wide screen. A side
+    // column can't grow (its capTarget == need — periphery cap 1.0), so only the stage and
+    // hand-bearing columns stretch; the rest becomes outer margin, preserving clustering.
+    const sumW = columnWeights.reduce((s, w) => s + (w > 0 ? w : 0), 0) || 1
+    const frShare = (c) => ((columnWeights[c.index] > 0 ? columnWeights[c.index] : 0) / sumW) * budget
+    surplus = growByTier(surplus, (c) => Math.min(frShare(c), c.capTarget))
   }
   columns.forEach((c) => { c.allocated = content[c.index] })
   const colWidths = columns.map((c) => (content[c.index] ? content[c.index] + c.margin : 0))
   const outerMargin = Math.max(0, budget - colWidths.reduce((a, b) => a + b, 0))
 
-  // Per-region scale = min(1, allocated/reserve), floored. Record the BINDING
+  // Per-region scale = min(cap, allocated/reserve), floored. Record the BINDING
   // constraint and the losing candidates — the diagnosis the ledger exists for.
-  // Binding = which constraint set the scale. 'overflow' (fit < floor) is the
-  // STARVED state: even clamped to the floor the region can't render in its
-  // allocation (alloc < floor × reserve) — distinct from 'floor' (pinned exactly
-  // at the legibility floor, but legal). 'budget' shrinks between floor and 1.
-  const entry = (area, reserve, colContent, tier) => {
+  // Binding = which constraint set the scale. The ceiling is the region's CAP: at
+  // cap 1.0 the ceiling is 'natural' (the region is at its natural size, the pre-caps
+  // meaning); above 1.0 the ceiling is 'cap' (grown to a role ceiling > 1). 'overflow'
+  // (fit < floor) is the STARVED state: even clamped to the floor the region can't
+  // render in its allocation (alloc < floor × reserve) — distinct from 'floor' (pinned
+  // at the legibility floor, but legal). 'budget' is the geometry-bound middle: below
+  // the cap, above the floor (shrunk below 1.0 when cap 1.0, or grown between 1.0 and
+  // the cap when cap > 1.0) — the region rendering at exactly its fit.
+  const entry = (area, reserve, colContent, tier, cap) => {
     const fit = reserve > 0 ? colContent / reserve : 1
-    const scale = Math.max(floor, Math.min(1, fit))
+    const scale = Math.max(floor, Math.min(cap, fit))
+    const ceil = cap > 1 + 1e-6 ? 'cap' : 'natural'
     let binding, losing
-    if (fit >= 1) { binding = 'natural'; losing = [`budget:${round2(fit)}`] }
-    else if (fit < floor - 1e-6) { binding = 'overflow'; losing = [`budget:${round2(fit)}`, 'natural:1', `floor:${floor}`] }
-    else if (fit <= floor + 1e-6) { binding = 'floor'; losing = [`budget:${round2(fit)}`, 'natural:1'] }
-    else { binding = 'budget'; losing = ['natural:1', `floor:${floor}`] }
-    return { reserve, allocated: Math.round(colContent), scale: round2(scale), tier, binding, losing }
+    if (fit >= cap - 1e-6) { binding = ceil; losing = [`budget:${round2(fit)}`] }
+    else if (fit < floor - 1e-6) { binding = 'overflow'; losing = [`budget:${round2(fit)}`, `${ceil}:${cap}`, `floor:${floor}`] }
+    else if (fit <= floor + 1e-6) { binding = 'floor'; losing = [`budget:${round2(fit)}`, `${ceil}:${cap}`] }
+    else { binding = 'budget'; losing = [`${ceil}:${cap}`, `floor:${floor}`] }
+    return { reserve, allocated: Math.round(colContent), scale: round2(scale), tier, cap: round2(cap), binding, losing }
   }
   const regions = {}
-  for (const c of columns) for (const a of c.occupied) regions[a] = entry(a, reserves[a] ?? 0, content[c.index], c.tier)
+  for (const c of columns) for (const a of c.occupied) regions[a] = entry(a, reserves[a] ?? 0, content[c.index], c.tier, numericCap(a))
 
-  // Uniform seat scale over the hand-bearing seats (min fit); overrides each seat's
-  // individual scale so hands never differ in size on one deal.
+  // Uniform seat scale over the hand-bearing seats (min fit, capped at the seats cap);
+  // overrides each seat's individual scale so hands never differ in size on one deal.
   const hb = handBearingAreas.filter((a) => occ.has(a))
   let seatScale = 1
   if (hb.length) {
-    seatScale = Math.max(floor, Math.min(1, ...hb.map((a) => (content[LEDGER_COL_OF[a]] || 0) / seatReserve)))
+    seatScale = Math.max(floor, Math.min(seatsCap, ...hb.map((a) => (content[LEDGER_COL_OF[a]] || 0) / seatReserve)))
     hb.forEach((a) => { if (regions[a]) regions[a].scale = round2(seatScale) })
+  }
+  // The SE↔seats RELATIONSHIP (§2 caps.se: 'seats'): a region whose cap is the string
+  // 'seats' (the action cluster) may never render larger than the seats — its ceiling is
+  // min(1, seatScale). Applied after seatScale is known; the region already clamped to ≤ 1
+  // via numericCap, so this only tightens it further when the hero's hand is below 1.0×.
+  for (const a of Object.keys(regions)) {
+    if (!isSeatsRel(a)) continue
+    const seCeil = Math.min(1, seatScale)
+    const clamped = Math.max(floor, Math.min(regions[a].scale, seCeil))
+    if (Math.abs(clamped - regions[a].scale) > 1e-9) { regions[a].scale = round2(clamped); regions[a].binding = 'cap' }
+    regions[a].cap = round2(seCeil)
   }
 
   // Row bands (top / middle / bottom) — the vertical companion to `columns`, so
@@ -234,7 +292,7 @@ export function computeLayoutLedger(o) {
     // Inputs block first — the stage's CAUSES (budget, occupancy, tiers, reserve
     // versions), so a ledger diff shows which input changed, not just the outputs.
     inputs: { budget: Math.round(budget), occupied: [...occ].sort(), tiers: tierList, reserves: Object.fromEntries([...occ].sort().map((a) => [a, Math.round(reserves[a] ?? 0)])) },
-    columns: columns.map((c) => ({ index: c.index, occupied: c.occupied, need: Math.round(c.need), margin: c.margin, tier: c.tier, allocated: Math.round(c.allocated), width: Math.round(colWidths[c.index]) })),
+    columns: columns.map((c) => ({ index: c.index, occupied: c.occupied, need: Math.round(c.need), capTarget: Math.round(c.capTarget), margin: c.margin, tier: c.tier, allocated: Math.round(c.allocated), width: Math.round(colWidths[c.index]) })),
     rows,
     regions,
     seats: { scale: round2(seatScale), handBearing: hb },

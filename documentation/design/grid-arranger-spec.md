@@ -314,15 +314,25 @@ The four rules, in order:
    status) compress together — the hand yields a pixel only after they have. Tiers
    differ per surface, so they're data (A1: `[['center','n','e','s','w'],
    ['se','nw','ne','sw']]`).
-4. **scale = min(1, allocated / reserve)**, floored. Natural size (1.0×) when it
-   fits; below only when the budget genuinely can't. Seat uniformity = the min fit
-   over hand-bearing seats, applied to all of them. ⚠️ **The `min(1, …)` upper
-   clamp is a known regression** (center/stage growth to the `caps` value existed
-   pre-rewrite — see the `1.27×`/`1.40×` captions in earlier gallery runs — and was
-   lost here). §2's `caps.center: 1.8` is the intent; restoring `min(cap, fit)` is
-   the queued caps-wiring slice (see *Review decisions §2*, 2026-07-12). Until then
-   the "grow-to-cap retired" phrasing is the artifact of the regression, not a
-   ruling.
+4. **scale = min(cap, allocated / reserve)**, floored, where `cap` is the region's
+   role cap (§2 `scale.caps`). Natural size (1.0×) when the region fits and its cap is
+   1.0; grown above 1.0 up to the cap when there is width to grow into; below 1.0 only
+   when the budget genuinely can't. Seat uniformity = the min fit over hand-bearing
+   seats (capped at `seats`), applied to all of them. **Caps wired 2026-07-12** (was
+   `min(1, fit)`, a regression that pinned the stage at 1.0×): the allocator grows an
+   occupied column BEYOND its natural need toward its **fr share of the budget** (from
+   `tracks.columns`), capped at `cap × reserve`, before the leftover spills to outer
+   margin. Growing to the fr share — not straight to the cap — is what restores the
+   pre-rewrite behaviour (the `1.27×`/`1.40×` center captions): the stage stays
+   **geometry-bound** (~1.3 at the desktop grid), and `caps.center: 1.8` is a **ceiling**
+   that binds only on a very wide screen (bigger screens get bigger auctions, then the
+   cap). Periphery caps of 1.0 make those columns un-growable (their `cap × reserve ==
+   need`), so only the stage and hand-bearing columns stretch and the rest stays outer
+   margin — clustering preserved. The `se` cap is the RELATIONSHIP `'seats'` → resolved
+   to `min(1, seatScale)` after the seat scale is known, so the action cluster never
+   renders larger than the hands. Passing no caps (or all-1.0 caps) is a **no-op** —
+   the pre-caps `min(1, fit)` allocation, byte-for-byte — so the change is purely
+   additive for surfaces without caps.
 
 **The ledger** (per stage): `budget`, `inputs` (occupancy, tiers), per-`columns`
 (need, margin, tier, allocated, width), per-`regions` (`reserve`, `allocated`,
@@ -373,14 +383,24 @@ region only reports `overflow` when even the floor-minimums can't all fit.
    is **Phase 5's compact AuctionTable density pulled forward** as a starvation
    response (existing planned machinery, not new capability).
 
-2. **Caps wiring — regression repair, queued as its own slice.** `scale.caps > 1.0`
-   is **not wired** (the allocator caps at `min(1, fit)`), but this is a
-   **regression, not a design choice**: center/stage growth *existed pre-rewrite*
-   (earlier gallery runs show `1.27×` / `1.40×` center captions) and was **lost in
-   the pure-allocator rewrite**. So §2's `caps.center: 1.8` is the **intent**, and
-   the allocator's `min(1, fit)` is the **bug**; §3.4's "grow-to-cap retired" line
-   is itself the incorrect artifact of the regression and gets reconciled in this
-   slice. The slice **validates against the §6 prediction table** (center ≈ 1.5).
+2. **Caps wiring — regression repair, SHIPPED (2026-07-12).** `scale.caps > 1.0` was
+   **not wired** (the allocator capped at `min(1, fit)`) — a **regression, not a design
+   choice**: center/stage growth *existed pre-rewrite* (earlier gallery runs show
+   `1.27×` / `1.40×` center captions) and was **lost in the pure-allocator rewrite**.
+   Now wired (§3.4): `computeLayoutLedger` takes a `caps` map + `columnWeights`, grows
+   each occupied column beyond its natural need toward its **fr share of the budget**
+   (capped at `cap × reserve`) before the leftover spills to outer margin, and clamps
+   each region's scale to its own cap; the `se` cap is the `'seats'` relationship
+   (`min(1, seatScale)`). Growing to the fr share (not straight to the cap) is what
+   keeps the stage **geometry-bound** rather than ballooning to the ceiling. **Measured
+   result** (a1 gallery, this slice): center **1.31×** at desktop-wide/tablet-landscape
+   (grid budget ~774px, `binding: budget` — cap 1.8 non-binding), **1.18×** at
+   laptop-half, seats ~1.0–1.11×, periphery 1.0×, `se ≤ seats`, clustering preserved
+   (outerMargin ~110–126px at desktop). The §6 prediction table's ~1.5 desktop was
+   drafted against a nominal ~1000px grid; at the real A1 desktop grid (~774px) geometry
+   yields ~1.3 — the same ballpark as the pre-rewrite captions this repair restores, and
+   the cap correctly does **not** bind. Passing no caps is a no-op (byte-identical to the
+   pre-caps allocation), so surfaces without caps are unaffected.
 
 3. **Play-cluster bottom-pack — SHIPPED (2026-07-12).** Extended the bidding anchor
    model to play (`anchor.play: 'bottom'` → content-sized rows). **s-absorption**

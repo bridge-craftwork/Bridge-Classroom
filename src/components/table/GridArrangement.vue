@@ -398,6 +398,14 @@ function relayout(force = false) {
     cellGap: CELL_GAP,
     actionHandGap: actionHandGap.value,
     floor: floor.value,
+    // Per-role scale ceilings (§2 scale.caps): the stage/center may grow above 1.0×
+    // toward its cap, seats toward theirs, periphery pinned at 1.0, se ≤ seats. Keyed by
+    // AREA — the arranger's config caps object. Omitting it (any surface without caps)
+    // reverts to the natural-size min(1, fit) allocation, so this is purely additive.
+    caps: props.config.scale?.caps,
+    // Column fr weights (tracks.columns) — the caps pass grows the stage only toward its fr
+    // share of the budget (not straight to the cap), so it stays geometry-bound and clusters.
+    columnWeights: props.config.tracks?.columns,
   })
   ledger.value = l
 
