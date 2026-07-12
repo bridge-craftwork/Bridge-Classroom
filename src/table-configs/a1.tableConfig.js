@@ -21,6 +21,16 @@ export default {
   // empty area. Table configs use 'always' (live presence/names).
   seatChips: 'directive',
 
+  // Seat identity BADGES by role relative to the hero (item 4). A badge = the
+  // SeatIndicator (name shown); 'off' falls back to the plain compass label.
+  // A1 personalises the student and their partner, leaving opponents neutral:
+  //   hero → 'name'  (the session user's FIRST name only)
+  //   partner → 'label' ("Partner")
+  //   opponents → 'off' (plain "East"/"West")
+  // Config-available: a table/defense config can turn opponents on. Roles derive
+  // from heroSeat, so they rotate correctly under either orientation anchor.
+  seatBadges: { hero: 'name', partner: 'label', opponents: 'off' },
+
   tracks: {
     columns: [1.1, 1.3, 1.1], // center widest (stage + hero column); sides close behind
     rows: [0.85, 1.15, 1.3],  // top short, middle stage, bottom heaviest (hero row)
