@@ -14,9 +14,9 @@ import ContextPanel from '../components/ContextPanel.vue'
 import SeatIndicator from '../components/SeatIndicator.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import CardSelectorPopup from '../components/CardSelectorPopup.vue'
-import VulDiamond from '../components/VulDiamond.vue'
+import BoardIndicator from '../components/BoardIndicator.vue'
 
-export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable, CardSelectorPopup, VulDiamond }
+export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable, CardSelectorPopup, BoardIndicator }
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 
