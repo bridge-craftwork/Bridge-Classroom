@@ -219,6 +219,74 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     expect(l.rows[0].phantom).toEqual([])
   })
 
+  // Ledger assertion 7 — caps growth (§3.4 caps wiring, 2026-07-12). The stage grows
+  // ABOVE 1.0× toward its fr SHARE of the budget (geometry-bound), the seats toward the
+  // seat cap, the periphery pinned at 1.0, and se ≤ seats. Growing to the fr share — not
+  // straight to the cap — is what keeps the stage geometry-bound (~1.3 desktop) with the
+  // cap a ceiling that binds only on a very wide screen, restoring the pre-rewrite
+  // behaviour the pure-allocator lost (the earlier 1.27×/1.40× center captions).
+  const A1_CAPS = { center: 1.8, seats: 1.4, nw: 1.0, ne: 1.0, se: 'seats', sw: 1.0 }
+  const A1_WEIGHTS = [1.1, 1.3, 1.1]
+  const bidding = (budget) => computeLayoutLedger({
+    budget, occupied: ['center', 's', 'se', 'nw'],
+    reserves: { center: 220, s: SEAT, se: 222, nw: 89 },
+    tiers: A1_TIERS, seatReserve: SEAT, handBearingAreas: ['s'],
+    caps: A1_CAPS, columnWeights: A1_WEIGHTS,
+  })
+
+  it('caps: the stage grows above 1.0× to its fr share, geometry-bound, cap NON-binding at a desktop budget', () => {
+    const l = bidding(774)
+    expect(l.regions.center.scale).toBeGreaterThan(1.2)
+    expect(l.regions.center.scale).toBeLessThan(1.5) // ~1.31 — NOT the 1.8 cap
+    expect(l.regions.center.binding).toBe('budget')  // geometry binds, not the cap
+    expect(l.outerMargin).toBeGreaterThan(0)         // clustering preserved (surplus → margin)
+  })
+
+  it('caps: the stage reaches its 1.8 cap only on a very wide screen (then the ceiling binds)', () => {
+    const l = bidding(2000)
+    expect(l.regions.center.scale).toBe(1.8)
+    expect(l.regions.center.binding).toBe('cap')
+  })
+
+  it('caps: seats grow toward the 1.4 seat cap and never exceed it', () => {
+    expect(bidding(774).seats.scale).toBeGreaterThan(1)       // grown above natural
+    expect(bidding(774).seats.scale).toBeLessThanOrEqual(1.4)
+    expect(bidding(2000).seats.scale).toBe(1.4)               // cap binds on a wide screen
+  })
+
+  it('caps: the periphery (nw status) stays pinned at its 1.0 cap however wide the budget', () => {
+    const l = bidding(2000)
+    expect(l.regions.nw.scale).toBe(1)
+    expect(l.regions.nw.binding).toBe('natural')
+  })
+
+  it("caps: se honours the 'seats' relationship — cap = min(1, seatScale), never larger than the seats", () => {
+    // wide: seats grow to 1.4 but se is pinned at its ≤ 1.0 ceiling (touch-ergonomic, not typographic)
+    const wide = bidding(2000)
+    expect(wide.regions.se.cap).toBe(1)
+    expect(wide.regions.se.scale).toBeLessThanOrEqual(1)
+    expect(wide.regions.se.scale).toBeLessThanOrEqual(wide.seats.scale)
+    // tight (hero + a west defender, both below 1.0×): se's ceiling tracks the seat scale
+    const tight = computeLayoutLedger({
+      budget: 640, occupied: ['center', 's', 'w', 'se'],
+      reserves: { center: 220, s: SEAT, w: SEAT, se: 222 },
+      tiers: A1_TIERS, seatReserve: SEAT, handBearingAreas: ['s', 'w'],
+      caps: A1_CAPS, columnWeights: A1_WEIGHTS,
+    })
+    expect(tight.seats.scale).toBeLessThan(1)
+    expect(tight.regions.se.cap).toBeCloseTo(tight.seats.scale, 2) // se ceiling = min(1, seatScale)
+    expect(tight.regions.se.scale).toBeLessThanOrEqual(tight.seats.scale + 1e-9)
+  })
+
+  it('caps: default to a no-op — all-1.0 caps equal passing no caps (the min(1, fit) baseline)', () => {
+    const args = { budget: 774, occupied: ['center', 's', 'se', 'nw'], reserves: { center: 220, s: SEAT, se: 222, nw: 89 }, tiers: A1_TIERS, seatReserve: SEAT, handBearingAreas: ['s'], columnWeights: A1_WEIGHTS }
+    const noCaps = computeLayoutLedger(args)
+    const flatCaps = computeLayoutLedger({ ...args, caps: { center: 1, seats: 1, nw: 1, ne: 1, se: 1, sw: 1 } })
+    expect(flatCaps.regions.center.scale).toBe(noCaps.regions.center.scale)
+    expect(flatCaps.seats.scale).toBe(noCaps.seats.scale)
+    expect(noCaps.regions.center.scale).toBe(1) // no caps → clamped at 1.0 (the pre-caps regression baseline)
+  })
+
   // Ledger assertion 3 — review clustering: with a generous budget the columns size
   // to need (not stretched), leaving OUTER MARGIN, so the revealed hands cluster
   // beside the centred auction rather than at the stage extremes.

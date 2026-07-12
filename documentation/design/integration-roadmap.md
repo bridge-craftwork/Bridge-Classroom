@@ -307,19 +307,38 @@ plumbing anyway.*
 Standalone slices under Phase 1 (A1 gallery-first); details in
 [grid-arranger-spec.md](grid-arranger-spec.md) *Review decisions (2026-07-12)*.
 
-**Queued — the ENTIRE remaining backlog; do not start either without picking it
-up explicitly:**
+**Queued — remaining backlog; do not start without picking it up explicitly:**
 
-- **Caps wiring — regression repair.** Restore `min(cap, fit)` for the
-  center/stage (growth to ~1.5): it existed pre-rewrite (`1.27×`/`1.40×` center
-  captions in earlier runs) and was lost in the pure-allocator rewrite. §2's
-  `caps.center: 1.8` is the intent, the allocator's `min(1, fit)` is the bug;
-  reconcile the §2/§3.4 wording and validate against the §6 prediction table.
-- **Caption/label seat-literal audit.** The seats caption was keyed to `seat-s`
-  and broke for W/N/E heroes (fixed). Sweep every caption/label for a hard compass
-  seat where a `heroSeat`-relative role is meant.
+- *(none — both queued gallery-first slices closed 2026-07-12; the next move is the
+  **A1 flip** slice, production adopts `arrangement: 'grid'`, a separate visible-change
+  slice gated on Rick's gallery sign-off.)*
 
-**Closed this session** (PR `feat/a1-auction-metrics-and-play-bottompack`, ships
+**Closed 2026-07-12** (PR `feat/a1-caps-wiring`, ships dark — production a1 stays
+`legacy`, no production render change):
+
+- **Caps wiring — regression repair — CLOSED.** `min(1, fit)` (which pinned the stage
+  at 1.0×) replaced by a caps-aware allocator: `computeLayoutLedger` takes a `caps` map +
+  `columnWeights` and grows each occupied column beyond its natural need toward its **fr
+  share of the budget** (capped at `cap × reserve`), clamping each region to its own cap;
+  `se` cap is the `'seats'` relationship (`min(1, seatScale)`). Growing to the fr share —
+  not straight to the cap — restores the pre-rewrite **geometry-bound** stage (the
+  `1.27×`/`1.40×` captions), not a balloon to the ceiling. **Measured:** center **1.31×**
+  desktop-wide/tablet-landscape (`binding: budget`, cap 1.8 non-binding), **1.18×**
+  laptop-half; seats ~1.0–1.11×; periphery 1.0×; `se ≤ seats`; clustering preserved
+  (outerMargin ~110–126px). The §6 ~1.5 prediction assumed a ~1000px grid; the real A1
+  desktop grid is ~774px → ~1.3, matching the restored captions. **No-caps is a byte-for-
+  byte no-op**, so other surfaces are unaffected. The a1:gallery **auction-height guard
+  is now scale-aware** (`rendered = 2 + scale·(reserve − 2)`, the non-scaling 2px border
+  correction — empirically exact to <0.5px) so it keeps firing after caps moved the
+  bidding center off 1.0×. Reconciled the §2/§3.4/§Review-decisions-2 wording.
+- **Caption/label seat-literal audit — CLOSED.** See the Task-2 findings below / the PR:
+  A1 is `orientation: 'south'` (compass-fixed), so a rotated hero (W/N/E) still renders
+  at its true compass position and compass labels stay correct; the arranger/scene keys
+  everything off `heroSeat`-derived roles or rotated areas. Remaining hard-`seat-s`
+  literals (the gallery walk's bidding-triptych measurement) are intentional — the
+  bidding fixtures are always South by design — and are documented as such in place.
+
+**Closed earlier 2026-07-12** (PR `feat/a1-auction-metrics-and-play-bottompack`, ships
 dark — production a1 stays `legacy`, no production render change):
 
 - **AuctionTable vertical re-measure — CLOSED.** The flagged follow-up from the

@@ -64,6 +64,14 @@ for (const { name, boxes } of fixtures) {
     // Auction top + hand (seat-s) + BiddingBox (se) screen positions — the
     // top-anchor acceptance measures these across auction lengths 1/5/9 (same
     // viewport): auction top stable, hand/BB push DOWN one round each round.
+    // NOTE (seat-literal audit, 2026-07-12): 'seat-s' is an INTENTIONAL hard South
+    // literal here — the a1-bidding-len1/5/9 triptych is South-hero by fixture design
+    // (its whole purpose is the bottom-anchor measurement of the South hand + SE box),
+    // so measuring the South area is correct, not a rotated-hero bug. The scene CAPTION
+    // (above) keys on the first `seat-*` area so it follows a W/N/E hero; only this
+    // triptych-specific geometry probe is pinned to South, and only bidding fixtures
+    // (all South) feed it. A hero-relative rewrite here would measure the wrong region
+    // for the very fixtures it exists to check.
     rects[`${name}/${vp}`] = await page.evaluate(() => {
       const out = {}
       const rect = (el) => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height) } }
@@ -166,35 +174,42 @@ if (haveTrip) {
   console.log('(bottom-anchor acceptance skipped — len1/5/9 fixtures not all present)')
 }
 
-// ── Auction-reserve honesty (metric provenance guard) ─────────────────────────
+// ── Auction-reserve honesty (metric provenance guard, scale-aware) ────────────
 // The rendered AuctionTable height must equal the metric-derived reserve
 // `auctionGrowthReservePx(rounds)` (grid-arranger-spec §1: "headerRowPx/roundRowPx
 // must track the real AuctionTable row heights"). This turns a future typography
 // pass that shifts the row heights — the exact drift that left the 26/33 metric
 // overshooting the compressed auction — into a red walk instead of a silently
-// floating auction. Checked at 1.0× only (the metric's definition point; the
-// table's 2px borders don't scale, so it isn't expected to hold under a scaled
-// center — the honest place to assert the constants is where they're defined).
+// floating auction. SCALE-AWARE since the caps-wiring slice (§3.4) moved the bidding
+// center off 1.0× at every viewport: `--table-scale` scales the em-based rows but NOT
+// the table's fixed 2px border (which headerRowPx bakes in), so the rendered height at
+// a given scale is `BORDER + scale·(reserve − BORDER)` — empirically exact to <0.5px
+// across scales (verified with scripts/measure-auction.mjs: len1 @1.8× → 95.6 predicted
+// vs 95.16 rendered). NOTE: the A1 auction renders in DENSE (console-tile) mode at every
+// viewport — its `.a1-center-auction` max-width (260px) is below the 280px dense
+// threshold even at 1.0× — and `auctionMetrics` was re-baselined FROM these dense A1
+// scenes, so the metric already describes the dense height; dense is CHECKED, not skipped.
 const AUCTION_ROUNDS = { 'a1-bidding-len1': 1, 'a1-bidding-len5': 2, 'a1-bidding-len9': 3 }
+const AUCTION_BORDER_PX = 2 // the .auction-table 2px border headerRowPx bakes in — doesn't scale
 let heightMismatches = 0
 let heightChecks = 0
 for (const [name, rounds] of Object.entries(AUCTION_ROUNDS)) {
   if (!fixtures.some((f) => f.name === name)) continue
   for (const [vp] of Object.entries(viewports)) {
     const scale = centerScale[`${name}/${vp}`] ?? 1
-    if (Math.abs(scale - 1) > 0.01) continue // metric is defined at 1.0× (borders don't scale)
     const r = rects[`${name}/${vp}`]
     if (!r || !r.auction) continue
     heightChecks++
-    const expected = auctionGrowthReservePx(rounds)
+    const reserve = auctionGrowthReservePx(rounds)
+    const expected = AUCTION_BORDER_PX + scale * (reserve - AUCTION_BORDER_PX)
     if (Math.abs(r.auction.h - expected) > 2) {
-      console.error(`  AUCTION-HEIGHT MISMATCH ${name}/${vp}: rendered ${r.auction.h}px vs reserve ${expected}px (rounds=${rounds}) — re-measure auctionMetrics headerRowPx/roundRowPx`)
+      console.error(`  AUCTION-HEIGHT MISMATCH ${name}/${vp}: rendered ${r.auction.h}px vs reserve×scale ${expected.toFixed(1)}px (rounds=${rounds}, scale=${scale}) — re-measure auctionMetrics headerRowPx/roundRowPx`)
       heightMismatches++
     }
   }
 }
 console.log(heightMismatches === 0
-  ? `  auction-height: reserve matches rendered in all ${heightChecks} 1.0× checks (metric honest)`
+  ? `  auction-height: reserve matches rendered in all ${heightChecks} scale-aware checks (metric honest)`
   : `  auction-height: ${heightMismatches}/${heightChecks} MISMATCHES — update auctionMetrics headerRowPx/roundRowPx`)
 
 // ── Generate ──────────────────────────────────────────────────────────────────
