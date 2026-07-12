@@ -15,6 +15,7 @@
     :phase="phase"
     :hero-seat="heroSeat"
     :hero-name="heroName"
+    :declarer="declarer"
     @card-click="(p) => $emit('card-click', p)"
   >
     <template v-if="$slots.center" #center><slot name="center" /></template>
@@ -211,6 +212,11 @@ const props = defineProps({
   // Grid-only: the hero's display name (session user). Seat badges show the
   // FIRST name for the hero seat; partner/opponents derive from the config.
   heroName: {
+    type: String,
+    default: null
+  },
+  // Grid-only: declarer seat on a played/reviewed deal — names declarer + dummy.
+  declarer: {
     type: String,
     default: null
   }

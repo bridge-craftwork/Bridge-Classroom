@@ -173,13 +173,17 @@ function ledgerHtml(name, vp) {
   let l
   try { l = JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return '' }
   const regs = Object.entries(l.regions || {})
-  const bindClass = (b) => (b === 'floor' ? 'b-floor' : b === 'budget' ? 'b-budget' : b === 'cap' ? 'b-cap' : 'b-natural')
+  const bindClass = (b) => (b === 'overflow' ? 'b-overflow' : b === 'floor' ? 'b-floor' : b === 'budget' ? 'b-budget' : b === 'cap' ? 'b-cap' : 'b-natural')
   const rows = regs.map(([area, r]) =>
     `<tr><td>${area}</td><td>${r.reserve}</td><td>${r.allocated}</td><td>${r.scale}×</td><td>${r.tier}</td>` +
     `<td class="${bindClass(r.binding)}" title="losing: ${(r.losing || []).join(', ')}">${r.binding}</td></tr>`).join('')
   const tiers = (l.inputs?.tiers || []).map((t) => '[' + t.join(',') + ']').join(' ')
+  const anyOverflow = regs.some(([, r]) => r.binding === 'overflow')
   const anyFloor = regs.some(([, r]) => r.binding === 'floor')
-  return `<details class="ledger${anyFloor ? ' has-floor' : ''}"><summary>ledger${anyFloor ? ' ⚠ floor-bound' : ''}</summary>` +
+  // Overflow (starved) dominates the summary flag over the legal floor state.
+  const flag = anyOverflow ? ' ⚠ OVERFLOW' : anyFloor ? ' ⚠ floor-bound' : ''
+  const cls = anyOverflow ? ' has-overflow' : anyFloor ? ' has-floor' : ''
+  return `<details class="ledger${cls}"><summary>ledger${flag}</summary>` +
     `<div class="l-inputs">budget ${l.budget} · occ ${(l.inputs?.occupied || []).join(' ')} · tiers ${tiers} · outerMargin ${l.outerMargin}</div>` +
     `<table class="l-table"><thead><tr><th>region</th><th>reserve</th><th>alloc</th><th>scale</th><th>tier</th><th>binding</th></tr></thead>` +
     `<tbody>${rows}</tbody></table></details>`
@@ -222,6 +226,7 @@ figcaption { font-size:11px; color:var(--mut); margin-bottom:6px; } .rep { opaci
 details.ledger { margin-top:8px; font:11px/1.45 ui-monospace,"SF Mono",Menlo,monospace; max-width:340px; }
 details.ledger summary { cursor:pointer; color:var(--mut); user-select:none; }
 details.ledger.has-floor summary { color:#d33; font-weight:700; }
+details.ledger.has-overflow summary { color:#8a0000; font-weight:800; }
 .l-inputs { margin:5px 0 4px; color:var(--mut); white-space:normal; }
 .l-table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
 .l-table th { text-align:left; color:var(--mut); font-weight:600; }
@@ -230,11 +235,13 @@ details.ledger.has-floor summary { color:#d33; font-weight:700; }
 .b-cap { color:#2277cc; }
 .b-budget { background:rgba(200,120,20,.20); color:#a05c0c; border-radius:3px; }
 .b-floor { background:rgba(210,40,40,.24); color:#c00; font-weight:700; border-radius:3px; }
-@media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} }
+/* Overflow / starved (alloc < floor × reserve): darker, heavier than floor. */
+.b-overflow { background:rgba(140,0,0,.42); color:#600; font-weight:800; border-radius:3px; }
+@media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} .b-overflow{background:rgba(200,0,0,.5); color:#ffd0d0;} }
 #toggle-ledgers { margin-top:8px; font:600 12px/1 'DM Sans',system-ui,sans-serif; cursor:pointer; background:var(--line); color:var(--ink); border:none; border-radius:6px; padding:6px 12px; }
 </style></head><body>
 <header><h1>A1 Scene Gallery <span class="ph">Scenario Mastery target composition</span></h1>
-<p>The three A1 states modeled from frozen fixtures — AuctionTable in center, BiddingBox at SE, TableInfo at NW, pinned auction at NE (play/review), narrative floated right. Separate from the component gallery. Walked across the five named viewports. Each grid capture carries its <b>layout ledger</b> (the allocator's accounting) — toggle to see reserve/allocated/scale/binding per region; floor-bound bindings are red.</p>
+<p>The three A1 states modeled from frozen fixtures — AuctionTable in center, BiddingBox at SE, TableInfo at NW, pinned auction at NE (play/review), narrative floated right. Separate from the component gallery. Walked across the five named viewports. Each grid capture carries its <b>layout ledger</b> (the allocator's accounting) — toggle to see reserve/allocated/scale/binding per region; floor-bound bindings are red, and <b>overflow</b> (starved: alloc &lt; floor×reserve) is darker red.</p>
 <button id="toggle-ledgers" onclick="var o=document.querySelector('details.ledger')&&!document.querySelector('details.ledger').open;document.querySelectorAll('details.ledger').forEach(function(d){d.open=o;});">toggle all ledgers</button></header>
 ${body}</body></html>`
 
