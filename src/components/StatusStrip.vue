@@ -2,23 +2,28 @@
   <!-- Phase-aware reference indicators. Bidding: dealer + vulnerability. Play:
        contract + tricks-vs-target (contract-relative) with a minimal vul glyph.
        Review: contract + result. Fed by useTableStatus — no raw state here. -->
-  <div class="status-strip" :class="'phase-' + status.phase">
-    <!-- Identity: contract once known, else the dealer. -->
-    <span v-if="status.contract" class="chip chip-contract">
-      <span class="ct" v-html="contractHtml"></span><span v-if="contractDbl" class="dbl">{{ contractDbl }}</span>
-      <span v-if="status.declarer" class="by">by {{ status.declarer }}</span>
-    </span>
-    <span v-else class="chip chip-dealer">Dealer <strong>{{ status.dealer || '—' }}</strong></span>
+  <div class="status-strip" :class="['phase-' + status.phase, 'density-' + density]">
+    <!-- Pre-contract (bidding): the board · dealer · vul glyph replaces the pill
+         stack — unless we're at chip density, where the text pills read better than
+         a shrunk glyph (item 3, specimen-decided fallback). -->
+    <template v-if="!status.contract">
+      <VulDiamond v-if="density !== 'chip'" :board="board" :dealer="status.dealer" :vul="status.vul" />
+      <template v-else>
+        <span class="chip chip-board" v-if="board != null">Board <strong>{{ board }}</strong></span>
+        <span class="chip chip-dealer">Dealer <strong>{{ status.dealer || '—' }}</strong></span>
+        <span class="chip chip-vul" :class="vulClass">{{ vulLabel }}</span>
+      </template>
+    </template>
 
-    <!-- Vulnerability: a full pill except during play, where it drops to a
-         minimal glyph so the trick count leads. -->
-    <span
-      v-if="status.phase === 'play'"
-      class="vul-dot"
-      :class="vulClass"
-      :title="vulTitle"
-    ></span>
-    <span v-else class="chip chip-vul" :class="vulClass">{{ vulLabel }}</span>
+    <!-- Contract known (play/review): the identity chip + a vul glyph/pill. -->
+    <template v-else>
+      <span class="chip chip-contract">
+        <span class="ct" v-html="contractHtml"></span><span v-if="contractDbl" class="dbl">{{ contractDbl }}</span>
+        <span v-if="status.declarer" class="by">by {{ status.declarer }}</span>
+      </span>
+      <span v-if="status.phase === 'play'" class="vul-dot" :class="vulClass" :title="vulTitle"></span>
+      <span v-else class="chip chip-vul" :class="vulClass">{{ vulLabel }}</span>
+    </template>
 
     <!-- Play: how the declaring side is tracking toward the contract. -->
     <span v-if="status.phase === 'play' && status.tricks.target != null" class="chip chip-tricks">
@@ -38,11 +43,16 @@
 <script setup>
 import { computed } from 'vue'
 import { formatBid } from '../utils/cardFormatting.js'
+import VulDiamond from './VulDiamond.vue'
 
 const props = defineProps({
   // The object from useTableStatus: { phase, dealer, vul, contract, declarer,
   // declaringSide, tricks: { ns, ew, target }, result }.
   status: { type: Object, required: true },
+  // Board number — folded into the pre-contract vul-diamond glyph (item 3).
+  board: { type: [Number, String], default: null },
+  // 'md' shows the vul-diamond glyph; 'chip' falls back to text pills (tile width).
+  density: { type: String, default: 'md' },
 })
 
 // Split off any doubling suffix so formatBid renders the base contract (colored
