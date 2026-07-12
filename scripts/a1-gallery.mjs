@@ -221,7 +221,8 @@ function ledgerHtml(name, vp) {
     `<tr><td>${area}</td><td>${r.reserve}</td><td>${r.allocated}</td><td>${r.scale}×</td><td>${r.tier}</td>` +
     `<td class="${bindClass(r.binding)}" title="losing: ${(r.losing || []).join(', ')}">${r.binding}</td></tr>`).join('')
   const tiers = (l.inputs?.tiers || []).map((t) => '[' + t.join(',') + ']').join(' ')
-  const anyOverflow = regs.some(([, r]) => r.binding === 'overflow')
+  const anyRowOverflow = (l.rows || []).some((r) => (r.overflow || 0) > 4)
+  const anyOverflow = regs.some(([, r]) => r.binding === 'overflow') || anyRowOverflow
   const anyFloor = regs.some(([, r]) => r.binding === 'floor')
   const anyPhantom = (l.rows || []).some((r) => (r.phantom || []).length)
   // Overflow (starved) dominates the summary flag over the legal floor state.
@@ -239,7 +240,12 @@ function ledgerHtml(name, vp) {
     const h = r.height != null ? r.height : '—'
     const c = r.contentHeight != null ? r.contentHeight : '—'
     const slack = r.slack || 0
-    const slackCell = slack > 4 ? `<span class="r-slack">${slack} ${r.vbinding || 'fill'}</span>` : `${slack}`
+    const over = r.overflow || 0
+    // Content taller than its track → overflow (red), same vocabulary as columns;
+    // otherwise the amber slack cell (or a bare 0).
+    const slackCell = over > 4
+      ? `<span class="r-overflow">${over} overflow</span>`
+      : slack > 4 ? `<span class="r-slack">${slack} ${r.vbinding || 'fill'}</span>` : `${slack}`
     return `<tr><td>${rowName[r.index]}</td><td>${occ}</td><td>${coll || '—'}</td><td>${h}</td><td>${c}</td><td>${slackCell}</td></tr>`
   }).join('')
   // Stage line — the vertical headline: total · content · slack · binding.
@@ -308,10 +314,11 @@ details.ledger.has-overflow summary { color:#8a0000; font-weight:800; }
 .r-coll { color:var(--mut); opacity:.7; }
 .r-phantom { background:rgba(210,40,40,.22); color:#c00; font-weight:700; border-radius:3px; padding:0 3px; }
 .r-slack { background:rgba(200,120,20,.22); color:#a05c0c; font-weight:700; border-radius:3px; padding:0 3px; }
+.r-overflow { background:rgba(210,40,40,.30); color:#c00; font-weight:800; border-radius:3px; padding:0 3px; }
 .l-stage { margin-top:5px; font:600 11px/1.4 ui-monospace,"SF Mono",Menlo,monospace; padding:3px 7px; border-radius:4px; display:inline-block; }
 .l-stage.stage-fill { background:rgba(200,120,20,.18); color:#a05c0c; }
 .l-stage.stage-wrap { background:rgba(29,138,95,.16); color:#1d8a5f; }
-@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} .r-slack{color:#e0a044;} .l-stage.stage-fill{color:#e0a044;} .l-stage.stage-wrap{color:#5fd39b;} }
+@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} .r-slack{color:#e0a044;} .r-overflow{color:#ffb0b0;} .l-stage.stage-fill{color:#e0a044;} .l-stage.stage-wrap{color:#5fd39b;} }
 @media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} .b-overflow{background:rgba(200,0,0,.5); color:#ffd0d0;} }
 #toggle-ledgers { margin-top:8px; font:600 12px/1 'DM Sans',system-ui,sans-serif; cursor:pointer; background:var(--line); color:var(--ink); border:none; border-radius:6px; padding:6px 12px; }
 </style></head><body>

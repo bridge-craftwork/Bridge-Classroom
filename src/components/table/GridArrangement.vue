@@ -48,7 +48,7 @@
          a ::before, so they add nothing to track sizing; display:none until the
          diagnostic is on. Makes the "phantom South" answerable from the box image. -->
     <div v-for="rb in rowBands" :key="'rb' + rb.index"
-         class="row-band" :class="{ 'has-phantom': rb.phantom.length, 'has-slack': rb.slack > 4 }"
+         class="row-band" :class="{ 'has-phantom': rb.phantom.length, 'has-slack': rb.slack > 4, 'has-overflow': rb.overflow > 4 }"
          :style="{ gridRow: rb.index + 1, gridColumn: '1 / -1', '--row-slack': rb.slack + 'px' }"
          :data-row-band-label="rb.label" aria-hidden="true"></div>
 
@@ -331,8 +331,10 @@ const rowBands = computed(() => {
     const phantom = r.phantom || []
     const occ = (r.occupied || []).join(' ') || '—'
     const tail = phantom.length ? '  ✗' + phantom.join(' ✗') : ''
-    const vlabel = v.height != null ? ` · ${v.height}h ${v.contentHeight}c${v.slack > SLACK_EPS ? ` · ${v.slack} slack` : ''}` : ''
-    return { index: r.index, phantom, slack: v.slack || 0, label: `${ROW_NAME[r.index]}: ${occ}${tail}${vlabel}` }
+    const over = v.overflow > SLACK_EPS ? ` · ${v.overflow} OVERFLOW` : ''
+    const slackTxt = v.slack > SLACK_EPS ? ` · ${v.slack} slack` : ''
+    const vlabel = v.height != null ? ` · ${v.height}h ${v.contentHeight}c${slackTxt}${over}` : ''
+    return { index: r.index, phantom, slack: v.slack || 0, overflow: v.overflow || 0, label: `${ROW_NAME[r.index]}: ${occ}${tail}${vlabel}` }
   })
 })
 // Stage line for the overlay strip: total · content · slack · binding.
@@ -430,11 +432,37 @@ function measureVertical(el) {
   const topo = ledger.value?.rows
   if (!topo) return
   const trackH = getComputedStyle(el).gridTemplateRows.split(/\s+/).map(parseFloat).filter((n) => !isNaN(n))
+  // The stage (center) SPANS rows when it absorbs an empty centre-column seat
+  // (n-/s-absorption). Attributing its full box to the single row it's listed in
+  // reads as a spurious content>track "overflow" (the trick area is 220px against a
+  // 213px row it deliberately spans past) — so measure it against its WHOLE SPAN,
+  // and cap its contribution to any one row at that row's track. Genuine per-row
+  // overflow (a seat/corner taller than its own track) still surfaces, now labelled
+  // 'overflow' (red) — the same vocabulary the columns section uses.
+  const centerStart = areaOccupied('n') ? 1 : 0
+  const centerEnd = areaOccupied('s') ? 1 : 2
+  const centerSpanTrack = trackH.slice(centerStart, centerEnd + 1).reduce((s, t) => s + (t || 0), 0)
   const rows = topo.map((r, i) => {
     const height = Math.round(trackH[i] ?? 0)
-    const contentHeight = Math.round(Math.max(0, ...r.occupied.map((a) => sizes[sizeKeyFor(a)]?.h || 0)))
+    let contentHeight = 0
+    let overflow = 0
+    for (const a of r.occupied) {
+      const ch = sizes[sizeKeyFor(a)]?.h || 0
+      if (a === 'center') {
+        // Stage: overflow measured against its full span (it can't overflow a row it
+        // spans past); its contribution to THIS row's content is capped at the track.
+        overflow = Math.max(overflow, ch - centerSpanTrack)
+        contentHeight = Math.max(contentHeight, Math.min(ch, height))
+      } else {
+        contentHeight = Math.max(contentHeight, ch)
+        overflow = Math.max(overflow, ch - height)
+      }
+    }
+    contentHeight = Math.round(contentHeight)
+    overflow = Math.round(Math.max(0, overflow))
     const slack = Math.max(0, height - contentHeight)
-    return { height, contentHeight, slack, vbinding: slack > SLACK_EPS ? 'fill' : 'content' }
+    const vbinding = overflow > SLACK_EPS ? 'overflow' : slack > SLACK_EPS ? 'fill' : 'content'
+    return { height, contentHeight, slack, overflow, vbinding }
   })
   const total = Math.round(el.clientHeight)
   const slack = rows.reduce((s, r) => s + r.slack, 0)
