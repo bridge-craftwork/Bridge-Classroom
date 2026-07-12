@@ -23,6 +23,7 @@
       <SeatPanel
         :hand="hands[seat]"
         :seat="seat"
+        :name="seatBadge(seat)"
         :show-hcp="showHcp"
         :clickable="clickableSeat === seat"
         :density="seatDensity(seat)"
@@ -57,7 +58,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
-import { seatToArea, anchorFor, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
+import { seatToArea, anchorFor, seatRole, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 import { biddingBoxReservePx } from '../biddingBoxMetrics.js'
 
@@ -73,6 +74,7 @@ const props = defineProps({
   config: { type: Object, required: true },
   phase: { type: String, default: 'bidding' },
   heroSeat: { type: String, default: 'S' },
+  heroName: { type: String, default: null },
 })
 defineEmits(['card-click'])
 
@@ -160,6 +162,20 @@ function areaOccupied(area) {
   return seat ? seatVisible(seat) : false
 }
 const visibleSeats = computed(() => SEATS.filter((s) => areaOccupied(seatArea(s))))
+
+// Seat identity BADGE (item 4). config.seatBadges maps the seat's role relative
+// to the hero → 'name' (hero's first name) | 'label' ("Partner") | 'off'. 'off'
+// (or no config) returns null, so SeatChip renders the plain compass label — the
+// "badge off" state. Roles derive from heroSeat, so badges rotate with anchor.
+function firstNameOf(full) {
+  return (full || '').trim().split(/\s+/)[0] || null
+}
+function seatBadge(seat) {
+  const mode = props.config.seatBadges?.[seatRole(seat, props.heroSeat)] || 'off'
+  if (mode === 'name') return firstNameOf(props.heroName)
+  if (mode === 'label') return 'Partner'
+  return null
+}
 
 // A region's reserve WIDTH (px, 1.0×) for column provisioning.
 function reserveForArea(area) {

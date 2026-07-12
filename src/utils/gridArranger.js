@@ -24,6 +24,22 @@ export function anchorFor(orientation, heroSeat = 'S') {
   return orientation === 'hero' ? (heroSeat || 'S') : 'S'
 }
 
+/** The seat facing `seat` across the table (partner): two clock steps away. */
+export function partnerOf(seat) {
+  return CLOCK[(CLOCK.indexOf(seat) + 2) % 4]
+}
+
+/**
+ * A seat's role relative to the hero — 'hero', 'partner', or 'opponent'.
+ * Keyed by compass seat, so labels attach to the seat and follow it under any
+ * orientation anchor (the arranger rotates seat→area separately).
+ */
+export function seatRole(seat, heroSeat = 'S') {
+  if (seat === heroSeat) return 'hero'
+  if (seat === partnerOf(heroSeat)) return 'partner'
+  return 'opponent'
+}
+
 /**
  * The per-region effective scale (§3). Grows to fill up to the role cap and
  * shrinks to fit when the region can't honor its size — never below the

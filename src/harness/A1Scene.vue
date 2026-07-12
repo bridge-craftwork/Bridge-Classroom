@@ -16,6 +16,8 @@
         :clickable-seat="f.clickableSeat || null"
         :played-cards="f.playedCards || null"
         :hide-played-cards="phase === 'play'"
+        :hero-seat="f.seat || 'S'"
+        :hero-name="f.heroName || 'Rick Wilson'"
       >
         <!-- center: live auction (bidding), the trick (play), or the completed
              auction + result (review — NE is freed, densities ruling) -->

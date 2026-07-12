@@ -1,8 +1,29 @@
 import { describe, it, expect } from 'vitest'
 import {
-  seatToArea, anchorFor, computeRegionScale, uniformSeatScale, rowReservePx,
-  computeLayoutLedger,
+  seatToArea, anchorFor, partnerOf, seatRole, computeRegionScale, uniformSeatScale,
+  rowReservePx, computeLayoutLedger,
 } from '../gridArranger.js'
+
+describe('seatRole / partnerOf (item 4 — badges by role)', () => {
+  it('partnerOf faces across the table', () => {
+    expect(partnerOf('S')).toBe('N')
+    expect(partnerOf('N')).toBe('S')
+    expect(partnerOf('E')).toBe('W')
+    expect(partnerOf('W')).toBe('E')
+  })
+  it('roles are relative to the hero seat (South hero)', () => {
+    expect(seatRole('S', 'S')).toBe('hero')
+    expect(seatRole('N', 'S')).toBe('partner')
+    expect(seatRole('E', 'S')).toBe('opponent')
+    expect(seatRole('W', 'S')).toBe('opponent')
+  })
+  it('roles rotate with the hero (West hero → E is partner)', () => {
+    expect(seatRole('W', 'W')).toBe('hero')
+    expect(seatRole('E', 'W')).toBe('partner')
+    expect(seatRole('N', 'W')).toBe('opponent')
+    expect(seatRole('S', 'W')).toBe('opponent')
+  })
+})
 
 describe('seatToArea (§1 rotation)', () => {
   it("south anchor is compass-fixed (identity)", () => {
