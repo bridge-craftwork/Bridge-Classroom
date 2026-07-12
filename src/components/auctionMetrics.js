@@ -13,14 +13,24 @@ export const AUCTION_UNIT = {
   // header band compressed ~⅓; that feeds the grid arranger's height reserve.)
   minWidthPx: 220,
   columns: 4,
-  // Vertical footprint (px, 1.0×), MEASURED from the gallery (scripts/measure):
-  // the W/N/E/S header band and one call-round row. Used by the arranger to size
-  // the bidding stage's growth reserve (grid-arranger-spec §1). These must track the
-  // real AuctionTable row heights — if they overshoot, `growthReservePx(1)` exceeds
-  // a one-round auction and the bottom-anchored auction floats down inside the
-  // reserve (a per-round wobble); if they undershoot, it clips.
-  headerRowPx: 26,
-  roundRowPx: 33,
+  // Vertical footprint (px, 1.0×), MEASURED from the gallery (scripts/measure-
+  // auction.mjs, re-baselined 2026-07-12 after the glyph-scale restyle). These must
+  // track the real AuctionTable row heights — if they overshoot, `growthReservePx(1)`
+  // exceeds a one-round auction and the bottom-anchored auction floats down inside
+  // the reserve; if they undershoot, it clips. The a1:gallery walk now ASSERTS the
+  // rendered auction height equals `auctionGrowthReservePx(rounds)` within ±2px
+  // (bidding len1/5/9), so a future typography pass that shifts these row heights
+  // fails the walk instead of silently re-floating the auction.
+  //
+  // Measured full-table heights at 1.0×: 1 round → 54, 2 → 89, 3 → 124 (marginal
+  // 35/round). So `roundRowPx = 35`, and `headerRowPx` is the FIXED overhead — the
+  // W/N/E/S band (~16px) PLUS the table's 2px top/bottom borders — chosen so
+  // `headerRowPx + rounds·roundRowPx` reproduces the measured heights exactly
+  // (19 + 35 = 54, 19 + 70 = 89, 19 + 105 = 124). The restyle compressed the header
+  // band (padding 8→2px, font 14→11px), which is why the pre-restyle 26/33 (reserve
+  // 59) overshot the real 54 by 5px.
+  headerRowPx: 19,
+  roundRowPx: 35,
 }
 
 // Natural width (px, 1.0×) the auction needs — its four-column grid min-width.

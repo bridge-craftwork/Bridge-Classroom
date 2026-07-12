@@ -30,6 +30,20 @@ export function partnerOf(seat) {
 }
 
 /**
+ * The bottom corner the ACTION cluster (bidding box in bidding, Undo/Claim in play)
+ * rides in — adjacent to the hero's column so it clusters with the hero rather than
+ * sitting in a fixed compass corner (§ play bottom-pack). Hero in the LEFT column
+ * (area 'w', a screen-left defender) → 'sw'; otherwise 'se' (a South or East hero,
+ * and the default physical bidding-box position). Keyed on the hero's AREA, so it
+ * follows the orientation anchor.
+ * @param {'n'|'e'|'s'|'w'} heroArea
+ * @returns {'se'|'sw'}
+ */
+export function actionCornerFor(heroArea) {
+  return heroArea === 'w' ? 'sw' : 'se'
+}
+
+/**
  * A seat's role relative to the hero — 'hero', 'partner', or 'opponent'.
  * Keyed by compass seat, so labels attach to the seat and follow it under any
  * orientation anchor (the arranger rotates seat→area separately).
@@ -201,12 +215,16 @@ export function computeLayoutLedger(o) {
 
   // Row bands (top / middle / bottom) — the vertical companion to `columns`, so
   // a hidden seat's empty band is legible in the ledger, not just the image.
-  // `phantom` = hidden SEAT areas that leave a dead band (`n` is absorbed by the
-  // stage when empty, so it never phantoms; `s`/`w`/`e` do).
+  // `phantom` = hidden SEAT areas that leave a dead band. The CENTRE-column seats
+  // `n` and `s` are absorbed by the stage when empty (n-absorption lifts the stage,
+  // s-absorption drops it — grid-arranger-spec §1 occupancy model), so they never
+  // phantom; only the SIDE seats `w`/`e` leave a genuine dead band (the stage can't
+  // absorb sideways). This is the play bottom-pack cure for the "phantom South":
+  // a hidden declarer's `s` cell is now stage, not a void.
   const rows = LEDGER_ROWS.map((areas, index) => {
     const occupied = areas.filter((a) => occ.has(a))
     const collapsed = areas.filter((a) => !occ.has(a))
-    const phantom = collapsed.filter((a) => SEAT_AREAS.has(a) && a !== 'n')
+    const phantom = collapsed.filter((a) => SEAT_AREAS.has(a) && a !== 'n' && a !== 's')
     return { index, occupied, collapsed, phantom }
   })
 

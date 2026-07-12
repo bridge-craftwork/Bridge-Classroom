@@ -302,27 +302,62 @@ shipped early (#101/#102) — see the 🟡 status markers below.)*
 Phases 1–3 built, and the capability dial needs ContextPanel-era capability
 plumbing anyway.*
 
-### Queued grid-arranger slices (from the 2026-07-12 gallery review)
+### Grid-arranger slices — status (2026-07-12 gallery review)
 
 Standalone slices under Phase 1 (A1 gallery-first); details in
 [grid-arranger-spec.md](grid-arranger-spec.md) *Review decisions (2026-07-12)*.
+
+**Queued — the ENTIRE remaining backlog; do not start either without picking it
+up explicitly:**
 
 - **Caps wiring — regression repair.** Restore `min(cap, fit)` for the
   center/stage (growth to ~1.5): it existed pre-rewrite (`1.27×`/`1.40×` center
   captions in earlier runs) and was lost in the pure-allocator rewrite. §2's
   `caps.center: 1.8` is the intent, the allocator's `min(1, fit)` is the bug;
   reconcile the §2/§3.4 wording and validate against the §6 prediction table.
-- **Play-cluster bottom-pack.** Extend the bidding anchor model to the play phase
-  (content-sized rows, cluster at the floor); Undo/Claim ride the cluster
-  (relocated from the SE corner to the hero's bottom cluster).
 - **Caption/label seat-literal audit.** The seats caption was keyed to `seat-s`
   and broke for W/N/E heroes (fixed). Sweep every caption/label for a hard compass
   seat where a `heroSeat`-relative role is meant.
 
-**Open re-eval:** NE/SE at the 0.65 floor at laptop-half is accepted+flagged for
-now. Re-check after the **auction glyph restyle**; if still floored, pull **Phase
-5.1 compact AuctionTable density** forward as a starvation response (not new
-machinery).
+**Closed this session** (PR `feat/a1-auction-metrics-and-play-bottompack`, ships
+dark — production a1 stays `legacy`, no production render change):
+
+- **AuctionTable vertical re-measure — CLOSED.** The flagged follow-up from the
+  #178 restyle audit. That audit **validated the WIDTH reserve as current**
+  (`auctionReservePx = 220`, confirmed-unchanged: the bigger glyphs fit the
+  previously-roomy cells) but **never re-measured the VERTICAL metric** — the stale
+  half. `auctionMetrics.headerRowPx`/`roundRowPx` are now reconciled against the
+  restyled CSS (26/33 → **19/35**, reserve 59 → the real **54**, so the
+  bottom-anchored auction no longer floats inside an oversized reserve), and guarded
+  **permanently** by the a1:gallery **±2px auction-height assertion** (rendered
+  height == `auctionGrowthReservePx(rounds)` at 1.0×, **12/12 passing**) so a future
+  typography pass fails the walk instead of silently re-floating the auction.
+- **Play-cluster bottom-pack + s-absorption — CLOSED.** Acceptance met and
+  instrumented. Extended the bidding anchor model to play (`anchor.play: 'bottom'`
+  → content-sized rows): the cardplay stage flipped **viewport-fill → shrink-wrap**
+  (laptop-half **739h → 502h**; desktop 835h → 544h), the **~232–268px bottom-row
+  void collapsed to the designed 12px** fill, **Undo/Claim rides the hero cluster**
+  (`actionCornerFor` → SW under a screen-left West defender), and the **phantom `s`
+  is absorbed at the source** (s-absorption, mirror of n-absorption). The
+  **measurement-model fix rode along** (commit `ac38531`): span-aware vertical
+  accounting (a row-spanning stage measured against its whole span, not one row's
+  track) + a red `overflow` vbinding for rows, so a genuine content>track
+  encroachment can no longer hide unlabeled. Bidding triptych + review unaffected.
+
+**Decision — NE/SE 0.65 floor at laptop-half: ACCEPTED, with a revisit trigger.**
+In three-hand defense scenes at laptop-half the **pinned reference auction** (NE)
+renders at the 0.65 legibility floor (the relocated play controls now ride the
+hero's tier-0 column at 1.0×, so the live floor case is the NE reference only).
+**Accepted on CONTENT grounds, not pixel grounds:** in the current A1 defense
+lessons the student *did not bid the auction* — it arrives as given context, the
+coach text carries what matters from it, and the cardplay decisions in the existing
+decks rarely depend on auction inference. A reference the lesson barely references
+can be small. The restyled typography also softens the cost: today's 0.65× ≈
+**15–16px** calls, larger than what the old typography's 0.66× delivered.
+**Revisit trigger:** if defense lessons enter the curriculum where *auction
+inference is the point* (declarer's bidding informing the defense), this ruling
+re-opens — and the prepared response is **Phase 5's compact AuctionTable density
+pulled forward** as a starvation response (existing machinery, no new design).
 
 ---
 

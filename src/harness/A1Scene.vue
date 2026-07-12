@@ -68,14 +68,19 @@
           </div>
         </template>
 
-        <!-- SE: bidding box (bidding) / play controls (play). Provided ONLY when it
-             has content, so the arranger collapses the se column in review (an
-             always-provided slot would over-count — occupancy is gated at source). -->
-        <template v-if="hasAction" #se>
-          <div v-if="action === 'bidding-box'" class="a1-se">
+        <!-- Action cluster: bidding box (bidding) at SE beside the South hero; play
+             controls (Undo/Claim) at the hero's bottom corner — SE for a South/East
+             hero, SW for a screen-left West defender (playActionArea, shared
+             actionCornerFor with the arranger so the slot and occupancy agree).
+             Provided ONLY when it has content, so the arranger collapses the corner
+             in review (an always-provided slot would over-count). -->
+        <template v-if="action === 'bidding-box'" #se>
+          <div class="a1-se">
             <BiddingBox :last-bid="f.lastBid || null" :can-double="!!f.canDouble" :can-redouble="!!f.canRedouble" />
           </div>
-          <div v-else-if="phase === 'play'" class="a1-se a1-controls">
+        </template>
+        <template v-else-if="phase === 'play'" #[playActionArea]>
+          <div class="a1-se a1-controls">
             <button class="a1-ctl" type="button">Undo</button>
             <button class="a1-ctl a1-ctl-primary" type="button">Claim</button>
           </div>
@@ -109,6 +114,7 @@ import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import ContextPanel from '../components/ContextPanel.vue'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
+import { seatToArea, anchorFor, actionCornerFor } from '../utils/gridArranger.js'
 import a1Config from '../table-configs/a1.tableConfig.js'
 
 const props = defineProps({ fixture: { type: Object, required: true } })
@@ -129,8 +135,12 @@ const hasContext = computed(() => !!f.value.context)
 const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext })
 const action = slots.action
 const center = slots.center
-// SE has content only during bidding (box) or play (controls) — never review.
-const hasAction = computed(() => action.value === 'bidding-box' || phase.value === 'play')
+// The corner the play controls slot into — hero-relative (shared with the arranger's
+// actionCornerFor so slot placement and occupancy/reserve agree). South/East hero →
+// 'se'; a screen-left West defender → 'sw', riding under the hero's hand.
+const playActionArea = computed(() =>
+  actionCornerFor(seatToArea(f.value.seat || 'S', anchorFor(a1Config.orientation, f.value.seat || 'S'))),
+)
 
 // Fix 4: the SHELL consumes config.shell.perViewport (it was ignored — a
 // hardcoded 720px breakpoint left tablet-portrait two-column). Match by real

@@ -279,11 +279,11 @@ function tooltipFor(bidIdx) {
   border: 2px solid #333;
   border-radius: 4px;
   overflow: hidden;
-  /* Floor matches the BiddingBox's natural width (7×36 level buttons + gaps +
-     padding = 308px) so a shrink-wrapped auction lines up with the bidding box
-     below it and stays stable from empty through a full auction, instead of
+  /* Four-column min-width floor (`--at-min-w`, single-sourced from
+     auctionMetrics.AUCTION_UNIT.minWidthPx = 220px and always set on the root) so a
+     shrink-wrapped auction stays stable from empty through a full auction instead of
      tracking bid content. `dense` (console tiles) drops this to 0. */
-  min-width: calc(var(--at-min-w, 308px) * var(--table-scale));
+  min-width: calc(var(--at-min-w) * var(--table-scale));
 }
 
 /* Console-tile density (< 280px): drop the min-width floor so all four columns

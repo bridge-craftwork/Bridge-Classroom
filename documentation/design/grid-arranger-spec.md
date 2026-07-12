@@ -151,7 +151,13 @@ diagnostic, §5.1):
 - **`auctionMetrics.headerRowPx`/`roundRowPx` must track the real AuctionTable row
   heights** (measured, not guessed): if the reserve overshoots a one-round auction,
   the bottom-anchored auction floats down inside it — a per-round wobble in the
-  auction top. Measure with `scripts/` and correct the metric, don't fudge the CSS.
+  auction top. Measure with `scripts/measure-auction.mjs` and correct the metric,
+  don't fudge the CSS. **Re-measured 2026-07-12** after the glyph-scale restyle
+  compressed the header band: 26/33 (reserve 59) → **19/35** (reserve 54, the real
+  one-round height). Provenance is now guarded — the a1:gallery walk **asserts** the
+  rendered auction height equals `auctionGrowthReservePx(rounds)` within ±2px at
+  1.0× (len1/5/9), so the next typography pass that shifts these rows fails the walk
+  instead of silently re-floating the auction.
 
 > **The slack bug, and the ruling (2026-07-11).** The first cut made the *shell
 > frame* viewport-height and used a `1fr` slack row, so "slack renders above the
@@ -328,6 +334,18 @@ from `floor` (pinned at the floor but it fits). Unit-tested directly
 (`computeLayoutLedger`): no floor-bound regions at laptop-half bidding, uniform
 seat scales across columns, review clustering (surplus → margin).
 
+**Principle — every layout mechanism needs its measurement counterpart.** Spans,
+absorption, phantom collapse each change how the render occupies the grid; each
+must have a matching rule in the ledger's accounting (the width allocator *and* the
+display-only vertical measurement), or the ledger drifts from the layout it
+describes and reports phantom defects. Concretely: n-/s-absorption make the stage
+span rows, so the vertical accounting measures a spanning stage against its **whole
+span**, not one row's track (else it reads a spurious content>track); phantom
+collapse excludes absorbed centre seats; and any genuine content>track surfaces as
+a red `overflow` vbinding — the same vocabulary the columns use. A mechanism shipped
+without its measurement counterpart is an unlabeled-defect generator (the 7px
+mid-row artifact of 2026-07-12 was exactly this).
+
 **Floor-protection / corner rule (2026-07-12).** Every occupied column reserves
 `floor × need` (its overflow threshold) *before* the surplus grows columns toward
 natural need by tier. A lone corner (NW/NE/SE/SW) rides at its floor minimum
@@ -336,15 +354,24 @@ region only reports `overflow` when even the floor-minimums can't all fit.
 
 ### Review decisions (2026-07-12) — accepted tradeoffs & queued slices
 
-1. **NE/SE floor at laptop-half: accepted and flagged, not forced.** At extreme
-   tightness (defensive cardplay at laptop-half) the pinned auction / controls
-   (NE/SE) sit at the 0.65 floor rather than shrink the hero/dummy hands —
-   working-set protection wins. This is **accepted and shown honestly** in the
-   ledger (red `floor`/`overflow`); "no floor bindings" is not a hard invariant at
-   every viewport. **Re-evaluate after the auction glyph restyle lands** — a
-   narrower auction may lift NE on its own. **If it's still floored, the response
-   is Phase 5's compact AuctionTable density (§ roadmap Phase 5) pulled forward as
-   a starvation response — existing planned machinery, not new capability.**
+1. **NE/SE floor at laptop-half: ACCEPTED (ruling, not just flagged), with a
+   revisit trigger.** In three-hand defense scenes at laptop-half the **pinned
+   reference auction** (NE) sits at the 0.65 legibility floor rather than shrink the
+   hero/dummy hands — working-set protection wins. (After play bottom-pack the play
+   controls relocated to the hero's tier-0 column and ride at 1.0×, so the live
+   floor case is the NE *reference* auction only; a hero-East scene would put the
+   controls at SE, symmetric.) **Accepted on CONTENT grounds, not pixel grounds:**
+   in the current A1 defense lessons the student *did not bid the auction* — it
+   arrives as given context, the coach text carries what matters from it, and the
+   cardplay decisions in the existing decks rarely depend on auction inference. A
+   reference the lesson barely references can be small. The restyled typography also
+   softens it: today's 0.65× ≈ **15–16px** calls, larger than the old typography's
+   0.66× delivered. Shown honestly in the ledger (red `floor`); "no floor bindings"
+   is **not** a hard invariant at every viewport. **Revisit trigger:** if defense
+   lessons enter the curriculum where *auction inference is the point* (declarer's
+   bidding informing the defense), this ruling re-opens — and the prepared response
+   is **Phase 5's compact AuctionTable density pulled forward** as a starvation
+   response (existing planned machinery, not new capability).
 
 2. **Caps wiring — regression repair, queued as its own slice.** `scale.caps > 1.0`
    is **not wired** (the allocator caps at `min(1, fit)`), but this is a
@@ -355,11 +382,22 @@ region only reports `overflow` when even the floor-minimums can't all fit.
    is itself the incorrect artifact of the regression and gets reconciled in this
    slice. The slice **validates against the §6 prediction table** (center ≈ 1.5).
 
-3. **Play-cluster bottom-pack — queued as its own slice.** Scope: **extend the
-   bidding anchor model to play** (content-sized rows, cluster packed at the
-   floor), with **Undo/Claim riding the cluster** (relocated from the SE corner to
-   the hero's bottom cluster). Improves the play scene's vertical packing; does not
-   affect the NE/SE horizontal budget above.
+3. **Play-cluster bottom-pack — SHIPPED (2026-07-12).** Extended the bidding anchor
+   model to play (`anchor.play: 'bottom'` → content-sized rows). **s-absorption**
+   (mirror of n-absorption) drops the stage into a hidden declarer's empty `s`
+   cell, curing the "phantom South" dead band; the ledger's phantom now excludes
+   both centre-column seats (`n`/`s`), flagging only a hidden SIDE seat. Content
+   rows flip the cardplay stage viewport-fill → shrink-wrap (slack 327→36 desktop /
+   261→24 laptop-half). **Undo/Claim ride the hero's bottom corner** via
+   `actionCornerFor(heroArea)` — SE for a South/East hero, SW for a screen-left West
+   defender — the arranger relocating the configured `action` role and the scene
+   placing its slot through the same helper. Did not touch the NE/SE horizontal
+   budget (decision 1 still stands). **Measurement-model fix rode along** (commit
+   `ac38531`): the vertical accounting is now **span-aware** — a row-spanning stage
+   (n-/s-absorption) is measured against its whole span, not one row's track, which
+   removed a spurious 7px "content>track" the mid row reported unlabeled — and a
+   genuine per-row encroachment now shows a red `overflow` vbinding, the same
+   vocabulary the columns section uses. See the §3 measurement-counterpart principle.
 
 4. **Generalize the seats-caption fix.** The gallery caption keyed "seats" to a
    literal `seat-s`, so it vanished when the hero sits W/N/E (fixed 2026-07-12).

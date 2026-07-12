@@ -7,6 +7,7 @@ import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
 import { pathToFileURL } from 'url'
+import { auctionGrowthReservePx } from '../src/components/auctionMetrics.js'
 
 const BASE = process.env.HARNESS_URL || 'http://localhost:4173'
 const FIX_DIR = 'src/harness/fixtures-a1'
@@ -31,6 +32,7 @@ let shots = 0
 let labelLedgerMismatches = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
 const rects = {}   // `${name}/${vp}` → { 'seat-s': {top,left,bottom}, se: {…} } — hand/BB screen positions (bottom-anchor acceptance)
+const centerScale = {} // `${name}/${vp}` → the center region's --region-scale (auction-height honesty check)
 for (const { name, boxes } of fixtures) {
   for (const [vp, dim] of Object.entries(viewports)) {
     const page = await browser.newPage({ viewport: { width: dim.w, height: dim.h }, deviceScaleFactor: 1 })
@@ -58,6 +60,7 @@ for (const { name, boxes } of fixtures) {
     if (seatsScale != null) parts.push(`seats ${seatsScale}×`)
     for (const r of ['ne', 'se', 'nw']) if (scales[r] != null) parts.push(`${r} ${scales[r]}×`)
     capText[`${name}/${vp}`] = parts.join(' · ')
+    centerScale[`${name}/${vp}`] = scales.center != null ? parseFloat(scales.center) : 1
     // Auction top + hand (seat-s) + BiddingBox (se) screen positions — the
     // top-anchor acceptance measures these across auction lengths 1/5/9 (same
     // viewport): auction top stable, hand/BB push DOWN one round each round.
@@ -163,6 +166,37 @@ if (haveTrip) {
   console.log('(bottom-anchor acceptance skipped — len1/5/9 fixtures not all present)')
 }
 
+// ── Auction-reserve honesty (metric provenance guard) ─────────────────────────
+// The rendered AuctionTable height must equal the metric-derived reserve
+// `auctionGrowthReservePx(rounds)` (grid-arranger-spec §1: "headerRowPx/roundRowPx
+// must track the real AuctionTable row heights"). This turns a future typography
+// pass that shifts the row heights — the exact drift that left the 26/33 metric
+// overshooting the compressed auction — into a red walk instead of a silently
+// floating auction. Checked at 1.0× only (the metric's definition point; the
+// table's 2px borders don't scale, so it isn't expected to hold under a scaled
+// center — the honest place to assert the constants is where they're defined).
+const AUCTION_ROUNDS = { 'a1-bidding-len1': 1, 'a1-bidding-len5': 2, 'a1-bidding-len9': 3 }
+let heightMismatches = 0
+let heightChecks = 0
+for (const [name, rounds] of Object.entries(AUCTION_ROUNDS)) {
+  if (!fixtures.some((f) => f.name === name)) continue
+  for (const [vp] of Object.entries(viewports)) {
+    const scale = centerScale[`${name}/${vp}`] ?? 1
+    if (Math.abs(scale - 1) > 0.01) continue // metric is defined at 1.0× (borders don't scale)
+    const r = rects[`${name}/${vp}`]
+    if (!r || !r.auction) continue
+    heightChecks++
+    const expected = auctionGrowthReservePx(rounds)
+    if (Math.abs(r.auction.h - expected) > 2) {
+      console.error(`  AUCTION-HEIGHT MISMATCH ${name}/${vp}: rendered ${r.auction.h}px vs reserve ${expected}px (rounds=${rounds}) — re-measure auctionMetrics headerRowPx/roundRowPx`)
+      heightMismatches++
+    }
+  }
+}
+console.log(heightMismatches === 0
+  ? `  auction-height: reserve matches rendered in all ${heightChecks} 1.0× checks (metric honest)`
+  : `  auction-height: ${heightMismatches}/${heightChecks} MISMATCHES — update auctionMetrics headerRowPx/roundRowPx`)
+
 // ── Generate ──────────────────────────────────────────────────────────────────
 const INLINE = process.argv.includes('--inline')
 const imgSrc = (rel) => {
@@ -187,7 +221,8 @@ function ledgerHtml(name, vp) {
     `<tr><td>${area}</td><td>${r.reserve}</td><td>${r.allocated}</td><td>${r.scale}×</td><td>${r.tier}</td>` +
     `<td class="${bindClass(r.binding)}" title="losing: ${(r.losing || []).join(', ')}">${r.binding}</td></tr>`).join('')
   const tiers = (l.inputs?.tiers || []).map((t) => '[' + t.join(',') + ']').join(' ')
-  const anyOverflow = regs.some(([, r]) => r.binding === 'overflow')
+  const anyRowOverflow = (l.rows || []).some((r) => (r.overflow || 0) > 4)
+  const anyOverflow = regs.some(([, r]) => r.binding === 'overflow') || anyRowOverflow
   const anyFloor = regs.some(([, r]) => r.binding === 'floor')
   const anyPhantom = (l.rows || []).some((r) => (r.phantom || []).length)
   // Overflow (starved) dominates the summary flag over the legal floor state.
@@ -205,7 +240,12 @@ function ledgerHtml(name, vp) {
     const h = r.height != null ? r.height : '—'
     const c = r.contentHeight != null ? r.contentHeight : '—'
     const slack = r.slack || 0
-    const slackCell = slack > 4 ? `<span class="r-slack">${slack} ${r.vbinding || 'fill'}</span>` : `${slack}`
+    const over = r.overflow || 0
+    // Content taller than its track → overflow (red), same vocabulary as columns;
+    // otherwise the amber slack cell (or a bare 0).
+    const slackCell = over > 4
+      ? `<span class="r-overflow">${over} overflow</span>`
+      : slack > 4 ? `<span class="r-slack">${slack} ${r.vbinding || 'fill'}</span>` : `${slack}`
     return `<tr><td>${rowName[r.index]}</td><td>${occ}</td><td>${coll || '—'}</td><td>${h}</td><td>${c}</td><td>${slackCell}</td></tr>`
   }).join('')
   // Stage line — the vertical headline: total · content · slack · binding.
@@ -274,10 +314,11 @@ details.ledger.has-overflow summary { color:#8a0000; font-weight:800; }
 .r-coll { color:var(--mut); opacity:.7; }
 .r-phantom { background:rgba(210,40,40,.22); color:#c00; font-weight:700; border-radius:3px; padding:0 3px; }
 .r-slack { background:rgba(200,120,20,.22); color:#a05c0c; font-weight:700; border-radius:3px; padding:0 3px; }
+.r-overflow { background:rgba(210,40,40,.30); color:#c00; font-weight:800; border-radius:3px; padding:0 3px; }
 .l-stage { margin-top:5px; font:600 11px/1.4 ui-monospace,"SF Mono",Menlo,monospace; padding:3px 7px; border-radius:4px; display:inline-block; }
 .l-stage.stage-fill { background:rgba(200,120,20,.18); color:#a05c0c; }
 .l-stage.stage-wrap { background:rgba(29,138,95,.16); color:#1d8a5f; }
-@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} .r-slack{color:#e0a044;} .l-stage.stage-fill{color:#e0a044;} .l-stage.stage-wrap{color:#5fd39b;} }
+@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} .r-slack{color:#e0a044;} .r-overflow{color:#ffb0b0;} .l-stage.stage-fill{color:#e0a044;} .l-stage.stage-wrap{color:#5fd39b;} }
 @media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} .b-overflow{background:rgba(200,0,0,.5); color:#ffd0d0;} }
 #toggle-ledgers { margin-top:8px; font:600 12px/1 'DM Sans',system-ui,sans-serif; cursor:pointer; background:var(--line); color:var(--ink); border:none; border-radius:6px; padding:6px 12px; }
 </style></head><body>
