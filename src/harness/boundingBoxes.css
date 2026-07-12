@@ -72,9 +72,21 @@ html[data-bounding-boxes] .grid-table .row-band {
   outline-offset: -1px;
   z-index: 40;
 }
-/* Phantom band (a hidden seat leaves it empty) — red hatch, so the dead space
-   reads as a diagnosed phantom, not an accident. */
-html[data-bounding-boxes] .grid-table .row-band.has-phantom {
+/* Vertical SLACK band (a viewport-fill row's fr share exceeds its content) —
+   amber hatch filling the track, the labelled "void". `--row-slack` carries the
+   px for the label; the whole band is hatched so the empty space reads against
+   the green content boxes on top. Amber = slack/reserve, matching the bidding
+   growth-reserve band. */
+html[data-bounding-boxes] .grid-table .row-band.has-slack {
+  outline-color: rgba(200, 120, 20, 0.6);
+  background: repeating-linear-gradient(
+    45deg, transparent, transparent 7px,
+    rgba(200, 120, 20, 0.12) 7px, rgba(200, 120, 20, 0.12) 14px);
+}
+/* Phantom band (a hidden seat) — red hatch only when it isn't already an amber
+   slack band; when it's both (a hidden seat in a fill row), slack wins the fill
+   and the ✗seat rides in the label. */
+html[data-bounding-boxes] .grid-table .row-band.has-phantom:not(.has-slack) {
   outline-color: rgba(200, 40, 40, 0.6);
   background: repeating-linear-gradient(
     -45deg, transparent, transparent 6px,
@@ -93,8 +105,28 @@ html[data-bounding-boxes] .grid-table .row-band::before {
   white-space: nowrap;
   border-bottom-left-radius: 3px;
 }
-html[data-bounding-boxes] .grid-table .row-band.has-phantom::before {
-  background: rgba(150, 30, 30, 0.92);
+html[data-bounding-boxes] .grid-table .row-band.has-slack::before { background: rgba(160, 92, 12, 0.92); }
+html[data-bounding-boxes] .grid-table .row-band.has-phantom:not(.has-slack)::before { background: rgba(150, 30, 30, 0.92); }
+
+/* Stage line — the vertical headline (total · content · slack · binding), pinned
+   top-left so the whole-grid slack story reads at a glance. */
+.grid-table .stage-line { display: none; }
+html[data-bounding-boxes] .grid-table .stage-line {
+  display: block;
+  position: fixed;
+  left: 10px;
+  top: 10px;
+  z-index: 60;
+  pointer-events: none;
+}
+html[data-bounding-boxes] .grid-table .stage-line::before {
+  content: attr(data-stage-label);
+  font: 700 10px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #ffe1b0;
+  background: rgba(120, 72, 16, 0.92);
+  padding: 3px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
 }
 
 /* Corner legend — the collapsed (zero-size) regions, so they're accounted for

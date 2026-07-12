@@ -48,9 +48,14 @@
          a ::before, so they add nothing to track sizing; display:none until the
          diagnostic is on. Makes the "phantom South" answerable from the box image. -->
     <div v-for="rb in rowBands" :key="'rb' + rb.index"
-         class="row-band" :class="{ 'has-phantom': rb.phantom.length }"
-         :style="{ gridRow: rb.index + 1, gridColumn: '1 / -1' }"
+         class="row-band" :class="{ 'has-phantom': rb.phantom.length, 'has-slack': rb.slack > 4 }"
+         :style="{ gridRow: rb.index + 1, gridColumn: '1 / -1', '--row-slack': rb.slack + 'px' }"
          :data-row-band-label="rb.label" aria-hidden="true"></div>
+
+    <!-- Stage line: total vertical vs content, the slack sum, and the vertical
+         binding (viewport-fill = fr rows over-expand into slack; shrink-wrap =
+         content-sized). The void's headline number. -->
+    <div class="stage-line" :data-stage-label="stageLine" aria-hidden="true"></div>
 
     <!-- Bounding-box diagnostic legend: collapsed (zero-size) regions listed here
          instead of as floating 0×0 labels over the layout. Hidden unless the
@@ -250,9 +255,19 @@ const sizes = reactive({})
 // The full layout ledger from the pure allocator — the source of truth the render
 // applies and the bounding-box diagnostic reads (grid-arranger-spec §3/§5.1).
 const ledger = ref(null)
+// Vertical accounting (MEASURED, display-only — never fed to scale): per-row track
+// height vs content height (→ slack), and the stage line. Kept separate from the
+// pure ledger (which is width-only + row topology) and merged into ledgerJson, so
+// measurement never mutates the allocator's output or loops the layout.
+const vert = reactive({ rows: [], stage: null })
 // Serialized ledger on the grid root — the walker reads it to save beside each
-// capture (harness only; a few hundred bytes, inert in production).
-const ledgerJson = computed(() => (ledger.value ? JSON.stringify(ledger.value) : null))
+// capture (harness only; a few hundred bytes, inert in production). Merges the
+// measured vertical (row heights/slack + stage line) into the pure ledger.
+const ledgerJson = computed(() => {
+  if (!ledger.value) return null
+  const rows = (ledger.value.rows || []).map((r, i) => ({ ...r, ...(vert.rows[i] || {}) }))
+  return JSON.stringify({ ...ledger.value, rows, ...(vert.stage ? { stage: vert.stage } : {}) })
+})
 const root = ref(null)
 const fmt = (x) => (x == null ? '' : Number(x).toFixed(2))
 
@@ -278,12 +293,19 @@ const ROW_NAME = ['top', 'mid', 'bot']
 const rowBands = computed(() => {
   const led = ledger.value?.rows
   if (!led) return []
-  return led.map((r) => {
+  return led.map((r, i) => {
+    const v = vert.rows[i] || {}
     const phantom = r.phantom || []
     const occ = (r.occupied || []).join(' ') || '—'
     const tail = phantom.length ? '  ✗' + phantom.join(' ✗') : ''
-    return { index: r.index, phantom, label: `${ROW_NAME[r.index]}: ${occ}${tail}` }
+    const vlabel = v.height != null ? ` · ${v.height}h ${v.contentHeight}c${v.slack > SLACK_EPS ? ` · ${v.slack} slack` : ''}` : ''
+    return { index: r.index, phantom, slack: v.slack || 0, label: `${ROW_NAME[r.index]}: ${occ}${tail}${vlabel}` }
   })
+})
+// Stage line for the overlay strip: total · content · slack · binding.
+const stageLine = computed(() => {
+  const s = vert.stage
+  return s ? `stage: ${s.total}h · ${s.content}c · ${s.slack} slack · ${s.binding}` : ''
 })
 
 // Column index each area sits in (left/center/right). A region's AVAILABLE width
@@ -357,6 +379,35 @@ function recordSizes(el) {
     const b = r.getBoundingClientRect()
     sizes[r.getAttribute('data-region')] = { w: Math.round(b.width), h: Math.round(b.height) }
   })
+  measureVertical(el)
+}
+
+// Vertical accounting (display-only). Resolved row-track heights come straight
+// from the grid (`grid-template-rows` computed value — no viewport read, no scale
+// feedback); content height per row = the tallest occupied region in it; slack =
+// track − content. Stage: total grid height, its slack sum, and the vertical
+// BINDING — `shrink-wrap` (content-sized rows: bidding's auto tracks + the designed
+// growth reserve) vs `viewport-fill` (the weighted-fr play/review rows, whose
+// proportions over-expand under-filled rows into slack). Bottom-packing play flips
+// it to shrink-wrap; the slack collapses to the designed reserve.
+const SLACK_EPS = 4
+// A row area's key in `sizes`: seat areas are keyed 'seat-n' etc.; corners/center by name.
+function sizeKeyFor(area) { return ['n', 'e', 's', 'w'].includes(area) ? 'seat-' + area : area }
+function measureVertical(el) {
+  const topo = ledger.value?.rows
+  if (!topo) return
+  const trackH = getComputedStyle(el).gridTemplateRows.split(/\s+/).map(parseFloat).filter((n) => !isNaN(n))
+  const rows = topo.map((r, i) => {
+    const height = Math.round(trackH[i] ?? 0)
+    const contentHeight = Math.round(Math.max(0, ...r.occupied.map((a) => sizes[sizeKeyFor(a)]?.h || 0)))
+    const slack = Math.max(0, height - contentHeight)
+    return { height, contentHeight, slack, vbinding: slack > SLACK_EPS ? 'fill' : 'content' }
+  })
+  const total = Math.round(el.clientHeight)
+  const slack = rows.reduce((s, r) => s + r.slack, 0)
+  const binding = biddingAnchored.value ? 'shrink-wrap' : (slack > SLACK_EPS ? 'viewport-fill' : 'shrink-wrap')
+  vert.rows = rows
+  vert.stage = { total, content: Math.max(0, total - slack), slack, binding }
 }
 
 // Apply a region's scale locally as --table-scale (leaves read it) + expose
