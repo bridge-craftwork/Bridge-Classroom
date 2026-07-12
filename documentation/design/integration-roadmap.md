@@ -302,6 +302,28 @@ shipped early (#101/#102) — see the 🟡 status markers below.)*
 Phases 1–3 built, and the capability dial needs ContextPanel-era capability
 plumbing anyway.*
 
+### Queued grid-arranger slices (from the 2026-07-12 gallery review)
+
+Standalone slices under Phase 1 (A1 gallery-first); details in
+[grid-arranger-spec.md](grid-arranger-spec.md) *Review decisions (2026-07-12)*.
+
+- **Caps wiring — regression repair.** Restore `min(cap, fit)` for the
+  center/stage (growth to ~1.5): it existed pre-rewrite (`1.27×`/`1.40×` center
+  captions in earlier runs) and was lost in the pure-allocator rewrite. §2's
+  `caps.center: 1.8` is the intent, the allocator's `min(1, fit)` is the bug;
+  reconcile the §2/§3.4 wording and validate against the §6 prediction table.
+- **Play-cluster bottom-pack.** Extend the bidding anchor model to the play phase
+  (content-sized rows, cluster at the floor); Undo/Claim ride the cluster
+  (relocated from the SE corner to the hero's bottom cluster).
+- **Caption/label seat-literal audit.** The seats caption was keyed to `seat-s`
+  and broke for W/N/E heroes (fixed). Sweep every caption/label for a hard compass
+  seat where a `heroSeat`-relative role is meant.
+
+**Open re-eval:** NE/SE at the 0.65 floor at laptop-half is accepted+flagged for
+now. Re-check after the **auction glyph restyle**; if still floored, pull **Phase
+5.1 compact AuctionTable density** forward as a starvation response (not new
+machinery).
+
 ---
 
 ## Verification quick reference
