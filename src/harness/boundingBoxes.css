@@ -58,6 +58,45 @@ html[data-bounding-boxes] .grid-table.bidding-anchored .area-center::after {
   background: rgba(160, 92, 12, 0.92);
 }
 
+/* Row bands — one per grid row, tinting the band and labelling its occupied
+   areas + ✗phantom seats (a hidden hand's dead band). Empty divs (label is a
+   ::before), so they never perturb track sizing. Purple, distinct from the green
+   region boxes. */
+.grid-table .row-band { display: none; }
+html[data-bounding-boxes] .grid-table .row-band {
+  display: block;
+  align-self: stretch;
+  position: relative;
+  pointer-events: none;
+  outline: 1px dotted rgba(120, 80, 150, 0.5);
+  outline-offset: -1px;
+  z-index: 40;
+}
+/* Phantom band (a hidden seat leaves it empty) — red hatch, so the dead space
+   reads as a diagnosed phantom, not an accident. */
+html[data-bounding-boxes] .grid-table .row-band.has-phantom {
+  outline-color: rgba(200, 40, 40, 0.6);
+  background: repeating-linear-gradient(
+    -45deg, transparent, transparent 6px,
+    rgba(210, 40, 40, 0.1) 6px, rgba(210, 40, 40, 0.1) 12px);
+}
+html[data-bounding-boxes] .grid-table .row-band::before {
+  content: attr(data-row-band-label);
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 41;
+  font: 700 9px/1.35 ui-monospace, "SF Mono", Menlo, monospace;
+  color: #fff;
+  background: rgba(92, 56, 120, 0.9);
+  padding: 1px 4px;
+  white-space: nowrap;
+  border-bottom-left-radius: 3px;
+}
+html[data-bounding-boxes] .grid-table .row-band.has-phantom::before {
+  background: rgba(150, 30, 30, 0.92);
+}
+
 /* Corner legend — the collapsed (zero-size) regions, so they're accounted for
    without floating 0×0 labels over the layout. Hidden unless the diagnostic is on. */
 .grid-table .bounding-box-legend { display: none; }

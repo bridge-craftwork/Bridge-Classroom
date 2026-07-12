@@ -42,6 +42,16 @@
     <div v-if="areaOccupied('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se')"><slot name="se" /></div>
     <div v-if="areaOccupied('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw')"><slot name="sw" /></div>
 
+    <!-- Row-band markers (§5.1): one per grid row, tinting the band and labelling
+         its occupied areas + ✗phantom seats (a hidden hand's dead band, e.g. the
+         declarer's empty South row in a defence scene). Empty divs — the label is
+         a ::before, so they add nothing to track sizing; display:none until the
+         diagnostic is on. Makes the "phantom South" answerable from the box image. -->
+    <div v-for="rb in rowBands" :key="'rb' + rb.index"
+         class="row-band" :class="{ 'has-phantom': rb.phantom.length }"
+         :style="{ gridRow: rb.index + 1, gridColumn: '1 / -1' }"
+         :data-row-band-label="rb.label" aria-hidden="true"></div>
+
     <!-- Bounding-box diagnostic legend: collapsed (zero-size) regions listed here
          instead of as floating 0×0 labels over the layout. Hidden unless the
          diagnostic is on (boundingBoxes.css keys off html[data-bounding-boxes]). -->
@@ -260,6 +270,21 @@ function bbLabel(regionKey) {
 // Collapsed regions — the unoccupied areas (from the occupancy model), listed in
 // the diagnostic's corner legend rather than rendered as floating 0×0 boxes.
 const collapsedRegions = computed(() => ALL_AREAS.filter((a) => !areaOccupied(a)))
+
+// Row-band overlay data (§5.1) from the ledger's `rows`: label each band with its
+// occupied areas and ✗phantom seats. Falls back to bare occupancy if the ledger
+// isn't computed yet.
+const ROW_NAME = ['top', 'mid', 'bot']
+const rowBands = computed(() => {
+  const led = ledger.value?.rows
+  if (!led) return []
+  return led.map((r) => {
+    const phantom = r.phantom || []
+    const occ = (r.occupied || []).join(' ') || '—'
+    const tail = phantom.length ? '  ✗' + phantom.join(' ✗') : ''
+    return { index: r.index, phantom, label: `${ROW_NAME[r.index]}: ${occ}${tail}` }
+  })
+})
 
 // Column index each area sits in (left/center/right). A region's AVAILABLE width
 // is its column's resolved track width — NOT the region's own (content-sized,
