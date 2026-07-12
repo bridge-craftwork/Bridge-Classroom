@@ -316,9 +316,35 @@ The four rules, in order:
 **The ledger** (per stage): `budget`, `inputs` (occupancy, tiers), per-`columns`
 (need, margin, tier, allocated, width), per-`regions` (`reserve`, `allocated`,
 `scale`, `tier`, **`binding`** — which constraint set the scale: `natural` |
-`budget` | `floor` — and the losing candidates), `seats.scale`, `outerMargin`.
-Unit-tested directly (`computeLayoutLedger`): no floor-bound regions at laptop-half
-bidding, uniform seat scales across columns, review clustering (surplus → margin).
+`budget` | `floor` | `overflow` — and the losing candidates), `seats.scale`,
+`outerMargin`. `overflow` (2026-07-12) is the starved state — `allocated < floor ×
+reserve`, i.e. the region can't render legally even clamped to the floor; distinct
+from `floor` (pinned at the floor but it fits). Unit-tested directly
+(`computeLayoutLedger`): no floor-bound regions at laptop-half bidding, uniform
+seat scales across columns, review clustering (surplus → margin).
+
+**Floor-protection / corner rule (2026-07-12).** Every occupied column reserves
+`floor × need` (its overflow threshold) *before* the surplus grows columns toward
+natural need by tier. A lone corner (NW/NE/SE/SW) rides at its floor minimum
+instead of starving under a heavier sibling column while the budget has room; a
+region only reports `overflow` when even the floor-minimums can't all fit.
+
+### Review decisions (2026-07-12) — accepted tradeoffs & deferred slices
+
+- **Working-set protection wins over the periphery floor.** At extreme tightness
+  (defensive cardplay at laptop-half) the pinned auction / controls (NE/SE) sit at
+  the 0.65 floor rather than shrink the hero/dummy hands. This is **accepted and
+  flagged in the ledger** (red `floor`/`overflow`), not forced away — "no floor
+  bindings" is not a hard invariant at every viewport. A future *auction-compact
+  capability* (the pinned auction collapsing to a denser form when starved) is the
+  intended lever if we ever want NE off the floor there.
+- **`scale.caps > 1.0` is currently unused by design** (§3.4 retired "grow to cap":
+  the allocator caps at `min(1, fit)`). The `caps` object in §2 is therefore
+  aspirational, not wired. Reviving center/stage enlargement (~1.5, the §6
+  prediction) is a **separate slice with a spec reconciliation**, not a bug.
+- **Bottom-packing the play cluster** (trick + hands + Undo/Claim riding the bottom
+  like bidding) is a **separate slice** — it improves the play scene's vertical
+  packing but does not affect the NE/SE horizontal budget above.
 
 ---
 
