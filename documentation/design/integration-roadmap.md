@@ -312,9 +312,18 @@ Standalone slices under Phase 1 (A1 gallery-first); details in
   captions in earlier runs) and was lost in the pure-allocator rewrite. §2's
   `caps.center: 1.8` is the intent, the allocator's `min(1, fit)` is the bug;
   reconcile the §2/§3.4 wording and validate against the §6 prediction table.
-- **Play-cluster bottom-pack.** Extend the bidding anchor model to the play phase
-  (content-sized rows, cluster at the floor); Undo/Claim ride the cluster
-  (relocated from the SE corner to the hero's bottom cluster).
+- **Play-cluster bottom-pack — SHIPPED (2026-07-12).** Extended the bidding anchor
+  model to the play phase (`anchor.play: 'bottom'` → content-sized rows). Three
+  parts: (1) **s-absorption** — the stage absorbs a hidden declarer's empty `s`
+  cell (mirror of n-absorption), curing the "phantom South" dead band; (2) content
+  rows flip the stage binding viewport-fill → shrink-wrap (cardplay slack 327→36
+  desktop / 261→24 laptop-half); (3) `actionCornerFor` relocates Undo/Claim from
+  the SE corner to the hero's bottom corner (SW for a screen-left West defender).
+  Bidding triptych + review unaffected. **Auction vertical-metric fix rode the same
+  branch** (the #178 audit miss): re-measured `auctionMetrics.headerRowPx`/
+  `roundRowPx` (26/33 → 19/35) after the restyle compressed the header, and the
+  a1:gallery walk now asserts the rendered auction height == the metric reserve at
+  1.0× so the constants can't silently go stale again.
 - **Caption/label seat-literal audit.** The seats caption was keyed to `seat-s`
   and broke for W/N/E heroes (fixed). Sweep every caption/label for a hard compass
   seat where a `heroSeat`-relative role is meant.

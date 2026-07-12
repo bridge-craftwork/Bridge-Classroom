@@ -151,7 +151,13 @@ diagnostic, §5.1):
 - **`auctionMetrics.headerRowPx`/`roundRowPx` must track the real AuctionTable row
   heights** (measured, not guessed): if the reserve overshoots a one-round auction,
   the bottom-anchored auction floats down inside it — a per-round wobble in the
-  auction top. Measure with `scripts/` and correct the metric, don't fudge the CSS.
+  auction top. Measure with `scripts/measure-auction.mjs` and correct the metric,
+  don't fudge the CSS. **Re-measured 2026-07-12** after the glyph-scale restyle
+  compressed the header band: 26/33 (reserve 59) → **19/35** (reserve 54, the real
+  one-round height). Provenance is now guarded — the a1:gallery walk **asserts** the
+  rendered auction height equals `auctionGrowthReservePx(rounds)` within ±2px at
+  1.0× (len1/5/9), so the next typography pass that shifts these rows fails the walk
+  instead of silently re-floating the auction.
 
 > **The slack bug, and the ruling (2026-07-11).** The first cut made the *shell
 > frame* viewport-height and used a `1fr` slack row, so "slack renders above the
@@ -355,11 +361,17 @@ region only reports `overflow` when even the floor-minimums can't all fit.
    is itself the incorrect artifact of the regression and gets reconciled in this
    slice. The slice **validates against the §6 prediction table** (center ≈ 1.5).
 
-3. **Play-cluster bottom-pack — queued as its own slice.** Scope: **extend the
-   bidding anchor model to play** (content-sized rows, cluster packed at the
-   floor), with **Undo/Claim riding the cluster** (relocated from the SE corner to
-   the hero's bottom cluster). Improves the play scene's vertical packing; does not
-   affect the NE/SE horizontal budget above.
+3. **Play-cluster bottom-pack — SHIPPED (2026-07-12).** Extended the bidding anchor
+   model to play (`anchor.play: 'bottom'` → content-sized rows). **s-absorption**
+   (mirror of n-absorption) drops the stage into a hidden declarer's empty `s`
+   cell, curing the "phantom South" dead band; the ledger's phantom now excludes
+   both centre-column seats (`n`/`s`), flagging only a hidden SIDE seat. Content
+   rows flip the cardplay stage viewport-fill → shrink-wrap (slack 327→36 desktop /
+   261→24 laptop-half). **Undo/Claim ride the hero's bottom corner** via
+   `actionCornerFor(heroArea)` — SE for a South/East hero, SW for a screen-left West
+   defender — the arranger relocating the configured `action` role and the scene
+   placing its slot through the same helper. Did not touch the NE/SE horizontal
+   budget (decision 1 still stands).
 
 4. **Generalize the seats-caption fix.** The gallery caption keyed "seats" to a
    literal `seat-s`, so it vanished when the hero sits W/N/E (fixed 2026-07-12).
