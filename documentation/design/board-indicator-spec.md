@@ -27,9 +27,11 @@ All corners are sharp (no rounding anywhere).
 
 | Prop | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `boardNumber` | integer ≥ 1 | yes | — | Dealer and vulnerability are derived from it (§4) |
+| `boardNumber` | integer ≥ 1 | yes | — | Dealer and vulnerability are derived from it (§4) unless overridden below |
 | `size` | number (px) | no | `130` | Edge length **S** of the pyramid footprint, excluding the border slot |
 | `borderColor` | CSS color string | no | `'transparent'` | Flag border color (§7). The border slot is always reserved |
+| `dealer` | `'N'`\|`'E'`\|`'S'`\|`'W'` | no | `null` | Overrides the derived dealer (§4). For non-standard boards |
+| `vulnerable` | `'None'`\|`'NS'`\|`'EW'`\|`'All'` | no | `null` | Overrides the derived vulnerability (§4). For non-standard boards |
 
 Recommended minimum `size`: 48 px. Below that, seam strokes may be dropped (§9).
 
@@ -43,6 +45,8 @@ Standard duplicate 16-board cycle. Let `n = boardNumber`, `i = (n - 1) % 16`.
 Sanity checks: board 1 → dealer N, none vul. Board 2 → E, NS. Board 8 → W, none. Board 16 → W, EW.
 
 Red faces per vulnerability: `None` = {}, `NS` = {top, bottom}, `EW` = {left, right}, `All` = all four. All non-red faces are ivory.
+
+**Overrides for non-standard boards.** The 16-cycle derivation is the *default*, not a constraint. Practice deals and imported boards frequently carry their own dealer and vulnerability that don't follow the duplicate cycle (e.g. a deal labelled "board 7" dealt by North with NS vul, which the cycle would otherwise render as dealer S / all vulnerable). The `dealer` and `vulnerable` props override the corresponding derived value; each is independent, so a board can override just one. Prop values are matched case-insensitively; `vulnerable` also accepts the aliases `Love`/`-` (→ None) and `Both` (→ All). An unrecognised value is ignored and the derived value is used, so a bad prop never renders a wrong-but-plausible board. The board number still shows verbatim regardless of overrides.
 
 ## 5. Geometry
 
@@ -152,4 +156,5 @@ Board 16 → dealer W, EW vulnerable → left/right faces red, top/bottom ivory,
 3. Dealer D ink switches correctly between red and ivory faces across the 16-board cycle.
 4. Renders correctly at S = 48, 80, 130, 200; seams disappear below S = 64 per §9.
 5. `aria-label` matches §8 for at least boards 1, 2, 3, 4, 16.
-6. Gallery page for the rendering harness shows: boards 1–16 plain, boards 1–4 with blue and amber borders, and the size sweep — suitable for Playwright screenshot capture in the two-tier gallery system.
+6. Gallery page for the rendering harness shows: boards 1–16 plain, boards 1–4 with blue and amber borders, the size sweep, and at least one override board (dealer/vulnerable diverging from the cycle) — suitable for Playwright screenshot capture in the two-tier gallery system.
+7. With `dealer`/`vulnerable` props set, the render (face colors, D position, `aria-label`) reflects the overrides, not the cycle; an unrecognised prop value falls back to the derived value.

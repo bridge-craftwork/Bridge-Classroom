@@ -26,16 +26,33 @@ const props = defineProps({
   boardNumber: { type: [Number, String], required: true },
   size: { type: Number, default: 130 },        // edge length S of the pyramid footprint
   borderColor: { type: String, default: 'transparent' },
+  // Non-standard boards carry their own dealer/vulnerability (a practice deal may
+  // be "board 7" yet be dealt by North with NS vul). These override the derived
+  // 16-cycle values (§4); leave unset to fall back to the standard cycle.
+  dealer: { type: String, default: null },        // 'N' | 'E' | 'S' | 'W'
+  vulnerable: { type: String, default: null },    // 'None' | 'NS' | 'EW' | 'All'
 })
 
 const S = computed(() => props.size)
 const b = computed(() => 0.23 * S.value)        // bevel depth
 const n = computed(() => parseInt(props.boardNumber, 10) || 1)
 
-// §4 — standard duplicate 16-board cycle.
+// §4 — standard duplicate 16-board cycle. Explicit dealer/vulnerable props
+// override the cycle (non-standard boards); an unrecognised value falls through
+// to the derived value rather than rendering something wrong.
 const i = computed(() => (n.value - 1) % 16)
-const dealer = computed(() => ['N', 'E', 'S', 'W'][i.value % 4])
-const vulCode = computed(() => (i.value + Math.floor(i.value / 4)) % 4) // 0 None · 1 NS · 2 EW · 3 All
+const DEALERS = ['N', 'E', 'S', 'W']
+const derivedDealer = computed(() => DEALERS[i.value % 4])
+const dealer = computed(() => {
+  const d = (props.dealer || '').trim().toUpperCase()
+  return DEALERS.includes(d) ? d : derivedDealer.value
+})
+const derivedVulCode = computed(() => (i.value + Math.floor(i.value / 4)) % 4) // 0 None · 1 NS · 2 EW · 3 All
+const VUL_CODES = { NONE: 0, LOVE: 0, '-': 0, NS: 1, EW: 2, ALL: 3, BOTH: 3 }
+const vulCode = computed(() => {
+  const v = (props.vulnerable || '').trim().toUpperCase()
+  return v in VUL_CODES ? VUL_CODES[v] : derivedVulCode.value
+})
 const red = computed(() => ({
   top: vulCode.value === 1 || vulCode.value === 3,
   bottom: vulCode.value === 1 || vulCode.value === 3,
