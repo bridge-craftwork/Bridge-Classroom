@@ -202,13 +202,24 @@ function ledgerHtml(name, vp) {
     const phantom = new Set(r.phantom || [])
     const coll = (r.collapsed || []).map((a) => phantom.has(a)
       ? `<span class="r-phantom">${a}✗</span>` : `<span class="r-coll">${a}</span>`).join(' ')
-    return `<tr><td>${rowName[r.index]}</td><td>${occ}</td><td>${coll || '—'}</td></tr>`
+    const h = r.height != null ? r.height : '—'
+    const c = r.contentHeight != null ? r.contentHeight : '—'
+    const slack = r.slack || 0
+    const slackCell = slack > 4 ? `<span class="r-slack">${slack} ${r.vbinding || 'fill'}</span>` : `${slack}`
+    return `<tr><td>${rowName[r.index]}</td><td>${occ}</td><td>${coll || '—'}</td><td>${h}</td><td>${c}</td><td>${slackCell}</td></tr>`
   }).join('')
+  // Stage line — the vertical headline: total · content · slack · binding.
+  const st = l.stage
+  const stageHtml = st
+    ? `<div class="l-stage ${st.binding === 'viewport-fill' ? 'stage-fill' : 'stage-wrap'}">` +
+      `stage: ${st.total}h · ${st.content}c · <b>${st.slack} slack</b> · ${st.binding}</div>`
+    : ''
   return `<details class="ledger${cls}"><summary>ledger${flag}</summary>` +
     `<div class="l-inputs">budget ${l.budget} · occ ${(l.inputs?.occupied || []).join(' ')} · tiers ${tiers} · outerMargin ${l.outerMargin}</div>` +
     `<table class="l-table"><thead><tr><th>region</th><th>reserve</th><th>alloc</th><th>scale</th><th>tier</th><th>binding</th></tr></thead>` +
     `<tbody>${rows}</tbody></table>` +
-    `<table class="l-table l-rows"><thead><tr><th>row</th><th>occupied</th><th>collapsed / ✗phantom</th></tr></thead><tbody>${rowsHtml}</tbody></table></details>`
+    `<table class="l-table l-rows"><thead><tr><th>row</th><th>occupied</th><th>collapsed / ✗phantom</th><th>h</th><th>content</th><th>slack</th></tr></thead><tbody>${rowsHtml}</tbody></table>` +
+    stageHtml + `</details>`
 }
 
 const vpEntries = Object.entries(viewports)
@@ -262,7 +273,11 @@ details.ledger.has-overflow summary { color:#8a0000; font-weight:800; }
 .l-rows { margin-top:5px; }
 .r-coll { color:var(--mut); opacity:.7; }
 .r-phantom { background:rgba(210,40,40,.22); color:#c00; font-weight:700; border-radius:3px; padding:0 3px; }
-@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} }
+.r-slack { background:rgba(200,120,20,.22); color:#a05c0c; font-weight:700; border-radius:3px; padding:0 3px; }
+.l-stage { margin-top:5px; font:600 11px/1.4 ui-monospace,"SF Mono",Menlo,monospace; padding:3px 7px; border-radius:4px; display:inline-block; }
+.l-stage.stage-fill { background:rgba(200,120,20,.18); color:#a05c0c; }
+.l-stage.stage-wrap { background:rgba(29,138,95,.16); color:#1d8a5f; }
+@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} .r-slack{color:#e0a044;} .l-stage.stage-fill{color:#e0a044;} .l-stage.stage-wrap{color:#5fd39b;} }
 @media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} .b-overflow{background:rgba(200,0,0,.5); color:#ffd0d0;} }
 #toggle-ledgers { margin-top:8px; font:600 12px/1 'DM Sans',system-ui,sans-serif; cursor:pointer; background:var(--line); color:var(--ink); border:none; border-radius:6px; padding:6px 12px; }
 </style></head><body>
