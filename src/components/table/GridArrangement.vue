@@ -7,12 +7,13 @@
        gallery captions. Legacy BridgeTable is untouched — this is the `grid`
        branch, dark until the A1 flip. -->
   <div ref="root" class="grid-table" :class="{ 'bidding-anchored': biddingAnchored }" :style="gridStyle">
-    <!-- Four seats, placed by rotation; every seat area is filled. -->
+    <!-- Occupied seats only — an unoccupied seat area doesn't render (occupancy
+         model); its cell is either absorbed by the stage or left empty. -->
     <div
-      v-for="seat in SEATS"
+      v-for="seat in visibleSeats"
       :key="seat"
-      class="region seat"
-      :class="['area-' + seatArea(seat), { occupied: seatVisible(seat) }]"
+      class="region seat occupied"
+      :class="'area-' + seatArea(seat)"
       :style="regionStyle('seats')"
       :data-region="'seat-' + seatArea(seat)"
       :data-region-scale="fmt(scales.seats)"
@@ -20,7 +21,6 @@
       :data-bounding-box-label="bbLabel('seat-' + seatArea(seat), 'seats', rowReservePx(7))"
     >
       <SeatPanel
-        v-if="seatVisible(seat)"
         :hand="hands[seat]"
         :seat="seat"
         :show-hcp="showHcp"
@@ -36,10 +36,10 @@
     <div class="region area-center occupied" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bounding-box-label="bbLabel('center', 'center', biddingAnchored ? stageReservePx : regionReserve('center'), biddingAnchored ? 'h' : 'w')">
       <slot name="center" />
     </div>
-    <div v-if="hasRegion('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw', 'nw', regionReserve('nw'))"><slot name="nw" /></div>
-    <div v-if="hasRegion('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne', 'ne', regionReserve('ne'))"><slot name="ne" /></div>
-    <div v-if="hasRegion('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se', 'se', regionReserve('se'))"><slot name="se" /></div>
-    <div v-if="hasRegion('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw', 'sw', regionReserve('sw'))"><slot name="sw" /></div>
+    <div v-if="areaOccupied('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw', 'nw', regionReserve('nw'))"><slot name="nw" /></div>
+    <div v-if="areaOccupied('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne', 'ne', regionReserve('ne'))"><slot name="ne" /></div>
+    <div v-if="areaOccupied('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se', 'se', regionReserve('se'))"><slot name="se" /></div>
+    <div v-if="areaOccupied('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw', 'sw', regionReserve('sw'))"><slot name="sw" /></div>
 
     <!-- Bounding-box diagnostic legend: collapsed (zero-size) regions listed here
          instead of as floating 0×0 labels over the layout. Hidden unless the
@@ -55,10 +55,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
 import { seatToArea, anchorFor, computeRegionScale, uniformSeatScale, rowReservePx } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
+
+const slots = useSlots()
 
 const props = defineProps({
   hands: { type: Object, required: true },
@@ -75,14 +77,25 @@ defineEmits(['card-click'])
 
 const SEATS = ['N', 'E', 'S', 'W']
 const SUIT_LETTER = { spades: 'S', hearts: 'H', diamonds: 'D', clubs: 'C' }
+const AREA_ROWS = [['nw', 'n', 'ne'], ['w', 'center', 'e'], ['sw', 's', 'se']]
+const AREA_COLS = [['nw', 'w', 'sw'], ['n', 'center', 's'], ['ne', 'e', 'se']]
+const ALL_AREAS = AREA_ROWS.flat()
+const CORNERS = ['nw', 'ne', 'sw', 'se']
 
 // Region reserves (px, 1.0×) — the component's NEEDED width, single-sourced from
 // its metrics where it exists (auction: auctionMetrics, fix 1b). Fixes the stale
 // reserve that let the NE auction overflow its track at computed 1.0×.
 const TRICK_RESERVE = 200
 const STATUS_RESERVE = 150
-const BOX_RESERVE = 200
+// BiddingBox natural width at 1.0× (measured): 7 level buttons + gaps. The BB is
+// fixed-width (no container-responsive narrow form), so its column must hold this
+// or it overflows the hand. A genuinely narrow BB is a BiddingBox change (touch
+// targets rule out shrinking by scale), tracked separately.
+const BOX_RESERVE = 308
 const PERIPH_RESERVE = 160
+// Designed inter-region gap (px) — mirrors the --cell-gap CSS var; used to size
+// occupancy-driven columns wide enough for their region PLUS its margins.
+const CELL_GAP = 6
 
 const anchor = computed(() => anchorFor(props.config.orientation, props.heroSeat))
 function seatArea(seat) { return seatToArea(seat, anchor.value) }
@@ -127,15 +140,66 @@ const biddingAnchored = computed(
 )
 const reserveRounds = computed(() => props.config.reserveRounds ?? 1)
 
+// ── Occupancy model (evaluated per deal, at load) ────────────────────────────
+// A region is occupied iff it actually renders content this deal: center = the
+// stage; a corner = its role is configured AND the shell provided its slot; a seat
+// = it's visible (the deal's display directive). Everything downstream — which
+// divs render, the area template, the column widths, the legend — is a pure
+// function of this, so the grid genuinely collapses around what isn't there.
+function seatForArea(area) { return SEATS.find((s) => seatArea(s) === area) }
+function areaOccupied(area) {
+  if (area === 'center') return true
+  if (CORNERS.includes(area)) return hasRegion(area) && !!slots[area]
+  const seat = seatForArea(area)
+  return seat ? seatVisible(seat) : false
+}
+const visibleSeats = computed(() => SEATS.filter((s) => areaOccupied(seatArea(s))))
+
+// A region's reserve WIDTH (px, 1.0×) for column provisioning.
+function reserveForArea(area) {
+  if (area === 'center') return regionReserve('center')
+  if (CORNERS.includes(area)) return regionReserve(area)
+  return rowReservePx(7) // seat
+}
+
+// Fix 1 — occupancy-driven area template: when the top-centre seat `n` is
+// unoccupied, `center` absorbs its cell (spans rows 1–2 in the centre column), so
+// the stage lifts to align with the top-row status instead of sitting a row below.
+function areaTemplate() {
+  const rows = AREA_ROWS.map((r) => r.slice())
+  if (!areaOccupied('n')) rows[0][1] = 'center'
+  return rows.map((r) => `"${r.join(' ')}"`).join(' ')
+}
+// Fix 2 — column width from the WHOLE column's occupancy, not just the seat. The
+// centre column is the flexible stage (1fr); a side column is sized to the widest
+// reserve among the regions actually occupying it (so an occupied corner — the
+// bidding box — sets the column to its narrow-form reserve and never overflows the
+// hand), or collapses to 0 when the column is empty.
+function columnTemplate() {
+  return [0, 1, 2].map((ci) => {
+    if (ci === 1) return 'minmax(0, 1fr)'
+    const occ = AREA_COLS[ci].filter(areaOccupied)
+    if (!occ.length) return '0'
+    // Widest occupant reserve + its margin box (2×cell-gap, plus the se action gap)
+    // so the region and its margins fit without overflowing the hand.
+    const reserve = Math.max(...occ.map(reserveForArea))
+    const margins = 2 * CELL_GAP + (occ.includes('se') ? actionHandGap.value : 0)
+    return Math.round(reserve + margins) + 'px'
+  }).join(' ')
+}
+
+const actionHandGap = computed(() => props.config.spacing?.actionHandGap ?? 14)
+
 const gridStyle = computed(() => {
-  const c = props.config.tracks?.columns || [1, 1, 1]
   const r = props.config.tracks?.rows || [1, 1, 1]
   return {
-    gridTemplateColumns: c.map((f) => f + 'fr').join(' '),
+    gridTemplateAreas: areaTemplate(),
+    gridTemplateColumns: columnTemplate(),
     // Bottom-anchored bidding: content-sized rows — the center's min-height (the
-    // reserve, see centerStyle) creates the growth band above the bottom-anchored
-    // auction. Otherwise the config's weighted-fr rows (play/review centered stage).
+    // reserve, see centerStyle) sets the stage height. Otherwise the config's
+    // weighted-fr rows (play/review centered stage).
     gridTemplateRows: biddingAnchored.value ? 'auto auto auto' : r.map((f) => f + 'fr').join(' '),
+    '--action-hand-gap': actionHandGap.value + 'px',
   }
 })
 
@@ -159,11 +223,9 @@ function bbLabel(key, scaleKey, reservePx, dim = 'w') {
   const rv = reservePx ? ` · r${Math.round(reservePx)}${dim}` : ''
   return `${key} · ${sz}${sc}${rv}`
 }
-// Collapsed (zero-size) regions — listed in the diagnostic's corner legend rather
-// than as floating 0×0 labels cluttering the layout.
-const collapsedRegions = computed(() =>
-  Object.entries(sizes).filter(([, v]) => !v || !v.w || !v.h).map(([k]) => k).sort(),
-)
+// Collapsed regions — the unoccupied areas (from the occupancy model), listed in
+// the diagnostic's corner legend rather than rendered as floating 0×0 boxes.
+const collapsedRegions = computed(() => ALL_AREAS.filter((a) => !areaOccupied(a)))
 
 // Column index each area sits in (left/center/right). A region's AVAILABLE width
 // is its column's resolved track width — NOT the region's own (content-sized,
@@ -268,20 +330,29 @@ onBeforeUnmount(() => ro?.disconnect())
      The shell owns where this block sits (grid-arranger-spec §1: grid sizes to
      content/reserves, shell owns the viewport). */
 }
-/* Designed spacing lives on occupied regions only (`:not(:empty)`); empty seat/
-   corner areas collapse to nothing, so no phantom gutters. */
-.grid-table .region:not(:empty) { margin: var(--cell-gap); }
+/* Designed spacing lives on occupied regions only; unoccupied areas don't render,
+   so no phantom gutters (gap:0 does the rest). */
+.grid-table .region.occupied { margin: var(--cell-gap); }
 /* Bottom-anchor bidding: the center stage reserves a bounded growth height (min-
-   height set inline = stageReservePx) and bottom-anchors the auction within it, so
-   the auction grows into the reserve. Full width + centered so the stage cluster is
-   horizontally centered even when the side columns collapse. */
+   height set inline = stageReservePx) and bottom-anchors the auction within it.
+   `justify-self: center` shrinks the region to the auction and centres it in the
+   stage column, so the growth reserve reads as a VERTICAL band above the auction
+   (not side fill) and the centre midline lines up with the hand's. */
 .grid-table.bidding-anchored .area-center {
   display: flex;
-  align-items: flex-end;    /* auction pinned to the bottom of the reserved band */
+  align-items: flex-start;  /* auction pinned to the TOP of the stage — its top is
+                               fixed (= stage top, aligned with the status), so it
+                               never wobbles as the reserve/scale change; the reserve
+                               is growth room BELOW, which the auction fills as it
+                               lengthens before displacing the hand. */
+  align-self: start;        /* top-align the (row-spanning) stage in its rows too, so
+                               the grid's align-items:center can't float it. */
   justify-content: center;
-  justify-self: stretch;
-  width: 100%;
+  justify-self: center;
 }
+/* Fix 4: the action cluster gets a designed gap on its hand-facing (left) side —
+   a config constant (`--action-hand-gap`), per spacing-as-margins-on-occupied. */
+.grid-table.bidding-anchored .area-se { margin-left: var(--action-hand-gap, 14px); }
 .region { min-width: 0; }
 .area-nw { grid-area: nw; justify-self: start; align-self: start; }
 .area-n { grid-area: n; }

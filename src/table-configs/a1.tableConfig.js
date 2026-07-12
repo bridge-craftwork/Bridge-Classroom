@@ -37,6 +37,10 @@ export default {
   // the shell owns placement (the arranger never reads the viewport).
   reserveRounds: 1,
 
+  // Designed spacing (px) expressed as margins on occupied regions (§1 spacing rule).
+  // actionHandGap: the gap on the bidding box's hand-facing side.
+  spacing: { actionHandGap: 14 },
+
   scale: {
     wishVar: '--table-scale',
     // se cap is a RELATIONSHIP, not a constant (fix 2): the action cluster belongs

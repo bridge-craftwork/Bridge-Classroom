@@ -119,13 +119,35 @@ buys upward-growth room before displacement. Play/review keep the weighted-fr ro
 `reserveRounds` is a top-level tableConfig field; `anchor: { bidding: 'bottom' }`
 selects the model.
 
+**Occupancy model (2026-07-11) — the grid collapses around what isn't there.** A
+region is *occupied* iff it renders content this deal (evaluated at load): the
+centre stage always; a corner iff its role is configured AND the shell provided its
+slot; a seat iff it's visible (the deal's display directive). Unoccupied regions
+don't render, and three things are pure functions of occupancy:
+- **Area template.** When the top-centre seat `n` is unoccupied, `center` absorbs
+  its cell (spans rows 1–2 in the centre column), lifting the stage so the auction
+  top aligns with the top-row status instead of sitting a row below. The stage is
+  **top-anchored** in its span (`align-self/align-items: start`) so its top is fixed
+  regardless of reserve/scale — no wobble.
+- **Column widths from whole-column occupancy** (NOT just the seat). The centre
+  column is the flexible stage (`1fr`); a side column is sized to the widest
+  *reserve* among the regions occupying it, plus its margin box — so an occupied
+  corner (the bidding box) sets the column and never overflows the hand, and an
+  empty column collapses to `0`. **Caveat:** BiddingBox is fixed-width with no
+  container-responsive narrow form (touch targets rule out shrinking by scale), so
+  its reserve is its real footprint (~308px); a genuinely narrow BB is a separate
+  BiddingBox change. At the primary teaching viewport the fat BB squeezes the stage
+  column — the strongest argument for building that narrow form.
+- **The legend** lists the unoccupied areas (diagnostic).
+
 Two spacing/sizing rules this model requires (verified with the bounding-box
 diagnostic, §5.1):
-- **Grid `gap: 0`; spacing is margins on occupied regions only.** A grid gap still
-  reserves a gutter around a *collapsed* 0-size track (empty seat/corner), which
-  put a phantom band between the status strip and the stage. Margins on
-  `:not(:empty)`/`.occupied` regions collapse with occupancy; the check is
-  `center top = one designed margin below NW`.
+- **Grid `gap: 0`; spacing is margins on occupied (`.occupied`) regions only.** A
+  grid gap still reserves a gutter around a *collapsed* 0-size track (empty
+  seat/corner), which put a phantom band between the status strip and the stage.
+  Margins on occupied regions collapse with occupancy; the check is `center top =
+  one designed margin below NW`. Per-relationship gaps are config constants
+  (`spacing.actionHandGap` ≈ 14px on the bidding box's hand-facing side).
 - **`auctionMetrics.headerRowPx`/`roundRowPx` must track the real AuctionTable row
   heights** (measured, not guessed): if the reserve overshoots a one-round auction,
   the bottom-anchored auction floats down inside it — a per-round wobble in the
