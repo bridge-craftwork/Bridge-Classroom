@@ -92,6 +92,12 @@ export { rowReservePx }
 // one), so it's hardcoded here; everything else is input.
 const LEDGER_COLUMNS = [['nw', 'w', 'sw'], ['n', 'center', 's'], ['ne', 'e', 'se']]
 const LEDGER_COL_OF = { nw: 0, w: 0, sw: 0, n: 1, center: 1, s: 1, ne: 2, e: 2, se: 2 }
+// Row topology (top / middle / bottom) — the vertical companion to the columns.
+// Seat areas that collapse (a hidden hand) leave a PHANTOM band unless absorbed:
+// `n`-absorption lifts the stage when the top-centre seat is empty, but a hidden
+// `s` (e.g. the declarer in a defence scene) leaves the bottom band empty.
+const LEDGER_ROWS = [['nw', 'n', 'ne'], ['w', 'center', 'e'], ['sw', 's', 'se']]
+const SEAT_AREAS = new Set(['n', 'e', 's', 'w'])
 const round2 = (x) => Math.round(x * 100) / 100
 
 /**
@@ -193,6 +199,17 @@ export function computeLayoutLedger(o) {
     hb.forEach((a) => { if (regions[a]) regions[a].scale = round2(seatScale) })
   }
 
+  // Row bands (top / middle / bottom) — the vertical companion to `columns`, so
+  // a hidden seat's empty band is legible in the ledger, not just the image.
+  // `phantom` = hidden SEAT areas that leave a dead band (`n` is absorbed by the
+  // stage when empty, so it never phantoms; `s`/`w`/`e` do).
+  const rows = LEDGER_ROWS.map((areas, index) => {
+    const occupied = areas.filter((a) => occ.has(a))
+    const collapsed = areas.filter((a) => !occ.has(a))
+    const phantom = collapsed.filter((a) => SEAT_AREAS.has(a) && a !== 'n')
+    return { index, occupied, collapsed, phantom }
+  })
+
   return {
     schemaVersion: 1,
     budget: Math.round(budget),
@@ -200,6 +217,7 @@ export function computeLayoutLedger(o) {
     // versions), so a ledger diff shows which input changed, not just the outputs.
     inputs: { budget: Math.round(budget), occupied: [...occ].sort(), tiers: tierList, reserves: Object.fromEntries([...occ].sort().map((a) => [a, Math.round(reserves[a] ?? 0)])) },
     columns: columns.map((c) => ({ index: c.index, occupied: c.occupied, need: Math.round(c.need), margin: c.margin, tier: c.tier, allocated: Math.round(c.allocated), width: Math.round(colWidths[c.index]) })),
+    rows,
     regions,
     seats: { scale: round2(seatScale), handBearing: hb },
     outerMargin: Math.round(outerMargin),

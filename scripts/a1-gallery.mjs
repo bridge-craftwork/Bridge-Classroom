@@ -18,7 +18,10 @@ for (const file of fs.readdirSync(FIX_DIR)) {
   if (!file.endsWith('.js')) continue
   const name = file.replace(/\.js$/, '')
   const mod = await import(pathToFileURL(path.resolve(FIX_DIR, file)).href)
-  fixtures.push({ name, label: mod.default?.label || name, phase: mod.default?.phase || '' })
+  // Bounding-box variant is emitted for EVERY grid scene by default (§5.1 is the
+  // arranger's X-ray — every scene gets one). A fixture can PRUNE it with
+  // `boundingBoxes: false`; it never needs to opt IN.
+  fixtures.push({ name, label: mod.default?.label || name, phase: mod.default?.phase || '', boxes: mod.default?.boundingBoxes !== false })
 }
 
 // ── Walk ────────────────────────────────────────────────────────────────────
@@ -28,7 +31,7 @@ let shots = 0
 let labelLedgerMismatches = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
 const rects = {}   // `${name}/${vp}` → { 'seat-s': {top,left,bottom}, se: {…} } — hand/BB screen positions (bottom-anchor acceptance)
-for (const { name } of fixtures) {
+for (const { name, boxes } of fixtures) {
   for (const [vp, dim] of Object.entries(viewports)) {
     const page = await browser.newPage({ viewport: { width: dim.w, height: dim.h }, deviceScaleFactor: 1 })
     await page.goto(`${BASE}/#/harness/scene/${name}`, { waitUntil: 'networkidle' })
@@ -99,9 +102,9 @@ for (const { name } of fixtures) {
     }
     await page.screenshot({ path: out, fullPage: true })
     // Bounding-box variant (grid-arranger-spec §5.1): the arranger's ledger made
-    // visible. Always for the bidding triptych (the reserve-band demo); all scenes
-    // with --bounding-boxes. Toggled via <html data-bounding-boxes> — no re-nav.
-    if (boundingBoxesAll || /^a1-bidding-len/.test(name)) {
+    // visible — emitted for EVERY scene by default (a fixture prunes with
+    // `boundingBoxes: false`). Toggled via <html data-bounding-boxes> — no re-nav.
+    if (boxes || boundingBoxesAll) {
       await page.evaluate(() => document.documentElement.toggleAttribute('data-bounding-boxes', true))
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
       await page.screenshot({ path: path.join(OUT, 'scenes', name, `${vp}__bounding-boxes.png`), fullPage: true })
@@ -186,13 +189,26 @@ function ledgerHtml(name, vp) {
   const tiers = (l.inputs?.tiers || []).map((t) => '[' + t.join(',') + ']').join(' ')
   const anyOverflow = regs.some(([, r]) => r.binding === 'overflow')
   const anyFloor = regs.some(([, r]) => r.binding === 'floor')
+  const anyPhantom = (l.rows || []).some((r) => (r.phantom || []).length)
   // Overflow (starved) dominates the summary flag over the legal floor state.
-  const flag = anyOverflow ? ' ⚠ OVERFLOW' : anyFloor ? ' ⚠ floor-bound' : ''
+  const flag = anyOverflow ? ' ⚠ OVERFLOW' : anyFloor ? ' ⚠ floor-bound' : anyPhantom ? ' ⚠ phantom' : ''
   const cls = anyOverflow ? ' has-overflow' : anyFloor ? ' has-floor' : ''
+  // Row bands (top/mid/bottom) — occupied areas, collapsed in grey, PHANTOM seats
+  // (hidden hands leaving a dead band) flagged red. Makes "why the empty South
+  // band?" answerable from the ledger, not just the boxes image.
+  const rowName = ['top', 'mid', 'bot']
+  const rowsHtml = (l.rows || []).map((r) => {
+    const occ = (r.occupied || []).join(' ') || '—'
+    const phantom = new Set(r.phantom || [])
+    const coll = (r.collapsed || []).map((a) => phantom.has(a)
+      ? `<span class="r-phantom">${a}✗</span>` : `<span class="r-coll">${a}</span>`).join(' ')
+    return `<tr><td>${rowName[r.index]}</td><td>${occ}</td><td>${coll || '—'}</td></tr>`
+  }).join('')
   return `<details class="ledger${cls}"><summary>ledger${flag}</summary>` +
     `<div class="l-inputs">budget ${l.budget} · occ ${(l.inputs?.occupied || []).join(' ')} · tiers ${tiers} · outerMargin ${l.outerMargin}</div>` +
     `<table class="l-table"><thead><tr><th>region</th><th>reserve</th><th>alloc</th><th>scale</th><th>tier</th><th>binding</th></tr></thead>` +
-    `<tbody>${rows}</tbody></table></details>`
+    `<tbody>${rows}</tbody></table>` +
+    `<table class="l-table l-rows"><thead><tr><th>row</th><th>occupied</th><th>collapsed / ✗phantom</th></tr></thead><tbody>${rowsHtml}</tbody></table></details>`
 }
 
 const vpEntries = Object.entries(viewports)
@@ -243,6 +259,10 @@ details.ledger.has-overflow summary { color:#8a0000; font-weight:800; }
 .b-floor { background:rgba(210,40,40,.24); color:#c00; font-weight:700; border-radius:3px; }
 /* Overflow / starved (alloc < floor × reserve): darker, heavier than floor. */
 .b-overflow { background:rgba(140,0,0,.42); color:#600; font-weight:800; border-radius:3px; }
+.l-rows { margin-top:5px; }
+.r-coll { color:var(--mut); opacity:.7; }
+.r-phantom { background:rgba(210,40,40,.22); color:#c00; font-weight:700; border-radius:3px; padding:0 3px; }
+@media (prefers-color-scheme: dark){ .r-phantom{color:#ff8080;} }
 @media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} .b-overflow{background:rgba(200,0,0,.5); color:#ffd0d0;} }
 #toggle-ledgers { margin-top:8px; font:600 12px/1 'DM Sans',system-ui,sans-serif; cursor:pointer; background:var(--line); color:var(--ink); border:none; border-radius:6px; padding:6px 12px; }
 </style></head><body>

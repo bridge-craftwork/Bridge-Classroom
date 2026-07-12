@@ -180,6 +180,26 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     for (const r of starved) expect(r.allocated).toBeLessThan(Math.round(0.65 * r.reserve))
   })
 
+  // Ledger assertion 6 — row bands + phantom seats: a hidden seat (the declarer's
+  // South in a defence scene) leaves an empty bottom band, flagged `phantom`.
+  it('row bands flag a hidden seat as a phantom band', () => {
+    const l = computeLayoutLedger({
+      budget: 650,
+      occupied: ['center', 'w', 'n', 'nw', 'ne', 'se'], // hero W + dummy N; E/S hidden
+      reserves: { center: 200, w: SEAT, n: SEAT, nw: 89, ne: 220, se: 222 },
+      tiers: A1_TIERS,
+      seatReserve: SEAT,
+      handBearingAreas: ['w', 'n'],
+    })
+    expect(l.rows).toHaveLength(3)
+    const bot = l.rows[2] // [sw, s, se]
+    expect(bot.occupied).toEqual(['se'])
+    expect(bot.phantom).toContain('s') // hidden South → phantom band
+    expect(bot.collapsed).toEqual(expect.arrayContaining(['sw', 's']))
+    // Top row is fully occupied (status + dummy + auction) — no phantom.
+    expect(l.rows[0].phantom).toEqual([])
+  })
+
   // Ledger assertion 3 — review clustering: with a generous budget the columns size
   // to need (not stretched), leaving OUTER MARGIN, so the revealed hands cluster
   // beside the centred auction rather than at the stage extremes.
