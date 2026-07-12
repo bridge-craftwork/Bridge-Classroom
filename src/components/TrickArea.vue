@@ -130,7 +130,9 @@ function formatRank(rank) {
   border-radius: 4px;
   padding: calc(6px * var(--table-scale)) calc(10px * var(--table-scale));
   font-weight: 500;
-  font-size: calc(20px * var(--table-scale));
+  /* Unified glyph scale (glyph-scale.md): the played card matches the hand-rank
+     reference (~24px medium), so trick cards read ≥ the cards in hand. */
+  font-size: calc(24px * var(--table-scale));
   white-space: nowrap;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   letter-spacing: 1px;
