@@ -125,23 +125,40 @@ export function computeLayoutLedger(o) {
     return { index, occupied: cOcc, need, margin, full: need ? need + margin : 0, tier: cOcc.length ? tierOf(cOcc) : tierList.length, allocated: 0 }
   })
 
-  // Tier allocation: a higher tier is satisfied whole before a lower one; the first
-  // tier that can't fit SHARES the remainder (members compress proportionally).
+  // Allocation (§3, amended 2026-07-12 — floor-protection / corner rule). Every
+  // occupied column first reserves floor × need (its OVERFLOW THRESHOLD — the
+  // least it can render legally), whatever its tier. The surplus then grows
+  // columns toward their natural need by TIER priority: a higher tier is
+  // satisfied whole before a lower one, and the first tier that can't fit SHARES
+  // the remainder proportionally. So a column only renders below the floor
+  // ('overflow' / starved) when even the floor-minimums can't all fit — never
+  // while another column holds width above its own floor. This generalises the
+  // corner-occupant column minimum to all four corners (a lone NW/NE/SE/SW no
+  // longer starves under a heavier sibling column while the arithmetic has room).
   const content = [0, 0, 0]
   const occCols = columns.filter((c) => c.full > 0)
-  let remaining = budget
-  for (const t of [...new Set(occCols.map((c) => c.tier))].sort((a, b) => a - b)) {
-    const cols = occCols.filter((c) => c.tier === t)
-    const tierFull = cols.reduce((s, c) => s + c.full, 0)
-    if (remaining >= tierFull) {
-      for (const c of cols) content[c.index] = c.need
-      remaining -= tierFull
-    } else {
-      const tierMargin = cols.reduce((s, c) => s + c.margin, 0)
-      const tierNeed = cols.reduce((s, c) => s + c.need, 0)
-      const ratio = tierNeed > 0 ? Math.max(0, remaining - tierMargin) / tierNeed : 0
-      for (const c of cols) content[c.index] = c.need * ratio
-      break
+  const contentBudget = budget - occCols.reduce((s, c) => s + c.margin, 0)
+  const floorContent = (c) => floor * c.need
+  const sumFloor = occCols.reduce((s, c) => s + floorContent(c), 0)
+  if (contentBudget <= sumFloor) {
+    // Not even the floor-minimums fit — shrink them proportionally (all starve).
+    const ratio = sumFloor > 0 ? Math.max(0, contentBudget) / sumFloor : 0
+    for (const c of occCols) content[c.index] = floorContent(c) * ratio
+  } else {
+    for (const c of occCols) content[c.index] = floorContent(c)
+    let surplus = contentBudget - sumFloor
+    for (const t of [...new Set(occCols.map((c) => c.tier))].sort((a, b) => a - b)) {
+      if (surplus <= 0) break
+      const cols = occCols.filter((c) => c.tier === t)
+      const growth = cols.reduce((s, c) => s + (c.need - floorContent(c)), 0)
+      if (surplus >= growth) {
+        for (const c of cols) content[c.index] = c.need
+        surplus -= growth
+      } else {
+        const r = growth > 0 ? surplus / growth : 0
+        for (const c of cols) content[c.index] = floorContent(c) + (c.need - floorContent(c)) * r
+        surplus = 0
+      }
     }
   }
   columns.forEach((c) => { c.allocated = content[c.index] })
@@ -150,12 +167,17 @@ export function computeLayoutLedger(o) {
 
   // Per-region scale = min(1, allocated/reserve), floored. Record the BINDING
   // constraint and the losing candidates — the diagnosis the ledger exists for.
+  // Binding = which constraint set the scale. 'overflow' (fit < floor) is the
+  // STARVED state: even clamped to the floor the region can't render in its
+  // allocation (alloc < floor × reserve) — distinct from 'floor' (pinned exactly
+  // at the legibility floor, but legal). 'budget' shrinks between floor and 1.
   const entry = (area, reserve, colContent, tier) => {
     const fit = reserve > 0 ? colContent / reserve : 1
     const scale = Math.max(floor, Math.min(1, fit))
     let binding, losing
     if (fit >= 1) { binding = 'natural'; losing = [`budget:${round2(fit)}`] }
-    else if (Math.min(1, fit) <= floor) { binding = 'floor'; losing = [`budget:${round2(fit)}`, 'natural:1'] }
+    else if (fit < floor - 1e-6) { binding = 'overflow'; losing = [`budget:${round2(fit)}`, 'natural:1', `floor:${floor}`] }
+    else if (fit <= floor + 1e-6) { binding = 'floor'; losing = [`budget:${round2(fit)}`, 'natural:1'] }
     else { binding = 'budget'; losing = ['natural:1', `floor:${floor}`] }
     return { reserve, allocated: Math.round(colContent), scale: round2(scale), tier, binding, losing }
   }

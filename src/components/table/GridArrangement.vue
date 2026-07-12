@@ -58,9 +58,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
-import { seatToArea, anchorFor, seatRole, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
+import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 import { biddingBoxReservePx } from '../biddingBoxMetrics.js'
+import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../boardIndicatorMetrics.js'
 
 const slots = useSlots()
 
@@ -75,6 +76,8 @@ const props = defineProps({
   phase: { type: String, default: 'bidding' },
   heroSeat: { type: String, default: 'S' },
   heroName: { type: String, default: null },
+  // Declarer seat (played/reviewed deals) — names declarer + its dummy (item 5).
+  declarer: { type: String, default: null },
 })
 defineEmits(['card-click'])
 
@@ -89,7 +92,11 @@ const CORNERS = ['nw', 'ne', 'sw', 'se']
 // its metrics where it exists (auction: auctionMetrics, fix 1b). Fixes the stale
 // reserve that let the NE auction overflow its track at computed 1.0×.
 const TRICK_RESERVE = 200
-const STATUS_RESERVE = 150
+// NW status column: the board·dealer·vul BoardIndicator glyph (StatusStrip chips
+// wrap under it). Single-sourced from boardIndicatorMetrics at the A1 glyph size
+// (~89px) — replaces the stale 150 (the old three-pill board/dealer/vul stack;
+// the vul-diamond composition is visibly narrower).
+const STATUS_RESERVE = Math.round(boardIndicatorExtentPx(A1_BOARD_SIZE))
 // BiddingBox natural width at 1.0×, single-sourced from biddingBoxMetrics (same
 // pattern as auction: render and provisioning share the number, can't drift).
 // Post glyph-ratio restyle this is ~222 (down from the pre-restyle 308) — the BB
@@ -163,18 +170,26 @@ function areaOccupied(area) {
 }
 const visibleSeats = computed(() => SEATS.filter((s) => areaOccupied(seatArea(s))))
 
-// Seat identity BADGE (item 4). config.seatBadges maps the seat's role relative
-// to the hero → 'name' (hero's first name) | 'label' ("Partner") | 'off'. 'off'
-// (or no config) returns null, so SeatChip renders the plain compass label — the
-// "badge off" state. Roles derive from heroSeat, so badges rotate with anchor.
+// Seat identity BADGE (item 4 + item 5). config.seatBadges maps the seat's role
+// relative to the hero → 'name' (hero's first name) | 'label' ("Partner") |
+// 'off'. On a played/reviewed deal the declarer and its dummy are additionally
+// named by compass ("S: Declarer" / "N: Dummy"), overriding the neutral opponent
+// 'off' — but never the hero (the student always sees their own name). 'off' /
+// no match → null, so SeatChip renders the plain compass label. Roles derive from
+// heroSeat, so badges rotate with the orientation anchor.
 function firstNameOf(full) {
   return (full || '').trim().split(/\s+/)[0] || null
 }
 function seatBadge(seat) {
-  const mode = props.config.seatBadges?.[seatRole(seat, props.heroSeat)] || 'off'
-  if (mode === 'name') return firstNameOf(props.heroName)
-  if (mode === 'label') return 'Partner'
-  return null
+  const role = seatRole(seat, props.heroSeat)
+  if (role === 'hero') return props.config.seatBadges?.hero === 'name' ? firstNameOf(props.heroName) : null
+  const decl = props.declarer
+  if (decl) {
+    if (seat === decl) return `${seat}: Declarer`
+    if (seat === partnerOf(decl)) return `${seat}: Dummy`
+  }
+  const mode = props.config.seatBadges?.[role] || 'off'
+  return mode === 'label' ? 'Partner' : mode === 'name' ? firstNameOf(props.heroName) : null
 }
 
 // A region's reserve WIDTH (px, 1.0×) for column provisioning.

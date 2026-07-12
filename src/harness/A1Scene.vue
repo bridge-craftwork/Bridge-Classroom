@@ -18,6 +18,7 @@
         :hide-played-cards="phase === 'play'"
         :hero-seat="f.seat || 'S'"
         :hero-name="f.heroName || 'Rick Wilson'"
+        :declarer="f.declarer || null"
       >
         <!-- center: live auction (bidding), the trick (play), or the completed
              auction + result (review — NE is freed, densities ruling) -->
@@ -52,7 +53,7 @@
               :board-number="f.board ?? 1"
               :dealer="f.dealer || null"
               :vulnerable="f.vulnerable || null"
-              :size="78"
+              :size="A1_BOARD_SIZE"
             />
             <StatusStrip v-if="phase !== 'bidding'" :status="status" />
           </div>
@@ -104,6 +105,7 @@ import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
+import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import ContextPanel from '../components/ContextPanel.vue'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'

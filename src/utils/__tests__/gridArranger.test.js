@@ -142,6 +142,44 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     expect(l.regions.s.scale).toBe(l.seats.scale)
   })
 
+  // Ledger assertion 4 — floor-protection / corner rule (2026-07-12). A lone
+  // corner (NW status) in its own column, one tier below a heavier sibling
+  // column, must ride at its floor-minimum — NOT starve below it — while the
+  // budget can cover every column's floor. This is the defensive-cardplay case
+  // (hero S, dummy E) that previously starved NW to 80 (< 0.65×150).
+  it('lone corner rides at its floor, not below, when the budget has room', () => {
+    const l = computeLayoutLedger({
+      budget: 650,
+      occupied: ['center', 'e', 'ne', 'nw', 's', 'se'],
+      reserves: { center: 200, e: SEAT, ne: 220, nw: 150, s: SEAT, se: 222 },
+      tiers: A1_TIERS, // nw/ne/se tier 1; center/e/s tier 0
+      seatReserve: SEAT,
+      handBearingAreas: ['e', 's'],
+    })
+    // NW is floor-protected: alloc ≈ 0.65×150 ≈ 97.5, scale pinned at the floor,
+    // and the binding is the legal 'floor' — never 'overflow'.
+    expect(l.regions.nw.scale).toBe(0.65)
+    expect(l.regions.nw.binding).toBe('floor')
+    expect(l.regions.nw.allocated).toBeGreaterThanOrEqual(Math.round(0.65 * 150))
+  })
+
+  // Ledger assertion 5 — genuine overflow: when even the floor-minimums can't all
+  // fit (a very narrow budget), the starved region reports 'overflow', distinct
+  // from the legal 'floor'.
+  it('reports overflow only when the floor-minimums cannot all fit', () => {
+    const l = computeLayoutLedger({
+      budget: 240, // below the two columns' floor-minimums + margins → starved
+      occupied: ['center', 's', 'nw'],
+      reserves: { center: 220, s: SEAT, nw: 150 },
+      tiers: A1_TIERS,
+      seatReserve: SEAT,
+      handBearingAreas: ['s'],
+    })
+    const starved = ['center', 's', 'nw'].map((a) => l.regions[a]).filter((r) => r.binding === 'overflow')
+    expect(starved.length).toBeGreaterThan(0)
+    for (const r of starved) expect(r.allocated).toBeLessThan(Math.round(0.65 * r.reserve))
+  })
+
   // Ledger assertion 3 — review clustering: with a generous budget the columns size
   // to need (not stretched), leaving OUTER MARGIN, so the revealed hands cluster
   // beside the centred auction rather than at the stage extremes.
