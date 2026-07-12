@@ -138,10 +138,12 @@ function makeBid(level, strain) {
 .bidding-box {
   background: #e8e8e8;
   border-radius: 8px;
-  padding: calc(16px * var(--table-scale));
+  /* Glyph-ratio restyle (2026-07-11): tighter container padding + gaps for an
+     honestly narrower natural form (documentation/design/biddingbox-glyph-restyle.md). */
+  padding: calc(10px * var(--table-scale));
   display: flex;
   flex-direction: column;
-  gap: calc(12px * var(--table-scale));
+  gap: calc(8px * var(--table-scale));
 }
 
 /* Not this player's turn: same layout, greyed and non-interactive. */
@@ -153,23 +155,28 @@ function makeBid(level, strain) {
 .bid-section {
   display: flex;
   flex-direction: column;
-  gap: calc(8px * var(--table-scale));
+  gap: calc(6px * var(--table-scale));
 }
 
 .levels {
   display: flex;
-  gap: calc(4px * var(--table-scale));
+  gap: calc(3px * var(--table-scale));
   justify-content: center;
 }
 
 .level-btn {
-  width: calc(36px * var(--table-scale));
-  height: calc(36px * var(--table-scale));
+  /* Narrower (a digit doesn't need a 36px box) but TALLER — the 44px height carries
+     the ≥44px touch target while the width shrinks the natural form. Bigger, tighter
+     glyph: font ~55% of the button height (was ~36%). */
+  width: calc(26px * var(--table-scale));
+  height: calc(44px * var(--table-scale));
+  padding: 0;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: calc(18px * var(--table-scale));
+  font-size: calc(34px * var(--table-scale));
   font-weight: bold;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -186,17 +193,19 @@ function makeBid(level, strain) {
 
 .strains {
   display: flex;
-  gap: calc(4px * var(--table-scale));
+  gap: calc(3px * var(--table-scale));
   justify-content: center;
 }
 
 .strain-btn {
-  width: calc(48px * var(--table-scale));
-  height: calc(42px * var(--table-scale));
+  width: calc(38px * var(--table-scale));
+  height: calc(44px * var(--table-scale));
+  padding: 0;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: calc(20px * var(--table-scale));
+  font-size: calc(34px * var(--table-scale));
+  line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -221,7 +230,7 @@ function makeBid(level, strain) {
 }
 
 .strain-btn.suit-nt {
-  font-size: calc(14px * var(--table-scale));
+  font-size: calc(18px * var(--table-scale));
   font-weight: bold;
   color: #1a1a1a;
 }
@@ -233,11 +242,12 @@ function makeBid(level, strain) {
 }
 
 .special-btn {
-  min-width: calc(64px * var(--table-scale));
-  padding: calc(10px * var(--table-scale)) calc(16px * var(--table-scale));
+  min-width: calc(58px * var(--table-scale));
+  height: calc(44px * var(--table-scale)); /* ≥44px touch target */
+  padding: calc(4px * var(--table-scale)) calc(12px * var(--table-scale));
   border: none;
   border-radius: 4px;
-  font-size: calc(14px * var(--table-scale));
+  font-size: calc(16px * var(--table-scale));
   font-weight: bold;
   cursor: pointer;
   transition: all 0.15s;
