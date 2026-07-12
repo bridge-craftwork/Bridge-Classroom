@@ -165,17 +165,19 @@ function makeBid(level, strain) {
 }
 
 .level-btn {
-  /* Narrower (a digit doesn't need a 36px box) but TALLER — the 44px height carries
-     the ≥44px touch target while the width shrinks the natural form. Bigger, tighter
-     glyph: font ~55% of the button height (was ~36%). */
+  /* Narrow (a digit doesn't need a wide box), 44px tall for the ≥44px touch target.
+     Numeral at the UNIFIED glyph scale (documentation/design/glyph-scale.md): the
+     hand-rank reference — 'Segoe UI'/system-ui, MEDIUM (500), 24px — not a
+     button-fill ratio. A number is a number wherever it is on the table. */
   width: calc(26px * var(--table-scale));
   height: calc(44px * var(--table-scale));
   padding: 0;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: calc(34px * var(--table-scale));
-  font-weight: bold;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(24px * var(--table-scale));
+  font-weight: 500;
   line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
@@ -204,7 +206,11 @@ function makeBid(level, strain) {
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
-  font-size: calc(34px * var(--table-scale));
+  /* Suit symbol at 100% of the level digit's character extents (glyph-scale rule):
+     a suit is sized to match the numbers it sits beside. 28px renders the ♠♥♦♣ at
+     the 24px digit's visual height. */
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(28px * var(--table-scale));
   line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
@@ -230,8 +236,10 @@ function makeBid(level, strain) {
 }
 
 .strain-btn.suit-nt {
-  font-size: calc(18px * var(--table-scale));
-  font-weight: bold;
+  /* NT set at the same scale as the strain symbols (item 2), medium weight; "NT" is
+     two chars so it sits a touch smaller to fit the button. */
+  font-size: calc(22px * var(--table-scale));
+  font-weight: 500;
   color: #1a1a1a;
 }
 
