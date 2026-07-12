@@ -64,6 +64,14 @@ for (const { name } of fixtures) {
     })
     const out = path.join(OUT, 'scenes', name, `${vp}.png`)
     fs.mkdirSync(path.dirname(out), { recursive: true })
+    // Save the layout ledger beside the capture — the allocator's accounting (budget,
+    // occupancy, priorities → per-region reserve/allocated/scale/binding) that
+    // produced this exact render (grid-arranger-spec §3/§5.1).
+    const ledger = await page.evaluate(() => {
+      const el = document.querySelector('[data-layout-ledger]')
+      try { return el ? JSON.parse(el.getAttribute('data-layout-ledger')) : null } catch { return null }
+    })
+    if (ledger) fs.writeFileSync(path.join(OUT, 'scenes', name, `${vp}.ledger.json`), JSON.stringify(ledger, null, 2))
     await page.screenshot({ path: out, fullPage: true })
     // Bounding-box variant (grid-arranger-spec §5.1): the arranger's ledger made
     // visible. Always for the bidding triptych (the reserve-band demo); all scenes

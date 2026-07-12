@@ -279,7 +279,50 @@ Semantics and rules:
   hosts `slots.action` during bidding (BiddingBox) and the play-controls cluster
   during play (shell-owned discriminant mapping, per the roadmap's rule).
 
-## 3. Scale clamp (the heart of this slice)
+## 3. Scale clamp → one-directional budget allocator + layout ledger (2026-07-11)
+
+**Superseded model below; this is the shipped one.** The clamp is now a single
+**pure function** (`computeLayoutLedger` in `gridArranger.js`) that returns a
+**layout ledger** — the complete accounting the render applies, the bounding-box
+diagnostic reads, and the walker saves beside every capture (`*.ledger.json`).
+
+The four rules, in order:
+
+1. **Budget flows down.** The shell hands the grid a width **budget** (its offered
+   content width). This is the *only* geometric input — measured once from the grid
+   container's `clientWidth` (stable: the grid fills the frame, which never
+   shrink-wraps horizontally). **The arranger never measures rendered content, and
+   never reads the viewport.** Applying a scale therefore cannot feed back into the
+   budget — verified: successive clamp passes are byte-identical, not a descending
+   ratchet. (Vertical is a separate shrink-wrap from reserves; it never touches scale.)
+2. **Reserves drive allocation.** Each column's **need** = the widest exported
+   reserve among the regions occupying it (+ its margin box). Columns size to need,
+   **not** stretched to fill the budget; the surplus becomes **outer margin**
+   (`justify-content:center`), so hands cluster one gutter from the stage rather
+   than spreading to its extremes.
+3. **When the budget is short, importance decides who shrinks — and importance is
+   config.** `allocationPriority` is an array of **tiers**. A higher tier is
+   satisfied whole before a lower one gets anything; the first tier that can't fit
+   **shares** the remainder (its members compress *together*, proportionally). So
+   the working set (stage + hero hand) holds 1.0× while the periphery (bidding box,
+   status) compress together — the hand yields a pixel only after they have. Tiers
+   differ per surface, so they're data (A1: `[['center','n','e','s','w'],
+   ['se','nw','ne','sw']]`).
+4. **scale = min(1, allocated / reserve)**, floored. Natural size (1.0×) when it
+   fits; below only when the budget genuinely can't; never above 1.0 (no
+   enlargement — the earlier "grow to cap" is retired). Seat uniformity = the min
+   fit over hand-bearing seats, applied to all of them.
+
+**The ledger** (per stage): `budget`, `inputs` (occupancy, tiers), per-`columns`
+(need, margin, tier, allocated, width), per-`regions` (`reserve`, `allocated`,
+`scale`, `tier`, **`binding`** — which constraint set the scale: `natural` |
+`budget` | `floor` — and the losing candidates), `seats.scale`, `outerMargin`.
+Unit-tested directly (`computeLayoutLedger`): no floor-bound regions at laptop-half
+bidding, uniform seat scales across columns, review clustering (surplus → margin).
+
+---
+
+### Superseded: the original per-region clamp
 
 Per region, per render. **Input:** `--table-scale` (the *wish* — global
 preference/design axis, harness-plan meaning unchanged). **Output:** a per-region
@@ -373,12 +416,14 @@ its internal ledger visible**. (Named for the same overlay in `pbn-to-pdf`.)
   *box far larger than its reserve = dead space* (the empty seat tracks)), and the
   **growth-reserve / slack band** (the bidding stage's reserved height, hatched
   above the bottom-anchored auction).
-- **Labels via pseudo-elements** carry the ledger:
-  `center · 287×99 · 1.31× · r99h` — region · received W×H · computed scale ·
-  reserve (with `w`/`h` suffix). The arranger sets `data-region`,
-  `data-region-scale`, `data-region-reserve`, `data-bounding-box-label`; a
-  stylesheet renders them. **Zero-size (collapsed) regions are listed in a corner
-  legend**, not floated as `0×0` labels over the layout.
+- **Labels via pseudo-elements** are the LAYOUT LEDGER (§3), read straight from the
+  pure allocator: `center · 115×60 · 1× · r220 · a260 · natural` — region · received
+  W×H · scale · reserve · allocated · **binding constraint**. reserve-vs-allocated
+  (and vs received) is the encroachment / dead-space / who-won-the-budget diagnosis.
+  The arranger sets `data-bounding-box-label` (from the ledger) and
+  `data-layout-ledger` (the whole ledger JSON, which the walker saves as
+  `*.ledger.json` beside each capture). **Zero-size (collapsed) regions are listed
+  in a corner legend**, not floated as `0×0` labels over the layout.
 - **Outline, never border** — outlines don't participate in layout, so the debug
   mode cannot perturb the geometry it inspects (the same trap the popup avoided
   with `cs-static`).
@@ -467,6 +512,19 @@ play `{ne: chip}` reserved for Phase 5; shell two-column (context right).
 - Config-as-data check: the diff between `a1.tableConfig` and
   `tables.tableConfig` is the complete statement of their differences; grep
   confirms no surface-conditional branches inside the arranger.
+- **Allocator ledger (§3), checked from `*.ledger.json` beside each capture:** at
+  laptop-half **bidding** no region is floor-bound — the working set (centre + hero
+  hand) is `binding: natural` at 1.0×, the periphery (bidding box, status) is
+  `binding: budget`, compressing *together*. Seat scales are **uniform** across
+  columns. In **review** the centre hosts the auction + result (NE freed), the four
+  hands cluster compass-style around it (surplus → outer margin, not stretched to
+  the extremes), and no seat is floor-bound. Three of these are unit tests on the
+  pure `computeLayoutLedger`.
+- **Known reserve debt:** the bidding box has no responsive narrow form (fixed
+  ~308px; the roadmap records sizing as width-independent and touch targets rule
+  out scaling it down), so its reserve starves the stage column at laptop-half more
+  than an honest narrow form would. The priority rule keeps the *hand* at 1.0×
+  regardless (periphery yields first); a narrow BB would lift the periphery too.
 - **Bottom-anchor triptych (§1 bidding vertical model, A1 `reserveRounds: 1`):**
   render the bidding fixture at auction lengths **1, 5, and 9 calls** (same deal,
   three snapshots). The auction **top is fixed** (`seat-s`/`se` aside, the auction

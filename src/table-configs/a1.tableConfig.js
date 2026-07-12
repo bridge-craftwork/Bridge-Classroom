@@ -41,6 +41,13 @@ export default {
   // actionHandGap: the gap on the bidding box's hand-facing side.
   spacing: { actionHandGap: 14 },
 
+  // Allocation priority as TIERS (§3): when the budget can't satisfy every reserve
+  // at 1.0×, higher tiers are satisfied first and the first tier that can't fit
+  // shares the remainder (its members compress together). A1: the working set
+  // (stage + hero hand) is protected; the periphery (bidding box, status, reference
+  // auction) compress together before the hand yields a pixel.
+  allocationPriority: [['center', 'n', 'e', 's', 'w'], ['se', 'nw', 'ne', 'sw']],
+
   scale: {
     wishVar: '--table-scale',
     // se cap is a RELATIONSHIP, not a constant (fix 2): the action cluster belongs
@@ -56,7 +63,7 @@ export default {
   densities: {
     bidding: { ne: 'none' },
     play: { ne: 'full' },   // pinned auction, full density
-    review: { ne: 'full' },
+    review: { ne: 'none' }, // review hosts auction+result in CENTER; NE freed
   },
 
   shell: {

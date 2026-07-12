@@ -17,7 +17,8 @@
         :played-cards="f.playedCards || null"
         :hide-played-cards="phase === 'play'"
       >
-        <!-- center: live auction (bidding) or the trick (play); empty in review -->
+        <!-- center: live auction (bidding), the trick (play), or the completed
+             auction + result (review — NE is freed, densities ruling) -->
         <template v-if="center === 'auction'" #center>
           <div class="a1-center-auction"><AuctionTable v-bind="auctionProps" :show-turn-indicator="true" /></div>
         </template>
@@ -30,6 +31,12 @@
             bot-name="Defense"
           />
         </template>
+        <template v-else-if="center === 'review'" #center>
+          <div class="a1-center-auction a1-center-review">
+            <AuctionTable v-bind="auctionProps" :show-turn-indicator="false" />
+            <div v-if="f.contract" class="a1-result">{{ f.contract }}{{ f.declarer ? ' by ' + f.declarer : '' }}</div>
+          </div>
+        </template>
 
         <!-- NW: table info (board / vul / phase-aware status) -->
         <template #nw>
@@ -39,7 +46,8 @@
           </div>
         </template>
 
-        <!-- NE: completed auction pinned (play / review) -->
+        <!-- NE: completed auction pinned during PLAY only (review hosts it in the
+             center now, so NE is freed — densities ruling) -->
         <template v-if="pinnedAuction" #ne>
           <div class="a1-ne">
             <div class="a1-corner-label">Auction</div>
@@ -47,8 +55,10 @@
           </div>
         </template>
 
-        <!-- SE: bidding box (bidding) / play controls (play) -->
-        <template #se>
+        <!-- SE: bidding box (bidding) / play controls (play). Provided ONLY when it
+             has content, so the arranger collapses the se column in review (an
+             always-provided slot would over-count — occupancy is gated at source). -->
+        <template v-if="hasAction" #se>
           <div v-if="action === 'bidding-box'" class="a1-se">
             <BiddingBox :last-bid="f.lastBid || null" :can-double="!!f.canDouble" :can-redouble="!!f.canRedouble" />
           </div>
@@ -104,6 +114,8 @@ const hasContext = computed(() => !!f.value.context)
 const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext })
 const action = slots.action
 const center = slots.center
+// SE has content only during bidding (box) or play (controls) — never review.
+const hasAction = computed(() => action.value === 'bidding-box' || phase.value === 'play')
 
 // Fix 4: the SHELL consumes config.shell.perViewport (it was ignored — a
 // hardcoded 720px breakpoint left tablet-portrait two-column). Match by real
@@ -131,7 +143,7 @@ const narrativeOrder = computed(() => (['left', 'above'].includes(shell.value.co
 onMounted(() => { readWin(); window.addEventListener('resize', readWin) })
 onBeforeUnmount(() => window.removeEventListener('resize', readWin))
 
-const pinnedAuction = computed(() => (phase.value === 'play' || phase.value === 'review') && (f.value.bids || []).length > 0)
+const pinnedAuction = computed(() => phase.value === 'play' && (f.value.bids || []).length > 0)
 const auctionProps = computed(() => ({
   bids: f.value.bids || [],
   dealer: f.value.dealer || 'N',
@@ -161,6 +173,8 @@ const auctionProps = computed(() => ({
      shrink-wraps to its content + the bidding growth reserve; the shell (this
      scene) owns placement, top-weighting the block via .a1-scene align-items. */
 }
+.a1-center-review { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.a1-result { font: 700 15px 'DM Sans', system-ui, sans-serif; color: #1d6a4f; }
 .a1-nw { display: flex; flex-direction: column; gap: 6px; }
 .a1-board {
   font-size: 12px; font-weight: 700; color: #4a5550;

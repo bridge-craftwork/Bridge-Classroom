@@ -6,7 +6,7 @@
        leaves render at that scale, plus a `data-region-scale` attribute for the
        gallery captions. Legacy BridgeTable is untouched — this is the `grid`
        branch, dark until the A1 flip. -->
-  <div ref="root" class="grid-table" :class="{ 'bidding-anchored': biddingAnchored }" :style="gridStyle">
+  <div ref="root" class="grid-table" :class="{ 'bidding-anchored': biddingAnchored }" :style="gridStyle" :data-layout-ledger="ledgerJson">
     <!-- Occupied seats only — an unoccupied seat area doesn't render (occupancy
          model); its cell is either absorbed by the stage or left empty. -->
     <div
@@ -18,7 +18,7 @@
       :data-region="'seat-' + seatArea(seat)"
       :data-region-scale="fmt(scales.seats)"
       :data-region-reserve="Math.round(rowReservePx(7))"
-      :data-bounding-box-label="bbLabel('seat-' + seatArea(seat), 'seats', rowReservePx(7))"
+      :data-bounding-box-label="bbLabel('seat-' + seatArea(seat))"
     >
       <SeatPanel
         :hand="hands[seat]"
@@ -33,13 +33,13 @@
     </div>
 
     <!-- center + peripheral regions: shell-provided content, scaled per region. -->
-    <div class="region area-center occupied" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bounding-box-label="bbLabel('center', 'center', biddingAnchored ? stageReservePx : regionReserve('center'), biddingAnchored ? 'h' : 'w')">
+    <div class="region area-center occupied" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bounding-box-label="bbLabel('center')">
       <slot name="center" />
     </div>
-    <div v-if="areaOccupied('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw', 'nw', regionReserve('nw'))"><slot name="nw" /></div>
-    <div v-if="areaOccupied('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne', 'ne', regionReserve('ne'))"><slot name="ne" /></div>
-    <div v-if="areaOccupied('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se', 'se', regionReserve('se'))"><slot name="se" /></div>
-    <div v-if="areaOccupied('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw', 'sw', regionReserve('sw'))"><slot name="sw" /></div>
+    <div v-if="areaOccupied('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw')"><slot name="nw" /></div>
+    <div v-if="areaOccupied('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne')"><slot name="ne" /></div>
+    <div v-if="areaOccupied('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se')"><slot name="se" /></div>
+    <div v-if="areaOccupied('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw')"><slot name="sw" /></div>
 
     <!-- Bounding-box diagnostic legend: collapsed (zero-size) regions listed here
          instead of as floating 0×0 labels over the layout. Hidden unless the
@@ -57,7 +57,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
-import { seatToArea, anchorFor, computeRegionScale, uniformSeatScale, rowReservePx } from '../../utils/gridArranger.js'
+import { seatToArea, anchorFor, rowReservePx, computeLayoutLedger } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 
 const slots = useSlots()
@@ -100,7 +100,6 @@ const CELL_GAP = 6
 const anchor = computed(() => anchorFor(props.config.orientation, props.heroSeat))
 function seatArea(seat) { return seatToArea(seat, anchor.value) }
 
-const caps = computed(() => props.config.scale?.caps || {})
 const floor = computed(() => props.config.scale?.legibilityFloor ?? 0.65)
 const regions = computed(() => props.config.regions || {})
 function hasRegion(area) { return regions.value[area] && regions.value[area] !== 'none' }
@@ -146,6 +145,11 @@ const reserveRounds = computed(() => props.config.reserveRounds ?? 1)
 // = it's visible (the deal's display directive). Everything downstream — which
 // divs render, the area template, the column widths, the legend — is a pure
 // function of this, so the grid genuinely collapses around what isn't there.
+// A corner is occupied iff its role is configured AND the shell PROVIDED its slot.
+// The shell must gate the slot at the source (`<template v-if=… #se>`): a slot whose
+// content is merely v-if'd away still registers here (and forwarding hides that), so
+// an always-provided slot would over-count (e.g. an empty se in review). Providing
+// conditionally is what lets an empty corner genuinely collapse.
 function seatForArea(area) { return SEATS.find((s) => seatArea(s) === area) }
 function areaOccupied(area) {
   if (area === 'center') return true
@@ -170,31 +174,21 @@ function areaTemplate() {
   if (!areaOccupied('n')) rows[0][1] = 'center'
   return rows.map((r) => `"${r.join(' ')}"`).join(' ')
 }
-// Fix 2 — column width from the WHOLE column's occupancy, not just the seat. The
-// centre column is the flexible stage (1fr); a side column is sized to the widest
-// reserve among the regions actually occupying it (so an occupied corner — the
-// bidding box — sets the column to its narrow-form reserve and never overflows the
-// hand), or collapses to 0 when the column is empty.
-function columnTemplate() {
-  return [0, 1, 2].map((ci) => {
-    if (ci === 1) return 'minmax(0, 1fr)'
-    const occ = AREA_COLS[ci].filter(areaOccupied)
-    if (!occ.length) return '0'
-    // Widest occupant reserve + its margin box (2×cell-gap, plus the se action gap)
-    // so the region and its margins fit without overflowing the hand.
-    const reserve = Math.max(...occ.map(reserveForArea))
-    const margins = 2 * CELL_GAP + (occ.includes('se') ? actionHandGap.value : 0)
-    return Math.round(reserve + margins) + 'px'
-  }).join(' ')
-}
+// Column widths are computed in relayout() (budget allocation), not here — see the
+// one-directional sizing note. `reserveForArea` (above) supplies the per-column
+// need; the centre column is the flexible stage that absorbs any deficit.
 
 const actionHandGap = computed(() => props.config.spacing?.actionHandGap ?? 14)
 
 const gridStyle = computed(() => {
   const r = props.config.tracks?.rows || [1, 1, 1]
+  // Columns are the computed ALLOCATIONS (fixed px), NOT `1fr` — so tracks size to
+  // need and don't stretch to fill the budget; `justify-content:center` (CSS)
+  // turns the surplus into outer margin, clustering the columns.
+  const cols = colAlloc.map((w) => (w > 0 ? w + 'px' : '0')).join(' ')
   return {
     gridTemplateAreas: areaTemplate(),
-    gridTemplateColumns: columnTemplate(),
+    gridTemplateColumns: cols,
     // Bottom-anchored bidding: content-sized rows — the center's min-height (the
     // reserve, see centerStyle) sets the stage height. Otherwise the config's
     // weighted-fr rows (play/review centered stage).
@@ -205,23 +199,27 @@ const gridStyle = computed(() => {
 
 // ── The §3 scale clamp, per region, from measured geometry ──────────────────
 const scales = reactive({ seats: 1, center: 1, nw: 1, ne: 1, se: 1, sw: 1 })
-// Received box (px) per region — the arranger's ledger, surfaced for the
-// bounding-box diagnostic (grid-arranger-spec §5.1): reserve-vs-received is the
-// encroachment / dead-space diagnosis.
+// Received box (px) per region — measured, DISPLAY-ONLY (never fed to scale).
 const sizes = reactive({})
+// The full layout ledger from the pure allocator — the source of truth the render
+// applies and the bounding-box diagnostic reads (grid-arranger-spec §3/§5.1).
+const ledger = ref(null)
+// Serialized ledger on the grid root — the walker reads it to save beside each
+// capture (harness only; a few hundred bytes, inert in production).
+const ledgerJson = computed(() => (ledger.value ? JSON.stringify(ledger.value) : null))
 const root = ref(null)
 const fmt = (x) => (x == null ? '' : Number(x).toFixed(2))
 
-// Bounding-box label: `region · WxH · scale× · r<reserve><w|h>`. The reserve is the
-// component's declared need (width unless flagged 'h' for the bidding stage's
-// height reserve); WxH is what the region received. A reserve that exceeds its box
-// is the encroachment tell; a box far larger than its reserve is dead space.
-function bbLabel(key, scaleKey, reservePx, dim = 'w') {
-  const s = sizes[key]
+// Bounding-box label straight from the LEDGER: `region · WxH · scale× · r<reserve>
+// · a<allocated> · <binding>`. reserve-vs-allocated (and vs the received W×H) is
+// the encroachment / dead-space / who-won-the-budget diagnosis.
+function bbLabel(regionKey) {
+  const area = regionKey.startsWith('seat-') ? regionKey.slice(5) : regionKey
+  const led = ledger.value?.regions?.[area]
+  const s = sizes[regionKey]
   const sz = s ? `${s.w}×${s.h}` : '—'
-  const sc = scales[scaleKey] != null ? ` · ${fmt(scales[scaleKey])}×` : ''
-  const rv = reservePx ? ` · r${Math.round(reservePx)}${dim}` : ''
-  return `${key} · ${sz}${sc}${rv}`
+  if (!led) return `${regionKey} · ${sz}`
+  return `${regionKey} · ${sz} · ${led.scale}× · r${led.reserve} · a${led.allocated} · ${led.binding}`
 }
 // Collapsed regions — the unoccupied areas (from the occupancy model), listed in
 // the diagnostic's corner legend rather than rendered as floating 0×0 boxes.
@@ -236,46 +234,67 @@ const COL_OF = { nw: 0, w: 0, sw: 0, n: 1, center: 1, s: 1, ne: 2, e: 2, se: 2 }
 // exports metrics). Center is phase-driven: the auction during bidding, the
 // trick area during play.
 function regionReserve(area) {
-  if (area === 'center') return props.phase === 'bidding' ? auctionReservePx() : TRICK_RESERVE
+  // Center is phase-driven: auction during bidding AND review (review hosts the
+  // completed auction + result, NE freed — densities ruling); trick area in play.
+  if (area === 'center') return props.phase === 'play' ? TRICK_RESERVE : auctionReservePx()
   const role = regions.value[area]
   if (role === 'auction-ref') return auctionReservePx()
   if (role === 'action') return BOX_RESERVE
   if (role === 'status') return STATUS_RESERVE
   return PERIPH_RESERVE
 }
-// A cap may be a RELATIONSHIP (fix 2): se cap = min(1.0, computed seat scale) so
-// the action cluster never renders larger than the seats it belongs beside.
-function resolveCap(area, fallback) {
-  const c = caps.value[area]
-  if (c === 'seats') return Math.min(1.0, scales.seats)
-  return c ?? fallback
-}
+// One-directional sizing (Rick's ruling, 2026-07-11). The shell hands the grid a
+// width BUDGET (its offered content width — stable, never a rendered-content
+// measurement, so applying a scale can't feed back). Tracks are ALLOCATED from the
+// budget + the components' exported reserves; the scale is `min(1, allocation /
+// reserve)` — natural size (1.0×) when it fits, smaller only when the budget
+// genuinely can't. Tracks size to their NEED (not stretched to fill the budget);
+// the surplus becomes outer margin (justify-content:center), so hands cluster one
+// gutter from the centre object instead of spreading to the stage extremes.
+const colAlloc = reactive([0, 0, 0]) // per-column WIDTH (content + margins), px
+let lastBudget = -1
 
-function measure() {
+function relayout(force = false) {
   const el = root.value
   if (!el) return
-  const cols = getComputedStyle(el).gridTemplateColumns.split(' ').map(parseFloat)
-  if (cols.length < 3 || cols.some((n) => !isFinite(n))) return
-  const availOf = (area) => cols[COL_OF[area]] || 0
+  const cs = getComputedStyle(el)
+  const budget = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+  if (!(budget > 0)) return
+  // Width is the only input; height (vertical shrink-wrap) never re-triggers scale.
+  if (!force && Math.abs(budget - lastBudget) < 0.5) { recordSizes(el); return }
+  lastBudget = budget
 
-  // Seats FIRST — the min fit over hand-bearing seats (refined §3); se's cap
-  // references this, so it must be computed before the periphery.
-  const handBearing = SEATS.filter(isHandBearing).map((seat) => ({
-    available: availOf(seatArea(seat)),
-    reserve: rowReservePx(7),
-  }))
-  scales.seats = uniformSeatScale(handBearing, { cap: caps.value.seats ?? 1.4, floor: floor.value })
-  scales.center = computeRegionScale({ available: availOf('center'), reserve: regionReserve('center'), cap: resolveCap('center', 1.8), floor: floor.value })
-  for (const area of ['nw', 'ne', 'se', 'sw']) {
-    if (!hasRegion(area)) continue
-    scales[area] = computeRegionScale({ available: availOf(area), reserve: regionReserve(area), cap: resolveCap(area, 1.0), floor: floor.value })
-  }
-  // Record each region's received box for the bounding-box ledger (cheap; the
-  // rects are already laid out). Attribute reads/writes never perturb layout.
+  // Build the ledger inputs from occupancy + exported reserves (no rendered-content
+  // measurement) and delegate to the pure allocator. The ledger IS the layout: the
+  // render applies it, the bounding boxes read it, the walker saves it.
+  const occupied = ALL_AREAS.filter(areaOccupied)
+  const reserves = {}
+  for (const a of ALL_AREAS) reserves[a] = reserveForArea(a)
+  const l = computeLayoutLedger({
+    budget,
+    occupied,
+    reserves,
+    tiers: props.config.allocationPriority,
+    seatReserve: rowReservePx(7),
+    handBearingAreas: SEATS.filter(isHandBearing).map(seatArea),
+    cellGap: CELL_GAP,
+    actionHandGap: actionHandGap.value,
+    floor: floor.value,
+  })
+  ledger.value = l
+
+  for (let ci = 0; ci < 3; ci++) colAlloc[ci] = l.colWidths[ci]
+  scales.seats = l.seats.scale
+  scales.center = l.regions.center?.scale ?? 1
+  for (const area of ['nw', 'ne', 'se', 'sw']) scales[area] = l.regions[area]?.scale ?? 1
+  recordSizes(el)
+}
+
+// Received boxes for the bounding-box ledger (display only — never fed to scale).
+function recordSizes(el) {
   el.querySelectorAll('[data-region]').forEach((r) => {
-    const key = r.getAttribute('data-region')
     const b = r.getBoundingClientRect()
-    sizes[key] = { w: Math.round(b.width), h: Math.round(b.height) }
+    sizes[r.getAttribute('data-region')] = { w: Math.round(b.width), h: Math.round(b.height) }
   })
 }
 
@@ -302,9 +321,13 @@ const centerStyle = computed(() => {
 
 let ro = null
 onMounted(async () => {
-  await nextTick(); measure()
+  await nextTick(); relayout(true)
   if (typeof ResizeObserver === 'undefined' || !root.value) return
-  ro = new ResizeObserver(() => measure())
+  // Watch the grid's OFFERED width only. The grid fills the frame (which doesn't
+  // shrink-wrap horizontally), so clientWidth = the shell's budget and is stable;
+  // relayout skips when the width is unchanged, so a content/height change (the
+  // vertical shrink-wrap) never re-drives scale.
+  ro = new ResizeObserver(() => relayout())
   ro.observe(root.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
@@ -325,6 +348,10 @@ onBeforeUnmount(() => ro?.disconnect())
   padding: 14px;
   align-items: center;
   justify-items: center;
+  /* Tracks are allocated to their need (not stretched to the budget); the leftover
+     budget is distributed as outer margin here, clustering the columns toward the
+     centre so hands sit one gutter from the stage rather than at its extremes. */
+  justify-content: center;
   --cell-gap: 6px;
   /* The grid SHRINK-WRAPS to its content + reserves — it never reads the viewport.
      The shell owns where this block sits (grid-arranger-spec §1: grid sizes to
