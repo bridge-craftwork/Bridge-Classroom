@@ -127,6 +127,12 @@ need classroom states.
   same script with a different flag; output paths already structured for baseline
   blessing. Do not start blessing baselines during active design iteration.
   Component-tier assertions get promoted to CI first — they drift least.
+  - **Ledger promotion (intent, not now):** grid-scene captures save a
+    `*.ledger.json` (the allocator's accounting, §5.1) beside the PNG, following the
+    same lifecycle — same directory, gitignore, and `gallery-prev/` rotation. When
+    baseline promotion happens, blessed **ledgers** are promoted alongside (or
+    instead of) blessed PNGs: ledger assertions fail on *causes* (a region went
+    floor-bound, a binding flipped budget→natural) rather than on rendering noise.
 
 ---
 

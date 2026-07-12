@@ -25,6 +25,7 @@ for (const file of fs.readdirSync(FIX_DIR)) {
 const boundingBoxesAll = process.argv.includes('--bounding-boxes')
 const browser = await chromium.launch()
 let shots = 0
+let labelLedgerMismatches = 0
 const capText = {} // `${name}/${vp}` → "center 1.50 · seats 1.15 · ne 1.00 · se 1.00"
 const rects = {}   // `${name}/${vp}` → { 'seat-s': {top,left,bottom}, se: {…} } — hand/BB screen positions (bottom-anchor acceptance)
 for (const { name } of fixtures) {
@@ -71,7 +72,25 @@ for (const { name } of fixtures) {
       const el = document.querySelector('[data-layout-ledger]')
       try { return el ? JSON.parse(el.getAttribute('data-layout-ledger')) : null } catch { return null }
     })
-    if (ledger) fs.writeFileSync(path.join(OUT, 'scenes', name, `${vp}.ledger.json`), JSON.stringify(ledger, null, 2))
+    if (ledger) {
+      fs.writeFileSync(path.join(OUT, 'scenes', name, `${vp}.ledger.json`), JSON.stringify(ledger, null, 2))
+      // Assert the on-image bounding-box labels match the ledger file number-for-
+      // number — they read the same object, so this can only fail if that ever stops
+      // being true. Guards the overlay against drifting from the saved ledger.
+      const bad = await page.evaluate((led) => {
+        const out = []
+        document.querySelectorAll('[data-bounding-box-label]').forEach((el) => {
+          const region = el.getAttribute('data-region')
+          const area = region && region.startsWith('seat-') ? region.slice(5) : region
+          const r = led.regions[area]
+          if (!r) return
+          const lab = el.getAttribute('data-bounding-box-label')
+          if (!(lab.includes(`${r.scale}×`) && lab.includes(`r${r.reserve}`) && lab.includes(`a${r.allocated}`) && lab.includes(r.binding))) out.push(`${area}: "${lab}" vs ledger {scale:${r.scale}, r:${r.reserve}, a:${r.allocated}, ${r.binding}}`)
+        })
+        return out
+      }, ledger)
+      if (bad.length) { console.error(`  LEDGER↔OVERLAY MISMATCH ${name}/${vp}:`, bad.join(' | ')); labelLedgerMismatches += bad.length }
+    }
     await page.screenshot({ path: out, fullPage: true })
     // Bounding-box variant (grid-arranger-spec §5.1): the arranger's ledger made
     // visible. Always for the bidding triptych (the reserve-band demo); all scenes
@@ -87,6 +106,7 @@ for (const { name } of fixtures) {
 }
 await browser.close()
 console.log(`a1 scenes: ${fixtures.length} fixtures × ${Object.keys(viewports).length} viewports = ${shots} shots`)
+console.log(labelLedgerMismatches === 0 ? '  ledger↔overlay: consistent (labels == ledger files)' : `  ledger↔overlay: ${labelLedgerMismatches} MISMATCHES`)
 
 // ── Bottom-anchor + reserve acceptance (A1 reserveRounds = 1) ─────────────────
 // Same deal, three auction lengths (1/5/9 calls = 1/2/3 call-rounds). The stage is
@@ -142,6 +162,29 @@ const imgSrc = (rel) => {
   return fs.existsSync(abs) ? `data:image/png;base64,${fs.readFileSync(abs).toString('base64')}` : rel
 }
 
+// Ledger table for one grid-scene capture, read from its `.ledger.json` sibling
+// (the exact object the render applied). A `<details>` toggle; the binding cell is
+// colour-coded (natural neutral · cap blue · budget amber · floor red) so a page
+// scan reveals every floor-bound region at a glance. Inputs (budget/occupancy/
+// tiers) as a header line. Bands scenes have no ledger → nothing rendered.
+function ledgerHtml(name, vp) {
+  const p = path.join(OUT, 'scenes', name, `${vp}.ledger.json`)
+  if (!fs.existsSync(p)) return ''
+  let l
+  try { l = JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return '' }
+  const regs = Object.entries(l.regions || {})
+  const bindClass = (b) => (b === 'floor' ? 'b-floor' : b === 'budget' ? 'b-budget' : b === 'cap' ? 'b-cap' : 'b-natural')
+  const rows = regs.map(([area, r]) =>
+    `<tr><td>${area}</td><td>${r.reserve}</td><td>${r.allocated}</td><td>${r.scale}×</td><td>${r.tier}</td>` +
+    `<td class="${bindClass(r.binding)}" title="losing: ${(r.losing || []).join(', ')}">${r.binding}</td></tr>`).join('')
+  const tiers = (l.inputs?.tiers || []).map((t) => '[' + t.join(',') + ']').join(' ')
+  const anyFloor = regs.some(([, r]) => r.binding === 'floor')
+  return `<details class="ledger${anyFloor ? ' has-floor' : ''}"><summary>ledger${anyFloor ? ' ⚠ floor-bound' : ''}</summary>` +
+    `<div class="l-inputs">budget ${l.budget} · occ ${(l.inputs?.occupied || []).join(' ')} · tiers ${tiers} · outerMargin ${l.outerMargin}</div>` +
+    `<table class="l-table"><thead><tr><th>region</th><th>reserve</th><th>alloc</th><th>scale</th><th>tier</th><th>binding</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table></details>`
+}
+
 const vpEntries = Object.entries(viewports)
 let body = ''
 for (const { name, label, phase } of fixtures) {
@@ -152,7 +195,7 @@ for (const { name, label, phase } of fixtures) {
     const hasBb = fs.existsSync(path.join(OUT, relBb))
     const caps = capText[`${name}/${vp}`] || ''
     const bbImg = hasBb ? `<div class="shot bounding-boxes"><span class="bounding-box-label">bounding boxes</span><img src="${imgSrc(relBb)}" alt="${name} ${vp} bounding boxes" loading="lazy"></div>` : ''
-    body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span>${caps ? `<br><span class="scales">${caps}</span>` : ''}</figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div>${bbImg}</figure>`
+    body += `<figure><figcaption>${vp} · ${dim.w}×${dim.h}<br><span class="rep">${dim.represents}</span>${caps ? `<br><span class="scales">${caps}</span>` : ''}</figcaption><div class="shot"><img src="${imgSrc(rel)}" alt="${name} ${vp}" loading="lazy"></div>${bbImg}${ledgerHtml(name, vp)}</figure>`
   }
   body += `</div></section>`
 }
@@ -176,9 +219,23 @@ figcaption { font-size:11px; color:var(--mut); margin-bottom:6px; } .rep { opaci
 .shot img { display:block; max-height:520px; width:auto; }
 .shot.bounding-boxes { margin-top:8px; position:relative; }
 .bounding-box-label { position:absolute; top:6px; right:6px; z-index:2; font:700 10px/1 ui-monospace,monospace; color:#fff; background:rgba(160,92,12,.92); padding:3px 6px; border-radius:5px; }
+details.ledger { margin-top:8px; font:11px/1.45 ui-monospace,"SF Mono",Menlo,monospace; max-width:340px; }
+details.ledger summary { cursor:pointer; color:var(--mut); user-select:none; }
+details.ledger.has-floor summary { color:#d33; font-weight:700; }
+.l-inputs { margin:5px 0 4px; color:var(--mut); white-space:normal; }
+.l-table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+.l-table th { text-align:left; color:var(--mut); font-weight:600; }
+.l-table th,.l-table td { padding:1px 7px 1px 0; border-bottom:1px solid var(--line); }
+.b-natural { color:#1d8a5f; }
+.b-cap { color:#2277cc; }
+.b-budget { background:rgba(200,120,20,.20); color:#a05c0c; border-radius:3px; }
+.b-floor { background:rgba(210,40,40,.24); color:#c00; font-weight:700; border-radius:3px; }
+@media (prefers-color-scheme: dark){ .b-natural{color:#5fd39b;} .b-budget{color:#e0a044;} .b-floor{color:#ff8080;} }
+#toggle-ledgers { margin-top:8px; font:600 12px/1 'DM Sans',system-ui,sans-serif; cursor:pointer; background:var(--line); color:var(--ink); border:none; border-radius:6px; padding:6px 12px; }
 </style></head><body>
 <header><h1>A1 Scene Gallery <span class="ph">Scenario Mastery target composition</span></h1>
-<p>The three A1 states modeled from frozen fixtures — AuctionTable in center, BiddingBox at SE, TableInfo at NW, pinned auction at NE (play/review), narrative floated right. Separate from the component gallery. Walked across the five named viewports.</p></header>
+<p>The three A1 states modeled from frozen fixtures — AuctionTable in center, BiddingBox at SE, TableInfo at NW, pinned auction at NE (play/review), narrative floated right. Separate from the component gallery. Walked across the five named viewports. Each grid capture carries its <b>layout ledger</b> (the allocator's accounting) — toggle to see reserve/allocated/scale/binding per region; floor-bound bindings are red.</p>
+<button id="toggle-ledgers" onclick="var o=document.querySelector('details.ledger')&&!document.querySelector('details.ledger').open;document.querySelectorAll('details.ledger').forEach(function(d){d.open=o;});">toggle all ledgers</button></header>
 ${body}</body></html>`
 
 const outFile = path.join(OUT, INLINE ? 'index-inline.html' : 'index.html')

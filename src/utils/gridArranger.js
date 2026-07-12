@@ -156,8 +156,11 @@ export function computeLayoutLedger(o) {
   }
 
   return {
+    schemaVersion: 1,
     budget: Math.round(budget),
-    inputs: { occupied: [...occ].sort(), tiers: tierList },
+    // Inputs block first — the stage's CAUSES (budget, occupancy, tiers, reserve
+    // versions), so a ledger diff shows which input changed, not just the outputs.
+    inputs: { budget: Math.round(budget), occupied: [...occ].sort(), tiers: tierList, reserves: Object.fromEntries([...occ].sort().map((a) => [a, Math.round(reserves[a] ?? 0)])) },
     columns: columns.map((c) => ({ index: c.index, occupied: c.occupied, need: Math.round(c.need), margin: c.margin, tier: c.tier, allocated: Math.round(c.allocated), width: Math.round(colWidths[c.index]) })),
     regions,
     seats: { scale: round2(seatScale), handBearing: hb },

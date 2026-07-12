@@ -424,6 +424,15 @@ its internal ledger visible**. (Named for the same overlay in `pbn-to-pdf`.)
   `data-layout-ledger` (the whole ledger JSON, which the walker saves as
   `*.ledger.json` beside each capture). **Zero-size (collapsed) regions are listed
   in a corner legend**, not floated as `0×0` labels over the layout.
+- **Gallery ledger table.** Each grid capture in the gallery HTML gets a `<details>`
+  ledger (plus a page-level toggle-all): an inputs header (budget · occupancy ·
+  tiers · outerMargin) over a `region · reserve · alloc · scale · tier · binding`
+  table, the **binding cell colour-coded** (natural neutral · cap blue · budget
+  amber · floor red) so a page scan reveals every floor-bound region at a glance.
+  The walker **asserts the on-image labels equal the ledger file** number-for-number
+  so the overlay can't drift from the saved accounting. Static HTML, no framework.
+  *(Follow-up: a `gallery-prev/` ledger-diff dimension — changed rows highlighted,
+  `se: 0.74×→0.88×, binding budget→natural` — riding the existing diff-mode infra.)*
 - **Outline, never border** — outlines don't participate in layout, so the debug
   mode cannot perturb the geometry it inspects (the same trap the popup avoided
   with `cs-static`).
