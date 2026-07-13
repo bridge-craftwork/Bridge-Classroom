@@ -107,20 +107,39 @@ function measureAvail() {
   const badgeW = badge ? badge.getBoundingClientRect().width : 0
   const adorn = el.querySelector('.si-adorn')
   const adornW = adorn ? adorn.getBoundingClientRect().width : 0
-  // Room left for the name after the badge, adornments, gaps and padding.
-  avail.value = Math.max(0, el.clientWidth - padding - badgeW - adornW - gap * 2)
+  // Flex gaps consumed: badge↔name always; name↔adorn only when the adorn is a
+  // rendered item (it's `:empty` → display:none when there's no bot/count slot, so
+  // it takes no width and no gap). Subtracting a fixed `gap * 2` shaved ~9px off the
+  // name's true room and truncated a name that fits (e.g. "Declarer", 2026-07-13).
+  const gaps = 1 + (adornW > 0 ? 1 : 0)
+  avail.value = Math.max(0, el.clientWidth - padding - badgeW - adornW - gap * gaps)
+}
+
+// Measure AFTER layout + fonts settle, not just after nextTick. A single-nextTick
+// measure reads a pre-settle (narrow) width — the box then stabilises, so the
+// ResizeObserver never re-fires to correct it, and every relayout re-mounts and
+// re-truncates at the unsettled size. A double rAF waits for the browser's
+// layout/paint (same settle HandDisplay's measure uses); `readFont` re-runs too so a
+// late web-font swap (which changes text metrics) is picked up.
+function scheduleMeasure() {
+  if (typeof requestAnimationFrame === 'undefined') { readFont(); measureAvail(); return }
+  requestAnimationFrame(() => requestAnimationFrame(() => { readFont(); measureAvail() }))
 }
 
 onMounted(async () => {
   await nextTick()
-  readFont()
-  measureAvail()
+  scheduleMeasure()
+  // Web font may resolve after mount; its metrics differ from the fallback, so
+  // re-measure once it's ready (no-op if already loaded).
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    document.fonts.ready.then(scheduleMeasure)
+  }
   if (typeof ResizeObserver !== 'undefined' && root.value) {
-    ro = new ResizeObserver(() => measureAvail())
+    ro = new ResizeObserver(() => scheduleMeasure())
     ro.observe(root.value)
   }
 })
-watch(() => [props.name, props.emptyLabel, props.connected], async () => { await nextTick(); measureAvail() })
+watch(() => [props.name, props.emptyLabel, props.connected], async () => { await nextTick(); scheduleMeasure() })
 onBeforeUnmount(() => ro?.disconnect())
 </script>
 
