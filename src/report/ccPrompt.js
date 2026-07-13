@@ -19,7 +19,8 @@ export function buildCcPrompt({ bundlePath, context, singleFile = false, hasBoxe
 
   const coords = [
     env.app && `app: ${env.app}`,
-    env.viewport && `viewport: ${env.viewport.w}×${env.viewport.h}@${env.viewport.dpr}`,
+    env.viewport && `viewport: ${env.viewport.w}×${env.viewport.h}@${env.viewport.dpr}` +
+      (env.viewport.zoom != null && env.viewport.zoom !== 100 ? ` (zoom ~${env.viewport.zoom}%)` : ''),
     env.arrangement && `arrangement: ${env.arrangement}`,
     env.tableScale != null && `scale: ${env.tableScale}`,
     env.phase && `phase: ${env.phase}`,

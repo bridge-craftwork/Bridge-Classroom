@@ -197,7 +197,7 @@ const envSummary = computed(() => {
     env.app && `app: ${env.app}`,
     env.browser && env.browser,
     env.architecture && env.architecture,
-    v.w && `${v.w}×${v.h}@${v.dpr}`,
+    v.w && `${v.w}×${v.h}@${v.dpr}${v.zoom != null && v.zoom !== 100 ? ` · zoom ~${v.zoom}%` : ''}`,
     env.commit && `commit: ${env.commit}`
   ].filter(Boolean).join('  ·  ')
 })

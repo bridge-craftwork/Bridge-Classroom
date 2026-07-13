@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectApp, collectEnv, detectBrowser } from '../env.js'
+import { detectApp, collectEnv, detectBrowser, estimateZoom } from '../env.js'
 import { collectReport, SCHEMA_VERSION } from '../ReportCollector.js'
 import { buildCcPrompt } from '../ccPrompt.js'
 
@@ -43,6 +43,25 @@ describe('detectBrowser', () => {
   })
 })
 
+describe('estimateZoom (approx browser zoom from devicePixelRatio)', () => {
+  it('reads the common Retina-Mac cases (native 2×)', () => {
+    expect(estimateZoom(2.0)).toBe(100) // Retina at 100% (preferred over "standard at 200%")
+    expect(estimateZoom(1.6)).toBe(80)  // Retina at 80% — the case that caused the confusion
+    expect(estimateZoom(1.8)).toBe(90)
+    expect(estimateZoom(2.5)).toBe(125)
+  })
+  it('reads standard-display zoom (native 1×)', () => {
+    expect(estimateZoom(1.0)).toBe(100)
+    expect(estimateZoom(1.25)).toBe(125)
+    expect(estimateZoom(1.1)).toBe(110)
+  })
+  it('returns null for a missing/garbage ratio', () => {
+    expect(estimateZoom(0)).toBeNull()
+    expect(estimateZoom(null)).toBeNull()
+    expect(estimateZoom(undefined)).toBeNull()
+  })
+})
+
 describe('collectEnv', () => {
   const deps = {
     win: { innerWidth: 1440, innerHeight: 900, devicePixelRatio: 2 },
@@ -55,7 +74,7 @@ describe('collectEnv', () => {
     const env = collectEnv(deps)
     expect(env.app).toBe('table-host')
     expect(env.route).toBe('/tables/host')
-    expect(env.viewport).toEqual({ w: 1440, h: 900, dpr: 2 })
+    expect(env.viewport).toEqual({ w: 1440, h: 900, dpr: 2, zoom: 100 })
     expect(env.platform).toBe('MacIntel') // no userAgentData in deps → legacy fallback
     expect(env.browser).toBe('Chrome 150')
     expect(env.language).toBe('en-US')
