@@ -14,7 +14,7 @@
       :key="seat"
       class="region seat occupied"
       :class="'area-' + seatArea(seat)"
-      :style="regionStyle('seats')"
+      :style="[regionStyle('seats'), seatAllocStyle(seat)]"
       :data-region="'seat-' + seatArea(seat)"
       :data-region-scale="fmt(scales.seats)"
       :data-region-reserve="Math.round(dealSeatReserve)"
@@ -631,6 +631,20 @@ function measureVertical(el) {
 function regionStyle(kind) {
   const s = scales[kind] ?? 1
   return { '--table-scale': s, '--region-scale': s }
+}
+
+// Publish a seat's ALLOCATED width (px, 1.0×) as --alloc-width so HandDisplay can
+// fit its suit rows against the allocation instead of the shrink-wrapped row. The
+// seat regions justify-self:center + min-width:0, so a hand's rendered row width is
+// its own (possibly compressed) content — measuring the fit target off THAT is
+// circular (narrow render → narrow fit → narrow render), which squeezed North to
+// ~130px inside a 264px allocation (2026-07-13 report). The allocation is
+// content-independent, so it breaks the loop. Legacy/console/server never set this
+// var, so HandDisplay falls back to the measured row there. Absent until the first
+// ledger lands (0 → no var → fallback).
+function seatAllocStyle(seat) {
+  const w = ledger.value?.regions?.[seatArea(seat)]?.allocated
+  return w > 0 ? { '--alloc-width': w + 'px' } : {}
 }
 
 // Bidding stage reserve HEIGHT (px) — the bounded growth band above the
