@@ -10,13 +10,16 @@
 export const HAND_UNIT = {
   labelPx: 28, // .suit-symbol zone width — SHARED with HandDisplay CSS
   gapPx: 8,    // .suit-row symbol→cards gap — SHARED with HandDisplay CSS
-  // Provisioning estimate of one card's advance (incl. inter-card space) at the
-  // 24px base, sized to the wide "10" case. HandDisplay renders cards inline, so
-  // this is the arranger's reserve estimate, NOT a CSS value — deliberately
-  // generous so the reserve never under-fits (a slightly-large reserve only makes
-  // the seat scale a hair smaller; HandDisplay then measures its real box and
-  // runs its own compression cascade inside).
-  cellPx: 32,
+  // Provisioning estimate of one single-glyph card's advance (incl. inter-card
+  // space) at the 24px base. HandDisplay renders cards inline, so this is the
+  // arranger's reserve estimate, NOT a CSS value. Calibrated to the REAL rendered
+  // width — a chip-free holding measures ~21.4px/card at 1.0× (a 5-card single-glyph
+  // suit is ~143px incl. label+gap) — plus a small margin for wider system fonts.
+  // The old value (32) was ~50% over: it was mis-read from the .hd-probe rows, which
+  // include HandDisplay's "+13" truncation chip, so provisioning over-reserved and
+  // pinned the seat scale below 1.0 on normal-length hands (2026-07-13, 2nd report).
+  // Slightly-tight is safe — HandDisplay measures its real box and compresses inside.
+  cellPx: 24,
 }
 
 // Natural width (px, at 1.0× / full density) of an N-card suit row — the
@@ -27,10 +30,10 @@ export function rowReservePx(cards = 7, u = HAND_UNIT) {
 }
 
 // Extra horizontal advance a two-glyph rank ("10"/"T", rendered "10") adds over a
-// single-glyph card at the 24px base. Measured ~21px from real renders (a 5-card
-// suit holding one "10" is ~217px vs rowReservePx(5)=196); rounded UP so a
-// ten-heavy suit's reserve never under-fits.
-export const TEN_EXTRA_PX = 24
+// single-glyph card at the 24px base. Real renders show a "10" adds ~14px over a
+// single glyph (a 5-card suit holding one "10" is ~157px vs ~143px without); rounded
+// up modestly. (The earlier 24 was calibrated against chip-inflated probe rows.)
+export const TEN_EXTRA_PX = 16
 
 // 'T' renders as "10"; some deal sources store the literal '10'. Both are two glyphs.
 function isWideRank(rank) {

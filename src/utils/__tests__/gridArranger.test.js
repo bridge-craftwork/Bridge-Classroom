@@ -111,45 +111,49 @@ describe('uniformSeatScale (§3 refined — hand-bearing only)', () => {
 })
 
 describe('rowReservePx (shared with handMetrics)', () => {
-  it('7-card reserve ≈ the spec estimate (~260px)', () => {
-    expect(rowReservePx(7)).toBe(260) // 28 + 8 + 7·32
+  it('7-card reserve ≈ the spec estimate', () => {
+    expect(rowReservePx(7)).toBe(204) // 28 + 8 + 7·24 (cellPx recalibrated to real render)
   })
 })
 
 describe('handReservePx (actual-width provisioning, 2026-07-13)', () => {
   const hand = (s, h, d, c) => ({ spades: s, hearts: h, diamonds: d, clubs: c })
   it('widest suit row of the ACTUAL hand, well under the 7-card worst case', () => {
-    // Longest suit = 5 clubs, no tens → 28 + 8 + 5·32 = 196.
+    // Longest suit = 5 clubs, no tens → 28 + 8 + 5·24 = 156.
     const r = handReservePx(hand(['A', 'J', '5'], ['K', 'Q'], ['Q', 'J', '8'], ['9', '8', '5', '3', '2']))
-    expect(r).toBe(196)
+    expect(r).toBe(156)
     expect(r).toBeLessThan(rowReservePx(7))
   })
   it('adds a two-glyph allowance per "10"/"T" in the widest suit', () => {
-    // 5-card spade suit with one "10": 196 + TEN_EXTRA. Matches the ~217px the render measured.
+    // 5-card spade suit with one "10": 156 + TEN_EXTRA. Matches the ~157px the render measured.
     expect(handReservePx(hand(['K', 'Q', '10', '4', '2'], ['9', '8', '5'], ['10', '9', '7'], ['A', '4'])))
-      .toBe(196 + TEN_EXTRA_PX)
+      .toBe(156 + TEN_EXTRA_PX)
     // 'T' is treated identically to the literal '10'.
     expect(handReservePx(hand(['K', 'Q', 'T', '4', '2'], [], [], [])))
-      .toBe(196 + TEN_EXTRA_PX)
+      .toBe(156 + TEN_EXTRA_PX)
   })
   it('is stable whether or not played cards are still present (widest extent)', () => {
     const full = hand(['K', 'Q', '10', '4', '2'], ['9', '8', '5'], ['10', '9', '7'], ['A', '4'])
-    expect(handReservePx(full)).toBe(196 + TEN_EXTRA_PX) // computed from the whole holding
+    expect(handReservePx(full)).toBe(156 + TEN_EXTRA_PX) // computed from the whole holding
   })
   it('falls back to the 7-card reserve for an absent/empty hand', () => {
     expect(handReservePx(null)).toBe(rowReservePx(7))
     expect(handReservePx(hand([], [], [], []))).toBe(rowReservePx(7))
   })
   it('a shorter longest suit provisions smaller (so the seat scale can grow)', () => {
-    // Flat 4-4-3-2: longest 4 → 28 + 8 + 4·32 = 164, smaller than the 5-card case.
+    // Flat 4-4-3-2: longest 4 → 28 + 8 + 4·24 = 132, smaller than the 5-card case.
     expect(handReservePx(hand(['A', 'K', 'Q', 'J'], ['A', 'K', 'Q', 'J'], ['A', 'K', 'Q'], ['A', 'K'])))
-      .toBe(164)
+      .toBe(132)
   })
 })
 
 describe('computeLayoutLedger (§3 one-directional allocator)', () => {
   const A1_TIERS = [['center', 'n', 'e', 's', 'w'], ['se', 'nw', 'ne', 'sw']]
-  const SEAT = rowReservePx(7) // 260
+  const SEAT = rowReservePx(7) // 204 (7-card fallback reserve)
+  // A long-suit deal's seat reserve — wide enough that the seats genuinely can't
+  // reach 1.0× at these test budgets, so the sub-1.0 regimes (floor-protection, the
+  // se↔seats cap) are still exercised after cellPx was recalibrated to real widths.
+  const LONG_SEAT = rowReservePx(9) // 252
 
   // Ledger assertion 1 — no floor-bound regions at laptop-half bidding: the working
   // set (centre + hero hand) holds 1.0×, and the periphery (BB, status) compress
@@ -196,9 +200,9 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     const l = computeLayoutLedger({
       budget: 650,
       occupied: ['center', 'e', 'ne', 'nw', 's', 'se'],
-      reserves: { center: 200, e: SEAT, ne: 220, nw: 150, s: SEAT, se: 222 },
+      reserves: { center: 200, e: LONG_SEAT, ne: 220, nw: 150, s: LONG_SEAT, se: 222 },
       tiers: A1_TIERS, // nw/ne/se tier 1; center/e/s tier 0
-      seatReserve: SEAT,
+      seatReserve: LONG_SEAT,
       handBearingAreas: ['e', 's'],
     })
     // NW is floor-protected: alloc ≈ 0.65×150 ≈ 97.5, scale pinned at the floor,
@@ -301,8 +305,8 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     // tight (hero + a west defender, both below 1.0×): se's ceiling tracks the seat scale
     const tight = computeLayoutLedger({
       budget: 640, occupied: ['center', 's', 'w', 'se'],
-      reserves: { center: 220, s: SEAT, w: SEAT, se: 222 },
-      tiers: A1_TIERS, seatReserve: SEAT, handBearingAreas: ['s', 'w'],
+      reserves: { center: 220, s: LONG_SEAT, w: LONG_SEAT, se: 222 },
+      tiers: A1_TIERS, seatReserve: LONG_SEAT, handBearingAreas: ['s', 'w'],
       caps: A1_CAPS, columnWeights: A1_WEIGHTS,
     })
     expect(tight.seats.scale).toBeLessThan(1)
