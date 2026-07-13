@@ -358,7 +358,7 @@
                   <!-- The BoardIndicator glyph above already carries vul, so don't repeat
                        it in the strip; drop the trick chip in a defence choose-card scene
                        (tricks never advance) so only the contract shows. -->
-                  <StatusStrip v-if="gridPhase !== 'bidding'" :status="gridStatus" :show-vul="false" :show-tricks="!defenceScene" />
+                  <StatusStrip v-if="gridPhase !== 'bidding'" :status="gridStatus" :show-vul="false" :show-tricks="!defenceScene" :show-result="isDeclarerPlay" />
                 </div>
               </template>
               <!-- CENTER: the trick (declarer play) or the live auction (bidding). -->
