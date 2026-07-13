@@ -873,10 +873,22 @@ function fitCommentaryHeight() {
 }
 
 // Re-fit, then scroll the current step to the top (older text slides out the top).
+// The nextTick fit can read a transient layout: on completion the grid re-lays out
+// (phase change → shrink-wrap / height-fit) over the next frame(s), which moves the
+// commentary's top, and a two-column layout may only settle after that. Re-fit once
+// more on a settle frame so the text area claims the real available height instead of
+// a stale (too-short) value — the iPad review otherwise crammed the narrative into the
+// 120px floor beside a screen with ~900px free (2026-07-13 report).
 function refreshCommentary() {
   nextTick(() => {
     fitCommentaryHeight()
     scrollToCurrentElement(commentaryContainer.value, '.narrative-text.current')
+    if (typeof requestAnimationFrame !== 'undefined') {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fitCommentaryHeight()
+        scrollToCurrentElement(commentaryContainer.value, '.narrative-text.current')
+      }))
+    }
   })
 }
 
@@ -2309,8 +2321,13 @@ body {
   line-height: 1.55;
 }
 .practice-grid-companion {
-  flex: 1 1 340px;
-  min-width: min(320px, 100%);
+  /* Basis 300 (was 340) so two-column survives at an iPad-portrait 12.9" (1024 device →
+     992 content): flex-WRAP decides on the flex-basis SUM, not the min-widths, so
+     stage 640 + companion 340 + gap 32 = 1012 > 992 was wrapping the companion below
+     the stage → a too-tall single column (2026-07-13 iPad report). 640 + 300 + 32 = 972
+     leaves a ~20px cushion, and the companion still grows past 300 on wider viewports. */
+  flex: 1 1 300px;
+  min-width: min(300px, 100%);
   display: flex;
   flex-direction: column;
   gap: 16px;
