@@ -7,7 +7,8 @@
           v-for="level in 7"
           :key="level"
           class="level-btn"
-          :class="{ active: selectedLevel === level }"
+          :class="{ active: selectedLevel === level && canBidLevel(level), disabled: !canBidLevel(level) }"
+          :disabled="!canBidLevel(level)"
           @click="selectLevel(level)"
         >
           {{ level }}
@@ -55,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { biddingBoxReservePx } from './biddingBoxMetrics.js'
 
 const props = defineProps({
@@ -148,15 +149,40 @@ const lastBidLevel = computed(() => {
 const lastBidStrainRank = computed(() => {
   if (!props.lastBid) return -1
   const strainOrder = ['C', 'D', 'H', 'S', 'NT', 'N']
-  const match = props.lastBid.match(/\d([CDHSN]T?)$/i)
+  // Tolerate a trailing X/XX so a doubled call ("7NTXX") still parses its strain —
+  // callers normally pass the stripped contract bid, but a raw call must not read as
+  // "no strain" (which would wrongly leave level 7 / the strains bidable at 7NT).
+  const match = props.lastBid.match(/\d([CDHSN]T?)(?:XX?)?$/i)
   if (!match) return -1
   const strain = match[1].toUpperCase()
   return strainOrder.indexOf(strain === 'N' ? 'NT' : strain)
 })
 
+// The lowest level that still has a legal call: the last bid's own level if any strain
+// above it remains (i.e. it wasn't NT), else the next level up. 0/-1 (no prior bid, an
+// opening) → level 1. So the box always opens on a usable level instead of a greyed one.
+const minLegalLevel = computed(() => {
+  if (lastBidLevel.value === 0) return 1
+  return lastBidStrainRank.value < 4 ? lastBidLevel.value : lastBidLevel.value + 1
+})
+
+// A whole level is greyed when nothing at it can be bid (every legal call is higher).
+function canBidLevel(level) {
+  return level >= minLegalLevel.value
+}
+
 function selectLevel(level) {
+  if (!canBidLevel(level)) return
   selectedLevel.value = level
 }
+
+// Open (and re-open, each new turn) on the lowest legal level — never a greyed one, so
+// the strains are immediately pickable (2026-07-13 report: the box defaulted to level 1
+// even after 2♥, leaving every strain greyed with no obvious next move). CLAMPED to 7:
+// at the pathological 7NT/7NTXX (minLegalLevel 8 — Pass is the only legal call), selecting
+// level 8 would make canBid(8, strain) true (8 > 7) and wrongly light the strains; level 7
+// keeps every strain greyed since nothing outranks NT at level 7.
+watch(() => props.lastBid, () => { selectedLevel.value = Math.min(minLegalLevel.value, 7) }, { immediate: true })
 
 function canBid(level, strain) {
   if (!level) return false
@@ -224,8 +250,14 @@ function makeBid(level, strain) {
   transition: all 0.15s;
 }
 
-.level-btn:hover {
+.level-btn:hover:not(:disabled) {
   border-color: #007bff;
+}
+
+.level-btn:disabled,
+.level-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .level-btn.active {
