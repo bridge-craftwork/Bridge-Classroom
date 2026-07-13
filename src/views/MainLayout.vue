@@ -643,7 +643,15 @@ const gridPlayedOnlySeats = computed(() =>
   isDeclarerPlay.value ? [] : playedCardOnlySeats(practice.currentShowcards.value, practice.showcardsPlayedCards.value),
 )
 const gridDefensePlay = computed(() => gridPlayedOnlySeats.value.length > 0)
-const gridTrick = computed(() => buildTrickFromShowcards(practice.currentShowcards.value))
+// The centre trick = the played-card-only seats' cards (currentShowcards: E/S) PLUS the
+// FULLY-SHOWN seats' played cards (showcardsPlayedCards: the hero's led card, struck in its
+// hand — e.g. West's ♠K). Without the merge the led card fell out of the trick once its seat
+// was fully revealed (2026-07-13 report). A seat with no showcard (dummy, if the PBN omits
+// its card) simply isn't in the trick — a lesson-content gap, not an app one.
+const gridTrick = computed(() => buildTrickFromShowcards({
+  ...(practice.showcardsPlayedCards.value || {}),
+  ...(practice.currentShowcards.value || {}),
+}))
 // Hidden seats the grid renders: the deal's own hidden seats plus the played-card-only
 // seats (their card lives in the centre trick now, not a scattered seat).
 const gridHiddenSeats = computed(() => {
@@ -1764,11 +1772,15 @@ function a1Fixture() {
     contract: deal.contract || null,
     declarer: deal.declarer || null,
     hands: play ? deal.hands : practice.hands?.value,
-    hiddenSeats: (play ? cardplay.hiddenSeats?.value : practice.hiddenSeats?.value) || [],
+    // Effective hidden seats the grid renders (adds the played-card-only seats in a
+    // defensive-signals scene, whose card lives in the centre trick).
+    hiddenSeats: gridHiddenSeats.value || [],
     clickableSeat: play ? cardplay.clickableSeat?.value : (practice.hasCardChoice?.value ? practice.studentSeat?.value : null),
     playedCards: play ? cardplay.playedBySeat?.value : practice.showcardsPlayedCards?.value,
     bids: deal.auction || [],
-    currentTrick: play ? cardplay.currentTrick : null,
+    // The centre trick — the live cardplay engine's, or (defensive signals) the one built
+    // from the showcards; null in bidding/review.
+    currentTrick: play ? cardplay.currentTrick : (gridDefensePlay.value ? gridTrick.value : null),
     lastFinishedTrick: play ? cardplay.lastFinishedTrick?.value : null,
     tricksTaken: play ? cardplay.tricksTaken?.value : null,
   }
