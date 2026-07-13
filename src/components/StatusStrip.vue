@@ -11,17 +11,21 @@
     <span v-else class="chip chip-dealer">Dealer <strong>{{ status.dealer || '—' }}</strong></span>
 
     <!-- Vulnerability: a full pill except during play, where it drops to a
-         minimal glyph so the trick count leads. -->
-    <span
-      v-if="status.phase === 'play'"
-      class="vul-dot"
-      :class="vulClass"
-      :title="vulTitle"
-    ></span>
-    <span v-else class="chip chip-vul" :class="vulClass">{{ vulLabel }}</span>
+         minimal glyph so the trick count leads. Suppressible via `showVul` when the
+         host already depicts vul elsewhere (e.g. the grid's BoardIndicator glyph). -->
+    <template v-if="showVul">
+      <span
+        v-if="status.phase === 'play'"
+        class="vul-dot"
+        :class="vulClass"
+        :title="vulTitle"
+      ></span>
+      <span v-else class="chip chip-vul" :class="vulClass">{{ vulLabel }}</span>
+    </template>
 
-    <!-- Play: how the declaring side is tracking toward the contract. -->
-    <span v-if="status.phase === 'play' && status.tricks.target != null" class="chip chip-tricks">
+    <!-- Play: how the declaring side is tracking toward the contract. Suppressible via
+         `showTricks` (e.g. a defence choose-card position where tricks never advance). -->
+    <span v-if="showTricks && status.phase === 'play' && status.tricks.target != null" class="chip chip-tricks">
       <strong>{{ status.declaringSide }} {{ declaringTricks }}</strong>
       <span class="need">· needs {{ status.tricks.target }}</span>
     </span>
@@ -43,6 +47,12 @@ const props = defineProps({
   // The object from useTableStatus: { phase, dealer, vul, contract, declarer,
   // declaringSide, tricks: { ns, ew, target }, result }.
   status: { type: Object, required: true },
+  // Show the vulnerability indicator. Default true; pass false when the host already
+  // depicts vul (the grid's BoardIndicator glyph carries it — no need to repeat it).
+  showVul: { type: Boolean, default: true },
+  // Show the play-phase trick-progress chip. Default true; pass false where tricks don't
+  // advance (a defence choose-card position), leaving just the contract.
+  showTricks: { type: Boolean, default: true },
 })
 
 // Split off any doubling suffix so formatBid renders the base contract (colored
