@@ -620,6 +620,22 @@ onBeforeUnmount(() => ro?.disconnect())
 .area-se { grid-area: se; justify-self: end; align-self: end; }
 .seat { display: flex; }
 
+/* Seat identity + HCP sizing, grid-only. The shared HandDisplay/SeatIndicator
+   defaults (name 14px, badge 22/13px, HCP 12px) read tiny beside the grid's big
+   24px card glyphs. Rick wants the circled compass initial, the player name, and
+   the HCP footer sized to ~80% of a card (≈19px) — legible without competing with
+   the cards. Scoped to `.region.seat` here (GridArrangement only renders for
+   arrangement='grid'), so LEGACY a1 and every other consumer of these components
+   stay byte-identical (2026-07-13 report). All ride --table-scale like the leaves
+   they sit beside. */
+.region.seat :deep(.si-name) { font-size: calc(19px * var(--table-scale)); }
+.region.seat :deep(.si-badge) {
+  width: calc(30px * var(--table-scale));
+  height: calc(30px * var(--table-scale));
+  font-size: calc(18px * var(--table-scale));
+}
+.region.seat :deep(.hcp) { font-size: calc(19px * var(--table-scale)); }
+
 /* Diagnostic overlays (row bands, stage line, collapsed-region legend) are OFF by
    default. The harness's boundingBoxes.css turns them on under
    `html[data-bounding-boxes]` (higher specificity, so it still wins there); in
