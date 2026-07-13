@@ -24,7 +24,7 @@
       <div v-if="toast" class="beetle-toast">{{ toast }}</div>
     </transition>
   </div>
-  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :client-hints="clientHints" :layout="layout" @close="closeDialog" @saved="onSaved" />
+  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :client-hints="clientHints" :layout="layout" :shell-enrich="shellEnrich" @close="closeDialog" @saved="onSaved" />
 </template>
 
 <script setup>
@@ -32,6 +32,7 @@ import { ref } from 'vue'
 import { captureScreenshot } from './screenshot.js'
 import { collectClientHints } from './env.js'
 import { collectLayout } from './layout.js'
+import { captureReportContext } from './reportContext.js'
 import ReportDialog from './ReportDialog.vue'
 
 const capturing = ref(false)
@@ -39,6 +40,9 @@ const dialogOpen = ref(false)
 const screenshot = ref(null)
 const clientHints = ref(null)
 const layout = ref(null)
+// App-shell forensic context frozen on the tap (the active shell's provider, e.g. the
+// A1 grid shell's captureA1Snapshot → enrich fragments). null when no shell registered.
+const shellEnrich = ref(null)
 const toast = ref('')
 let toastTimer = null
 
@@ -52,6 +56,9 @@ async function onClick() {
     // collectLayout() is guarded (returns null on any error), but wrap anyway so
     // a capture hiccup can never stop the report.
     layout.value = collectLayoutSafe()
+    // Same beat: freeze the active shell's diagnostic context (arrangement, ledger,
+    // phase, gallery-loadable fixture) against the same DOM. Guarded to null.
+    shellEnrich.value = captureReportContext()
 
     // §4: capture the screen BEFORE the dialog covers it. Grab the async UA
     // client hints (architecture etc.) in the same beat.
@@ -81,6 +88,7 @@ function closeDialog() {
   screenshot.value = null
   clientHints.value = null
   layout.value = null
+  shellEnrich.value = null
 }
 
 // Report finished (local bundle saved + copied, or GitHub issue filed): close the

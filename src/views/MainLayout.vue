@@ -77,8 +77,11 @@
 
       <!-- Practice interface -->
       <template v-else>
+        <!-- Legacy compass layout (default). Gated on the arrangement axis so a
+             client WITHOUT the grid override renders exactly as before — the inner
+             markup is byte-identical; only this v-if is added (a1 grid-flip 1.6a). -->
         <!-- Two-column layout for desktop -->
-        <div class="practice-layout">
+        <div v-if="arrangement !== 'grid'" class="practice-layout">
           <!-- Left column: Deal info + Bridge table -->
           <div class="practice-left">
             <BoardMasteryStrip
@@ -301,6 +304,169 @@
 
           </div>
         </div>
+
+        <!-- Grid arrangement (a1 grid-flip 1.6a — opt-in via ?arrangement=grid, dark by
+             default). The hero hand + auction + bidding box + status compose in the
+             named-area grid arranger (the signed-off gallery composition); the coaching
+             commentary + feedback + Next/Back controls ride the shell companion. Reuses
+             the SAME handlers/helpers/scoped styles as the legacy path above. -->
+        <div v-else class="practice-grid-layout">
+          <div class="practice-grid-stage">
+            <BoardMasteryStrip
+              v-if="deals.length > 1"
+              :boardNumbers="deals.map(d => d.displayNumber || d.boardNumber)"
+              :lessonSubfolder="currentDeal?.subfolder || currentDeal?.category || ''"
+              :currentIndex="currentDealIndex"
+              :forceBoardStatus="forceBoardStatus"
+              :exerciseContext="exerciseContext"
+              :localPrerelease="prereleaseByBoard"
+              :introUrl="introUrl"
+              @goto="gotoDeal"
+              @open-intro="handleOpenIntro"
+            />
+            <BridgeTable
+              arrangement="grid"
+              :table-config="a1Config"
+              :phase="gridPhase"
+              :hands="isDeclarerPlay ? currentDeal.hands : practice.hands.value"
+              :hidden-seats="isDeclarerPlay ? cardplay.hiddenSeats.value : practice.hiddenSeats.value"
+              :show-hcp="isDeclarerPlay ? true : practice.showHcp.value"
+              :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : (practice.hasCardChoice.value ? practice.studentSeat.value : null)"
+              :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.showcardsPlayedCards.value"
+              :hide-played-cards="isDeclarerPlay"
+              :hero-seat="gridHeroSeat"
+              :hero-name="firstName"
+              :declarer="currentDeal?.declarer"
+              @card-click="onGridCardClick"
+            >
+              <!-- NW: board · dealer · vul + contract/result (production DealInfo). -->
+              <template #nw>
+                <DealInfo
+                  :boardNumber="currentDeal?.displayNumber || currentDeal?.boardNumber"
+                  :dealer="currentDeal?.dealer"
+                  :vulnerable="currentDeal?.vulnerable"
+                  :contract="currentDeal?.contract"
+                  :declarer="currentDeal?.declarer"
+                  :showContract="isDeclarerPlay || practice.auctionState.auctionComplete || practice.showOpeningLead.value || (practice.hasSteps.value && !practice.hasBidSteps.value)"
+                  :openingLead="practice.showOpeningLead.value ? currentDeal?.openingLead : ''"
+                  :totalDeals="deals.length"
+                  :currentIndex="currentDealIndex"
+                  :dealBoardNumbers="deals.map(d => d.boardNumber)"
+                  :bridgeContext="currentDeal?.bridgeContext || ''"
+                  :result="currentDeal?.result"
+                  :showResult="practice.auctionState.auctionComplete && currentCollection === 'pbs-coaching'"
+                  @goto="gotoDeal"
+                />
+              </template>
+              <!-- CENTER: the trick (declarer play) or the live auction (bidding). -->
+              <template #center>
+                <TrickArea
+                  v-if="isDeclarerPlay"
+                  :current-trick="cardplay.currentTrick"
+                  :last-finished-trick="cardplay.lastFinishedTrick.value"
+                  :tricks-taken="cardplay.tricksTaken.value"
+                  :next-seat="cardplay.currentPlayer.value"
+                  :bot-loading="cardplay.botLoading.value"
+                  bot-name="Defense"
+                />
+                <div v-else-if="practice.showAuctionTable.value" class="a1-center-auction">
+                  <AuctionTable
+                    :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
+                    :dealer="currentDeal?.dealer || 'N'"
+                    :currentBidIndex="practice.hasBidSteps.value ? practice.auctionState.currentBidIndex : -1"
+                    :wrongBidIndex="practice.auctionState.wrongBidIndex"
+                    :correctBidIndex="practice.auctionState.correctBidIndex"
+                    :showTurnIndicator="practice.hasBidPrompt.value"
+                  />
+                </div>
+              </template>
+              <!-- NE: the completed auction pinned during declarer play. -->
+              <template v-if="pinnedAuction" #ne>
+                <div class="a1-grid-ne">
+                  <AuctionTable :bids="currentDeal?.auction || []" :dealer="currentDeal?.dealer || 'N'" :currentBidIndex="-1" />
+                </div>
+              </template>
+              <!-- SE (hero's corner): the bidding box, clustered with the hand. -->
+              <template v-if="!isDeclarerPlay && practice.hasBidPrompt.value" #se>
+                <BiddingBox
+                  :lastBid="practice.lastContractBid.value"
+                  :canDouble="practice.canDouble.value"
+                  :canRedouble="practice.canRedouble.value"
+                  @bid="onBid"
+                />
+              </template>
+            </BridgeTable>
+          </div>
+
+          <!-- Companion: coaching commentary / feedback / Next-Back controls. The
+               auction and bidding box now live in the grid, so they're dropped here. -->
+          <div class="practice-grid-companion">
+            <FeedbackPanel :visible="!!practice.auctionState.wrongBid" type="wrong" :wrongBid="practice.auctionState.wrongBid" :correctBid="practice.auctionState.correctBid" :showContinue="false" />
+            <FeedbackPanel :visible="!!practice.auctionState.altBid" type="alternative" :wrongBid="practice.auctionState.altBid" :correctBid="practice.auctionState.altRecordedBid" :showContinue="false" />
+            <FeedbackPanel :visible="!!practice.cardChoiceState.wrongCard" type="wrong" :wrongCardCode="practice.cardChoiceState.wrongCard" :correctCardCode="practice.cardChoiceState.correctCard" :showContinue="false" />
+
+            <div v-if="practice.hasSteps.value" class="commentary-panel">
+              <div class="commentary-text-container" ref="commentaryContainer">
+                <template v-for="(step, idx) in practice.steps.value.slice(0, practice.currentStepIndex.value)" :key="'gprev-' + idx">
+                  <template v-if="idx >= practice.commentaryStartIndex.value">
+                    <span class="narrative-text previous" v-html="colorizeSuits(flowText(step.text))"></span>
+                    <span v-if="step.type === 'bid' && wasStepAlternative(idx) && step.explanationText"
+                      class="narrative-text previous reframe-note"
+                      v-html="reframeNoteHtml(step)"></span>
+                    <span v-if="step.type === 'bid' && step.explanationText && (wasStepWrong(idx) || wasStepAlternative(idx) || step.fadeFollow == null)"
+                      :class="['narrative-text', idx === practice.currentStepIndex.value - 1 && practice.isBidStep.value && !practice.bidAnswered.value ? 'current' : 'previous']"
+                      v-html="colorizeSuits(flowText(step.explanationText))"></span>
+                    <span v-else-if="step.type === 'bid' && !wasStepWrong(idx) && !wasStepAlternative(idx)"
+                      class="narrative-text previous affirmation"
+                      v-html="bidLabel(step.bid) + ' — ' + affirmationFor(idx)"></span>
+                    <span v-if="step.type === 'bid' && !wasStepWrong(idx) && !wasStepAlternative(idx) && step.fadeFollow"
+                      class="narrative-text previous"
+                      v-html="colorizeSuits(flowText(step.fadeFollow))"></span>
+                  </template>
+                </template>
+                <span v-if="practice.currentStep.value" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.text))"></span>
+                <span v-if="practice.bidAnswered.value && practice.auctionState.altBid && practice.currentStep.value?.type === 'bid' && practice.currentStep.value?.explanationText" class="narrative-text current reframe-note" v-html="reframeNoteHtml(practice.currentStep.value)"></span>
+                <span v-if="practice.bidAnswered.value && practice.currentStep.value?.type === 'bid' && practice.currentStep.value?.explanationText && (practice.auctionState.wrongBid || practice.auctionState.altBid || practice.currentStep.value?.fadeFollow == null)" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.explanationText))"></span>
+                <span v-else-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && !practice.auctionState.altBid && practice.currentStep.value?.type === 'bid'" class="narrative-text current affirmation" v-html="bidLabel(practice.currentStep.value.bid) + ' — ' + affirmationFor(practice.currentStepIndex.value)"></span>
+                <span v-if="practice.bidAnswered.value && !practice.auctionState.wrongBid && !practice.auctionState.altBid && practice.currentStep.value?.fadeFollow" class="narrative-text current" v-html="colorizeSuits(flowText(practice.currentStep.value.fadeFollow))"></span>
+                <span v-if="boardCelebration" class="narrative-text current celebration">{{ boardCelebration }}</span>
+              </div>
+
+              <div class="commentary-controls">
+                <div class="controls-main">
+                  <div v-if="practice.hasCardChoice.value" class="card-choice-prompt">Click on the card you would choose</div>
+                  <button v-if="practice.canGoBack.value" class="instruction-btn secondary" @click="onStepBack">← Back</button>
+                  <button
+                    v-if="!practice.isComplete.value && (practice.bidAnswered.value || (!practice.hasBidPrompt.value && !practice.hasCardChoice.value && practice.currentStep.value && practice.currentStep.value.type !== 'end'))"
+                    class="instruction-btn primary" @click="practice.advance()">
+                    {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
+                  </button>
+                  <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">Next Deal →</button>
+                </div>
+                <button v-if="reportEnabled" class="report-problem-btn" @click="openReport" title="Report a problem with this board">⚑ Report a Problem</button>
+              </div>
+            </div>
+
+            <div v-if="isDeclarerPlay" class="declarer-play-panel">
+              <div class="display-commentary" v-html="colorizeSuits(flowText(stripControlDirectives(declarerCoachingText)))"></div>
+              <div v-if="cardplay.playComplete.value" class="declarer-play-result">
+                You took {{ cardplay.tricksTaken.value[declarerSide] }}
+                trick{{ cardplay.tricksTaken.value[declarerSide] === 1 ? '' : 's' }}<span v-if="tricksNeeded"> — needed {{ tricksNeeded }} for {{ currentDeal.contract }}</span>.
+              </div>
+              <div v-if="cardplay.playComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
+                <button class="next-deal-btn" @click="nextDeal">Next Deal →</button>
+              </div>
+            </div>
+
+            <div v-if="!practice.hasSteps.value && !isDeclarerPlay && currentDeal?.commentary" class="display-commentary" v-html="colorizeSuits(flowText(stripControlDirectives(currentDeal.commentary)))"></div>
+            <div v-if="!practice.hasSteps.value && !isDeclarerPlay && practice.isComplete.value && currentDealIndex < deals.length - 1" class="completion-controls">
+              <button class="next-deal-btn" @click="nextDeal">Next Deal →</button>
+            </div>
+            <div v-if="!practice.hasSteps.value && reportEnabled" class="report-problem-row">
+              <button class="report-problem-btn" @click="openReport" title="Report a problem with this board">⚑ Report a Problem</button>
+            </div>
+          </div>
+        </div>
       </template>
     </main>
 
@@ -393,6 +559,11 @@ import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import DealInfo from '../components/DealInfo.vue'
+import { useArrangement } from '../composables/useArrangement.js'
+import a1Config from '../table-configs/a1.tableConfig.js'
+import { captureA1Snapshot, a1SnapshotToEnrich } from '../report/captureA1Snapshot.js'
+import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
+import { resolveTableConfig } from '../report/tableConfigSnapshot.js'
 import DealNavigator from '../components/DealNavigator.vue'
 import FeedbackPanel from '../components/FeedbackPanel.vue'
 import WelcomeScreen from '../components/WelcomeScreen.vue'
@@ -428,6 +599,27 @@ const practice = useDealPractice()
 // card-play engine instead of the step walk. Isolated path — the normal bid /
 // choose-card lessons never touch `cardplay`, so Baker Bridge is unaffected.
 const cardplay = useCardPlay()
+
+// Per-client arrangement axis (a1 grid-flip slice 1.6a). Default 'legacy' — production
+// is untouched; `?arrangement=grid` previews the grid arranger for THIS client only
+// (persisted to localStorage; `?arrangement=legacy` reverts). The bug-report snapshot
+// records which arrangement the reporter was on, and the practice interface renders the
+// grid branch when this is 'grid'.
+const { arrangement, arrangementSource } = useArrangement()
+
+// Grid-branch derivations (a1 grid-flip 1.6a). Canonical phase + hero seat for the
+// arranger, whether to pin the completed auction (declarer play), and one card-click
+// dispatcher so the grid's single @card-click routes to the right handler. (Computed
+// getters are deferred, so referencing later-defined refs like isDeclarerPlay is fine.)
+const gridPhase = computed(() => a1DerivedPhase())
+const gridHeroSeat = computed(() =>
+  isDeclarerPlay.value ? (currentDeal.value?.studentSeat || 'S') : (practice.studentSeat.value || 'S'),
+)
+const pinnedAuction = computed(() => isDeclarerPlay.value && (currentDeal.value?.auction || []).length > 0)
+function onGridCardClick(payload) {
+  if (isDeclarerPlay.value) onDeclarerCard(payload)
+  else onCardClick(payload)
+}
 
 // --- Coaching feedback fade (branch: coaching-feedback-fade) ----------------
 // In the bidding scrollback we distinguish three cases:
@@ -1482,6 +1674,93 @@ async function loadLessonFromUrl(collectionId, lessonId) {
     return false
   }
 }
+
+// ── A1 bug-report diagnostic provider (a1-grid-flip slice 1.6c) ───────────────
+// Register a report-context provider so a beetle tap on the A1 surface captures the
+// arrangement, the phase (+ the raw signals it was derived from), lesson/board
+// identity, a gallery-loadable fixture, and — under the grid — the arranger's ledger.
+// captureReportContext() wraps this in try/catch, so a stray field access degrades to
+// null and NEVER breaks report filing. Read-only + opt-in (beetle only), so normal
+// users are unaffected. See src/report/captureA1Snapshot.js for the payload + schema.
+function readLayoutLedger() {
+  try {
+    const el = document.querySelector('[data-layout-ledger]')
+    return el ? JSON.parse(el.getAttribute('data-layout-ledger')) : null
+  } catch { return null }
+}
+function a1PhaseSignals() {
+  return {
+    isDeclarerPlay: !!isDeclarerPlay.value,
+    auctionComplete: !!practice.auctionState?.auctionComplete,
+    showOpeningLead: !!practice.showOpeningLead?.value,
+    hasSteps: !!practice.hasSteps?.value,
+    hasBidSteps: !!practice.hasBidSteps?.value,
+    hasBidPrompt: !!practice.hasBidPrompt?.value,
+    hasCardChoice: !!practice.hasCardChoice?.value,
+    isComplete: !!practice.isComplete?.value,
+  }
+}
+function a1DerivedPhase() {
+  if (isDeclarerPlay.value) return 'play'
+  if (practice.auctionState?.auctionComplete) return 'review'
+  return 'bidding'
+}
+function a1Fixture() {
+  const deal = currentDeal.value || {}
+  const play = isDeclarerPlay.value
+  return {
+    surface: 'a1',
+    label: `capture · ${currentCollection.value || 'a1'} · board ${deal.displayNumber ?? deal.boardNumber ?? '?'}`,
+    seat: play ? (deal.studentSeat || 'S') : (practice.studentSeat?.value || 'S'),
+    heroName: firstName.value || null,
+    board: deal.displayNumber ?? deal.boardNumber ?? null,
+    dealer: deal.dealer || null,
+    vulnerable: deal.vulnerable || null,
+    phase: a1DerivedPhase(),
+    contract: deal.contract || null,
+    declarer: deal.declarer || null,
+    hands: play ? deal.hands : practice.hands?.value,
+    hiddenSeats: (play ? cardplay.hiddenSeats?.value : practice.hiddenSeats?.value) || [],
+    clickableSeat: play ? cardplay.clickableSeat?.value : (practice.hasCardChoice?.value ? practice.studentSeat?.value : null),
+    playedCards: play ? cardplay.playedBySeat?.value : practice.showcardsPlayedCards?.value,
+    bids: deal.auction || [],
+    currentTrick: play ? cardplay.currentTrick : null,
+    lastFinishedTrick: play ? cardplay.lastFinishedTrick?.value : null,
+    tricksTaken: play ? cardplay.tricksTaken?.value : null,
+  }
+}
+function a1ReportProvider() {
+  const deal = currentDeal.value || {}
+  const vp = { w: window.innerWidth, h: window.innerHeight }
+  const grid = arrangement.value === 'grid'
+  const snapshot = captureA1Snapshot({
+    arrangement: { value: arrangement.value, source: arrangementSource.value },
+    phase: a1DerivedPhase(),
+    phaseSignals: a1PhaseSignals(),
+    content: {
+      collection: currentCollection.value || null,
+      lesson: deal.subfolder || deal.category || null,
+      board: deal.displayNumber ?? deal.boardNumber ?? null,
+      stepIndex: practice.currentStepIndex?.value ?? null,
+      stepCount: practice.steps?.value?.length ?? null,
+      dealHash: null, // TODO: hash deal.dealString once the fixture round-trip is exercised
+    },
+    env: {
+      viewport: vp,
+      tableScale: null,
+      dpr: window.devicePixelRatio || null,
+      userAgent: navigator.userAgent || null,
+    },
+    identity: { userId: userStore.currentUser.value?.id ?? null, classContext: null },
+    ledger: readLayoutLedger(),
+    tableConfig: grid ? resolveTableConfig(a1Config, a1DerivedPhase(), vp) : null,
+    fixture: a1Fixture(),
+    capturedAt: Date.now(),
+  })
+  return a1SnapshotToEnrich(snapshot)
+}
+onMounted(() => setReportContextProvider(a1ReportProvider))
+onUnmounted(() => clearReportContextProvider(a1ReportProvider))
 </script>
 
 <style>
@@ -1836,6 +2115,45 @@ body {
   flex-direction: column;
   gap: 16px;
   align-items: center;
+}
+
+/* Grid arrangement (a1 grid-flip 1.6a). Two-column shell: the named-area grid stage
+   left, the coaching companion right; stacks under 900px. The grid arranger owns the
+   table's internal layout + per-region scale, so this shell only places the stage vs
+   the companion (grid-arranger-spec: the shell owns the companion, the grid owns the
+   table). The legacy `.practice-left .seat-panel` width pin does NOT reach the grid
+   seats (they live under `.practice-grid-stage`), so the arranger's scaling governs. */
+.practice-grid-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  gap: 32px;
+  align-items: start;
+  justify-content: center;
+}
+.practice-grid-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.practice-grid-companion {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: stretch;
+  min-width: 0;
+}
+/* Match the gallery's auction sizing (the caps/measurement work was verified against
+   this max-width; the auction renders in its dense form here as in the gallery). */
+.practice-grid-layout .a1-center-auction { max-width: 260px; }
+.practice-grid-layout .a1-grid-ne {
+  background: #f7f9f6;
+  border: 1px solid #e6e8e3;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+@media (max-width: 900px) {
+  .practice-grid-layout { grid-template-columns: 1fr; gap: 20px; }
 }
 
 /* Collection view */

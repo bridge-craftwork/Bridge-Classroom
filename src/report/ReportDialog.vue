@@ -135,7 +135,11 @@ const props = defineProps({
   // Async UA client hints (architecture, platformVersion) captured on the tap.
   clientHints: { type: Object, default: null },
   // Computed-geometry snapshot frozen on the tap (matches the screenshot).
-  layout: { type: Object, default: null }
+  layout: { type: Object, default: null },
+  // App-shell forensic context frozen on the tap: `enrich` fragments
+  // ({ env?, context?, fixture? }) from the active shell's provider (e.g. the A1 grid
+  // shell's captureA1Snapshot → a1SnapshotToEnrich). Merged into the collected bundle.
+  shellEnrich: { type: Object, default: null }
 })
 const emit = defineEmits(['close', 'saved'])
 
@@ -236,10 +240,22 @@ async function submit() {
   }
 }
 
+// Merge the tap-frozen shell context (arrangement, ledger, phase, gallery-loadable
+// fixture) into the collector's enrich, without clobbering the dialog's own env/context.
+function buildEnrich(baseContext) {
+  const se = props.shellEnrich || {}
+  return {
+    env: { ...env, ...(se.env || {}) },
+    layout: props.layout,
+    context: { ...baseContext, ...(se.context || {}) },
+    ...(se.fixture ? { fixture: se.fixture } : {}),
+  }
+}
+
 async function submitLocal() {
   let dirHandle = null
   try { dirHandle = await ensureDirHandle() } catch { dirHandle = null }
-  const bundle = collectReport({ note: note.value, screenshot: props.screenshot, enrich: { env, layout: props.layout, context: { kind: kind.value } } })
+  const bundle = collectReport({ note: note.value, screenshot: props.screenshot, enrich: buildEnrich({ kind: kind.value }) })
   result.value = await saveToDevSink(bundle, { dirHandle })
   if (result.value.copied) emit('saved', { message: '✓ Saved and prompt copied to clipboard' })
   else phase.value = 'manual'
@@ -258,7 +274,7 @@ async function submitIssue() {
   const bundle = collectReport({
     note: note.value,
     screenshot: props.screenshot,
-    enrich: { env, layout: props.layout, context: { reporter: reporterRecord, kind: kind.value } }
+    enrich: buildEnrich({ reporter: reporterRecord, kind: kind.value })
   })
 
   const res = await fileGithubIssue({
