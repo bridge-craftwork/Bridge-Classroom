@@ -24,7 +24,7 @@
       <div v-if="toast" class="beetle-toast">{{ toast }}</div>
     </transition>
   </div>
-  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :client-hints="clientHints" :layout="layout" :shell-enrich="shellEnrich" @close="closeDialog" @saved="onSaved" />
+  <ReportDialog v-if="dialogOpen" :screenshot="screenshot" :screenshot-boxes="screenshotBoxes" :client-hints="clientHints" :layout="layout" :shell-enrich="shellEnrich" @close="closeDialog" @saved="onSaved" />
 </template>
 
 <script setup>
@@ -38,6 +38,8 @@ import ReportDialog from './ReportDialog.vue'
 const capturing = ref(false)
 const dialogOpen = ref(false)
 const screenshot = ref(null)
+// Second screenshot with the bounding-box diagnostic overlay on (grid layouts only).
+const screenshotBoxes = ref(null)
 const clientHints = ref(null)
 const layout = ref(null)
 // App-shell forensic context frozen on the tap (the active shell's provider, e.g. the
@@ -68,6 +70,10 @@ async function onClick() {
     ])
     screenshot.value = shot
     clientHints.value = hints
+    // Second capture WITH the bounding-box overlay, so a grid-layout bug bundles its own
+    // layout X-ray (grid-arranger-spec §5.1). Only when a grid is on screen and the
+    // overlay isn't already showing (else the first shot already has it). Guarded to null.
+    screenshotBoxes.value = await captureBoundingBoxesShot()
   } finally {
     capturing.value = false
     dialogOpen.value = true
@@ -83,9 +89,32 @@ function collectLayoutSafe() {
   }
 }
 
+// Capture a second screenshot with the arranger's bounding-box overlay turned on. Only
+// meaningful on a grid arrangement (the overlay styles `.grid-table`); returns null when
+// there's no grid, or when the overlay is already on (the primary shot already shows it).
+// Toggles the attribute for the capture and restores it. Fully guarded — a failure here
+// must never block the report.
+async function captureBoundingBoxesShot() {
+  // Guards BEFORE the try, so we never touch the attribute we didn't set: skip when
+  // there's no grid, or when the overlay is already on (the primary shot has it).
+  if (!document.querySelector('.grid-table')) return null
+  if (document.documentElement.hasAttribute('data-bounding-boxes')) return null
+  try {
+    document.documentElement.setAttribute('data-bounding-boxes', '')
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    return await captureScreenshot().catch(() => null)
+  } catch (err) {
+    console.warn('[report] bounding-boxes screenshot failed (continuing):', err)
+    return null
+  } finally {
+    document.documentElement.removeAttribute('data-bounding-boxes') // restore (we set it)
+  }
+}
+
 function closeDialog() {
   dialogOpen.value = false
   screenshot.value = null
+  screenshotBoxes.value = null
   clientHints.value = null
   layout.value = null
   shellEnrich.value = null

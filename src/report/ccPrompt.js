@@ -13,7 +13,7 @@
  * @param {boolean} [args.singleFile=false]  True for the zip/json fallback layout.
  * @returns {string}
  */
-export function buildCcPrompt({ bundlePath, context, singleFile = false }) {
+export function buildCcPrompt({ bundlePath, context, singleFile = false, hasBoxes = false }) {
   const env = context?.env || {}
   const note = (context?.note || '').trim()
 
@@ -26,9 +26,14 @@ export function buildCcPrompt({ bundlePath, context, singleFile = false }) {
     env.commit && `commit: ${env.commit}`
   ].filter(Boolean).join(' · ')
 
-  const layoutClause = singleFile
+  const boxesNote = hasBoxes
+    ? (singleFile
+      ? ' It also inlines `screenshotBoxes` (a second capture with the layout bounding-box overlay on).'
+      : ' Plus `screenshot-boxes.jpg` — a second capture with the arranger\'s bounding-box overlay on (the layout X-ray).')
+    : ''
+  const layoutClause = (singleFile
     ? `The bundle is a single JSON file at \`${bundlePath}\` (context, fixture, and the screenshot as a data URL inlined together).`
-    : `The bundle dir is \`${bundlePath}\` — it holds \`context.json\`, \`fixture.json\`, and \`screenshot.jpg\`.`
+    : `The bundle dir is \`${bundlePath}\` — it holds \`context.json\`, \`fixture.json\`, and \`screenshot.jpg\`.`) + boxesNote
 
   const header = [
     `Reporter note: ${note || '(none)'}`,
