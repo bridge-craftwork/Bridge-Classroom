@@ -217,7 +217,15 @@ const OVERHANG_MARGIN = 3
 
 function measure() {
   if (!props.hand) return
-  const tableScale = parseFloat(getComputedStyle(rootEl.value).getPropertyValue('--table-scale')) || 1
+  const rootStyle = getComputedStyle(rootEl.value)
+  const tableScale = parseFloat(rootStyle.getPropertyValue('--table-scale')) || 1
+  // Fit target = the region's ALLOCATED width (grid arranger publishes --alloc-width,
+  // px at 1.0×), NOT the shrink-wrapped row. Measuring the fit off the rendered row is
+  // circular — a compressed row measures narrow, so it stays compressed even when its
+  // allocation has ample room (squeezed North to ~130px inside a 264px column,
+  // 2026-07-13 report). The allocation is content-independent, breaking the loop.
+  // Absent (legacy/console/server, or pre-first-ledger) → 0 → fall back to the row.
+  const allocWidth = parseFloat(rootStyle.getPropertyValue('--alloc-width')) || 0
   for (const suit of suits) {
     const rowEl = rowEls[suit]
     const cardsEl = cardsEls[suit]
@@ -233,10 +241,13 @@ function measure() {
     // spacing the last cell's right edge omits. Sizing compression against this
     // (not cumWidths[last]) is what stops the last card clipping past the edge.
     const natural = probeRect.width
-    // available = row width minus the fixed label zone (cards' left offset).
+    // available = fit width minus the fixed label zone (cards' left offset). The fit
+    // width is the allocation (× table-scale, since alloc is 1.0× px and the row
+    // renders scaled) when the arranger provides one, else the measured row.
     const rowRect = rowEl.getBoundingClientRect()
     const cardsRect = cardsEl.getBoundingClientRect()
-    const available = rowRect.width - (cardsRect.left - rowRect.left)
+    const labelZone = cardsRect.left - rowRect.left
+    const available = (allocWidth > 0 ? allocWidth * tableScale : rowRect.width) - labelZone
     // Guard: a mid-transition / pre-layout measurement (the row not yet sized —
     // happens on client-side navigation back to a board) reads ~0 width. Never
     // commit a collapsed fit from it — skip, leaving the suit full until a real
