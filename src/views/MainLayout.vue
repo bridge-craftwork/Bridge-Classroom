@@ -335,7 +335,7 @@
               :phase="gridPhase"
               :hands="isDeclarerPlay ? currentDeal.hands : practice.hands.value"
               :hidden-seats="gridHiddenSeats"
-              :show-hcp="isDeclarerPlay ? true : practice.showHcp.value"
+              :show-hcp="isDeclarerPlay ? true : (defenceScene ? false : practice.showHcp.value)"
               :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : (practice.hasCardChoice.value ? practice.studentSeat.value : null)"
               :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.showcardsPlayedCards.value"
               :hide-played-cards="isDeclarerPlay"
