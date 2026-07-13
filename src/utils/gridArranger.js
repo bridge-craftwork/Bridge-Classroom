@@ -2,7 +2,7 @@
 // (§3) of grid-arranger-spec.md. No Vue, no DOM — unit-testable; the Vue
 // GridArrangement component measures geometry and calls these.
 
-import { rowReservePx } from '../components/handMetrics.js'
+import { rowReservePx, handReservePx } from '../components/handMetrics.js'
 
 // Seats clockwise (play order). LHO = next clockwise = screen-left.
 const CLOCK = ['N', 'E', 'S', 'W']
@@ -98,8 +98,9 @@ export function capSide(cap) {
   return cap
 }
 
-/** Reserve width (px, 1.0×) for an N-card seat row — re-exported for the component. */
-export { rowReservePx }
+/** Reserve widths (px, 1.0×) — re-exported for the component. `rowReservePx` is the
+ *  N-card worst case; `handReservePx` is a specific hand's actual widest suit row. */
+export { rowReservePx, handReservePx }
 
 // ── Layout ledger (the one-directional allocator, as a pure function) ─────────
 // The 3×3 column topology is fixed (n-absorption is a ROW change, not a column

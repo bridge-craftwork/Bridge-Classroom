@@ -17,7 +17,7 @@
       :style="regionStyle('seats')"
       :data-region="'seat-' + seatArea(seat)"
       :data-region-scale="fmt(scales.seats)"
-      :data-region-reserve="Math.round(rowReservePx(7))"
+      :data-region-reserve="Math.round(dealSeatReserve)"
       :data-bounding-box-label="bbLabel('seat-' + seatArea(seat))"
       :data-overflow="regionOverflow('seat-' + seatArea(seat))"
     >
@@ -72,9 +72,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import SeatPanel from '../SeatPanel.vue'
-import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, computeLayoutLedger, actionCornerFor } from '../../utils/gridArranger.js'
+import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, handReservePx, computeLayoutLedger, actionCornerFor } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 import { biddingBoxReservePx } from '../biddingBoxMetrics.js'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../boardIndicatorMetrics.js'
@@ -239,11 +239,25 @@ function seatBadge(seat) {
   return mode === 'label' ? 'Partner' : mode === 'name' ? firstNameOf(props.heroName) : null
 }
 
+// The seat reserve for THIS deal: the widest actual hand's natural row, not the
+// 7-card worst case. Provisioning to what the deal truly needs lets the uniform seat
+// scale grow to fill the budget instead of pre-allowing for max-width hands that are
+// rare (Rick, 2026-07-13: "grow based on actual width of this deal instead of the
+// budget"). Computed from the FULL holdings (handReservePx reads the whole hand; played
+// cards are struck in the render, never removed), so it's the hands' WIDEST extent and
+// never shrinks as cards are played — no mid-deal magnification creep. Only the shown
+// hand-bearing seats count; no hand yet → the 7-card fallback.
+const dealSeatReserve = computed(() => {
+  const shown = SEATS.filter(isHandBearing)
+  if (!shown.length) return rowReservePx(7)
+  return Math.max(...shown.map((s) => handReservePx(props.hands?.[s])))
+})
+
 // A region's reserve WIDTH (px, 1.0×) for column provisioning.
 function reserveForArea(area) {
   if (area === 'center') return regionReserve('center')
   if (CORNERS.includes(area)) return regionReserve(area)
-  return rowReservePx(7) // seat
+  return dealSeatReserve.value // seat — this deal's actual widest hand
 }
 
 // Occupancy-driven area template: the stage absorbs an empty CENTRE-column seat so
@@ -435,7 +449,7 @@ function relayout(force = false) {
     occupied,
     reserves,
     tiers: props.config.allocationPriority,
-    seatReserve: rowReservePx(7),
+    seatReserve: dealSeatReserve.value,
     handBearingAreas: SEATS.filter(isHandBearing).map(seatArea),
     cellGap: CELL_GAP,
     actionHandGap: actionHandGap.value,
@@ -556,6 +570,16 @@ onMounted(async () => {
   ro.observe(root.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
+
+// Re-provision when the deal's own inputs change without a width change: the actual
+// seat reserve (new hands) and which seats are shown. `relayout` skips on an unchanged
+// budget, so a new deal at the same viewport width would otherwise keep the prior
+// ledger. `dealSeatReserve` is pure from props (no scale feedback), so this converges
+// in one pass. Await a tick so the hands have rendered before we re-measure boxes.
+watch(
+  [dealSeatReserve, () => SEATS.filter(isHandBearing).join(''), () => props.phase],
+  async () => { await nextTick(); relayout(true) },
+)
 </script>
 
 <style scoped>
