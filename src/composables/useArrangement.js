@@ -39,6 +39,15 @@ export function initArrangement(loc = (typeof window !== 'undefined' ? window.lo
   arrangementSource.value = r.source
   // A query override is the persist trigger (grid sticks; legacy clears).
   if (r.source === 'query') writeStored(r.arrangement)
+  // Re-read on hashchange so editing `?arrangement=` in the URL switches arrangement LIVE
+  // (no refresh) — the reactive ref drives the practice view's grid/legacy branch
+  // (2026-07-12 report). Hash-position params fire hashchange.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('hashchange', () => {
+      const p = readArrangementParam(window.location)
+      if (p) { arrangement.value = p; arrangementSource.value = 'query'; writeStored(p) }
+    })
+  }
   return r
 }
 
