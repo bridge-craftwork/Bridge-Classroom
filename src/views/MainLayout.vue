@@ -2140,22 +2140,30 @@ body {
    table). The legacy `.practice-left .seat-panel` width pin does NOT reach the grid
    seats (they live under `.practice-grid-stage`), so the arranger's scaling governs. */
 .practice-grid-layout {
-  display: grid;
-  /* Companion sized close to the gallery's (~320–360) so the STAGE keeps the width —
-     a 460px companion squeezed the stage to a laptop-half budget (~648px) even on a
-     wide screen, so the arranger never grew the hand/auction past 1.0×/1.18× (the
-     "smaller fonts" bug, 2026-07-12). At ~360 the stage gets ~780px → center ~1.3×,
-     seats ~1.11× per the caps, matching the desktop gallery. */
-  grid-template-columns: minmax(0, 1fr) 360px;
+  /* Flex-wrap, NOT a fixed grid + media breakpoint: the companion drops below the stage
+     automatically when the container can't hold both at their min widths. That's the fix
+     for the A/B/C report (2026-07-12) — a fixed 900px grid breakpoint left a 900–1040px
+     two-column band where the 360px companion squeezed the stage until the FIXED-width
+     bidding box (~222px, can't shrink) overflowed its track and overlapped the South hand.
+     Keyed on the stage min-width, two-column survives only while the stage keeps room for
+     the box; otherwise it wraps to full width (as the ≤900px case already did correctly).
+     The ~360px companion keeps the stage wide enough for the caps to grow the table when
+     two-column DOES fit (the earlier "smaller fonts" fix). */
+  display: flex;
+  flex-wrap: wrap;
   gap: 32px;
-  align-items: start;
+  align-items: flex-start;
   justify-content: center;
 }
 .practice-grid-stage {
+  /* Min width = room for status + hand + the fixed bidding box; below this the companion
+     wraps rather than squeezing the box onto the hand. min(…,100%) still allows shrink on
+     a genuinely tiny viewport (phone — not optimized; the box's narrow form is separate). */
+  flex: 1 1 640px;
+  min-width: min(640px, 100%);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 0;
 }
 /* NW corner: stack the board glyph over the (play/review) status, left-aligned. */
 .practice-grid-layout .a1-grid-nw {
@@ -2188,11 +2196,12 @@ body {
   line-height: 1.55;
 }
 .practice-grid-companion {
+  flex: 1 1 340px;
+  min-width: min(320px, 100%);
   display: flex;
   flex-direction: column;
   gap: 16px;
   align-items: stretch;
-  min-width: 0;
 }
 /* Match the gallery's auction sizing (the caps/measurement work was verified against
    this max-width; the auction renders in its dense form here as in the gallery). */
@@ -2204,7 +2213,8 @@ body {
   padding: 8px 10px;
 }
 @media (max-width: 900px) {
-  .practice-grid-layout { grid-template-columns: 1fr; gap: 20px; }
+  /* Flex-wrap already stacks the companion; just tighten the gap on narrow screens. */
+  .practice-grid-layout { gap: 20px; }
 }
 
 /* Collection view */

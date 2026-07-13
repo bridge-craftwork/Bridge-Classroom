@@ -45,6 +45,18 @@ html[data-bounding-boxes] .grid-table .region.occupied::after {
   border-bottom-right-radius: 3px;
 }
 
+/* Horizontal overflow — a region whose MEASURED content is wider than its allocated
+   track and is spilling into a neighbour (the columns' analog of a row's content>track;
+   e.g. the fixed-width bidding box at a floored SE overlapping the hand). Red outline +
+   red label so it pops in the overlay / 2nd screenshot. `data-overflow` is set by the
+   arranger only when the overflow exceeds a few px. */
+html[data-bounding-boxes] .grid-table .region[data-overflow] {
+  outline: 2px solid rgba(200, 0, 0, 0.92);
+}
+html[data-bounding-boxes] .grid-table .region[data-overflow].occupied::after {
+  background: rgba(180, 0, 0, 0.95);
+}
+
 /* Layer 4 — the bidding growth-reserve band. The center stage reserves a bounded
    height; the auction bottom-anchors within it, so the HATCHED area above the
    auction is the reserve the auction grows into. Amber = reserve/slack. */
