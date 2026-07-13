@@ -20,6 +20,10 @@ agreement from both the consumer (Bridge Classroom) and the producers.
 **Amended 2026-07-08** ([ADR-0002](./0002-collection-manifest-and-library-source.md),
 Rick + David): added **R5 — publish a build-generated manifest** (§10).
 
+**Amended 2026-07-13** (Rick; pending David): added **R6 — adhere to the Lesson
+Directive Specification** (§11), prompted by a play lesson whose rendered table
+contradicted its own prose (a dummy-led card was never placed on the table).
+
 ---
 
 ## 0. The one-paragraph version
@@ -63,6 +67,7 @@ is the key, **you must keep positions stable once you've promoted them.** See §
 | R3 | Stamp a **board-version token** on every board | `[BoardVersionToken "…"]` | C2 |
 | R4 | Give every **stable** board a **real skill path** (required before `stable=true`; `uncategorized` OK while prerelease) | `[SkillPath "…"]` | C5 |
 | R5 | Publish a **build-generated manifest** describing every lesson's board roster | `manifest.json` (build artifact) | ADR-0002 |
+| R6 | **Adhere to the Lesson Directive Specification** — your board directives must render a state that matches your prose (esp. play-lesson trick state) | in-board directives (`[showcards]`, `[PLAY]`, …) | §11 |
 
 Not your responsibility (Bridge Classroom owns these — do **not** put them in your
 PBNs): the **`collection` id**, the **`report`-button** flag, and the
@@ -247,6 +252,11 @@ shortcut.
       to the PBN — those are Bridge Classroom's.
 - [ ] Your build emits a **manifest** (§10) with every lesson's board roster
       (`number`, `stable`, `boardVersionToken`, `skillPath`), regenerated each build.
+- [ ] Every board's directives render a state that **matches its prose** (§11 / the
+      [directive spec](../lesson-directive-spec.md)) — in play lessons, the current
+      trick is on the table via `[showcards]` (incl. dummy-led cards), earlier tricks
+      are removed from hands via `[PLAY]`, and any whole played trick accounts for all
+      four cards.
 
 ---
 
@@ -277,8 +287,41 @@ still holds. Full schema in the
 
 ---
 
+## 11. R6 — Adhere to the Lesson Directive Specification
+
+R1–R5 keep student *tracking* correct. R6 keeps the *rendering* correct.
+
+Bridge Classroom is a **dumb renderer**: it shows exactly what your in-board directives
+(`[SHOW]`, `[showcards]`, `[PLAY]`, `[choose-card]`, `[NEXT]`, …) say, with no fallbacks
+and no inference from lesson type. The burden is therefore on the PBN to describe the
+complete visible state. The normative list of every directive, its exact rendered
+effect, and the authoring rules is the **[Lesson Directive Specification](../lesson-directive-spec.md)**.
+
+Your obligation: **the state your directives render must match the state your prose
+describes.** The rule bites hardest in **play lessons**, where prose routinely narrates
+cards already played:
+
+- Cards of the **current, in-progress trick** (the one the student acts on) go **on the
+  table** with `[showcards]` — including a card led from a *shown* seat such as **dummy**
+  (`[showcards N:D5]` strikes it from dummy and places it on the table).
+- Cards of **earlier, gathered tricks** are **removed from their hands** with `[PLAY]`
+  and are not shown on the table.
+- If the prose says a **whole trick** was played, **all four** of its cards are accounted
+  for — one per hand — not just the opening lead.
+
+A board that omits these renders a table that silently contradicts its own text (the
+defect that prompted this amendment: a second-hand-play board left dummy's led card off
+the table, so the student saw the previous trick's opening lead instead). See the
+worked example in the [directive spec §6](../lesson-directive-spec.md#6-worked-example--the-defect-this-spec-prevents).
+
+Unlike R1–R5, R6 is **not** wired into the build today — it is human discipline, checked
+at authoring/review time (and surfaced reactively through the Report-a-Problem channel).
+
+---
+
 ## References
 
+- [Lesson Directive Specification](../lesson-directive-spec.md) (R6 — the normative directive reference)
 - [ADR-0001 — Positional board identity](./0001-positional-board-identity.md) (the decision)
 - [ADR-0002 — Collection manifest & library source](./0002-collection-manifest-and-library-source.md) (R5)
 - [Board Identity, Readiness, and History Integrity](./board-identity-and-history-integrity.md) (full spec, contracts C1–C7, §4.1 scope summary)
