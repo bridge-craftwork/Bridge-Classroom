@@ -577,4 +577,16 @@ onBeforeUnmount(() => ro?.disconnect())
 .area-s { grid-area: s; }
 .area-se { grid-area: se; justify-self: end; align-self: end; }
 .seat { display: flex; }
+
+/* Diagnostic overlays (row bands, stage line, collapsed-region legend) are OFF by
+   default. The harness's boundingBoxes.css turns them on under
+   `html[data-bounding-boxes]` (higher specificity, so it still wins there); in
+   PRODUCTION that stylesheet isn't loaded, so without this default-hide the legend
+   leaked as raw text under the table (the "collapsed n ne e sw" bug, 2026-07-12).
+   These elements are aria-hidden and empty, so hiding them changes nothing else. */
+.row-band,
+.stage-line,
+.bounding-box-legend {
+  display: none;
+}
 </style>
