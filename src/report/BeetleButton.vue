@@ -15,13 +15,13 @@
     <transition name="beetle-fade">
       <div v-if="fieldKitOpen" class="beetle-kit" @pointerdown.stop>
         <div class="bk-title">Field kit</div>
-        <button class="bk-item" @click="kitToggleOverlay">
-          <span class="bk-check">{{ overlaysEnabled ? '✓' : '' }}</span> Layout overlay
+        <button class="bk-item" role="checkbox" :aria-checked="arrangement === 'grid'" @click="kitToggleArrangement">
+          <span class="bk-box" :class="{ on: arrangement === 'grid' }">{{ arrangement === 'grid' ? '✓' : '' }}</span> Beta Preview
         </button>
-        <button class="bk-item" @click="kitToggleArrangement">
-          Arrangement: <b>{{ arrangement }}</b> → {{ arrangement === 'grid' ? 'legacy' : 'grid' }}
+        <button class="bk-item" role="checkbox" :aria-checked="overlaysEnabled" @click="kitToggleOverlay">
+          <span class="bk-box" :class="{ on: overlaysEnabled }">{{ overlaysEnabled ? '✓' : '' }}</span> Debug Overlay
         </button>
-        <button class="bk-item" @click="kitCopySnapshot">Copy diagnostic snapshot</button>
+        <button class="bk-item bk-action" @click="kitCopySnapshot">Copy diagnostic snapshot</button>
       </div>
     </transition>
     <button
@@ -116,16 +116,13 @@ function closeFieldKit() {
 }
 function closeFieldKitOutside() { closeFieldKit() }
 
+// Checkbox rows: toggle in place and KEEP the kit open so the checked state is visible and
+// both can be flipped without reopening. (Copy, an action, closes the kit.)
 function kitToggleOverlay() {
   toggleOverlays()
-  closeFieldKit()
-  flashToast(overlaysEnabled.value ? '✓ Layout overlay on' : 'Layout overlay off')
 }
 function kitToggleArrangement() {
-  const next = arrangement.value === 'grid' ? 'legacy' : 'grid'
-  setArrangement(next)
-  closeFieldKit()
-  flashToast(`Arrangement: ${next}`)
+  setArrangement(arrangement.value === 'grid' ? 'legacy' : 'grid')
 }
 async function kitCopySnapshot() {
   const enrich = captureReportContext()
@@ -315,5 +312,23 @@ function onSaved(payload) {
   cursor: pointer;
 }
 .bk-item:hover { background: #f1f3ef; }
-.bk-check { display: inline-block; width: 12px; color: #1d6a4f; font-weight: 700; }
+.bk-item[role="checkbox"] { display: flex; align-items: center; }
+.bk-action { color: #33403a; }
+/* Checkbox box: empty (clearly unselected) → filled green ✓ when on. */
+.bk-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-right: 9px;
+  border: 1.5px solid #b7bdb5;
+  border-radius: 4px;
+  background: #fff;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+.bk-box.on { background: #1d6a4f; border-color: #1d6a4f; }
 </style>
