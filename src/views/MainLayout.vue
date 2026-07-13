@@ -358,7 +358,7 @@
                   <!-- The BoardIndicator glyph above already carries vul, so don't repeat
                        it in the strip; drop the trick chip in a defence choose-card scene
                        (tricks never advance) so only the contract shows. -->
-                  <StatusStrip v-if="gridPhase !== 'bidding'" :status="gridStatus" :show-vul="false" :show-tricks="!gridDefensePlay" />
+                  <StatusStrip v-if="gridPhase !== 'bidding'" :status="gridStatus" :show-vul="false" :show-tricks="!defenceCardplay" />
                 </div>
               </template>
               <!-- CENTER: the trick (declarer play) or the live auction (bidding). -->
@@ -382,7 +382,7 @@
                   :next-seat="null"
                   bot-name="Defense"
                 />
-                <div v-else-if="practice.showAuctionTable.value" class="a1-center-auction">
+                <div v-else-if="practice.showAuctionTable.value && !companionAuction" class="a1-center-auction">
                   <AuctionTable
                     :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
                     :dealer="currentDeal?.dealer || 'N'"
@@ -676,12 +676,22 @@ const gridHiddenSeats = computed(() => {
 // (2026-07-13 report — NE floored the auction to 0.65× and squeezed the seats).
 const hasCompletedAuction = computed(() => (currentDeal.value?.auction || []).length > 0)
 const pinnedAuction = computed(() => isDeclarerPlay.value && hasCompletedAuction.value)
+// A defensive-signals / cardplay step scene, identified PERSISTENTLY — unlike gridDefensePlay,
+// which only holds while a seat is played-card-ONLY. At the reveal every played-only seat is
+// fully revealed (so gridDefensePlay flips false), but the scene still played cards
+// (showcardsPlayedCards stays non-empty — the played card struck within each revealed hand).
+// Keeping the auction companion-side and the centre free from first-card through reveal, so the
+// reveal matches the test instead of snapping the auction back to centre (2026-07-13 report).
+const defenceCardplay = computed(() =>
+  !isDeclarerPlay.value &&
+  (gridDefensePlay.value || Object.keys(practice.showcardsPlayedCards.value || {}).length > 0),
+)
 // Profile-ring override indicator (grid-flip 1.6d): the avatar is green on the default
 // (prod) arrangement and orange when an override is active — keyed on PROVENANCE
 // (source ≠ default), not on 'grid', so it marks "this client is pinned to something
 // non-default" and never goes stale after the flip.
 const overrideActive = computed(() => arrangementSource.value !== 'default')
-const companionAuction = computed(() => gridDefensePlay.value && hasCompletedAuction.value)
+const companionAuction = computed(() => defenceCardplay.value && hasCompletedAuction.value)
 // Compact status for the grid #nw region (BoardIndicator glyph + StatusStrip), sized to
 // the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
 // the column and occluded the auction. Same shape A1Scene uses. Nav lives in the
@@ -1775,7 +1785,7 @@ function a1PhaseSignals() {
 }
 function a1DerivedPhase() {
   if (isDeclarerPlay.value) return 'play'
-  if (gridDefensePlay.value) return 'play' // step-based cardplay (defensive signals)
+  if (defenceCardplay.value) return 'play' // step-based cardplay (defensive signals) — incl. its reveal
   if (practice.auctionState?.auctionComplete) return 'review'
   return 'bidding'
 }
