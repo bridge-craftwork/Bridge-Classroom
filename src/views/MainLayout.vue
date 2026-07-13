@@ -339,24 +339,19 @@
               :declarer="currentDeal?.declarer"
               @card-click="onGridCardClick"
             >
-              <!-- NW: board · dealer · vul + contract/result (production DealInfo). -->
+              <!-- NW: compact board·dealer·vul glyph (+ contract/result in play/review).
+                   Sized to the arranger's status reserve — the full DealInfo overflowed
+                   this column and occluded the auction (2026-07-12 bug report). -->
               <template #nw>
-                <DealInfo
-                  :boardNumber="currentDeal?.displayNumber || currentDeal?.boardNumber"
-                  :dealer="currentDeal?.dealer"
-                  :vulnerable="currentDeal?.vulnerable"
-                  :contract="currentDeal?.contract"
-                  :declarer="currentDeal?.declarer"
-                  :showContract="isDeclarerPlay || practice.auctionState.auctionComplete || practice.showOpeningLead.value || (practice.hasSteps.value && !practice.hasBidSteps.value)"
-                  :openingLead="practice.showOpeningLead.value ? currentDeal?.openingLead : ''"
-                  :totalDeals="deals.length"
-                  :currentIndex="currentDealIndex"
-                  :dealBoardNumbers="deals.map(d => d.boardNumber)"
-                  :bridgeContext="currentDeal?.bridgeContext || ''"
-                  :result="currentDeal?.result"
-                  :showResult="practice.auctionState.auctionComplete && currentCollection === 'pbs-coaching'"
-                  @goto="gotoDeal"
-                />
+                <div class="a1-grid-nw">
+                  <BoardIndicator
+                    :board-number="currentDeal?.displayNumber || currentDeal?.boardNumber || 1"
+                    :dealer="currentDeal?.dealer || null"
+                    :vulnerable="currentDeal?.vulnerable || null"
+                    :size="A1_BOARD_SIZE"
+                  />
+                  <StatusStrip v-if="gridPhase !== 'bidding'" :status="gridStatus" />
+                </div>
               </template>
               <!-- CENTER: the trick (declarer play) or the live auction (bidding). -->
               <template #center>
@@ -561,6 +556,10 @@ import AuctionTable from '../components/AuctionTable.vue'
 import DealInfo from '../components/DealInfo.vue'
 import { useArrangement } from '../composables/useArrangement.js'
 import a1Config from '../table-configs/a1.tableConfig.js'
+import BoardIndicator from '../components/BoardIndicator.vue'
+import StatusStrip from '../components/StatusStrip.vue'
+import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
+import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { captureA1Snapshot, a1SnapshotToEnrich } from '../report/captureA1Snapshot.js'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
 import { resolveTableConfig } from '../report/tableConfigSnapshot.js'
@@ -620,6 +619,17 @@ function onGridCardClick(payload) {
   if (isDeclarerPlay.value) onDeclarerCard(payload)
   else onCardClick(payload)
 }
+// Compact status for the grid #nw region (BoardIndicator glyph + StatusStrip), sized to
+// the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
+// the column and occluded the auction. Same shape A1Scene uses. Nav lives in the
+// BoardMasteryStrip above the grid, not the corner.
+const { status: gridStatus } = useTableStatus({
+  phase: gridPhase,
+  dealer: computed(() => currentDeal.value?.dealer),
+  vulnerable: computed(() => currentDeal.value?.vulnerable),
+  contract: computed(() => (currentDeal.value?.contract ? { text: currentDeal.value.contract, declarer: currentDeal.value.declarer } : null)),
+  tricks: computed(() => (isDeclarerPlay.value ? cardplay.tricksTaken.value : { NS: 0, EW: 0 })),
+})
 
 // --- Coaching feedback fade (branch: coaching-feedback-fade) ----------------
 // In the bidding scrollback we distinguish three cases:
@@ -2125,7 +2135,12 @@ body {
    seats (they live under `.practice-grid-stage`), so the arranger's scaling governs. */
 .practice-grid-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 460px;
+  /* Companion sized close to the gallery's (~320–360) so the STAGE keeps the width —
+     a 460px companion squeezed the stage to a laptop-half budget (~648px) even on a
+     wide screen, so the arranger never grew the hand/auction past 1.0×/1.18× (the
+     "smaller fonts" bug, 2026-07-12). At ~360 the stage gets ~780px → center ~1.3×,
+     seats ~1.11× per the caps, matching the desktop gallery. */
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 32px;
   align-items: start;
   justify-content: center;
@@ -2135,6 +2150,13 @@ body {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+}
+/* NW corner: stack the board glyph over the (play/review) status, left-aligned. */
+.practice-grid-layout .a1-grid-nw {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
 }
 .practice-grid-companion {
   display: flex;
