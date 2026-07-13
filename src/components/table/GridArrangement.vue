@@ -107,7 +107,15 @@ const CORNERS = ['nw', 'ne', 'sw', 'se']
 // Region reserves (px, 1.0×) — the component's NEEDED width, single-sourced from
 // its metrics where it exists (auction: auctionMetrics, fix 1b). Fixes the stale
 // reserve that let the NE auction overflow its track at computed 1.0×.
-const TRICK_RESERVE = 200
+// TrickArea's full width = the .trick-grid (200px) PLUS its .trick-area horizontal
+// padding (2×8px, the designed clearance from the adjacent E/W hand panels). The
+// reserve MUST include that padding — omitting it under-provisions by 16px×scale, so
+// once the seats/centre grew past 1.0× the trick spilled left over the West hand
+// (2026-07-13 report; harmless at the old <1.0× scales, ~19px at 1.16×). At an
+// accurate reserve the rendered centre == its allocation, so it stays inside its
+// column and the overlay-on/off renders agree (the observer effect was the spill
+// painting over the neighbour, which the fix removes).
+const TRICK_RESERVE = 216
 // NW status column: the board·dealer·vul BoardIndicator glyph (StatusStrip chips
 // wrap under it). Single-sourced from boardIndicatorMetrics at the A1 glyph size
 // (~89px) — replaces the stale 150 (the old three-pill board/dealer/vul stack;
