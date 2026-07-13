@@ -51,9 +51,18 @@ export function initArrangement(loc = (typeof window !== 'undefined' ? window.lo
   return r
 }
 
+/** Set the arrangement live (the reactive ref drives the practice view's grid/legacy
+ *  branch) and persist it — used by the beetle field kit's grid/legacy toggle. */
+export function setArrangement(value) {
+  const v = value === 'grid' ? 'grid' : DEFAULT_ARRANGEMENT
+  arrangement.value = v
+  arrangementSource.value = 'query' // a manual pick is an override, like a query param
+  writeStored(v)
+}
+
 export function useArrangement() {
   if (!initialized) initArrangement()
-  return { arrangement, arrangementSource }
+  return { arrangement, arrangementSource, setArrangement }
 }
 
 // Test-only: reset the singleton so each test resolves fresh.

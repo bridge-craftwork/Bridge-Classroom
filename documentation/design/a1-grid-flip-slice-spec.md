@@ -38,7 +38,7 @@ The outer loop is **prod-with-override**: real deployed build, real bridge-class
 4. **Embedded-path check.** Load the embedded bidding `?pbn=` path (the Game Analysis integration) with and without the override. This is the one hard functional constraint from the maturity model — break layout, not that integration. Confirm the override key does not leak into or alter the embedded rendering.
 5. **Second pair of eyes.** Give David the override key and ask for at least one full exercise run on his hardware/browser before 1.6b.
 
-**Exit criteria for 1.6a:** every currently-assigned lesson family completes end-to-end under the override with no layout breakage or unnamed visual delta; `?pbn=` path verified; David has run clean at least once.
+**Exit criteria for 1.6a:** every currently-assigned lesson family completes end-to-end under the override with no layout breakage or unnamed visual delta; `?pbn=` path verified; David has run clean at least once; **and (added 2026-07-12, phone finding) grid renders a single-column stacked arrangement at phone size-class** — legacy already serves phones acceptably as a 1-column stack, so grid must not regress it. Stack order: indicator/status, auction, hand, bidding box on its own row (improving on legacy's bb-shares-row-with-Report-a-Problem wart); components at natural size (the bb's fixed 222px fits a phone column — no shrink capability needed, and none wanted given touch targets). Trigger is a ResizeObserver size-class on the stage, never `container-type` (#88 constraint). Companion fix: reconcile the BoardIndicator's model/DOM disagreement (ledger assigns it a scale; the SVG renders fixed 89px) — either wire it to the scale variable or declare it fixed in the arranger model; a real-device iPhone beetle capture is the acceptance fixture.
 
 ---
 
@@ -89,6 +89,8 @@ Because (a) and (b) are the same artifact, a bug report *is* a reproducible fixt
 | ActionTape tail (ring buffer per `bug-reporting-spec.md`) | The semantic path into the state |
 | Identity: user id + class context only | Deliberately minimal — no further student PII in the payload |
 
+**Attachments (two images, distinct roles):** the **plain screenshot** — ground truth of what actually painted, never modified; and an **annotated composite** — the plain screenshot with the shared 1.6d annotation renderer drawn over it from payload data (ledger rects, scale/binding/cap captions), generated at report time with no second capture. Because the composite is drawn from the payload, it cannot disagree with the ledger JSON in the same report, and it is reconstructable retroactively — any archived snapshot can be re-composited later with improved annotations (e.g. once the column-overflow / region-overlap checks land). Coordinate transform (device px screenshot ↔ CSS px ledger rects, via the payload's devicePixelRatio + viewport) is written once in the compositor and unit-tested at dPR 1 and 2.
+
 **Interim affordance (this window):** the beetle button need not ship for 1.6c to pay off. A low-key dev affordance — keystroke or dev-menu "copy diagnostic snapshot" — gives Rick and David capture capability throughout 1.6a testing and the trip window. The beetle, whenever it lands, registers the same provider; nothing is rebuilt.
 
 **Acceptance (round-trip):** capture a snapshot from a live prod session (override on), load it in the A1 gallery, and the render reproduces the captured state at the captured viewport/scale. Passing this makes the bug-report context file trustworthy by construction. Secondary: payload serializes/parses clean, size sane (target < ~50KB — content by hash, not by value).
@@ -98,6 +100,28 @@ Because (a) and (b) are the same artifact, a bug report *is* a reproducible fixt
 **Referee:** the round-trip itself (live capture vs gallery render of the same payload).
 
 **Ratchet impact:** none numeric; qualitative — fixture coverage now grows automatically from real usage instead of by hand-authoring.
+
+---
+
+## Slice 1.6d — Live layout-debug overlay (ledger on-screen, in-app)
+
+**Type:** Production-invisible dev apparatus (ships dark; overlay renders only when explicitly toggled).
+
+**Statement.** The gallery's ledger annotations (region outlines, scale/binding/cap captions, margin readouts), available in the live app as a toggleable debug layer.
+
+- **Extract, don't rebuild:** the annotation renderer moves to a shared module consumed by both the gallery (as today) and the live app (new host). One renderer — the overlay can never disagree with the gallery's reading of the same ledger. `computeLayoutLedger` already runs live; this slice adds only presentation.
+- **Paint-only constraint (hard):** the live overlay is an absolutely-positioned, `pointer-events: none` layer drawing from ledger region rects. Zero DOM insertion inside the arranged tree, zero reflow — the overlay must be incapable of perturbing the layout it measures. (Gallery captions may occupy space; the live overlay may not.)
+- **Trigger:** keyboard Ctrl-B or `?bounding-boxes=1` (as implemented), persisted per-client in localStorage — same pattern as the arrangement override. **Touch and desktop (uniform):** long-press (~600ms) on the beetle opens a small field-kit sheet — overlay toggle · copy diagnostic snapshot · arrangement grid/legacy — the same gesture on every platform (one Pointer Events code path: `pointerdown` + timer covers mouse press-and-hold and touch alike). Tap/click = report a bug, long-press = field kit. Ctrl-B and the query params remain as keyboard/URL accelerators. Implementation guards: cancel the timer on pointer movement beyond a few px (scroll/drag intent), suppress the click/tap that fires on release after a completed long-press, and on iOS suppress callout/selection on the beetle (`-webkit-touch-callout: none`, `user-select: none`).
+- **Co-located capture:** the 1.6c "copy diagnostic snapshot" affordance lives in the same debug layer. Field workflow: see something odd → toggle overlay → capture snapshot.
+- **Override-active indicator:** the RW avatar ring renders red whenever the arrangement is override-selected — keyed to **provenance (localStorage/query ≠ default), not to `grid`**. Today that marks the new view; after the flip it marks "this client is pinned to something non-default," so the indicator never goes stale and needs no removal decision. One-line read of the same provenance value 1.6c reports — the ring and the bug report cannot disagree. Border/background swap on an existing element: zero layout impact, meaningless to students.
+
+**Acceptance:** overlay on/off produces zero layout diff (paint-only verified — same ledger output with overlay on as off); overlay rendering of a live state matches the gallery's annotation of the same state loaded via a 1.6c snapshot (shared-renderer round-trip).
+
+**Diff assertion:** zero with overlay off (production-invisible); overlay-on rendering is debug chrome, exempt from pixel discipline.
+
+**Ratchet impact:** none numeric.
+
+**Follow-up (ledger blind spots) — (a) SHIPPED 2026-07-12, PR #197:** the column-overflow check landed, fixtured by the live 914px bug report (bidding box spilling 78px onto the hand while the ledger read a silent `floor`). Measured-width-vs-**track** comparison (not `allocated` — the first cut false-flagged a benign trick-area case), red `overflow` caption with pixel count, red outline in overlay and annotated composite. Shipped alongside the content-driven flex-wrap that replaced the fixed 900px breakpoint (the 900–1040px broken band eliminated by keying the wrap on what actually has to fit). Remaining: **(b)** pairwise rect-intersection over occupied regions (red `overlap` binding) — lower priority now that column overflow, the confirmed failure class, self-announces.
 
 ---
 
