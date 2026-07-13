@@ -1435,8 +1435,17 @@ async function hasCompletedBoardInLesson() {
   const subfolder = currentDeal.value?.subfolder || currentDeal.value?.category || currentLesson.value?.id
   if (!uid || !subfolder) return false
   try {
-    const collectionId = useBoardMastery().getLessonCollection(subfolder) || currentCollection.value || null
-    const boards = await boardStatusApi.fetchBoardStatus(uid, subfolder, false, collectionId)
+    // Reuse the SAME board-status the board strip shows — one source of truth, not a
+    // divergent second query (Rick, 2026-07-13). Both read the useBoardStatus singleton
+    // cache under the identical (subfolder, collectionId) scope: getLessonCollection with
+    // NO `|| currentCollection` fallback (the earlier fallback scoped the query and
+    // filtered OUT completed rows with a null/mismatched collection_id — defence lessons —
+    // so the strip showed the board green while this gate saw "not completed" and
+    // re-opened the intro every visit). Read the strip's cached result first; only fetch
+    // if the strip hasn't populated it yet (e.g. this gate runs before the strip mounts).
+    const collectionId = useBoardMastery().getLessonCollection(subfolder)
+    const boards = boardStatusApi.getCachedBoards(uid, subfolder, collectionId)
+      || await boardStatusApi.fetchBoardStatus(uid, subfolder, false, collectionId)
     if ((boards || []).some(b => b?.status && b.status !== 'not_attempted')) return true
   } catch { /* offline / API error → fall through to pending, then fail-open */ }
   try {
