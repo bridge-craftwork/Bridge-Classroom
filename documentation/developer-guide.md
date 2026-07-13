@@ -455,6 +455,11 @@ Converts CSV data to PBN format with control directives:
 
 ### PBN Control Directives Reference
 
+> **Authoritative reference:** the normative directive list, exact rendered
+> semantics, and the play-lesson trick-state authoring rules live in the
+> [Lesson Directive Specification](./lesson-directive-spec.md) (producer-contract R6).
+> The table below is an informal quick-reference and defers to that spec.
+
 | Directive | Purpose |
 |-----------|---------|
 | `[show NS]` | Show only North/South hands |
