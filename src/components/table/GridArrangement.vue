@@ -232,7 +232,10 @@ function seatBadge(seat) {
     if (seat === decl) return 'Declarer'
     if (seat === partnerOf(decl)) return 'Dummy'
   }
-  const mode = props.config.seatBadges?.[role] || 'off'
+  // seatRole returns the SINGULAR 'opponent'; the config key is PLURAL 'opponents' —
+  // map it so a config that turns opponents on is actually read (was a silent no-op).
+  const key = role === 'opponent' ? 'opponents' : role
+  const mode = props.config.seatBadges?.[key] || 'off'
   return mode === 'label' ? 'Partner' : mode === 'name' ? firstNameOf(props.heroName) : null
 }
 

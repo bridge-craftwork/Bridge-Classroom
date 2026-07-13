@@ -948,6 +948,11 @@ export function useDealPractice() {
     hands,
     showHcp,
     showcardsPlayedCards,
+    // All showcards (each seat's shown/played cards), incl. played-card-only seats
+    // (E/S in a defence scene). The grid arranger uses this to render those cards as a
+    // centre trick and hide the played-card-only seats, instead of scattering them as
+    // tiny floored seats (a1 grid-flip: defensive-signals trick composition).
+    currentShowcards,
     isComplete,
 
     // Computed: Auction & Lead

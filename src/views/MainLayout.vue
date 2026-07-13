@@ -329,7 +329,7 @@
               :table-config="a1Config"
               :phase="gridPhase"
               :hands="isDeclarerPlay ? currentDeal.hands : practice.hands.value"
-              :hidden-seats="isDeclarerPlay ? cardplay.hiddenSeats.value : practice.hiddenSeats.value"
+              :hidden-seats="gridHiddenSeats"
               :show-hcp="isDeclarerPlay ? true : practice.showHcp.value"
               :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : (practice.hasCardChoice.value ? practice.studentSeat.value : null)"
               :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.showcardsPlayedCards.value"
@@ -362,6 +362,16 @@
                   :tricks-taken="cardplay.tricksTaken.value"
                   :next-seat="cardplay.currentPlayer.value"
                   :bot-loading="cardplay.botLoading.value"
+                  bot-name="Defense"
+                />
+                <!-- Defensive-signals cardplay: the played cards ([showcards]) shown as a
+                     centre trick, so E/S aren't scattered as tiny floored seats. -->
+                <TrickArea
+                  v-else-if="gridDefensePlay"
+                  :current-trick="gridTrick"
+                  :last-finished-trick="null"
+                  :tricks-taken="currentDeal?.tricksTaken || { NS: 0, EW: 0 }"
+                  :next-seat="null"
                   bot-name="Defense"
                 />
                 <div v-else-if="practice.showAuctionTable.value" class="a1-center-auction">
@@ -566,6 +576,7 @@ import BoardIndicator from '../components/BoardIndicator.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
+import { buildTrickFromShowcards, playedCardOnlySeats } from '../utils/defenseTrick.js'
 import { captureA1Snapshot, a1SnapshotToEnrich } from '../report/captureA1Snapshot.js'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
 import { resolveTableConfig } from '../report/tableConfigSnapshot.js'
@@ -620,11 +631,27 @@ const gridPhase = computed(() => a1DerivedPhase())
 const gridHeroSeat = computed(() =>
   isDeclarerPlay.value ? (currentDeal.value?.studentSeat || 'S') : (practice.studentSeat.value || 'S'),
 )
-const pinnedAuction = computed(() => isDeclarerPlay.value && (currentDeal.value?.auction || []).length > 0)
 function onGridCardClick(payload) {
   if (isDeclarerPlay.value) onDeclarerCard(payload)
   else onCardClick(payload)
 }
+// Defensive-signals / choose-card cardplay (step machine, not the declarer-play engine):
+// played cards arrive via [showcards]. Seats that show ONLY a played card (E/S in a defence
+// scene) are moved into a CENTRE trick and hidden as seats, so they don't floor the table
+// as full-reserve hands and scatter as tiny label-less chips (a1 grid-flip trick composition).
+const gridPlayedOnlySeats = computed(() =>
+  isDeclarerPlay.value ? [] : playedCardOnlySeats(practice.currentShowcards.value, practice.showcardsPlayedCards.value),
+)
+const gridDefensePlay = computed(() => gridPlayedOnlySeats.value.length > 0)
+const gridTrick = computed(() => buildTrickFromShowcards(practice.currentShowcards.value))
+// Hidden seats the grid renders: the deal's own hidden seats plus the played-card-only
+// seats (their card lives in the centre trick now, not a scattered seat).
+const gridHiddenSeats = computed(() => {
+  const base = (isDeclarerPlay.value ? cardplay.hiddenSeats.value : practice.hiddenSeats.value) || []
+  return gridDefensePlay.value ? [...new Set([...base, ...gridPlayedOnlySeats.value])] : base
+})
+// Pin the completed auction at NE during any cardplay (declarer play OR defensive-signals).
+const pinnedAuction = computed(() => (isDeclarerPlay.value || gridDefensePlay.value) && (currentDeal.value?.auction || []).length > 0)
 // Compact status for the grid #nw region (BoardIndicator glyph + StatusStrip), sized to
 // the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
 // the column and occluded the auction. Same shape A1Scene uses. Nav lives in the
@@ -1718,6 +1745,7 @@ function a1PhaseSignals() {
 }
 function a1DerivedPhase() {
   if (isDeclarerPlay.value) return 'play'
+  if (gridDefensePlay.value) return 'play' // step-based cardplay (defensive signals)
   if (practice.auctionState?.auctionComplete) return 'review'
   return 'bidding'
 }
