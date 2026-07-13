@@ -11,12 +11,31 @@
 -->
 <template>
   <div class="beetle-root">
+    <!-- Field kit (1.6d): long-press the beetle to open. Tap = report a bug. -->
+    <transition name="beetle-fade">
+      <div v-if="fieldKitOpen" class="beetle-kit" @pointerdown.stop>
+        <div class="bk-title">Field kit</div>
+        <button class="bk-item" @click="kitToggleOverlay">
+          <span class="bk-check">{{ overlaysEnabled ? '✓' : '' }}</span> Layout overlay
+        </button>
+        <button class="bk-item" @click="kitToggleArrangement">
+          Arrangement: <b>{{ arrangement }}</b> → {{ arrangement === 'grid' ? 'legacy' : 'grid' }}
+        </button>
+        <button class="bk-item" @click="kitCopySnapshot">Copy diagnostic snapshot</button>
+      </div>
+    </transition>
     <button
       class="beetle-btn"
       :disabled="capturing"
-      :title="capturing ? 'Capturing…' : 'Report a bug (dev): capture a state bundle'"
-      aria-label="Report a bug"
-      @click="onClick"
+      :title="capturing ? 'Capturing…' : 'Tap: report a bug · Long-press: field kit'"
+      aria-label="Report a bug (long-press for the field kit)"
+      @pointerdown="onPointerDown"
+      @pointerup="onPointerUp"
+      @pointermove="onPointerMove"
+      @pointercancel="cancelPress"
+      @pointerleave="cancelPress"
+      @click="onClickGuard"
+      @contextmenu.prevent
     >
       🐞
     </button>
@@ -28,11 +47,14 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { captureScreenshot } from './screenshot.js'
 import { collectClientHints } from './env.js'
 import { collectLayout } from './layout.js'
 import { captureReportContext } from './reportContext.js'
+import { writeClipboard } from './clipboard.js'
+import { useDebugOverlays } from '../composables/useDebugOverlays.js'
+import { useArrangement } from '../composables/useArrangement.js'
 import ReportDialog from './ReportDialog.vue'
 
 const capturing = ref(false)
@@ -47,6 +69,79 @@ const layout = ref(null)
 const shellEnrich = ref(null)
 const toast = ref('')
 let toastTimer = null
+
+// ── Field kit (a1-grid-flip 1.6d) ────────────────────────────────────────────
+// One Pointer Events path for touch AND desktop: TAP the beetle = report a bug;
+// LONG-PRESS (~600ms) = open the field kit (overlay toggle · arrangement · copy
+// snapshot). Guards: movement past a few px cancels (scroll/drag intent); the click
+// that fires on release after a completed long-press is suppressed.
+const { enabled: overlaysEnabled, toggle: toggleOverlays } = useDebugOverlays()
+const { arrangement, setArrangement } = useArrangement()
+const fieldKitOpen = ref(false)
+const LONG_PRESS_MS = 600
+const MOVE_CANCEL_PX = 8
+let pressTimer = null
+let pressStart = null
+let longPressed = false
+
+function onPointerDown(e) {
+  if (capturing.value || dialogOpen.value) return
+  if (e.pointerType === 'mouse' && e.button !== 0) return // primary button / touch / pen only
+  longPressed = false
+  pressStart = { x: e.clientX, y: e.clientY }
+  clearTimeout(pressTimer)
+  pressTimer = setTimeout(() => { longPressed = true; openFieldKit() }, LONG_PRESS_MS)
+}
+function onPointerMove(e) {
+  if (!pressStart) return
+  const dx = e.clientX - pressStart.x, dy = e.clientY - pressStart.y
+  if (dx * dx + dy * dy > MOVE_CANCEL_PX * MOVE_CANCEL_PX) cancelPress()
+}
+function onPointerUp() { clearTimeout(pressTimer); pressStart = null }
+function cancelPress() { clearTimeout(pressTimer); pressStart = null }
+function onClickGuard(e) {
+  // Release after a long-press fires a click — swallow it so it doesn't also open the report.
+  if (longPressed) { longPressed = false; e.preventDefault(); e.stopPropagation(); return }
+  onClick()
+}
+
+function openFieldKit() {
+  fieldKitOpen.value = true
+  // Close on the next outside pointerdown (the kit stops propagation on its own).
+  setTimeout(() => document.addEventListener('pointerdown', closeFieldKitOutside, { once: true }), 0)
+}
+function closeFieldKit() {
+  fieldKitOpen.value = false
+  document.removeEventListener('pointerdown', closeFieldKitOutside)
+}
+function closeFieldKitOutside() { closeFieldKit() }
+
+function kitToggleOverlay() {
+  toggleOverlays()
+  closeFieldKit()
+  flashToast(overlaysEnabled.value ? '✓ Layout overlay on' : 'Layout overlay off')
+}
+function kitToggleArrangement() {
+  const next = arrangement.value === 'grid' ? 'legacy' : 'grid'
+  setArrangement(next)
+  closeFieldKit()
+  flashToast(`Arrangement: ${next}`)
+}
+async function kitCopySnapshot() {
+  const enrich = captureReportContext()
+  const payload = enrich
+    ? { env: enrich.env, a1: enrich.context?.a1, fixture: enrich.fixture }
+    : { note: 'No A1 shell context available on this screen.' }
+  const ok = await writeClipboard(JSON.stringify(payload, null, 2)).catch(() => false)
+  closeFieldKit()
+  flashToast(ok ? '✓ Diagnostic snapshot copied' : 'Copy failed')
+}
+function flashToast(msg) {
+  toast.value = msg
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = '' }, 3000)
+}
+onUnmounted(() => { clearTimeout(pressTimer); clearTimeout(toastTimer); document.removeEventListener('pointerdown', closeFieldKitOutside) })
 
 async function onClick() {
   if (capturing.value || dialogOpen.value) return
@@ -94,6 +189,11 @@ function collectLayoutSafe() {
 // there's no grid, or when the overlay is already on (the primary shot already shows it).
 // Toggles the attribute for the capture and restores it. Fully guarded — a failure here
 // must never block the report.
+// NOTE (divergence from a1-grid-flip-slice-spec §1.6c, 2026-07-12): the spec now calls for
+// an ANNOTATED COMPOSITE drawn from the ledger PAYLOAD by the shared 1.6d annotation
+// renderer (no second capture, can't disagree with the ledger, re-compositable later). This
+// second-capture is the interim approach until that shared renderer lands with 1.6d; then
+// this is replaced by compositing from the payload.
 async function captureBoundingBoxesShot() {
   // Guards BEFORE the try, so we never touch the attribute we didn't set: skip when
   // there's no grid, or when the overlay is already on (the primary shot has it).
@@ -168,8 +268,52 @@ function onSaved(payload) {
   cursor: pointer;
   opacity: 0.55;
   transition: opacity 0.15s ease, transform 0.1s ease;
+  /* Long-press ergonomics: no iOS callout/selection, and don't let a press-and-hold
+     start a scroll/gesture on the button itself (Pointer Events own the interaction). */
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 .beetle-btn:hover { opacity: 1; }
 .beetle-btn:active { transform: scale(0.94); }
 .beetle-btn:disabled { cursor: progress; opacity: 0.4; }
+
+/* Field-kit sheet — opens above the beetle on long-press. */
+.beetle-kit {
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 10px;
+  min-width: 210px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bk-title {
+  font: 700 11px/1 'DM Sans', system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8a8f88;
+  padding: 6px 10px 4px;
+}
+.bk-item {
+  pointer-events: auto;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 9px 10px;
+  font: 500 14px/1.2 'DM Sans', system-ui, sans-serif;
+  color: #2a3330;
+  cursor: pointer;
+}
+.bk-item:hover { background: #f1f3ef; }
+.bk-check { display: inline-block; width: 12px; color: #1d6a4f; font-weight: 700; }
 </style>
