@@ -1409,6 +1409,31 @@ function returnToLobby() {
   assignmentStore.exitAssignmentMode()
 }
 
+// Has the student already finished at least one board in the current lesson?
+// Drives whether the intro AUTO-opens (issue #12): auto-display only until they've
+// completed their first board; afterwards the Intro button still opens it on demand,
+// but it no longer interrupts on entry. Reads server board-status (persists across
+// sessions/devices) — any board past 'not_attempted' counts (played, right or wrong) —
+// plus any just-completed local pending observation, so a same-session re-entry before
+// sync doesn't re-interrupt. Same subfolder/collection scope BoardMasteryStrip uses, so
+// it shares that cache. Fail-open to FALSE (→ keep auto-opening) when signed out /
+// offline / unknown.
+async function hasCompletedBoardInLesson() {
+  const uid = userStore.currentUser.value?.id
+  const subfolder = currentDeal.value?.subfolder || currentDeal.value?.category || currentLesson.value?.id
+  if (!uid || !subfolder) return false
+  try {
+    const collectionId = useBoardMastery().getLessonCollection(subfolder) || currentCollection.value || null
+    const boards = await boardStatusApi.fetchBoardStatus(uid, subfolder, false, collectionId)
+    if ((boards || []).some(b => b?.status && b.status !== 'not_attempted')) return true
+  } catch { /* offline / API error → fall through to pending, then fail-open */ }
+  try {
+    const pending = useObservationStore().getPendingObservations()
+    if (pending.some(o => o?.metadata?.deal_subfolder === subfolder)) return true
+  } catch { /* observation store unavailable */ }
+  return false
+}
+
 // Check if an intro PDF exists for the current lesson
 async function checkIntroAvailability() {
   introUrl.value = null
@@ -1421,17 +1446,21 @@ async function checkIntroAvailability() {
   const filename = lessonId.includes('/') ? lessonId.split('/').pop() : lessonId
   const url = `${collection.baseUrl}/${filename}_Intro.pdf`
 
-  // Desktop auto-opens the intro. If the pref is docked, reserve the gutter NOW
-  // (before the availability round-trip) so the table paints at its docked width
-  // and the panel slides into reserved space — no full-width → squish flash.
+  // Desktop auto-opens the intro — but only until the student has completed their first
+  // board in this lesson (issue #12); after that it stays reachable via the Intro button
+  // without interrupting on entry. Shared by BOTH shells, so this covers prod (legacy)
+  // and the beta (grid). If auto-opening AND the pref is docked, reserve the gutter NOW
+  // (before the availability round-trip) so the table paints at its docked width and the
+  // panel slides into reserved space — no full-width → squish flash.
   const desktop = window.innerWidth >= 600
-  if (desktop) introChecking.value = true
+  const autoOpen = desktop && !(await hasCompletedBoardInLesson())
+  if (autoOpen) introChecking.value = true
 
   try {
     const response = await fetch(url, { method: 'HEAD' })
     if (response.ok) {
-      introUrl.value = url
-      if (desktop) {
+      introUrl.value = url // the Intro button shows whenever a PDF exists, regardless of auto-open
+      if (autoOpen) {
         introPdfUrl.value = url
         showIntroPdf.value = true // now drives the gutter; introChecking clears below
       }
