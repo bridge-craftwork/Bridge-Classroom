@@ -409,6 +409,11 @@
           <!-- Companion: lesson context ribbon + coaching commentary / feedback /
                Next-Back controls. The auction and bidding box now live in the grid. -->
           <div class="practice-grid-companion">
+            <!-- Defence scenes: the completed auction rides atop the companion (above the
+                 narrative), matching prod, instead of pinned tiny at NE. -->
+            <div v-if="companionAuction" class="a1-companion-auction">
+              <AuctionTable :bids="currentDeal?.auction || []" :dealer="currentDeal?.dealer || 'N'" :currentBidIndex="-1" />
+            </div>
             <!-- Blue context ribbon (the bridgeContext note that lived in DealInfo before
                  #nw went compact) — reunited with the coaching prose it belongs beside. -->
             <div v-if="currentDeal?.bridgeContext" class="grid-context-ribbon">
@@ -661,8 +666,12 @@ const gridHiddenSeats = computed(() => {
   const base = (isDeclarerPlay.value ? cardplay.hiddenSeats.value : practice.hiddenSeats.value) || []
   return gridDefensePlay.value ? [...new Set([...base, ...gridPlayedOnlySeats.value])] : base
 })
-// Pin the completed auction at NE during any cardplay (declarer play OR defensive-signals).
-const pinnedAuction = computed(() => (isDeclarerPlay.value || gridDefensePlay.value) && (currentDeal.value?.auction || []).length > 0)
+// The completed auction has a home per phase: declarer play pins it at NE; a DEFENCE scene
+// puts it atop the companion (above the narrative) so NE frees up and the hands/trick expand
+// (2026-07-13 report — NE floored the auction to 0.65× and squeezed the seats).
+const hasCompletedAuction = computed(() => (currentDeal.value?.auction || []).length > 0)
+const pinnedAuction = computed(() => isDeclarerPlay.value && hasCompletedAuction.value)
+const companionAuction = computed(() => gridDefensePlay.value && hasCompletedAuction.value)
 // Compact status for the grid #nw region (BoardIndicator glyph + StatusStrip), sized to
 // the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
 // the column and occluded the auction. Same shape A1Scene uses. Nav lives in the
@@ -2230,6 +2239,9 @@ body {
   color: #0d3a66;
 }
 .practice-grid-companion .grid-context-ribbon-icon { color: #1976d2; font-weight: bold; flex-shrink: 0; }
+/* Completed auction atop the companion (defence scenes) — natural size, capped so it
+   doesn't stretch the full companion width; the companion's --table-scale is 1.0. */
+.practice-grid-companion .a1-companion-auction { max-width: 300px; }
 /* The grid scales the TABLE up (caps), so the companion prose is bumped to match —
    at base 15px it read small next to the enlarged hand/auction (2026-07-12 report).
    Senior-friendly; legacy (.practice-right) keeps 15px. */
