@@ -19,6 +19,7 @@
       :data-region-scale="fmt(scales.seats)"
       :data-region-reserve="Math.round(rowReservePx(7))"
       :data-bounding-box-label="bbLabel('seat-' + seatArea(seat))"
+      :data-overflow="regionOverflow('seat-' + seatArea(seat))"
     >
       <SeatPanel
         :hand="hands[seat]"
@@ -34,13 +35,13 @@
     </div>
 
     <!-- center + peripheral regions: shell-provided content, scaled per region. -->
-    <div class="region area-center occupied" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bounding-box-label="bbLabel('center')">
+    <div class="region area-center occupied" :style="centerStyle" data-region="center" :data-region-scale="fmt(scales.center)" :data-region-reserve="biddingAnchored ? stageReservePx : Math.round(regionReserve('center'))" :data-bounding-box-label="bbLabel('center')" :data-overflow="regionOverflow('center')">
       <slot name="center" />
     </div>
-    <div v-if="areaOccupied('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw')"><slot name="nw" /></div>
-    <div v-if="areaOccupied('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne')"><slot name="ne" /></div>
-    <div v-if="areaOccupied('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se')"><slot name="se" /></div>
-    <div v-if="areaOccupied('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw')"><slot name="sw" /></div>
+    <div v-if="areaOccupied('nw')" class="region area-nw occupied" :style="regionStyle('nw')" data-region="nw" :data-region-scale="fmt(scales.nw)" :data-region-reserve="Math.round(regionReserve('nw'))" :data-bounding-box-label="bbLabel('nw')" :data-overflow="regionOverflow('nw')"><slot name="nw" /></div>
+    <div v-if="areaOccupied('ne')" class="region area-ne occupied" :style="regionStyle('ne')" data-region="ne" :data-region-scale="fmt(scales.ne)" :data-region-reserve="Math.round(regionReserve('ne'))" :data-bounding-box-label="bbLabel('ne')" :data-overflow="regionOverflow('ne')"><slot name="ne" /></div>
+    <div v-if="areaOccupied('se')" class="region area-se occupied" :style="regionStyle('se')" data-region="se" :data-region-scale="fmt(scales.se)" :data-region-reserve="Math.round(regionReserve('se'))" :data-bounding-box-label="bbLabel('se')" :data-overflow="regionOverflow('se')"><slot name="se" /></div>
+    <div v-if="areaOccupied('sw')" class="region area-sw occupied" :style="regionStyle('sw')" data-region="sw" :data-region-scale="fmt(scales.sw)" :data-region-reserve="Math.round(regionReserve('sw'))" :data-bounding-box-label="bbLabel('sw')" :data-overflow="regionOverflow('sw')"><slot name="sw" /></div>
 
     <!-- Row-band markers (§5.1): one per grid row, tinting the band and labelling
          its occupied areas + ✗phantom seats (a hidden hand's dead band, e.g. the
@@ -293,27 +294,65 @@ const ledger = ref(null)
 // pure ledger (which is width-only + row topology) and merged into ledgerJson, so
 // measurement never mutates the allocator's output or loops the layout.
 const vert = reactive({ rows: [], stage: null })
+// Horizontal content-over-track detection — the COLUMNS' measurement counterpart, the
+// blind spot the DealInfo + bidding-box overlaps exposed (grid-arranger-spec §3: "every
+// layout mechanism needs its measurement counterpart"; the width allocator had none). A
+// region whose MEASURED received width exceeds the width its column ALLOCATED has overflowed
+// its track and is spilling into a neighbour — e.g. the FIXED-width bidding box at a floored
+// SE (222px content in a 144px track → 78px onto the South hand). The pure allocator calls
+// that 'floor' (legal), but a fixed-width region can't actually shrink, so the floor is a
+// lie: re-label it 'overflow' (red). Display-only (measured), merged into the ledger like
+// the vertical row overflow; the pure allocator is unchanged and its unit tests stand.
+// Overflow = received width beyond the region's COLUMN TRACK (colWidth = allocated +
+// margin gutter), NOT beyond `allocated` (content). Comparing to the track means a region
+// only flags when it spills PAST its gutter into a neighbour — the real overlap (the
+// bidding box onto the hand). Comparing to `allocated` false-flagged regions that merely
+// used their margin (e.g. the trick area a few px over its reserve, absorbed by the gutter,
+// no visible overlap). Threshold > a gutter's worth so sub-gutter slop doesn't light up.
+const HOVERFLOW_EPS = 10
+const displayRegions = computed(() => {
+  const regs = ledger.value?.regions
+  if (!regs) return regs || {}
+  const colW = ledger.value?.colWidths || []
+  const out = {}
+  for (const [area, r] of Object.entries(regs)) {
+    const recv = sizes[sizeKeyFor(area)]?.w
+    const track = colW[COL_OF[area]]
+    const over = recv != null && track != null ? Math.round(recv - track) : 0
+    out[area] = over > HOVERFLOW_EPS ? { ...r, receivedW: recv, track, overflowX: over, binding: 'overflow' } : r
+  }
+  return out
+})
+
 // Serialized ledger on the grid root — the walker reads it to save beside each
 // capture (harness only; a few hundred bytes, inert in production). Merges the
-// measured vertical (row heights/slack + stage line) into the pure ledger.
+// measured vertical (row heights/slack + stage line) AND the measured horizontal
+// region overflow (displayRegions) into the pure ledger.
 const ledgerJson = computed(() => {
   if (!ledger.value) return null
   const rows = (ledger.value.rows || []).map((r, i) => ({ ...r, ...(vert.rows[i] || {}) }))
-  return JSON.stringify({ ...ledger.value, rows, ...(vert.stage ? { stage: vert.stage } : {}) })
+  return JSON.stringify({ ...ledger.value, regions: displayRegions.value, rows, ...(vert.stage ? { stage: vert.stage } : {}) })
 })
 const root = ref(null)
 const fmt = (x) => (x == null ? '' : Number(x).toFixed(2))
 
 // Bounding-box label straight from the LEDGER: `region · WxH · scale× · r<reserve>
-// · a<allocated> · <binding>`. reserve-vs-allocated (and vs the received W×H) is
-// the encroachment / dead-space / who-won-the-budget diagnosis.
+// · a<allocated> · <binding>` (+ `+Npx` when the region overflows its track). reserve-vs-
+// allocated (and vs the received W×H) is the encroachment / dead-space / overflow diagnosis.
 function bbLabel(regionKey) {
   const area = regionKey.startsWith('seat-') ? regionKey.slice(5) : regionKey
-  const led = ledger.value?.regions?.[area]
+  const led = displayRegions.value?.[area]
   const s = sizes[regionKey]
   const sz = s ? `${s.w}×${s.h}` : '—'
   if (!led) return `${regionKey} · ${sz}`
-  return `${regionKey} · ${sz} · ${led.scale}× · r${led.reserve} · a${led.allocated} · ${led.binding}`
+  const over = led.overflowX ? ` +${led.overflowX}px` : ''
+  return `${regionKey} · ${sz} · ${led.scale}× · r${led.reserve} · a${led.allocated} · ${led.binding}${over}`
+}
+// Overflow px for a region (null when it fits) — drives the red `[data-overflow]` outline
+// in boundingBoxes.css so a spilling region pops in the overlay/2nd screenshot.
+function regionOverflow(regionKey) {
+  const area = regionKey.startsWith('seat-') ? regionKey.slice(5) : regionKey
+  return displayRegions.value?.[area]?.overflowX || null
 }
 // Collapsed regions — the unoccupied areas (from the occupancy model), listed in
 // the diagnostic's corner legend rather than rendered as floating 0×0 boxes.
