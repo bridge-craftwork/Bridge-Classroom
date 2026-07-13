@@ -753,9 +753,14 @@ export function useDealPractice() {
     clearFeedback()
     clearCardFeedback()
 
-    // If showing bid explanation, go back to the unanswered bid
+    // If showing bid explanation, go back to the unanswered bid. Also clear `complete`:
+    // a board whose last step auto-completed on the final bid leaves this branch as the
+    // only way back, and without it the completion state (isComplete → "Beautifully bid!"
+    // + Next Deal, and no bidding box) stuck on while the auction was rewound to an
+    // incomplete state (2026-07-13 report). The other goBack branches already reset it.
     if (bidAnswered.value) {
       bidAnswered.value = false
+      complete.value = false
       rewindAuctionToStep(currentStepIndex.value)
       return true
     }
@@ -802,14 +807,26 @@ export function useDealPractice() {
 
     const targetBid = normalizeBid(step.bid)
     const auction = currentDeal.value?.auction || []
+    const dealer = currentDeal.value?.auctionDealer || currentDeal.value?.dealer
 
-    // Find where this bid is in the auction
-    let targetBidIndex = 0
+    // Bid steps are the STUDENT's prompts, in order (advanceAuctionToNextPrompt only stops
+    // at studentSeat && bid-match). So this step's target is the Nth student-seat call in
+    // the auction, where N = its ordinal among bid steps. Match by SEAT+ordinal, not by
+    // first value: a repeated bid like Pass otherwise resolves to an opponent's earlier
+    // Pass, rewinding to their turn (no student prompt → no bidding box, 2026-07-13 report).
+    let ordinal = 0
+    for (let i = 0; i <= stepIdx; i++) if (steps.value[i]?.type === 'bid') ordinal++
+    let targetBidIndex = -1
+    let seen = 0
     for (let i = 0; i < auction.length; i++) {
-      if (normalizeBid(auction[i]) === targetBid) {
-        targetBidIndex = i
-        break
+      if (getSeatForBid(i, dealer) === studentSeat.value) {
+        seen++
+        if (seen === ordinal) { targetBidIndex = i; break }
       }
+    }
+    // Fallback (unexpected step↔auction shape): first position matching the bid value.
+    if (targetBidIndex < 0 || normalizeBid(auction[targetBidIndex]) !== targetBid) {
+      targetBidIndex = Math.max(0, auction.findIndex((b) => normalizeBid(b) === targetBid))
     }
 
     auctionState.currentBidIndex = targetBidIndex
