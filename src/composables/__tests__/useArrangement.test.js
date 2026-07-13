@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { initArrangement, useArrangement, __resetArrangementForTests } from '../useArrangement.js'
+import { initArrangement, useArrangement, setArrangement, __resetArrangementForTests } from '../useArrangement.js'
 import { ARRANGEMENT_STORAGE_KEY } from '../../utils/arrangement.js'
 
 const loc = (search = '', hash = '#/') => ({ search, hash })
@@ -39,6 +39,19 @@ describe('useArrangement (singleton: read once, persist a query override)', () =
     initArrangement(loc('?arrangement=legacy'))
     const { arrangement } = useArrangement()
     expect(arrangement.value).toBe('legacy')
+    expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBeNull()
+  })
+
+  it('setArrangement marks provenance by value-vs-default (drives the profile ring)', () => {
+    initArrangement(loc())
+    const { arrangement, arrangementSource } = useArrangement()
+    setArrangement('grid')
+    expect(arrangement.value).toBe('grid')
+    expect(arrangementSource.value).toBe('query') // override → orange
+    expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBe('grid')
+    setArrangement('legacy')
+    expect(arrangement.value).toBe('legacy')
+    expect(arrangementSource.value).toBe('default') // back to default → green
     expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBeNull()
   })
 })
