@@ -113,13 +113,7 @@ pub async fn get_board_status(
         sql.push_str(" AND deal_subfolder = ?");
     }
     if query.collection_id.is_some() {
-        // Include legacy rows with a NULL collection_id (recorded before collection
-        // scoping / for defence lessons). Filtering them out made scoped reads hide
-        // completed boards — the strip showed no history and the intro re-auto-opened
-        // for lessons the student had already done (2026-07-13). A NULL row is untagged,
-        // so surfacing it under any collection is correct until issue #218 backfills it;
-        // properly-tagged rows still scope exactly. `= ?` binds once; IS NULL takes none.
-        sql.push_str(" AND (collection_id = ? OR collection_id IS NULL)");
+        sql.push_str(" AND collection_id = ?");
     }
     // When scoped to a single subfolder the deal_subfolder ORDER is redundant.
     if query.deal_subfolder.is_some() {
