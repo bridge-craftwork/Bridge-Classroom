@@ -17,13 +17,17 @@ import { initDebugOverlays, toggleDebugOverlays } from './composables/useDebugOv
 // + screenshot rasterizer stay in their own lazily-loaded chunk.
 const BeetleButton = defineAsyncComponent(() => import('./report/BeetleButton.vue'))
 
-// Debug-overlay toggle: resolve `?bounding-boxes=1` / stored flag on load, and allow
-// live toggling with Alt+B. Alt-chorded + focus-guarded so it can't fire while a
+// Debug-overlay toggle: resolve `?bounding-boxes=1` / stored flag on load (and re-read
+// on hashchange, inside the composable), and allow live toggling with Ctrl+B or Alt+B.
+// Keyed on the PHYSICAL key (`e.code === 'KeyB'`), NOT `e.key` — on macOS Option+B emits
+// the character "∫", so an `e.key === 'b'` check never fired (2026-07-12 report). Ctrl OR
+// Alt (never Cmd, which is bold in inputs), and focus-guarded so it can't fire while a
 // student is typing (the beetle note, name field, etc.).
 initDebugOverlays()
 function onKey(e) {
-  if (!e.altKey || e.metaKey || e.ctrlKey) return
-  if (e.key !== 'b' && e.key !== 'B') return
+  if (e.metaKey) return
+  if (!e.altKey && !e.ctrlKey) return
+  if (e.code !== 'KeyB') return
   const el = document.activeElement
   const tag = el?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return

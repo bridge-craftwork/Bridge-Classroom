@@ -50,7 +50,9 @@ export function setDebugOverlays(on) {
 }
 export function toggleDebugOverlays() { setDebugOverlays(!enabled.value) }
 
-/** Resolve from URL + localStorage once, persisting a query override. */
+/** Resolve from URL + localStorage once, persisting a query override. Re-reads the
+ *  param on hashchange so editing `?bounding-boxes=` in the URL takes effect LIVE (no
+ *  refresh) — hash-position params fire hashchange (2026-07-12 report). */
 export function initDebugOverlays(loc = (typeof window !== 'undefined' ? window.location : null)) {
   if (initialized) return
   initialized = true
@@ -59,6 +61,12 @@ export function initDebugOverlays(loc = (typeof window !== 'undefined' ? window.
   enabled.value = on
   if (param != null) writeStored(on) // a query override persists across navigation
   applyAttr(on)
+  if (typeof window !== 'undefined') {
+    window.addEventListener('hashchange', () => {
+      const p = readOverlaysParam(window.location)
+      if (p != null) setDebugOverlays(p) // only act when the param is present; else leave the toggle alone
+    })
+  }
 }
 
 export function useDebugOverlays() {
