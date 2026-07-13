@@ -96,6 +96,28 @@ function appCommit() {
   return typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : null
 }
 
+// Standard browser zoom steps (Chrome/Firefox/Safari). `devicePixelRatio` = the
+// display's native ratio × the browser zoom, and there is NO clean API for browser
+// zoom on its own — so estimate it: for each plausible native ratio (1×, 2×, 3×),
+// dpr/native lands on a standard step for exactly one of them in the common cases
+// (e.g. dpr 1.6 = 2×80%). Snap to the nearest step, tie-breaking toward 100%. APPROX
+// by nature (a display with an unusual native ratio can read wrong) — it exists to
+// FLAG a non-100% zoom (the "everything's smaller" confusion, 2026-07-12), not to be
+// authoritative. `dpr` is kept raw-but-rounded as the ground truth beside it.
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
+function nearestStep(z) { return ZOOM_STEPS.reduce((a, b) => (Math.abs(b - z) < Math.abs(a - z) ? b : a)) }
+export function estimateZoom(dpr) {
+  if (!dpr || dpr <= 0) return null
+  let best = null
+  for (const native of [1, 2, 3]) {
+    const z = dpr / native
+    const step = nearestStep(z)
+    const score = Math.abs(step - z) + Math.abs(step - 1) * 0.01 // tie-break toward 100%
+    if (!best || score < best.score) best = { step, score, err: Math.abs(step - z) }
+  }
+  return best && best.err < 0.05 ? Math.round(best.step * 100) : null // null when nothing snaps cleanly
+}
+
 /**
  * Gather the environment block. Globals are injected for testability; callers
  * normally pass nothing.
@@ -117,7 +139,11 @@ export function collectEnv({ win = globalThis, nav = globalThis.navigator, loc =
     viewport: {
       w: win?.innerWidth ?? null,
       h: win?.innerHeight ?? null,
-      dpr: win?.devicePixelRatio ?? null
+      // Rounded so the report shows `2` / `1.6`, not `1.600000023841858`. `dpr` is the
+      // ground truth (device ratio × browser zoom); `zoom` is the approx zoom % derived
+      // from it (see estimateZoom) — the number that makes a non-100% tab obvious.
+      dpr: win?.devicePixelRatio != null ? Math.round(win.devicePixelRatio * 100) / 100 : null,
+      zoom: estimateZoom(win?.devicePixelRatio)
     },
     // `navigator.platform` is a frozen legacy value ("MacIntel" on EVERY Mac,
     // Apple Silicon included) — prefer UA-Client-Hints `platform` ("macOS"),
