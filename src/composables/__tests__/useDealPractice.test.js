@@ -84,3 +84,51 @@ describe('useDealPractice — [ACCEPT] scoring', () => {
     expect(dp.boardState.boardHadWrong).toBe(true)
   })
 })
+
+// A two-bid walkthrough where the student's second call is a PASS — the case that
+// exposed both halves of the 2026-07-13 Back-button bug.
+const TWO_BID_DEAL = {
+  dealer: 'S',
+  auctionDealer: 'S',
+  studentSeat: 'S',
+  // S 1H · W Pass · N 2H · E Pass · S Pass · W Pass · N Pass  (passed out over 2H)
+  auction: ['1H', 'Pass', '2H', 'Pass', 'Pass', 'Pass', 'Pass'],
+  steps: [
+    { type: 'bid', bid: '1H', text: 'Open 1H.' },
+    { type: 'bid', bid: 'Pass', text: 'What do you say next?' },
+  ],
+  hands: { N: {}, E: {}, S: {}, W: {} },
+}
+
+describe('useDealPractice — Back from a completed board (2026-07-13 report)', () => {
+  let dp
+  beforeEach(() => {
+    dp = useDealPractice()
+    dp.loadDeal(TWO_BID_DEAL)
+    dp.makeBid('1H')   // opens; auto-advances to the student's Pass prompt
+    dp.makeBid('Pass') // final call → board completes
+  })
+
+  it('reaches the completed state after both calls', () => {
+    expect(dp.isComplete.value).toBe(true)
+  })
+
+  it('Back clears the completion so "Beautifully bid!" no longer shows', () => {
+    dp.goBack()
+    expect(dp.isComplete.value).toBe(false)
+  })
+
+  it('Back re-offers the bidding box by rewinding to the STUDENT\'s Pass, not an opponent\'s', () => {
+    dp.goBack()
+    // The student's Pass is auction index 4 (S), NOT the first Pass at index 1 (W).
+    expect(dp.auctionState.currentBidIndex).toBe(4)
+    expect(dp.auctionState.auctionComplete).toBe(false)
+    expect(dp.hasBidPrompt.value).toBe(true)
+  })
+
+  it('the re-offered board can be completed again', () => {
+    dp.goBack()
+    expect(dp.makeBid('Pass')).toBe(true)
+    expect(dp.isComplete.value).toBe(true)
+  })
+})
