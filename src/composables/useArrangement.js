@@ -9,7 +9,7 @@
 import { ref } from 'vue'
 import {
   ARRANGEMENT_STORAGE_KEY, DEFAULT_ARRANGEMENT,
-  readArrangementParam, resolveArrangement,
+  readArrangementParam, resolveArrangement, normalizeArrangement,
 } from '../utils/arrangement.js'
 
 const arrangement = ref(DEFAULT_ARRANGEMENT)
@@ -52,11 +52,14 @@ export function initArrangement(loc = (typeof window !== 'undefined' ? window.lo
 }
 
 /** Set the arrangement live (the reactive ref drives the practice view's grid/legacy
- *  branch) and persist it — used by the beetle field kit's grid/legacy toggle. */
+ *  branch) and persist it — used by the beetle field kit's grid/legacy toggle. Provenance
+ *  is 'default' when the pick IS the default (green profile ring) and 'query' when it's an
+ *  override (orange ring) — keyed on the value vs default, not on 'grid', so it stays
+ *  correct after the flip (grid-flip 1.6d override indicator). */
 export function setArrangement(value) {
-  const v = value === 'grid' ? 'grid' : DEFAULT_ARRANGEMENT
+  const v = normalizeArrangement(value) || DEFAULT_ARRANGEMENT
   arrangement.value = v
-  arrangementSource.value = 'query' // a manual pick is an override, like a query param
+  arrangementSource.value = v === DEFAULT_ARRANGEMENT ? 'default' : 'query'
   writeStored(v)
 }
 

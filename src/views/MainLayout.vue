@@ -39,7 +39,12 @@
         </div>
         <!-- User avatar -->
         <div class="user-avatar-group">
-          <button class="user-btn" @click="showSettings = true" :title="userName">
+          <button
+            class="user-btn"
+            :class="{ 'user-btn-beta': overrideActive }"
+            @click="showSettings = true"
+            :title="overrideActive ? userName + ' · Beta preview (' + arrangement + ')' : userName"
+          >
             {{ userInitials }}
           </button>
         </div>
@@ -671,6 +676,11 @@ const gridHiddenSeats = computed(() => {
 // (2026-07-13 report — NE floored the auction to 0.65× and squeezed the seats).
 const hasCompletedAuction = computed(() => (currentDeal.value?.auction || []).length > 0)
 const pinnedAuction = computed(() => isDeclarerPlay.value && hasCompletedAuction.value)
+// Profile-ring override indicator (grid-flip 1.6d): the avatar is green on the default
+// (prod) arrangement and orange when an override is active — keyed on PROVENANCE
+// (source ≠ default), not on 'grid', so it marks "this client is pinned to something
+// non-default" and never goes stale after the flip.
+const overrideActive = computed(() => arrangementSource.value !== 'default')
 const companionAuction = computed(() => gridDefensePlay.value && hasCompletedAuction.value)
 // Compact status for the grid #nw region (BoardIndicator glyph + StatusStrip), sized to
 // the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
@@ -2057,6 +2067,14 @@ body {
 .user-btn:hover {
   transform: scale(1.05);
   box-shadow: 0 2px 8px rgba(45, 106, 79, 0.4);
+}
+/* Override-active (Beta preview): orange avatar — this client is pinned to a non-default
+   arrangement. Background swap only, zero layout impact. */
+.user-btn-beta {
+  background: linear-gradient(135deg, #f0932b 0%, #d35400 100%);
+}
+.user-btn-beta:hover {
+  box-shadow: 0 2px 8px rgba(211, 84, 0, 0.45);
 }
 
 .progress-btn {
