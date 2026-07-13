@@ -20,7 +20,7 @@ import TableScene from './TableScene.vue'
 import ServerTableScene from './ServerTableScene.vue'
 import A1Scene from './A1Scene.vue'
 import './harness.css'
-import './boundingBoxes.css'
+import '../components/table/boundingBoxes.css'
 
 // Both fixture dirs resolve by name: the shared `fixtures/` set (component
 // gallery) and the A1-only `fixtures-a1/` set (its own separate gallery). Keeping

@@ -55,9 +55,11 @@ function safe(fn, fallback) {
  *                       wire this at the shell call site when the grid arranger
  *                       ships. Legacy a1 has no config, so tableConfig is simply
  *                       absent — same as the other not-yet-wired shell fields.
- * @returns {{context: object, fixture: object, screenshot: Blob|null}}
+ * @param {Blob|null} [input.screenshotBoxes=null] Optional second screenshot with the
+ *   bounding-box overlay on (grid layouts) — the bundle's own layout X-ray.
+ * @returns {{context: object, fixture: object, screenshot: Blob|null, screenshotBoxes: Blob|null}}
  */
-export function collectReport({ note = '', screenshot = null, enrich = {} } = {}) {
+export function collectReport({ note = '', screenshot = null, screenshotBoxes = null, enrich = {} } = {}) {
   const env = safe(() => ({ ...collectEnv(), ...(enrich.env || {}) }), enrich.env || {})
 
   // App-blind computed-geometry snapshot of the shared table components — the
@@ -83,5 +85,5 @@ export function collectReport({ note = '', screenshot = null, enrich = {} } = {}
     note: 'Fixture capture is not wired yet (Slice 3/4). Env + screenshot only.'
   }
 
-  return { context, fixture, screenshot }
+  return { context, fixture, screenshot, screenshotBoxes }
 }

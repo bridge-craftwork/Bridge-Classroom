@@ -393,9 +393,15 @@
             </BridgeTable>
           </div>
 
-          <!-- Companion: coaching commentary / feedback / Next-Back controls. The
-               auction and bidding box now live in the grid, so they're dropped here. -->
+          <!-- Companion: lesson context ribbon + coaching commentary / feedback /
+               Next-Back controls. The auction and bidding box now live in the grid. -->
           <div class="practice-grid-companion">
+            <!-- Blue context ribbon (the bridgeContext note that lived in DealInfo before
+                 #nw went compact) — reunited with the coaching prose it belongs beside. -->
+            <div v-if="currentDeal?.bridgeContext" class="grid-context-ribbon">
+              <span class="grid-context-ribbon-icon" aria-hidden="true">ⓘ</span>
+              <span>{{ currentDeal.bridgeContext }}</span>
+            </div>
             <FeedbackPanel :visible="!!practice.auctionState.wrongBid" type="wrong" :wrongBid="practice.auctionState.wrongBid" :correctBid="practice.auctionState.correctBid" :showContinue="false" />
             <FeedbackPanel :visible="!!practice.auctionState.altBid" type="alternative" :wrongBid="practice.auctionState.altBid" :correctBid="practice.auctionState.altRecordedBid" :showContinue="false" />
             <FeedbackPanel :visible="!!practice.cardChoiceState.wrongCard" type="wrong" :wrongCardCode="practice.cardChoiceState.wrongCard" :correctCardCode="practice.cardChoiceState.correctCard" :showContinue="false" />
@@ -2157,6 +2163,29 @@ body {
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
+}
+/* Blue lesson-context ribbon in the companion (restored from DealInfo — same palette). */
+.practice-grid-companion .grid-context-ribbon {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 12px;
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+  border-radius: 4px;
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #0d3a66;
+}
+.practice-grid-companion .grid-context-ribbon-icon { color: #1976d2; font-weight: bold; flex-shrink: 0; }
+/* The grid scales the TABLE up (caps), so the companion prose is bumped to match —
+   at base 15px it read small next to the enlarged hand/auction (2026-07-12 report).
+   Senior-friendly; legacy (.practice-right) keeps 15px. */
+.practice-grid-companion .commentary-text-container,
+.practice-grid-companion .display-commentary {
+  font-size: 17px;
+  line-height: 1.55;
 }
 .practice-grid-companion {
   display: flex;

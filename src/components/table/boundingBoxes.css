@@ -1,8 +1,12 @@
 /* Bounding-box diagnostic overlay (grid-arranger-spec §5.1) — the arranger's
    internal ledger made visible: grid tracks, region boxes, component reserves, and
-   the bidding growth-reserve band. HARNESS-ONLY (imported by HarnessSceneView, not
-   the app) → zero production bytes. Activated by `data-bounding-boxes` on <html>
-   (set from `?bounding-boxes=1`, or the `b` key).
+   the bidding growth-reserve band. Imported by BOTH the harness (HarnessSceneView)
+   and the app root (App.vue) so the layout X-ray is available live on the grid
+   arrangement, not only in the gallery (a1-grid-flip debug capability, 2026-07-12).
+   Inert unless `data-bounding-boxes` is set on <html> — the app enables it via
+   `?bounding-boxes=1` / Alt+B (useDebugOverlays); the harness via `?bounding-boxes=1`
+   or the `b` key. Only styles `.grid-table` diagnostic elements, so it does nothing
+   on the legacy arrangement. Few KB, gzipped negligible.
 
    CRITICAL: outline, never border — outlines don't participate in layout, so the
    diagnostic cannot perturb the geometry it inspects (same trap the popup avoided

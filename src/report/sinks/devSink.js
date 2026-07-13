@@ -147,7 +147,7 @@ function triggerDownload(filename, blob) {
  * @returns {Promise<{ok: boolean, path: string, singleFile: boolean, ccPrompt: string, copied: boolean}>}
  */
 export async function saveToDevSink(bundle, opts = {}) {
-  const { context, fixture, screenshot } = bundle
+  const { context, fixture, screenshot, screenshotBoxes } = bundle
   const now = new Date()
   const { yyyy, mm, stamp } = stampParts(now)
   const slug = slugify(context?.note)
@@ -161,7 +161,7 @@ export async function saveToDevSink(bundle, opts = {}) {
   const path = singleFile
     ? `${dirName}.bundle.json`
     : `${dirHandle.name}/${yyyy}/${mm}/${dirName}/`
-  const ccPrompt = buildCcPrompt({ bundlePath: path, context, singleFile })
+  const ccPrompt = buildCcPrompt({ bundlePath: path, context, singleFile, hasBoxes: !!screenshotBoxes })
 
   let copied = false
   if (opts.copyClipboard !== false) {
@@ -173,7 +173,8 @@ export async function saveToDevSink(bundle, opts = {}) {
     // mutable file here, so inline the scaffold as a field (dir-bundles get the
     // real adjudication.md; the lifecycle lives with the standard layout).
     const dataUrl = await blobToDataUrl(screenshot).catch(() => null)
-    const single = { context, fixture, screenshot: dataUrl, adjudication: ADJUDICATION_SCAFFOLD }
+    const boxesUrl = await blobToDataUrl(screenshotBoxes).catch(() => null)
+    const single = { context, fixture, screenshot: dataUrl, screenshotBoxes: boxesUrl, adjudication: ADJUDICATION_SCAFFOLD }
     triggerDownload(path, new Blob([JSON.stringify(single, null, 2)], { type: 'application/json' }))
   } else {
     // Standard layout: <picked>/YYYY/MM/<slug>-<stamp>/{context,fixture}.json + screenshot.jpg
@@ -183,6 +184,9 @@ export async function saveToDevSink(bundle, opts = {}) {
     await writeFile(bundleDir, 'context.json', JSON.stringify(context, null, 2))
     await writeFile(bundleDir, 'fixture.json', JSON.stringify(fixture, null, 2))
     if (screenshot) await writeFile(bundleDir, 'screenshot.jpg', screenshot)
+    // Second screenshot with the arranger's bounding-box overlay (grid layouts) — the
+    // bundle's own layout X-ray beside the plain shot.
+    if (screenshotBoxes) await writeFile(bundleDir, 'screenshot-boxes.jpg', screenshotBoxes)
     // Adjudication scaffold last + guarded: the evidence is already saved, so a
     // scaffold-write hiccup must never fail the report (robustness contract).
     try {

@@ -132,6 +132,8 @@ import { useUserStore } from '@/composables/useUserStore.js'
 
 const props = defineProps({
   screenshot: { type: Object, default: null },
+  // Optional second screenshot with the bounding-box overlay on (grid layouts).
+  screenshotBoxes: { type: Object, default: null },
   // Async UA client hints (architecture, platformVersion) captured on the tap.
   clientHints: { type: Object, default: null },
   // Computed-geometry snapshot frozen on the tap (matches the screenshot).
@@ -255,7 +257,7 @@ function buildEnrich(baseContext) {
 async function submitLocal() {
   let dirHandle = null
   try { dirHandle = await ensureDirHandle() } catch { dirHandle = null }
-  const bundle = collectReport({ note: note.value, screenshot: props.screenshot, enrich: buildEnrich({ kind: kind.value }) })
+  const bundle = collectReport({ note: note.value, screenshot: props.screenshot, screenshotBoxes: props.screenshotBoxes, enrich: buildEnrich({ kind: kind.value }) })
   result.value = await saveToDevSink(bundle, { dirHandle })
   if (result.value.copied) emit('saved', { message: '✓ Saved and prompt copied to clipboard' })
   else phase.value = 'manual'
@@ -274,6 +276,7 @@ async function submitIssue() {
   const bundle = collectReport({
     note: note.value,
     screenshot: props.screenshot,
+    screenshotBoxes: props.screenshotBoxes,
     enrich: buildEnrich({ reporter: reporterRecord, kind: kind.value })
   })
 
@@ -282,6 +285,7 @@ async function submitIssue() {
     context: bundle.context,
     fixture: bundle.fixture,
     screenshotBlob: props.screenshot,
+    screenshotBoxesBlob: props.screenshotBoxes,
     note: note.value.trim(),
     reporterName: named ? name : null,
     contactEmail: !anonymous.value && contactable.value && sessionEmail.value ? sessionEmail.value : null
