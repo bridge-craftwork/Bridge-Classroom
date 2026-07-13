@@ -30,9 +30,11 @@
       <span class="need">· needs {{ status.tricks.target }}</span>
     </span>
 
-    <!-- Review: the result. -->
+    <!-- Review: the result. Suppressible via `showResult` — a bidding/defence
+         walkthrough is never actually played, so its 0-trick "result" (a bogus
+         "Down 8") must not show; only a really-played board has a true result. -->
     <span
-      v-if="status.phase === 'review' && status.result"
+      v-if="showResult && status.phase === 'review' && status.result"
       class="chip chip-result"
       :class="status.result.made ? 'made' : 'down'"
     >{{ resultLabel }}</span>
@@ -53,6 +55,10 @@ const props = defineProps({
   // Show the play-phase trick-progress chip. Default true; pass false where tricks don't
   // advance (a defence choose-card position), leaving just the contract.
   showTricks: { type: Boolean, default: true },
+  // Show the review-phase result chip (Made / Down N). Default true; pass false on a
+  // walkthrough that's never played to a result (bidding review, defence), where the
+  // 0-trick count would render a nonsense "Down N".
+  showResult: { type: Boolean, default: true },
 })
 
 // Split off any doubling suffix so formatBid renders the base contract (colored

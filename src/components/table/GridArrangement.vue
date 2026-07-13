@@ -197,6 +197,14 @@ const playAnchored = computed(
 )
 // Either anchored model → content-sized rows + shrink-wrap stage binding.
 const anchored = computed(() => biddingAnchored.value || playAnchored.value)
+// Rows shrink-wrap to content in the anchored (bottom-pack) phases AND in REVIEW.
+// Review isn't bottom-packed, but its fr rows over-expand a tall frame into slack
+// exactly like the play "phantom South" — with two hands stacked (N + S) the grid
+// stretched to 1212px and pushed the South hand offscreen (2026-07-13, issue #13).
+// Content-sized rows collapse that; the height-fit below then keeps the stack inside
+// the viewport. (Kept separate from `anchored` so review doesn't inherit the
+// bottom-pack corner margins / growth reserve it has no use for.)
+const shrinkWrapRows = computed(() => anchored.value || props.phase === 'review')
 const reserveRounds = computed(() => props.config.reserveRounds ?? 1)
 
 // ── Occupancy model (evaluated per deal, at load) ────────────────────────────
@@ -302,7 +310,7 @@ const gridStyle = computed(() => {
     // shrink-wrap to content (+ the bidding reserve via centerStyle) instead of the
     // fr weights over-expanding a tall frame into slack. Otherwise (review) the
     // config's weighted-fr rows keep the centered stage.
-    gridTemplateRows: anchored.value ? 'auto auto auto' : r.map((f) => f + 'fr').join(' '),
+    gridTemplateRows: shrinkWrapRows.value ? 'auto auto auto' : r.map((f) => f + 'fr').join(' '),
     '--action-hand-gap': actionHandGap.value + 'px',
   }
 })
@@ -435,6 +443,24 @@ function regionReserve(area) {
 // gutter from the centre object instead of spreading to the stage extremes.
 const colAlloc = reactive([0, 0, 0]) // per-column WIDTH (content + margins), px
 let lastBudget = -1
+// Height-fit state (§ symmetric allocator, 2026-07-13 issue #13). The width pass is
+// one-directional (a scale can't feed back into the width budget); height is the one
+// genuinely variable input — banner state, board-strip wrap, whatever chrome — so we
+// MEASURE it (viewport − grid top − margin) instead of modelling it, and clamp the
+// seat scale down to fit. `heightSeatCeiling` is that clamp (Infinity = no height
+// pressure); it's reset whenever the WIDTH budget changes (a fresh layout) and derived
+// by re-measuring after the width pass renders. Bounded to two passes so it can't loop.
+const HEIGHT_BOTTOM_MARGIN = 12
+let heightSeatCeiling = Infinity
+let heightPass = 0
+
+// Apply the height-fit ceiling to the seats cap (leaves every other role untouched;
+// the `se: 'seats'` relationship rides the resulting seatScale as before).
+function capsWithHeight(baseCaps) {
+  if (!Number.isFinite(heightSeatCeiling)) return baseCaps
+  const seatsCap = typeof baseCaps?.seats === 'number' ? baseCaps.seats : 1
+  return { ...(baseCaps || {}), seats: Math.min(seatsCap, heightSeatCeiling) }
+}
 
 function relayout(force = false) {
   const el = root.value
@@ -442,9 +468,12 @@ function relayout(force = false) {
   const cs = getComputedStyle(el)
   const budget = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
   if (!(budget > 0)) return
-  // Width is the only input; height (vertical shrink-wrap) never re-triggers scale.
-  if (!force && Math.abs(budget - lastBudget) < 0.5) { recordSizes(el); return }
-  lastBudget = budget
+  const widthChanged = Math.abs(budget - lastBudget) >= 0.5
+  // A width change is a fresh layout — drop any prior height clamp and re-fit. Height
+  // alone (vertical shrink-wrap) never re-triggers the WIDTH pass; the height fit below
+  // re-runs with force when it needs to.
+  if (!force && !widthChanged) { recordSizes(el); return }
+  if (widthChanged) { lastBudget = budget; heightSeatCeiling = Infinity; heightPass = 0 }
 
   // Build the ledger inputs from occupancy + exported reserves (no rendered-content
   // measurement) and delegate to the pure allocator. The ledger IS the layout: the
@@ -466,7 +495,8 @@ function relayout(force = false) {
     // toward its cap, seats toward theirs, periphery pinned at 1.0, se ≤ seats. Keyed by
     // AREA — the arranger's config caps object. Omitting it (any surface without caps)
     // reverts to the natural-size min(1, fit) allocation, so this is purely additive.
-    caps: props.config.scale?.caps,
+    // The seats cap is additionally lowered by the height fit when the stack is too tall.
+    caps: capsWithHeight(props.config.scale?.caps),
     // Column fr weights (tracks.columns) — the caps pass grows the stage only toward its fr
     // share of the budget (not straight to the cap), so it stays geometry-bound and clusters.
     columnWeights: props.config.tracks?.columns,
@@ -478,6 +508,57 @@ function relayout(force = false) {
   scales.center = l.regions.center?.scale ?? 1
   for (const area of ['nw', 'ne', 'se', 'sw']) scales[area] = l.regions[area]?.scale ?? 1
   recordSizes(el)
+  scheduleHeightFit()
+}
+
+// The height fit reads the LIVE DOM, so it must run AFTER Vue paints the new scale (a
+// synchronous read here sees the previous render). A double rAF waits for layout/paint,
+// the same settle HandDisplay's measure uses.
+let heightFitRaf = null
+function scheduleHeightFit() {
+  if (typeof requestAnimationFrame === 'undefined') return
+  if (heightFitRaf) cancelAnimationFrame(heightFitRaf)
+  heightFitRaf = requestAnimationFrame(() => requestAnimationFrame(() => { heightFitRaf = null; applyHeightFit() }))
+}
+
+// Symmetric height clamp (§ issue #13). Measure the rendered stack against the available
+// viewport height and, if it overflows, shrink the SEAT scale to fit — down to the
+// legibility floor, never below. Below the floor the page SCROLLS (the pressure valve):
+// a small scroll beats illegible cards. Re-runs the width pass once with the lowered
+// seats cap; converges because the seat rows scale ~linearly with the seat scale and the
+// rest (centre, status, gaps) is fixed height, so the fit is a one-step solve.
+function applyHeightFit() {
+  const el = root.value
+  if (!el || heightPass >= 2) return
+  const rect = el.getBoundingClientRect()
+  const heightBudget = window.innerHeight - rect.top - HEIGHT_BOTTOM_MARGIN
+  const gridH = Math.round(rect.height)
+  if (!(heightBudget > 0) || gridH <= heightBudget + 2) return // fits — no height pressure
+
+  // Rows carrying a hand-bearing seat scale with the seat scale; sum the tallest such
+  // region per ROW (grouping avoids double-counting two side hands sharing the middle
+  // row). Everything else (centre, status, gaps) is the fixed remainder.
+  const hb = ledger.value?.seats?.handBearing || []
+  const rowMax = {}
+  for (const area of hb) {
+    const node = el.querySelector('.region.area-' + area)
+    if (!node) continue
+    const ri = AREA_ROWS.findIndex((r) => r.includes(area))
+    rowMax[ri] = Math.max(rowMax[ri] || 0, node.getBoundingClientRect().height)
+  }
+  const seatRowsH = Object.values(rowMax).reduce((s, h) => s + h, 0)
+  if (seatRowsH <= 0) return
+  const seatScale = scales.seats || 1
+  const naturalSeatRowsH = seatRowsH / seatScale
+  const fixedH = gridH - seatRowsH
+  let target = (heightBudget - fixedH) / naturalSeatRowsH
+  target = Math.max(floor.value, Math.min(seatScale, target))
+  // Only act when it actually tightens the clamp (avoids a no-op re-render / loop).
+  if (target < seatScale - 0.01 && target < heightSeatCeiling - 0.01) {
+    heightSeatCeiling = target
+    heightPass += 1
+    relayout(true)
+  }
 }
 
 // Received boxes for the bounding-box ledger (display only — never fed to scale).
@@ -540,7 +621,7 @@ function measureVertical(el) {
   const slack = rows.reduce((s, r) => s + r.slack, 0)
   // Anchored (content-sized rows) → shrink-wrap: any residual slack is designed
   // margins, not fr over-expansion. Un-anchored fr rows over-expand → viewport-fill.
-  const binding = anchored.value ? 'shrink-wrap' : (slack > SLACK_EPS ? 'viewport-fill' : 'shrink-wrap')
+  const binding = shrinkWrapRows.value ? 'shrink-wrap' : (slack > SLACK_EPS ? 'viewport-fill' : 'shrink-wrap')
   vert.rows = rows
   vert.stage = { total, content: Math.max(0, total - slack), slack, binding }
 }
@@ -567,26 +648,41 @@ const centerStyle = computed(() => {
 })
 
 let ro = null
+// A window resize can change the HEIGHT budget without changing the grid's width (the
+// RO below only sees width). Re-fit from scratch so the height clamp tracks the new
+// viewport — this is what makes "measure, don't model" hold as the viewport changes.
+function onWindowResize() {
+  heightSeatCeiling = Infinity
+  heightPass = 0
+  relayout(true)
+}
 onMounted(async () => {
   await nextTick(); relayout(true)
+  if (typeof window !== 'undefined') window.addEventListener('resize', onWindowResize)
   if (typeof ResizeObserver === 'undefined' || !root.value) return
   // Watch the grid's OFFERED width only. The grid fills the frame (which doesn't
   // shrink-wrap horizontally), so clientWidth = the shell's budget and is stable;
   // relayout skips when the width is unchanged, so a content/height change (the
-  // vertical shrink-wrap) never re-drives scale.
+  // vertical shrink-wrap) never re-drives the WIDTH scale — the height fit owns that.
   ro = new ResizeObserver(() => relayout())
   ro.observe(root.value)
 })
-onBeforeUnmount(() => ro?.disconnect())
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  if (typeof window !== 'undefined') window.removeEventListener('resize', onWindowResize)
+})
 
 // Re-provision when the deal's own inputs change without a width change: the actual
-// seat reserve (new hands) and which seats are shown. `relayout` skips on an unchanged
-// budget, so a new deal at the same viewport width would otherwise keep the prior
-// ledger. `dealSeatReserve` is pure from props (no scale feedback), so this converges
-// in one pass. Await a tick so the hands have rendered before we re-measure boxes.
+// seat reserve (new hands), which seats are shown, and the phase. `relayout` skips on an
+// unchanged budget, so a new deal at the same viewport width would otherwise keep the
+// prior ledger. `dealSeatReserve` is pure from props (no scale feedback), so this
+// converges in one pass. Also DROP any height clamp: it was fit to the previous content
+// (e.g. review's two-hand stack), so it must not carry into a shorter layout (bidding's
+// single hand) — otherwise the new hand renders needlessly small. Await a tick so the
+// hands have rendered before we re-measure boxes.
 watch(
   [dealSeatReserve, () => SEATS.filter(isHandBearing).join(''), () => props.phase],
-  async () => { await nextTick(); relayout(true) },
+  async () => { heightSeatCeiling = Infinity; heightPass = 0; await nextTick(); relayout(true) },
 )
 </script>
 
