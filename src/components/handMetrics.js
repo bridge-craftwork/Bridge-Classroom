@@ -25,3 +25,34 @@ export const HAND_UNIT = {
 export function rowReservePx(cards = 7, u = HAND_UNIT) {
   return u.labelPx + u.gapPx + cards * u.cellPx
 }
+
+// Extra horizontal advance a two-glyph rank ("10"/"T", rendered "10") adds over a
+// single-glyph card at the 24px base. Measured ~21px from real renders (a 5-card
+// suit holding one "10" is ~217px vs rowReservePx(5)=196); rounded UP so a
+// ten-heavy suit's reserve never under-fits.
+export const TEN_EXTRA_PX = 24
+
+// 'T' renders as "10"; some deal sources store the literal '10'. Both are two glyphs.
+function isWideRank(rank) {
+  const r = String(rank).toUpperCase()
+  return r === 'T' || r === '10'
+}
+
+// Natural reserve WIDTH (px, 1.0×) of a HAND = its widest suit row, from the deal's
+// ACTUAL cards rather than the 7-card worst case: label + gap + N·cell + (#tens)·extra,
+// maxed over the four suits. Cards are the full holding (played cards are struck in
+// the render, never removed from the hand), so this is the hand's WIDEST extent and is
+// STABLE across the play of the deal — the seat scale won't creep up as cards are
+// played (2026-07-13 report). Empty/absent hand → the 7-card reserve (safe fallback).
+export function handReservePx(hand, u = HAND_UNIT) {
+  if (!hand) return rowReservePx(7, u)
+  let max = 0
+  for (const suit of ['spades', 'hearts', 'diamonds', 'clubs']) {
+    const cards = hand[suit] || []
+    if (!cards.length) continue
+    const tens = cards.filter(isWideRank).length
+    const w = u.labelPx + u.gapPx + cards.length * u.cellPx + tens * TEN_EXTRA_PX
+    if (w > max) max = w
+  }
+  return max || rowReservePx(7, u)
+}
