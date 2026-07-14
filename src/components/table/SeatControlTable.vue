@@ -6,6 +6,11 @@
   <BridgeTable v-bind="$attrs" :label-component="labelComponent" :label-props="labelProps">
     <template v-if="$slots.center" #center><slot name="center" /></template>
     <template v-if="$slots.corner" #corner><slot name="corner" /></template>
+    <!-- Named grid regions (arrangement="grid"): status / auction / bidding box. -->
+    <template v-if="$slots.nw" #nw><slot name="nw" /></template>
+    <template v-if="$slots.ne" #ne><slot name="ne" /></template>
+    <template v-if="$slots.se" #se><slot name="se" /></template>
+    <template v-if="$slots.sw" #sw><slot name="sw" /></template>
   </BridgeTable>
 </template>
 
