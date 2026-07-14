@@ -375,7 +375,7 @@
                 <!-- Defensive-signals cardplay: the played cards ([showcards]) shown as a
                      centre trick, so E/S aren't scattered as tiny floored seats. -->
                 <TrickArea
-                  v-else-if="gridDefensePlay"
+                  v-else-if="hasCentreTrick"
                   :current-trick="gridTrick"
                   :last-finished-trick="null"
                   :tricks-taken="currentDeal?.tricksTaken || { NS: 0, EW: 0 }"
@@ -665,6 +665,11 @@ const gridTrick = computed(() => buildTrickFromShowcards({
   ...(practice.showcardsPlayedCards.value || {}),
   ...(practice.currentShowcards.value || {}),
 }))
+// Render the centre trick whenever it HAS a card — not only when a hidden seat plays
+// (gridDefensePlay). A trick led solely from the fully-shown dummy (e.g. `[showcards
+// N:D5]`, board 1) has no played-card-only seat, so gating on gridDefensePlay left the
+// ♦5 struck in dummy's hand but absent from the table (2026-07-13 report).
+const hasCentreTrick = computed(() => !isDeclarerPlay.value && gridTrick.value.plays.length > 0)
 // Hidden seats the grid renders: the deal's own hidden seats plus the played-card-only
 // seats (their card lives in the centre trick now, not a scattered seat).
 const gridHiddenSeats = computed(() => {
