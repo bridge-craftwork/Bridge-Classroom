@@ -766,6 +766,13 @@ watch(
 .area-sw { grid-area: sw; justify-self: start; align-self: end; }
 .area-s { grid-area: s; }
 .area-se { grid-area: se; justify-self: end; align-self: end; }
+/* Action corners hold a FIXED-width widget (the bidding box) that shrinks to fit
+   its parent, not a scalable hand. `justify-self:*` sizes the cell to content, so
+   an over-wide box would push out of its column into the neighbouring seat (a
+   South·SE collision, 2026-07-14 report). Cap the cell to its grid TRACK so the
+   box's own fit logic (it measures this parent) sees the real column bound and
+   shrinks instead of overflowing. */
+.area-se, .area-sw { max-width: 100%; }
 .seat { display: flex; }
 
 /* Seat identity + HCP sizing, grid-only. The shared HandDisplay/SeatIndicator
