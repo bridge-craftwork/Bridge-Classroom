@@ -3,7 +3,17 @@
     <nav class="th-nav">
       <a class="th-logo" href="#/"><span class="suit">&spades;</span> Bridge Classroom &middot; Host a Table</a>
       <span v-if="hasSession" class="th-conn" :class="'th-conn-' + connectionStatus">{{ connectionStatus }}</span>
-      <a class="th-back" href="#/">&larr; All tools</a>
+      <div class="th-nav-right">
+        <a class="th-back" href="#/">&larr; All tools</a>
+        <!-- Account circle: same identity menu as the main app (Switch User, edit
+             name, display/privacy). Sits the host's own name at the seat below. -->
+        <button
+          v-if="currentUser"
+          class="user-btn"
+          :title="userName"
+          @click="showSettings = true"
+        >{{ userInitials }}</button>
+      </div>
     </nav>
 
     <!-- Not signed in -->
@@ -53,6 +63,17 @@
       <UnifiedTable server @exit="onExitTable" />
     </main>
 
+    <!-- Account / identity menu — the same panel the main app uses (Switch User,
+         edit name, display + privacy). Switching or signing out leaves the table
+         and returns to the main app to re-authenticate. -->
+    <SettingsPanel
+      :visible="showSettings"
+      @close="showSettings = false"
+      @switchUser="handleSwitchUser"
+      @logout="handleSwitchUser"
+      @become-teacher="leaveToMainApp"
+    />
+
     <!-- Deal-source picker modal (materialize the whole set onto the table) -->
     <div v-if="showPicker" class="th-modal-backdrop" @click.self="showPicker = false">
       <DealSourcePicker
@@ -86,6 +107,7 @@ import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
+import SettingsPanel from '../components/SettingsPanel.vue'
 import UnifiedTable from './BiddingPracticeView.vue'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
@@ -95,6 +117,31 @@ const API_KEY = import.meta.env.VITE_API_KEY || ''
 const router = useRouter()
 const userStore = useUserStore()
 const currentUser = userStore.currentUser
+
+// ── Account circle (top-right) — identity + Switch User, same panel as the main app.
+const showSettings = ref(false)
+const userName = computed(() => {
+  const u = currentUser.value
+  return u ? `${u.firstName} ${u.lastName}`.trim() : ''
+})
+const userInitials = computed(() => {
+  const u = currentUser.value
+  if (!u) return '?'
+  return `${(u.firstName || '').charAt(0)}${(u.lastName || '').charAt(0)}`.toUpperCase() || '?'
+})
+// Switching user / signing out must not strand a half-owned table: tear it down,
+// clear the signed-in user, and hand off to the main app to re-authenticate (its
+// welcome screen owns the full switch-user flow).
+function leaveToMainApp() {
+  showSettings.value = false
+  teardown()
+  router.push('/')
+}
+function handleSwitchUser() {
+  userStore.stopViewingAs()
+  userStore.currentUserId.value = null
+  leaveToMainApp()
+}
 const table = useRemoteTable()
 // The console composable is used ONLY to send the host-control frames
 // (load_boards) — they ride the same useTableSocket singleton the seated player
@@ -314,8 +361,26 @@ onBeforeUnmount(teardown)
 }
 .th-logo { font-size: 15px; font-weight: 500; color: #222; text-decoration: none; }
 .th-logo .suit { color: #1D9E75; margin-right: 6px; }
+.th-nav-right { display: flex; align-items: center; gap: 14px; }
 .th-back { font-size: 12px; color: #666; text-decoration: none; }
 .th-back:hover { color: #222; }
+/* Account circle — matches the main app's header avatar (MainLayout .user-btn). */
+.user-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--green-mid, #667eea) 0%, var(--green-dark, #764ba2) 100%);
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.user-btn:hover { transform: scale(1.05); box-shadow: 0 2px 8px rgba(45, 106, 79, 0.4); }
 .th-conn { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
 .th-conn-connected { color: #1D9E75; }
 .th-conn-error, .th-conn-unavailable { color: #c62828; }
