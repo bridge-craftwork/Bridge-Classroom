@@ -381,6 +381,7 @@
                   :current-trick="gridTrick"
                   :last-finished-trick="null"
                   :tricks-taken="currentDeal?.tricksTaken || { NS: 0, EW: 0 }"
+                  :show-counter="false"
                   :next-seat="null"
                   bot-name="Defense"
                 />
