@@ -15,7 +15,7 @@
       </div>
       <!-- Center: trick counter / bot status -->
       <div class="slot slot-center">
-        <div class="counter">NS&nbsp;{{ tricksTaken.NS }} · EW&nbsp;{{ tricksTaken.EW }}</div>
+        <div v-if="showCounter" class="counter">NS&nbsp;{{ tricksTaken.NS }} · EW&nbsp;{{ tricksTaken.EW }}</div>
         <div v-if="botLoading" class="bot-thinking">{{ botName ? `${botName} thinking…` : 'Thinking…' }}</div>
         <div v-else-if="lastWinner" class="last-winner">Trick to {{ lastWinner }}</div>
       </div>
@@ -45,6 +45,9 @@ const props = defineProps({
   // Last completed trick — shown briefly between tricks. { leader, plays, winner }
   lastFinishedTrick: { type: Object, default: null },
   tricksTaken: { type: Object, default: () => ({ NS: 0, EW: 0 }) },
+  // Show the NS/EW trick counter. Off for the defense/choose-card scenes, which don't
+  // track tricks (the count would sit at 0·0 and mislead).
+  showCounter: { type: Boolean, default: true },
   // Seat to play next (for visual cue).
   nextSeat: { type: String, default: null },
   botLoading: { type: Boolean, default: false },
