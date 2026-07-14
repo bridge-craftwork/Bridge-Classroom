@@ -104,6 +104,10 @@
       <div class="tv-main">
         <div class="tv-table-wrap">
           <SeatControlTable
+            arrangement="grid"
+            :table-config="tableConfig"
+            :phase="srv.phase === 'play' ? 'play' : 'bidding'"
+            :hero-seat="srv.yourSeat || 'S'"
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
             :identity-only="!srv.dealLoaded"
@@ -121,6 +125,21 @@
             @assign="srv.onAssignSeat"
             @kick="srv.onKick"
           >
+            <!-- NW: board status (a1-style BoardIndicator glyph + StatusStrip). -->
+            <template #nw>
+              <div class="tv-grid-nw">
+                <BoardIndicator
+                  v-if="srv.boardNumber !== null"
+                  :board-number="srv.boardNumber"
+                  :dealer="srv.dealer || null"
+                  :vulnerable="srv.vulnerable || null"
+                  :size="A1_BOARD_SIZE"
+                />
+                <StatusStrip v-if="srv.phase === 'play'" :status="srvStatus" :show-vul="false" />
+              </div>
+            </template>
+
+            <!-- CENTER: live auction (bidding) / trick (play) / no-deal notice. -->
             <template #center>
               <TrickArea
                 v-if="srv.dealLoaded && (srvCenterSlot === 'trick-area' || srvCenterSlot === 'review')"
@@ -131,33 +150,47 @@
                 :bot-loading="srv.botThinking"
                 bot-name="Bot"
               />
+              <AuctionTable
+                v-else-if="srv.dealLoaded && srvCenterSlot === 'auction'"
+                :bids="srv.auction"
+                :dealer="srv.dealer || 'N'"
+                :current-bid-index="srv.auction.length"
+                :show-turn-indicator="srv.phase === 'bidding'"
+              />
               <div v-else-if="!srv.dealLoaded" class="tv-center">
                 <div class="tv-center-line">No deal yet</div>
                 <div class="tv-center-line tv-center-muted">Pick a deal source</div>
               </div>
-              <div v-else class="tv-center">
-                <div class="tv-center-line">Dealer {{ srv.dealer || '—' }}</div>
-                <div class="tv-center-line">
-                  {{ srv.vulnerable === 'None' ? 'None vul' : srv.vulnerable + ' vul' }}
-                </div>
-              </div>
             </template>
 
-            <template v-if="srv.capabilities.doubleDummy" #corner>
-              <DoubleDummyTable :ddtricks="srv.doubleDummy" :final-contract="srv.ddFinalContract" />
+            <!-- NE: completed auction pinned during play (config densities.play.ne). -->
+            <template v-if="srv.dealLoaded && srv.phase === 'play'" #ne>
+              <AuctionTable
+                :bids="srv.auction"
+                :dealer="srv.dealer || 'N'"
+                :current-bid-index="srv.auction.length"
+                :show-turn-indicator="false"
+              />
+            </template>
+
+            <!-- SE: bidding box, on your turn only (the off-turn waiting cue is in the rail). -->
+            <template v-if="srvActionSlot === 'bidding-box'" #se>
+              <BiddingBox
+                :last-bid="srv.lastSuitBid"
+                :can-double="srv.canDouble"
+                :can-redouble="srv.canRedouble"
+                @bid="srv.onBid"
+              />
             </template>
           </SeatControlTable>
         </div>
 
         <div class="tv-rail">
-          <div class="tv-card">
-            <h3>Auction</h3>
-            <AuctionTable
-              :bids="srv.auction"
-              :dealer="srv.dealer || 'N'"
-              :current-bid-index="srv.auction.length"
-              :show-turn-indicator="srv.phase === 'bidding'"
-            />
+          <!-- Auction + bidding box now live in the grid (centre/NE, and SE). The rail
+               keeps the host controls + the off-turn waiting cues. -->
+          <div v-if="srv.capabilities.doubleDummy" class="tv-card">
+            <h3>Double dummy</h3>
+            <DoubleDummyTable :ddtricks="srv.doubleDummy" :final-contract="srv.ddFinalContract" />
           </div>
 
           <div v-if="srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode === 'play-only'" class="tv-card tv-waiting">
@@ -165,20 +198,11 @@
           </div>
 
           <div v-else-if="srv.yourSeat && (!srv.dealLoaded || srv.phase === 'bidding')" class="tv-card">
-            <h3>{{ srv.myTurnToBid ? 'Your bid' : 'Bidding' }}</h3>
-            <!-- Slice 6b: box shown only on your turn (slots.action). Off-turn it
-                 is hidden; the "Waiting for …" line below is the affordance. -->
-            <BiddingBox
-              v-if="srvActionSlot === 'bidding-box'"
-              :last-bid="srv.lastSuitBid"
-              :can-double="srv.canDouble"
-              :can-redouble="srv.canRedouble"
-              @bid="srv.onBid"
-            />
             <div v-if="!srv.dealLoaded" class="tv-status-line tv-waiting tv-bid-waiting">
               Waiting for the first deal…
             </div>
-            <div v-else-if="!srv.myTurnToBid && srv.nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
+            <div v-else-if="srv.myTurnToBid" class="tv-status-line tv-your-turn">Your bid — use the box on the table.</div>
+            <div v-else-if="srv.nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
               Waiting for {{ srv.turnLabel }}…
             </div>
           </div>
@@ -619,6 +643,9 @@ import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import StatusStrip from '../components/StatusStrip.vue'
+import BoardIndicator from '../components/BoardIndicator.vue'
+import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
+import tableConfig from '../table-configs/table.tableConfig.js'
 import DockablePanel from '../components/DockablePanel.vue'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
@@ -1777,6 +1804,8 @@ async function restartCardplay() {
   border-radius: 10px;
 }
 .tv-rail { display: flex; flex-direction: column; gap: 12px; }
+/* NW grid region: BoardIndicator glyph + StatusStrip stacked (mirrors a1's #nw). */
+.tv-grid-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .tv-center-wait { text-align: center; }
 .tv-center-title { font-weight: 700; color: #24435a; font-size: 14px; }
 .tv-center-sub { font-size: 11.5px; color: #8a97a3; margin-top: 3px; max-width: 180px; }
