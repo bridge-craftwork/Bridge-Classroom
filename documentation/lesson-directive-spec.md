@@ -120,7 +120,7 @@ control tags is a display-only deal (no interaction).
 
 | Directive | Syntax | Effect |
 |---|---|---|
-| `[showcards SEAT:CARD,…]` | `[showcards N:D5]` | **Current trick.** Puts the card(s) on the table. If the seat is a *hidden* hand (e.g. the opening leader), the card floats in the trick as a lone played card. If the seat is a *shown* hand (e.g. **dummy** leading, or the hero's own led card), the card is **struck from that hand's display and placed on the table**. |
+| `[showcards SEAT:CARD,…]` | `[showcards N:D5]` | **Current trick.** Puts the card(s) on the table. If the seat is a *hidden* hand (e.g. the opening leader), the card floats in the trick as a lone played card. If the seat is a *shown* hand (e.g. **dummy** leading, or the hero's own led card), the card is placed on the table **and highlighted (light-blue background) in that hand** — a current-trick highlight, distinct from the strikethrough that marks *finished*-trick `[PLAY]` cards. |
 | `[PLAY SEAT:CARD,…]` | `[PLAY N:SQ,E:S8,S:S3]` | **Earlier tricks.** Marks card(s) as played; they render **struck-through in the hand** (kept for history — the board keeps its full size) and are **not** placed on the table (the trick is gathered). Cumulative across steps. |
 | `[RESET]` | `[RESET]` | Restore the original deal — clear all `[PLAY]` marks; every hand's cards render un-struck again. |
 
@@ -156,7 +156,8 @@ seat order of play**.
   floats on the table.
 - A card led from a **shown** hand — most importantly **dummy** — is expressed exactly
   the same way: `[showcards N:<card>]`. Because dummy is a shown seat, the renderer
-  strikes the card from dummy's displayed hand and places it on the table. Leaving it
+  places it on the table **and highlights it (light-blue) in dummy's hand** — a
+  current-trick highlight, not the strikethrough used for finished tricks. Leaving it
   out is the single most common defect (see §6).
 
 ### R-CP3 — Earlier completed tricks → `[PLAY]` (struck-through in hands)
@@ -205,9 +206,9 @@ beetle, 2026-07-13; routed as Baker-Bridge#12.)
 [showcards N:D5]
 ```
 
-— dummy's ♦5 (a card from the shown North hand) is struck from dummy and placed on the
-table (R-CP2); trick 1 is history, narrated in prose, and its cards need not sit on the
-table. Optionally, if you want trick 1's cards visibly struck through in the hands
+— dummy's ♦5 (a card from the shown North hand) is placed on the table and highlighted
+(light-blue) in dummy's hand (R-CP2); trick 1 is history, narrated in prose, and its
+cards need not sit on the table. Optionally, if you want trick 1's cards visibly struck through in the hands
 rather than merely un-mentioned, add `[PLAY …]` for them (R-CP3/R-CP4) — but the card
 the student responds to, the ♦5, must be on the table either way.
 
