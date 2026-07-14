@@ -395,45 +395,10 @@
         </div>
 
         <template v-if="currentDeal">
-          <div v-if="EMBEDDED && !auctionComplete" class="bp-embedded-bidding">
-            <div class="bp-side-col">
-              <div class="bp-card">
-                <h3>Auction</h3>
-                <AuctionTable
-                  :bids="bids"
-                  :dealer="currentDeal.dealer"
-                  :current-bid-index="bids.length"
-                  :wrong-bid-indices="wrongIndicesArray"
-                  :show-turn-indicator="!auctionComplete"
-                  :meanings="meanings"
-                  :diverged-bids="divergedBids"
-                  :allow-divergence-toggle="!auctionLoading"
-                  @toggle-bid="toggleDivergedBid"
-                />
-              </div>
-              <div v-if="localActionSlot === 'bidding-box' && !auctionLoading" class="bp-card">
-                <h3>Your bid</h3>
-                <BiddingBox
-                  :last-bid="lastNonPassNonDouble"
-                  :can-double="canDouble"
-                  :can-redouble="canRedouble"
-                  @bid="onUserBid"
-                />
-              </div>
-              <div v-if="auctionLoading" class="bp-loading-card">Computing&hellip;</div>
-            </div>
-            <div class="bp-hand-col">
-              <SeatPanel
-                :hand="currentDeal.hands[yourSeat]"
-                :seat="yourSeat"
-                :show-hcp="true"
-                :show-total-points="true"
-              />
-              <StatusStrip v-if="localStatusSlot === 'status-strip'" class="bp-hand-status" :status="localStatus" />
-            </div>
-          </div>
-
-          <div v-else class="bp-table-wrap">
+          <!-- One layout for solo AND embedded (iframe ?pbn) bidding: the grid
+               arranger. The embed is just this table in a narrower frame — the
+               shell collapses the rail below the table at embed widths. -->
+          <div class="bp-table-wrap">
             <BridgeTable
               arrangement="grid"
               :table-config="tableConfig"
@@ -513,6 +478,9 @@
                    rail keeps the cardplay controls + the off-turn bidding cue. -->
               <div v-if="localActionSlot !== 'bidding-box' && !auctionComplete && !auctionLoading" class="bp-card bp-waiting">
                 Waiting for the auction…
+              </div>
+              <div v-if="auctionLoading && !auctionComplete" class="bp-card bp-waiting">
+                Computing&hellip;
               </div>
 
               <div v-if="cardplayPhase === 'playing'" class="bp-card bp-cardplay-card">
@@ -666,7 +634,6 @@ import { ref, computed, reactive, onMounted, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
-import SeatPanel from '../components/SeatPanel.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -1344,47 +1311,6 @@ async function restartCardplay() {
 }
 .bp-app.embedded .bp-scenario-name { font-size: 14px; }
 .bp-app.embedded .bp-scenario-meta { font-size: 11px; }
-
-/* Compact 2-col layout for embedded mode during the auction:
-   left = auction + bidding box, right = student's hand. After the auction
-   completes we fall back to the full BridgeTable layout for the reveal. */
-.bp-embedded-bidding {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto;
-  gap: 14px;
-  align-items: start;
-}
-.bp-side-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.bp-hand-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  background: #fff;
-  border: 0.5px solid #ddd;
-  border-radius: 10px;
-  padding: 12px 14px;
-}
-.bp-hand-status { margin-top: 8px; justify-content: center; }
-.bp-loading-card {
-  background: #fff;
-  border: 0.5px solid #ddd;
-  border-radius: 10px;
-  padding: 10px;
-  text-align: center;
-  color: #1D9E75;
-  font-size: 12px;
-}
-@media (max-width: 640px) {
-  .bp-embedded-bidding { grid-template-columns: minmax(0, 1fr); }
-  .bp-hand-col { order: -1; }
-}
 
 .bp-nav {
   display: flex;
