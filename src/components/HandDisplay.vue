@@ -152,6 +152,9 @@ function cardMark(suit, rank) {
   return props.marks?.cards?.[suitLetter(suit) + rank] || null
 }
 function isCardPlayed(suit, rank) { return !!cardMark(suit, rank)?.played }
+// Current-trick card left in a shown hand (e.g. dummy's led card): highlighted, not
+// struck. Non-interactive like a played card, but keeps its normal glyph.
+function isCardCurrent(suit, rank) { return !!cardMark(suit, rank)?.current }
 function cardBadge(suit, rank) { return cardMark(suit, rank)?.badge || null }
 // Any card carrying a badge → reserve overhang room on the holding (below). Kept
 // a whole-hand flag, not per-card, because the reservation is a holding-edge
@@ -167,7 +170,8 @@ function cellFill(suit, rank) {
 function cellClass(suit, rank) {
   return {
     played: isCardPlayed(suit, rank),
-    interactive: props.clickable && !isCardPlayed(suit, rank),
+    current: isCardCurrent(suit, rank),
+    interactive: props.clickable && !isCardPlayed(suit, rank) && !isCardCurrent(suit, rank),
     'has-badge': !!cardBadge(suit, rank),
   }
 }
@@ -216,7 +220,7 @@ function hiddenMarked(suit) {
 const OVERHANG_MARGIN = 3
 
 function measure() {
-  if (!props.hand) return
+  if (!props.hand || !rootEl.value) return
   const rootStyle = getComputedStyle(rootEl.value)
   const tableScale = parseFloat(rootStyle.getPropertyValue('--table-scale')) || 1
   // Fit target = the region's ALLOCATED width (grid arranger publishes --alloc-width,
@@ -401,6 +405,17 @@ function onPopupSelect(rank) {
 .cell.played {
   opacity: 0.4;
   text-decoration: line-through;
+  cursor: default;
+  user-select: none;
+}
+/* Current-trick card left in a shown hand (e.g. dummy's led card): a light-blue
+   highlight instead of the strikethrough — it's on the table now, not spent. The
+   box-shadow pads the fill without changing the cell's box, so the fit probe (which
+   measures the un-highlighted width) stays honest. */
+.cell.current {
+  background: #bbdefb;
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px #bbdefb;
   cursor: default;
   user-select: none;
 }

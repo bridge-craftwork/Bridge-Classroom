@@ -87,6 +87,8 @@ const props = defineProps({
   showHcp: { type: Boolean, default: false },
   clickableSeat: { type: String, default: null },
   playedCards: { type: Object, default: null },
+  // Current-trick cards to HIGHLIGHT (vs playedCards, which strike through).
+  currentCards: { type: Object, default: null },
   hidePlayedCards: { type: Boolean, default: false },
   config: { type: Object, required: true },
   phase: { type: String, default: 'bidding' },
@@ -171,6 +173,10 @@ function marksFor(seat) {
   const cards = {}
   for (const code of props.playedCards?.[seat] || []) {
     cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { played: true }
+  }
+  // Current-trick cards (e.g. dummy's led card) highlight rather than strike through.
+  for (const code of props.currentCards?.[seat] || []) {
+    cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { current: true }
   }
   return { cards, activeSeat: props.clickableSeat === seat }
 }

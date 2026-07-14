@@ -343,17 +343,16 @@ export function useDealPractice() {
     return result
   })
 
-  // Cards rendered STRUCK-THROUGH in the hand: [PLAY]-directive cards (prior tricks,
-  // any seat) plus fully-shown seats' [showcards] cards (the current-trick card that
-  // left the hand). Passed to the table as `played` marks. Distinct from the centre
-  // trick (showcards + currentShowcards) — struck cards stay in the hand, never the
-  // centre; keeping them visible-but-struck preserves board size and shows history.
+  // Cards rendered STRUCK-THROUGH in the hand: [PLAY]-directive cards only — the prior,
+  // gathered tricks. Passed to the tables as `played` marks; kept visible-but-struck so
+  // the board holds its size and shows history. The CURRENT trick's card that left a
+  // shown hand (showcardsPlayedCards, e.g. dummy's led ♦5) is NOT struck — it's
+  // highlighted instead (see MainLayout's current-cards prop), reserving strikethrough
+  // for finished tricks.
   const struckCards = computed(() => {
     const out = {}
-    const sc = showcardsPlayedCards.value || {}
     for (const seat of ['N', 'E', 'S', 'W']) {
-      const codes = [...(sc[seat] || [])]
-      for (const p of playedCards.value[seat] || []) codes.push(p.suit + p.card)
+      const codes = (playedCards.value[seat] || []).map((p) => p.suit + p.card)
       if (codes.length) out[seat] = codes
     }
     return out

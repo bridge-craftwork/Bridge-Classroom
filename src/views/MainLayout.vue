@@ -127,6 +127,7 @@
               :compact="true"
               :clickableSeat="practice.hasCardChoice.value ? practice.studentSeat.value : null"
               :playedCards="practice.struckCards.value"
+              :currentCards="practice.showcardsPlayedCards.value"
               @card-click="onCardClick"
             />
             <!-- Declarer-play lessons: live card table driven by the cardplay engine -->
@@ -338,6 +339,7 @@
               :show-hcp="isDeclarerPlay ? true : (defenceScene ? false : practice.showHcp.value)"
               :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : (practice.hasCardChoice.value ? practice.studentSeat.value : null)"
               :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.struckCards.value"
+              :current-cards="isDeclarerPlay ? null : practice.showcardsPlayedCards.value"
               :hide-played-cards="isDeclarerPlay"
               :hero-seat="gridHeroSeat"
               :hero-name="firstName"
@@ -584,6 +586,7 @@ import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import DealInfo from '../components/DealInfo.vue'
 import { useArrangement } from '../composables/useArrangement.js'
+import { DEFAULT_ARRANGEMENT } from '../utils/arrangement.js'
 import a1Config from '../table-configs/a1.tableConfig.js'
 import BoardIndicator from '../components/BoardIndicator.vue'
 import StatusStrip from '../components/StatusStrip.vue'
@@ -693,10 +696,11 @@ const defenceScene = computed(() =>
   !isDeclarerPlay.value && practice.hasSteps.value && !practice.hasBidSteps.value,
 )
 // Profile-ring override indicator (grid-flip 1.6d): the avatar is green on the default
-// (prod) arrangement and orange when an override is active — keyed on PROVENANCE
-// (source ≠ default), not on 'grid', so it marks "this client is pinned to something
-// non-default" and never goes stale after the flip.
-const overrideActive = computed(() => arrangementSource.value !== 'default')
+// (prod) arrangement and orange when this client is on a NON-DEFAULT arrangement. Keyed
+// on the VALUE vs DEFAULT_ARRANGEMENT (not on `arrangementSource`, which is provenance:
+// `?arrangement=legacy` legitimately resolves source='query' yet is still the default →
+// it must read green). Comparing to the DEFAULT_ARRANGEMENT constant stays flip-safe.
+const overrideActive = computed(() => arrangement.value !== DEFAULT_ARRANGEMENT)
 const companionAuction = computed(() => defenceScene.value && hasCompletedAuction.value)
 // Compact status for the grid #nw region (BoardIndicator glyph + StatusStrip), sized to
 // the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
