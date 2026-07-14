@@ -31,6 +31,8 @@
         :density="seatDensity(seat)"
         :marks="marksFor(seat)"
         :hide-played-cards="hidePlayedCards"
+        :label-component="labelComponent"
+        :label-props="labelProps"
         @card-click="(p) => $emit('card-click', { seat, ...p })"
       />
     </div>
@@ -105,6 +107,11 @@ const props = defineProps({
   occupants: { type: Object, default: null },
   // Seat highlighted as "on turn" (auction/play), additive to clickableSeat.
   activeSeat: { type: String, default: null },
+  // Optional grabbable/droppable seat-label component + its shared props
+  // (SeatControlTable injects ManageableSeatLabel for host drag/drop + the
+  // Sit/Remove/Kick menu). null → the plain SeatChip; A1 passes neither.
+  labelComponent: { type: [Object, Function], default: null },
+  labelProps: { type: Object, default: null },
 })
 defineEmits(['card-click'])
 

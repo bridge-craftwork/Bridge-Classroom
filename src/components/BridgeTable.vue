@@ -19,6 +19,8 @@
     :declarer="declarer"
     :occupants="occupants"
     :active-seat="activeSeat"
+    :label-component="labelComponent"
+    :label-props="labelProps"
     @card-click="(p) => $emit('card-click', p)"
   >
     <template v-if="$slots.center" #center><slot name="center" /></template>
