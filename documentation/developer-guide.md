@@ -468,7 +468,7 @@ Converts CSV data to PBN format with control directives:
 | `[AUCTION off]` | Hide the auction table |
 | `[AUCTION on]` | Show the auction table |
 | `[SHOW_LEAD]` | Display opening lead in UI |
-| `[PLAY N:SK,S:H3]` | Mark cards as played (removed from display) |
+| `[PLAY N:SK,S:H3]` | Mark cards as played (struck through in the hand, kept for history) |
 | `[RESET]` | Reset hands to original (undo all plays) |
 | `[NEXT]` | End of step, show Next button |
 | `[ROTATE]` | Like NEXT but also rotates table view |

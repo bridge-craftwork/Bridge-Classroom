@@ -29,8 +29,8 @@ The app is a **dumb renderer**: it shows exactly what your directives say, with 
 fallbacks and no inference from lesson type. So the burden is on the PBN to describe
 the *complete* visible state. In particular, for **play lessons**: every card your
 prose says has been played must be accounted for by a directive — `[showcards]` puts a
-card **on the table** (the current, in-progress trick), and `[PLAY]` **removes** a card
-from a hand (a card played to an *earlier*, gathered trick). If your prose says a whole
+card **on the table** (the current, in-progress trick), and `[PLAY]` **strikes through** a
+card in a hand (a card played to an *earlier*, gathered trick — kept visible for history). If your prose says a whole
 trick has been played, all four of that trick's cards must be accounted for. If you
 skip this, the table silently shows a stale or partial position that contradicts your
 own text.
@@ -121,8 +121,8 @@ control tags is a display-only deal (no interaction).
 | Directive | Syntax | Effect |
 |---|---|---|
 | `[showcards SEAT:CARD,…]` | `[showcards N:D5]` | **Current trick.** Puts the card(s) on the table. If the seat is a *hidden* hand (e.g. the opening leader), the card floats in the trick as a lone played card. If the seat is a *shown* hand (e.g. **dummy** leading, or the hero's own led card), the card is **struck from that hand's display and placed on the table**. |
-| `[PLAY SEAT:CARD,…]` | `[PLAY N:SQ,E:S8,S:S3]` | **Earlier tricks.** Marks card(s) as played and **removes them from the hand display**. They are **not** shown on the table (the trick is gathered). Cumulative across steps. |
-| `[RESET]` | `[RESET]` | Restore the original deal — undo all `[PLAY]` removals; show every hand's full 13 cards again. |
+| `[PLAY SEAT:CARD,…]` | `[PLAY N:SQ,E:S8,S:S3]` | **Earlier tricks.** Marks card(s) as played; they render **struck-through in the hand** (kept for history — the board keeps its full size) and are **not** placed on the table (the trick is gathered). Cumulative across steps. |
+| `[RESET]` | `[RESET]` | Restore the original deal — clear all `[PLAY]` marks; every hand's cards render un-struck again. |
 
 ### 4.4 Commentary
 
@@ -159,12 +159,14 @@ seat order of play**.
   strikes the card from dummy's displayed hand and places it on the table. Leaving it
   out is the single most common defect (see §6).
 
-### R-CP3 — Earlier completed tricks → `[PLAY]` (removed from hands)
+### R-CP3 — Earlier completed tricks → `[PLAY]` (struck-through in hands)
 
-Cards played to **prior, gathered tricks** are removed from their hands with `[PLAY]`
-and are **not** placed on the table. This keeps each hand's displayed cards correct
-(you must not see, in a hand, a card the prose already spent) without cluttering the
-table with cards from a finished trick.
+Cards played to **prior, gathered tricks** are marked with `[PLAY]`; they render
+**struck-through in their hand** and are **not** placed on the table. The struck card
+stays visible, so the board keeps its full size and the played history is legible —
+the student can see which cards the prose already spent — without cluttering the table
+with cards from a finished trick. (`[PLAY]` does **not** remove the card from the hand;
+live *declarer* play removes cards through a separate engine path, not `[PLAY]`.)
 
 ### R-CP4 — A whole played trick is accounted for in all four hands
 
@@ -205,9 +207,9 @@ beetle, 2026-07-13; routed as Baker-Bridge#12.)
 
 — dummy's ♦5 (a card from the shown North hand) is struck from dummy and placed on the
 table (R-CP2); trick 1 is history, narrated in prose, and its cards need not sit on the
-table. Optionally, if you want trick 1's cards visibly removed from the hands rather
-than merely un-mentioned, add `[PLAY …]` for them (R-CP3/R-CP4) — but the card the
-student responds to, the ♦5, must be on the table either way.
+table. Optionally, if you want trick 1's cards visibly struck through in the hands
+rather than merely un-mentioned, add `[PLAY …]` for them (R-CP3/R-CP4) — but the card
+the student responds to, the ♦5, must be on the table either way.
 
 The renderer already supports a card led from dummy; the app source even annotates this
 exact case as *"a lesson-content gap, not an app one"*
@@ -222,8 +224,8 @@ exact case as *"a lesson-content gap, not an app one"*
   `[PLAY]` for the earlier ones.
 - **Omitting a dummy-led card** because dummy is already shown. A shown seat still needs
   `[showcards N:<card>]` to move that card onto the table.
-- **Leaving spent cards in hands.** Prose says a card was played, but no `[PLAY]`/
-  `[showcards]` removes it, so it still appears in the hand.
+- **Unmarked spent cards.** Prose says a card was played, but no `[PLAY]`/`[showcards]`
+  marks it, so it renders as a normal (un-struck, playable-looking) card in the hand.
 - **Half a trick.** Narrating a complete trick but only expressing one or two of its four
   cards (R-CP4).
 - **Relying on lesson type.** Assuming the app will "know" this is second-hand play and

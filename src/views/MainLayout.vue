@@ -126,7 +126,7 @@
               :showHcp="practice.showHcp.value"
               :compact="true"
               :clickableSeat="practice.hasCardChoice.value ? practice.studentSeat.value : null"
-              :playedCards="practice.showcardsPlayedCards.value"
+              :playedCards="practice.struckCards.value"
               @card-click="onCardClick"
             />
             <!-- Declarer-play lessons: live card table driven by the cardplay engine -->
@@ -337,7 +337,7 @@
               :hidden-seats="gridHiddenSeats"
               :show-hcp="isDeclarerPlay ? true : (defenceScene ? false : practice.showHcp.value)"
               :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : (practice.hasCardChoice.value ? practice.studentSeat.value : null)"
-              :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.showcardsPlayedCards.value"
+              :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.struckCards.value"
               :hide-played-cards="isDeclarerPlay"
               :hero-seat="gridHeroSeat"
               :hero-name="firstName"
