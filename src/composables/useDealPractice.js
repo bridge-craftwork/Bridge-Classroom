@@ -40,6 +40,7 @@ export function useDealPractice() {
   // Card choice sub-state (for choose-card steps)
   const cardChoiceState = reactive({
     answered: {},         // { stepIndex: true }
+    chosen: {},           // { stepIndex: 'HA' } — the card the student actually played
     wrongCard: null,
     correctCard: null
   })
@@ -206,13 +207,27 @@ export function useDealPractice() {
     return allSeats
   })
 
+  // Steps with the student's answered [choose-card] folded in as an implicit
+  // [showcards STUDENT:card] on that step — so the chosen card flows through the SAME
+  // showcards wiring (centre trick + in-hand highlight) as an explicit directive, with
+  // no special-casing downstream (2026-07-14 report). Keyed on cardChoiceState.chosen so
+  // it clears on reset/Back with the rest of the choice state.
+  const stepsWithChoices = computed(() => {
+    const list = steps.value
+    return list.map((step, i) => {
+      const chosen = cardChoiceState.chosen[i]
+      if (!chosen || !step?.chooseCard) return step
+      return { ...step, showcards: { ...(step.showcards || {}), [studentSeat.value]: [chosen] } }
+    })
+  })
+
   // Showcards - specific cards to show from otherwise hidden hands
   // Also tracks showcards for fully-shown seats (these represent already-played cards)
   const currentShowcards = computed(() => {
     if (!currentDeal.value || !hasSteps.value) return null
 
     let showcards = {}
-    const stepsList = steps.value
+    const stepsList = stepsWithChoices.value
 
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
@@ -247,7 +262,7 @@ export function useDealPractice() {
 
     let showcards = {}
     let shownSeats = new Set()
-    const stepsList = steps.value
+    const stepsList = stepsWithChoices.value
 
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
@@ -674,8 +689,10 @@ export function useDealPractice() {
       recordBoardObservation(false)
     }
 
-    // Mark step as answered
+    // Mark step as answered, and remember the card played (drives the implicit
+    // showcards — the chosen card joins the trick + highlights in-hand).
     cardChoiceState.answered[stepIdx] = true
+    cardChoiceState.chosen[stepIdx] = chosen
 
     if (isCorrect) {
       cardChoiceState.wrongCard = null
@@ -781,9 +798,11 @@ export function useDealPractice() {
       const prevIdx = currentStepIndex.value - 1
       const prevStep = steps.value[prevIdx]
 
-      // If going back to a card-choice step, clear its answered state
+      // If going back to a card-choice step, clear its answered + chosen state so the
+      // student re-chooses fresh (and the implicit showcards of the old card un-shows).
       if (cardChoiceState.answered[prevIdx]) {
         delete cardChoiceState.answered[prevIdx]
+        delete cardChoiceState.chosen[prevIdx]
       }
 
       // If going back to a bid step, rewind the auction
@@ -893,6 +912,7 @@ export function useDealPractice() {
 
     // Reset card choice sub-state
     cardChoiceState.answered = {}
+    cardChoiceState.chosen = {}
     cardChoiceState.wrongCard = null
     cardChoiceState.correctCard = null
 
