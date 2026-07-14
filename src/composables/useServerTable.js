@@ -277,6 +277,12 @@ export function useServerTable() {
   const botThinking = computed(() => {
     const seat = nextToAct.value
     if (!seat || phase.value === 'complete') return false
+    // A bot is "thinking" only when the LOCAL human isn't the one to play. When
+    // you're declarer playing from a bot-occupied DUMMY (or otherwise control the
+    // on-turn seat), clickableSeat points at it and YOU play — not a bot. Without
+    // this guard the centre showed "Bot thinking…" while it was actually the human
+    // declarer's turn to play dummy, reading as a stuck hand (2026-07-14 report).
+    if (clickableSeat.value) return false
     return seats.value[seat]?.kind === 'bot'
   })
 
