@@ -435,6 +435,10 @@
 
           <div v-else class="bp-table-wrap">
             <BridgeTable
+              arrangement="grid"
+              :table-config="tableConfig"
+              :phase="(localCenterSlot === 'trick-area' || localCenterSlot === 'review') ? 'play' : 'bidding'"
+              :hero-seat="yourSeat"
               :hands="visibleHands"
               :hidden-seats="hiddenSeats"
               :show-hcp="true"
@@ -444,6 +448,19 @@
               :hide-played-cards="cardplayHidePlayed"
               @card-click="onCardClick"
             >
+              <!-- NW: board status (a1-style BoardIndicator glyph + StatusStrip). -->
+              <template #nw>
+                <div class="tv-grid-nw">
+                  <BoardIndicator
+                    :board-number="currentDeal.displayNumber || currentDeal.boardNumber || 1"
+                    :dealer="currentDeal.dealer || null"
+                    :vulnerable="currentDeal.vulnerable || null"
+                    :size="A1_BOARD_SIZE"
+                  />
+                  <StatusStrip v-if="localCenterSlot === 'trick-area' || localCenterSlot === 'review'" :status="localStatus" :show-vul="false" />
+                </div>
+              </template>
+              <!-- CENTER: live auction (bidding) / trick (play). -->
               <template #center>
                 <TrickArea
                   v-if="localCenterSlot === 'trick-area' || localCenterSlot === 'review'"
@@ -454,17 +471,8 @@
                   :bot-loading="cardplay.botLoading.value"
                   :bot-name="botName"
                 />
-                <div v-else class="bp-center">
-                  <StatusStrip v-if="localStatusSlot === 'status-strip'" :status="localStatus" />
-                  <div v-if="auctionLoading" class="bp-loading">Computing&hellip;</div>
-                </div>
-              </template>
-            </BridgeTable>
-
-            <div class="bp-right-rail">
-              <div class="bp-card">
-                <h3>Auction</h3>
                 <AuctionTable
+                  v-else
                   :bids="bids"
                   :dealer="currentDeal.dealer"
                   :current-bid-index="bids.length"
@@ -475,16 +483,36 @@
                   :allow-divergence-toggle="!auctionLoading"
                   @toggle-bid="toggleDivergedBid"
                 />
-              </div>
-
-              <div v-if="localActionSlot === 'bidding-box' && !auctionLoading" class="bp-card">
-                <h3>Your bid</h3>
+              </template>
+              <!-- NE: completed auction pinned during play. -->
+              <template v-if="localCenterSlot === 'trick-area' || localCenterSlot === 'review'" #ne>
+                <AuctionTable
+                  :bids="bids"
+                  :dealer="currentDeal.dealer"
+                  :current-bid-index="bids.length"
+                  :wrong-bid-indices="wrongIndicesArray"
+                  :meanings="meanings"
+                  :diverged-bids="divergedBids"
+                  :show-turn-indicator="false"
+                  :allow-divergence-toggle="false"
+                />
+              </template>
+              <!-- SE: bidding box on your turn (off-turn cue stays in the rail). -->
+              <template v-if="localActionSlot === 'bidding-box' && !auctionLoading" #se>
                 <BiddingBox
                   :last-bid="lastNonPassNonDouble"
                   :can-double="canDouble"
                   :can-redouble="canRedouble"
                   @bid="onUserBid"
                 />
+              </template>
+            </BridgeTable>
+
+            <div class="bp-right-rail">
+              <!-- Auction + bidding box now live in the grid (centre/NE, and SE). The
+                   rail keeps the cardplay controls + the off-turn bidding cue. -->
+              <div v-if="localActionSlot !== 'bidding-box' && !auctionComplete && !auctionLoading" class="bp-card bp-waiting">
+                Waiting for the auction…
               </div>
 
               <div v-if="cardplayPhase === 'playing'" class="bp-card bp-cardplay-card">
