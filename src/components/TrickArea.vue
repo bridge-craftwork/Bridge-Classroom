@@ -69,8 +69,12 @@ function suitSymbol(suit) {
   return SUIT_SYMBOLS[suit] || suit
 }
 
+// Key on the suit's first letter so both formats colour correctly: the declarer
+// engine passes single letters ('H'/'D'), the defense grid trick passes full names
+// ('hearts'/'diamonds', via parseCardCode) — the latter was rendering red suits black.
 function suitClass(suit) {
-  return (suit === 'H' || suit === 'D') ? 'suit-red' : 'suit-black'
+  const s = String(suit)[0]?.toUpperCase()
+  return (s === 'H' || s === 'D') ? 'suit-red' : 'suit-black'
 }
 
 function formatRank(rank) {
