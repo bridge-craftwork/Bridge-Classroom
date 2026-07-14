@@ -17,6 +17,8 @@
     :hero-seat="heroSeat"
     :hero-name="heroName"
     :declarer="declarer"
+    :occupants="occupants"
+    :active-seat="activeSeat"
     @card-click="(p) => $emit('card-click', p)"
   >
     <template v-if="$slots.center" #center><slot name="center" /></template>

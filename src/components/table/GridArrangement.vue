@@ -24,7 +24,8 @@
       <SeatPanel
         :hand="hands[seat]"
         :seat="seat"
-        :name="seatBadge(seat)"
+        :name="seatName(seat)"
+        :presence="occPresence(seat)"
         :show-hcp="showHcp"
         :clickable="clickableSeat === seat"
         :density="seatDensity(seat)"
@@ -96,6 +97,14 @@ const props = defineProps({
   heroName: { type: String, default: null },
   // Declarer seat (played/reviewed deals) — names declarer + its dummy (item 5).
   declarer: { type: String, default: null },
+  // Per-seat occupants for multiplayer tables: { N: { name, connected }, ... }.
+  // When provided (server/local table), the occupant name (a player's name, or a
+  // bot label like "BBA+RulesBot") REPLACES the config-role badge — the table
+  // shows WHO holds the seat, not a lesson role. A1 passes no occupants, so the
+  // role-based seatBadge path is untouched there.
+  occupants: { type: Object, default: null },
+  // Seat highlighted as "on turn" (auction/play), additive to clickableSeat.
+  activeSeat: { type: String, default: null },
 })
 defineEmits(['card-click'])
 
@@ -178,7 +187,7 @@ function marksFor(seat) {
   for (const code of props.currentCards?.[seat] || []) {
     cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { current: true }
   }
-  return { cards, activeSeat: props.clickableSeat === seat }
+  return { cards, activeSeat: props.clickableSeat === seat || props.activeSeat === seat }
 }
 
 // Bidding-scene vertical model (grid-arranger-spec §1, amended no-reflow rule):
@@ -259,6 +268,21 @@ function seatBadge(seat) {
   const key = role === 'opponent' ? 'opponents' : role
   const mode = props.config.seatBadges?.[key] || 'off'
   return mode === 'label' ? 'Partner' : mode === 'name' ? firstNameOf(props.heroName) : null
+}
+// Seat label: on a multiplayer table the OCCUPANT (player name / bot label) wins
+// over the config-role badge — the table names WHO holds each seat. A1 passes no
+// occupants, so this falls straight through to the role-based seatBadge.
+function seatName(seat) {
+  const occ = props.occupants?.[seat]
+  return (occ && occ.name) || seatBadge(seat)
+}
+// Presence dot / badge greying for a HUMAN occupant (boolean `connected`); bots
+// (no `connected`) and A1 (no occupants) get null → no dot.
+function occPresence(seat) {
+  const o = props.occupants?.[seat]
+  return o && o.name && typeof o.connected === 'boolean'
+    ? (o.connected ? 'connected' : 'disconnected')
+    : null
 }
 
 // The seat reserve for THIS deal: the widest actual hand's natural row, not the
