@@ -305,7 +305,11 @@ export function useDealPractice() {
     return hand
   }
 
-  // Hands with played cards removed
+  // Hands as dealt. [PLAY]-directive cards are NOT removed — they stay in the hand and
+  // render STRUCK-THROUGH (via `struckCards` → `played` marks), so a defense scene keeps
+  // full-size boards and a visible history of the prior tricks instead of shrinking as
+  // cards vanish (2026-07-13, Rick). Live declarer play removes cards through a separate
+  // path (the cardplay engine + `hidePlayedCards`), not this computed.
   const hands = computed(() => {
     if (!currentDeal.value?.hands) return {}
 
@@ -335,15 +339,24 @@ export function useDealPractice() {
         diamonds: [...(hand.diamonds || [])],
         clubs: [...(hand.clubs || [])]
       }
-      for (const played of playedCards.value[seat]) {
-        const suitName = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }[played.suit]
-        if (suitName && result[seat][suitName]) {
-          const idx = result[seat][suitName].indexOf(played.card)
-          if (idx !== -1) result[seat][suitName].splice(idx, 1)
-        }
-      }
     }
     return result
+  })
+
+  // Cards rendered STRUCK-THROUGH in the hand: [PLAY]-directive cards (prior tricks,
+  // any seat) plus fully-shown seats' [showcards] cards (the current-trick card that
+  // left the hand). Passed to the table as `played` marks. Distinct from the centre
+  // trick (showcards + currentShowcards) — struck cards stay in the hand, never the
+  // centre; keeping them visible-but-struck preserves board size and shows history.
+  const struckCards = computed(() => {
+    const out = {}
+    const sc = showcardsPlayedCards.value || {}
+    for (const seat of ['N', 'E', 'S', 'W']) {
+      const codes = [...(sc[seat] || [])]
+      for (const p of playedCards.value[seat] || []) codes.push(p.suit + p.card)
+      if (codes.length) out[seat] = codes
+    }
+    return out
   })
 
   // Show HCP?
@@ -965,6 +978,7 @@ export function useDealPractice() {
     hands,
     showHcp,
     showcardsPlayedCards,
+    struckCards,
     // All showcards (each seat's shown/played cards), incl. played-card-only seats
     // (E/S in a defence scene). The grid arranger uses this to render those cards as a
     // centre trick and hide the played-card-only seats, instead of scattering them as
