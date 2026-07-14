@@ -13,9 +13,9 @@
   value is remembered. One Submit does the whole thing and closes to a toast.
 -->
 <template>
-  <div class="br-overlay" @click.self="onCancel">
-    <div class="br-dialog" role="dialog" aria-labelledby="br-title">
-      <div class="br-header">
+  <div class="br-overlay">
+    <div ref="dialogEl" class="br-dialog" :class="{ dragging }" :style="dialogStyle" role="dialog" aria-labelledby="br-title">
+      <div class="br-header br-drag-handle" @pointerdown="onDragStart">
         <h2 id="br-title" class="br-title">{{ kind === 'feature' ? '💡 Request a feature' : '🐞 Report a bug' }}</h2>
         <button class="br-x" aria-label="Close" @click="onCancel">×</button>
       </div>
@@ -313,6 +313,45 @@ function onCancel() {
   emit('close')
 }
 
+// ── Drag: move the panel by its header so the reporter can see the display
+// underneath while composing (2026-07-14 report). Position is null until first
+// dragged (the panel stays flex-centred); then it's pinned as fixed left/top,
+// clamped to the viewport.
+const dialogEl = ref(null)
+const pos = ref(null)
+const dragging = ref(false)
+let dragOffset = { x: 0, y: 0 }
+const dialogStyle = computed(() =>
+  pos.value ? { position: 'fixed', left: pos.value.left + 'px', top: pos.value.top + 'px', margin: 0 } : null
+)
+function onDragStart(e) {
+  if (e.target.closest('.br-x')) return // don't start a drag from the close button
+  const rect = dialogEl.value.getBoundingClientRect()
+  if (!pos.value) pos.value = { left: rect.left, top: rect.top }
+  dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  dragging.value = true
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', onDragEnd)
+  e.preventDefault()
+}
+function onDragMove(e) {
+  const w = dialogEl.value.offsetWidth
+  const h = dialogEl.value.offsetHeight
+  pos.value = {
+    left: Math.max(0, Math.min(e.clientX - dragOffset.x, window.innerWidth - w)),
+    top: Math.max(0, Math.min(e.clientY - dragOffset.y, window.innerHeight - h)),
+  }
+}
+function onDragEnd() {
+  dragging.value = false
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', onDragEnd)
+}
+onUnmounted(() => {
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', onDragEnd)
+})
+
 // ── identity helpers ────────────────────────────────────────────────────────
 function defaultName() {
   const u = currentUser.value
@@ -338,13 +377,16 @@ function saveStr(key, val) { try { localStorage.setItem(key, val) } catch { /* i
   position: fixed;
   inset: 0;
   z-index: 2147483001;
-  background: rgba(0, 0, 0, 0.4);
+  /* No dimming backdrop, and pointer-transparent — the reporter can see (and use)
+     the display underneath while composing; only the floating panel captures events. */
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
 }
 .br-dialog {
+  pointer-events: auto;
   width: 460px;
   max-width: 100%;
   max-height: calc(100vh - 48px);
@@ -353,6 +395,7 @@ function saveStr(key, val) { try { localStorage.setItem(key, val) } catch { /* i
   border-radius: var(--radius-card, 8px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
+.br-dialog.dragging { user-select: none; }
 .br-header {
   display: flex;
   align-items: center;
@@ -360,6 +403,9 @@ function saveStr(key, val) { try { localStorage.setItem(key, val) } catch { /* i
   padding: 10px 12px 10px 16px;
   background: var(--green-dark, #2d6a4f);
 }
+/* Drag handle: the title bar moves the panel; the × stays a normal button. */
+.br-drag-handle { cursor: move; touch-action: none; }
+.br-drag-handle .br-x { cursor: pointer; }
 .br-title {
   margin: 0;
   font-family: var(--font-heading, 'Source Serif 4', serif);
