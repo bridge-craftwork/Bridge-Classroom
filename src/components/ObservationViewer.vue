@@ -4,7 +4,7 @@
     :class="{ 'obs-viewer--mobile': isMobile }"
     :style="isMobile ? { zIndex: zIndex } : { left: posX + 'px', top: posY + 'px', zIndex: zIndex }"
     @mousedown.prevent="startDrag"
-    @touchstart.prevent="startDrag"
+    @touchstart="startDrag"
   >
 
     <!-- ── Header ── -->
@@ -292,9 +292,15 @@ function getClientXY(e) {
 
 function startDrag(e) {
   if (isMobile.value) {
-    e.stopPropagation()
+    // Mobile: no dragging — let the touch fall through to native scrolling.
+    // (Do NOT preventDefault here; `touch-action: pan-y` + this keep the
+    // full-screen viewer scrollable.)
     return
   }
+  // Desktop only: suppress text selection / default drag while repositioning
+  // the floating window. On touch this used to be a template `.prevent`, which
+  // also blocked scroll on mobile — hence moved here, behind the mobile guard.
+  e.preventDefault()
   dragging = true
   const { x, y } = getClientXY(e)
   dragOffsetX = x - posX.value
@@ -541,6 +547,9 @@ function parseSuits(hand) {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* Base .obs-viewer sets `touch-action: none` for desktop drag; re-enable
+     vertical panning so the full-screen mobile viewer scrolls by touch. */
+  touch-action: pan-y;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
