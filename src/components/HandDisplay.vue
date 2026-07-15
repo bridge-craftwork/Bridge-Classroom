@@ -135,7 +135,14 @@ const totalCards = computed(() => {
   if (!props.hand) return 0
   return suits.reduce((sum, suit) => sum + (props.hand[suit]?.length || 0), 0)
 })
-const isPartialHand = computed(() => totalCards.value > 0 && totalCards.value < 5)
+// A "partial" hand drops void suits' rows so a tiny holding renders compactly.
+// But during LIVE PLAY (`hidePlayedCards`) the hand started full and is depleting,
+// and dropping rows as suits are exhausted makes it shrink top/bottom through the
+// deal (2026-07-15 report) — the vertical twin of the width shrink. Keep the full
+// 4-row structure in play so the hand's height sticks from the start of the deal
+// (exhausted suits show an empty label row, as dealt voids already do at 5+ cards).
+const isPartialHand = computed(() =>
+  !props.hidePlayedCards && totalCards.value > 0 && totalCards.value < 5)
 
 function hasSuitCards(suit) {
   return props.hand && props.hand[suit] && props.hand[suit].length > 0
