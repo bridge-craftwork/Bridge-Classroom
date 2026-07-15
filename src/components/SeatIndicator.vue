@@ -6,7 +6,11 @@
     :title="titleText"
   >
     <span class="si-badge">{{ seat }}</span>
-    <span v-if="display" class="si-name">{{ display }}</span>
+    <span
+      v-if="display"
+      class="si-name"
+      :style="{ fontSize: `calc(14px * var(--table-scale) * ${nameScale})` }"
+    >{{ display }}</span>
     <span class="si-adorn">
       <span
         v-if="connected === false"
@@ -47,21 +51,30 @@ const props = defineProps({
 const root = ref(null)
 const avail = ref(9999) // px available to the name, measured from the container
 
-// Build the fallback ladder (widest → narrowest) for a name string.
-function forms(raw) {
+// Build the fallback ladder (widest → narrowest), tuned per occupant kind so we
+// don't waste room on last initials nobody needs:
+//   • bot / single-token handle ("BBA+Rules")  → the whole handle (font-shrinks
+//        to fit); ellipsis only as a last resort.
+//   • you (your own seat / the host)            → your full name, then your FIRST
+//        name only — you don't need a last initial to recognise yourself.
+//   • everyone else                             → "First L." (compact, privacy
+//        friendly), then first name.
+// The trailing rungs trim the first name with an ellipsis as a final resort.
+function forms(raw, you) {
   const name = (raw || '').trim()
   if (!name) return props.emptyLabel ? [props.emptyLabel] : []
   const words = name.split(/\s+/)
   const first = words[0]
-  const out = [name] // First Last (or the whole handle)
-  if (words.length > 1) {
-    const lastInitial = words[words.length - 1][0]
-    out.push(`${first} ${lastInitial}.`) // First L.
-    out.push(first) // First
+  const trimFirst = []
+  for (let k = first.length - 1; k >= 2; k--) trimFirst.push(first.slice(0, k) + '…')
+  if (words.length === 1) {
+    const trimHandle = []
+    for (let k = name.length - 1; k >= 2; k--) trimHandle.push(name.slice(0, k) + '…')
+    return [name, ...trimHandle]
   }
-  // Trimmed first name: progressively shorter with an ellipsis, down to 2 chars.
-  for (let k = first.length - 1; k >= 2; k--) out.push(first.slice(0, k) + '…')
-  return out
+  if (you) return [name, first, ...trimFirst] // full name → first name
+  const lastInitial = words[words.length - 1][0]
+  return [`${first} ${lastInitial}.`, first, ...trimFirst] // First L. → first
 }
 
 // Canvas text measurement using the name span's real font (no reflow thrash).
@@ -74,18 +87,45 @@ function measure(text, font) {
 
 const nameFont = ref('600 14px sans-serif')
 function readFont() {
-  const el = root.value?.querySelector('.si-name')
-  if (el) nameFont.value = getComputedStyle(el).font || nameFont.value
+  const host = root.value
+  const el = host?.querySelector('.si-name')
+  if (!el || !host) return
+  const cs = getComputedStyle(el)
+  // Always measure at the BASE size, WITHOUT the per-name fit scale we apply
+  // inline — otherwise the applied scale would feed back into the measurement.
+  // Mirrors `.si-name { font-size: calc(14px * var(--table-scale)) }`; keep the
+  // 14 in sync with that rule.
+  const ts = parseFloat(getComputedStyle(host).getPropertyValue('--table-scale')) || 1
+  nameFont.value = `${cs.fontWeight || '600'} ${14 * ts}px ${cs.fontFamily || 'sans-serif'}`
 }
 
-// Pick the widest ladder form that fits the available width; '' = badge only.
-const display = computed(() => {
-  const ladder = forms(props.name)
+// A name may shrink to this fraction of its base size to fit BEFORE we drop to a
+// shorter ladder rung — i.e. "reduce the font before truncating". Kept modest so
+// names stay legible. This never touches card/panel sizing (the arranger owns
+// that): a very long name shrinks/degrades, it does not make the hand narrower.
+const NAME_MIN_SCALE = 0.72
+
+// Walk the ladder widest→narrowest and take the first rung that fits at a font
+// scale ≥ the floor. So a name that's only a little too wide is font-shrunk in
+// place (bot handles, the host's full name); one that's far too wide drops to a
+// shorter rung instead of becoming tiny.
+const fit = computed(() => {
+  const ladder = forms(props.name, props.you)
+  if (!ladder.length) return { text: '', scale: 1 }
+  const room = avail.value
   for (const form of ladder) {
-    if (measure(form, nameFont.value) <= avail.value) return form
+    const w = measure(form, nameFont.value)
+    if (w <= 0) return { text: form, scale: 1 }
+    const needed = room / w
+    if (needed >= 1) return { text: form, scale: 1 }
+    if (needed >= NAME_MIN_SCALE) return { text: form, scale: needed }
   }
-  return ''
+  // Even the narrowest rung won't fit at the floor — show it shrunk (clips via
+  // overflow), still better than dropping to the bare badge.
+  return { text: ladder[ladder.length - 1], scale: NAME_MIN_SCALE }
 })
+const display = computed(() => fit.value.text)
+const nameScale = computed(() => fit.value.scale)
 
 const titleText = computed(() => {
   const n = (props.name || '').trim()

@@ -10,6 +10,7 @@
       :seat="seat"
       :name="name"
       :turn="turn"
+      :you="you"
       align="start"
       :connected="presence === 'connected' ? true : presence === 'disconnected' ? false : null"
     >
@@ -49,6 +50,9 @@ const props = defineProps({
   // Cards left, shown when the hand is hidden. null when a hand is displayed.
   cardCount: { type: Number, default: null },
   compact: { type: Boolean, default: false },
+  // This seat belongs to the viewer (host / your own seat) → the name ladder
+  // shows your full name then your first name, and highlights it as "you".
+  you: { type: Boolean, default: false },
 })
 
 const label = computed(() => props.name || getSeatName(props.seat))
