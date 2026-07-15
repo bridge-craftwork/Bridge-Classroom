@@ -13,7 +13,7 @@
       </div>
 
       <!-- Scatterplot chart -->
-      <svg :viewBox="`0 0 ${svgW} ${svgH}`" width="100%" :height="svgH" class="details-chart">
+      <svg :viewBox="`0 0 ${svgW} ${svgH}`" width="100%" class="details-chart">
         <!-- Alternating row backgrounds -->
         <rect
           v-for="(dn, i) in boardNums" :key="'bg-' + dn"
@@ -666,6 +666,13 @@ function formatTime(ts) {
 
 .details-chart {
   display: block;
+  /* Derive height from the viewBox aspect ratio instead of a fixed `svgH` px.
+     With `width: 100%` + a fixed height, a narrow phone scales the viewBox down
+     to fit the width and letterboxes it vertically inside the tall box — the
+     big gap above the chart. `height: auto` makes the element track the
+     width-scaled content, so no gap (desktop is unchanged: panel width ≈ svgW). */
+  width: 100%;
+  height: auto;
 }
 
 .obs-dot {
