@@ -81,8 +81,9 @@ function handleContinue() {
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   z-index: 2000;
   padding: 20px;
 }
@@ -92,6 +93,7 @@ function handleContinue() {
   border-radius: 16px;
   max-width: 480px;
   width: 100%;
+  margin: auto;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }

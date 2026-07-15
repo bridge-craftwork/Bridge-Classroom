@@ -135,6 +135,7 @@ function replay() {
   display: flex;
   align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   padding: 4vh 16px;
   box-sizing: border-box;
   z-index: 60;
@@ -145,7 +146,7 @@ function replay() {
   display: flex;
   flex-direction: column;
   width: min(560px, 94vw);
-  max-height: 92vh;
+  max-height: 92dvh;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);

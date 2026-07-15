@@ -346,7 +346,7 @@ onMounted(loadList)
 .modal-overlay {
   position: fixed; inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: flex-start; justify-content: center; overflow-y: auto;
   z-index: 2100; padding: 20px;
 }
 
@@ -356,6 +356,7 @@ onMounted(loadList)
   padding: 24px 28px;
   max-width: 460px;
   width: 100%;
+  margin: auto;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
 }
 

@@ -260,7 +260,8 @@ function formatLessonName(folderName) {
   border-radius: 12px;
   max-width: 700px;
   width: 100%;
-  max-height: 90vh;
+  margin: auto;
+  max-height: 90dvh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
@@ -618,7 +619,7 @@ function formatLessonName(folderName) {
 /* Responsive adjustments */
 @media (max-width: 600px) {
   .accomplishments-view {
-    max-height: 100vh;
+    max-height: 100dvh;
     border-radius: 0;
   }
 

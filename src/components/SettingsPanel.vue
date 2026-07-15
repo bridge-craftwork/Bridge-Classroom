@@ -339,8 +339,9 @@ function formatDate(isoString) {
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   z-index: 1000;
   padding: 20px;
 }
@@ -350,7 +351,8 @@ function formatDate(isoString) {
   border-radius: 12px;
   max-width: 500px;
   width: 100%;
-  max-height: 90vh;
+  margin: auto;
+  max-height: 90dvh;
   overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
@@ -603,7 +605,7 @@ function formatDate(isoString) {
 
 @media (max-width: 480px) {
   .settings-panel {
-    max-height: 100vh;
+    max-height: 100dvh;
     border-radius: 0;
   }
 

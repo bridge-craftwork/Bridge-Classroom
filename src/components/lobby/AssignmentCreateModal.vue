@@ -192,8 +192,9 @@ onMounted(async () => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   z-index: 2000;
   padding: 20px;
 }
@@ -203,6 +204,9 @@ onMounted(async () => {
   border-radius: var(--radius-card, 10px);
   max-width: 500px;
   width: 100%;
+  margin: auto;
+  max-height: 90dvh;
+  overflow-y: auto;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
 }
 

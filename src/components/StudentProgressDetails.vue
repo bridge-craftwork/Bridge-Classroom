@@ -608,8 +608,9 @@ function formatTime(ts) {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   z-index: 1100;
   padding: 20px;
 }
@@ -621,7 +622,8 @@ function formatTime(ts) {
   padding: 24px 24px 20px;
   max-width: 740px;
   width: 95vw;
-  max-height: 90vh;
+  margin: auto;
+  max-height: 90dvh;
   overflow: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }

@@ -726,7 +726,7 @@ const isGamePicked = (g) => pool.value.some((r) => sameRef(r, clubGameRef(g)))
 }
 .dsp--compact {
   width: min(560px, 94vw);
-  max-height: 88vh;
+  max-height: 88dvh;
 }
 .dsp--full {
   width: 100%;
