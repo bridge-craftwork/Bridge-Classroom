@@ -341,10 +341,14 @@
               <input type="checkbox" v-model="playCardplay">
               Play the hand after bidding
             </label>
-            <label v-if="!EMBEDDED && playCardplay" class="bp-bot-label">
-              Bot:
+            <label
+              v-if="!EMBEDDED && playCardplay"
+              class="bp-bot-label"
+              title="The bots always BID with BBA — this picks the CARDPLAY bot only."
+            >
+              Play bot:
               <select class="bp-bot-select" v-model="cardplayBotName">
-                <option v-for="b in availableBots" :key="b" :value="b">{{ b }}</option>
+                <option v-for="b in availableBots" :key="b" :value="b">{{ botDisplayName(b) }}</option>
               </select>
             </label>
             <button
@@ -409,6 +413,7 @@
               :hero-seat="yourSeat"
               :hands="visibleHands"
               :hidden-seats="hiddenSeats"
+              :occupants="soloOccupants"
               :show-hcp="true"
               :show-total-points="true"
               :clickable-seat="cardplay.clickableSeat.value"
@@ -465,12 +470,15 @@
                   :allow-divergence-toggle="false"
                 />
               </template>
-              <!-- SE: bidding box on your turn (off-turn cue stays in the rail). -->
-              <template v-if="localActionSlot === 'bidding-box' && !auctionLoading" #se>
+              <!-- SE: bidding box for the whole auction — stays visible but
+                   DISABLED off-turn / while computing, so the layout doesn't
+                   collapse to a rail "waiting" message. -->
+              <template v-if="!auctionComplete" #se>
                 <BiddingBox
                   :last-bid="lastNonPassNonDouble"
                   :can-double="canDouble"
                   :can-redouble="canRedouble"
+                  :disabled="localActionSlot !== 'bidding-box' || auctionLoading"
                   @bid="onUserBid"
                 />
               </template>
@@ -479,9 +487,6 @@
             <div class="bp-right-rail">
               <!-- Auction + bidding box now live in the grid (centre/NE, and SE). The
                    rail keeps the cardplay controls + the off-turn bidding cue. -->
-              <div v-if="localActionSlot !== 'bidding-box' && !auctionComplete && !auctionLoading" class="bp-card bp-waiting">
-                Waiting for the auction…
-              </div>
               <div v-if="auctionLoading && !auctionComplete" class="bp-card bp-waiting">
                 Computing&hellip;
               </div>
@@ -873,6 +878,29 @@ const {
   loadDeal, onUserBid, toggleDivergedBid, resetAuction,
 } = engine
 const availableBots = listBots()
+// Display name for a cardplay-bot key. NOTE: only `random`/`ben` exist in the
+// frontend today; `rules` (RulesBot) runs server-side and needs the planned
+// bridge-rulebot-wasm adapter before it can appear here.
+function botDisplayName(b) {
+  return { ben: 'BEN', random: 'Random', rules: 'RulesBot' }[b] || b
+}
+
+// Solo seat identities: you sit `yourSeat`; the other three seats are the
+// practice bots. They always BID with BBA; when you play the hand they also play
+// with the selected cardplay bot — so "BBA" alone in bidding-only, else e.g.
+// "BBA+BEN". Feeds BridgeTable `:occupants` so the seats are named (player + bot),
+// mirroring the host table.
+const soloBotSeatName = computed(() =>
+  playCardplay.value ? `BBA+${botDisplayName(cardplayBotName.value)}` : 'BBA')
+const soloOccupants = computed(() => {
+  const u = currentUser.value
+  const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
+  const out = {}
+  for (const s of ['N', 'E', 'S', 'W']) {
+    out[s] = { name: s === yourSeat ? myName : soloBotSeatName.value }
+  }
+  return out
+})
 
 // Claim form: shown inline in the Cardplay status card when the user
 // clicks "Claim…". The user picks how many of the remaining tricks they
