@@ -27,7 +27,7 @@
 
     <slot name="notes" />
 
-    <div class="ts-main">
+    <div class="ts-main" :class="{ 'ts-main--no-rail': !$slots.rail }">
       <div class="ts-table-wrap"><slot name="table" /></div>
       <div v-if="$slots.rail" class="ts-rail"><slot name="rail" /></div>
     </div>
@@ -77,6 +77,9 @@ defineProps({
   border-radius: 10px;
 }
 .ts-rail { display: flex; flex-direction: column; gap: 12px; }
+
+/* Solo has no rail (auction/DD/result live in the grid) → single column. */
+.ts-main--no-rail { grid-template-columns: minmax(0, 1fr); }
 
 /* Stack the rail under the table on narrow frames (embed / small windows). */
 @media (max-width: 800px) {

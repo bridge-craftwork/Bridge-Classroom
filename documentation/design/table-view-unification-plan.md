@@ -80,35 +80,60 @@ bidding→play for everyone, so "play after bidding" may be implicit there rathe
 than a per-user toggle. Confirm the intended host semantics before wiring it
 (it may become a room/deal-source setting, not a checkbox).
 
+## Decisions (2026-07-15, from Rick)
+
+1. **Solo has no right rail — keep it that way.** Instead, rearrange the grid at
+   end-of-hand (complete/review): **Double dummy → NE**, **auction → center**,
+   **tricks/result → NW** (with the table status). (Solo Slice 2c.)
+2. **Header & footer match the A1 app** (`MainLayout`'s `.app-header` look +
+   the shared `PageFooter`). **Drop "All Tools"** for now; inter-app nav comes
+   later. Apply to both table views so they match A1 and each other.
+3. **Play-after-bid is a real toggle on both surfaces**, not implicit:
+   - OFF = bidding-only practice with a partner → the state machine must **not**
+     advance into play; after the auction it's just **ready for Next Deal**.
+   - OFF also changes bot seat names to the **bidding** bot only (e.g. `BBA`),
+     dropping the cardplay suffix (`+Ben` / `+RulesBot`) since there's no cardplay.
+   (Functional — Slice 3.)
+
 ## Slice plan
 
-**Slice 1 — Extract `TableShell`, adopt in the server branch (pure refactor).**
-Create `src/components/table/TableShell.vue` from the current `.tv-page` shell
-(header + `.tv-main` + `.tv-rail` + toasts + card/btn CSS → `ts-*`). Server branch
-renders `<TableShell>` with its markup in slots; **no behavior change**. Verify the
-host table is pixel-identical. Ship.
+**Slice 1 — Extract `TableShell`, adopt in the server branch (pure refactor). ✅ DONE (#251).**
+`TableShell.vue` owns page + header + 2-col frame (`ts-*`) with slots
+`header-left/header-right/notes/table/rail/overlays` + `embedded`. Server branch
+renders through it; no behavior change.
 
-**Slice 2 — Adopt `TableShell` in the solo branch.**
-Solo renders `<TableShell embedded=…>`. Map: scenario **actions** → `#actions`;
-scenario **name/meta** → `#notes`; `BridgeTable` → `#table`; Auction + Your-bid →
-`#rail`. Add the `embedded` prop so the iframe `?pbn` widget still drops chrome.
-This is the main design decision (scenario bar → header+notes). Verify solo **and**
-embedded. Ship.
+**Slice 2a — Shared page chrome. ✅ shipping now.**
+Add `TableShell` single-column mode (no `#rail` → one column). Add the shared
+`PageFooter` to both table views; **remove "All Tools"**. Low-risk prep for the
+A1-style header.
 
-**Slice 3 — Kill the priming skeleton.**
-Replace solo's placeholder hand (`bp-ph-*`) with the real `BridgeTable` in
-`:identity-only` / no-deal mode, exactly as the host shows a pre-deal empty table.
-Removes ~4 `bp-ph-*` blocks + CSS and makes the empty state identical. Verify the
-solo no-deal state. Ship.
+**Slice 2b — Solo adopts `TableShell` (single column, no rail).**
+Solo renders `<TableShell embedded=EMBEDDED>` with: scenario **buttons** →
+`#header-right`, scenario **name/meta** → `#notes`, `BridgeTable` → `#table`, **no
+`#rail`**. Keep the priming skeleton for now (Slice 2d). Verify solo + embedded.
 
-**Slice 4 — Fold the CSS namespaces.**
-Delete the now-dead `bp-*` rules; migrate any solo-only bits (rotate toggle, bot
-select, scenario meta) onto `ts-*` + small modifiers. One namespace. Verify both.
-Ship.
+**Slice 2c — Solo end-of-hand grid (decision #1).**
+At complete/review: Double dummy → NE, auction → center, tricks/result → NW (with
+table status). Solo grid-slot arrangement only.
 
-**Slice 5 — Collapse the branch (optional polish).**
-Render `<TableShell>` once; move the `v-if="server"` *inside* each slot so the
-shell isn't duplicated. Leaves a single frame with server/solo slot content.
+**Slice 2d — A1-style header (decision #2).**
+Give both table views the `.app-header` look (brand left + user avatar/settings
+right, bottom border) — a small shared header component. Footer already shared in
+2a. (Host already has `SettingsPanel`; solo needs the avatar→settings wire.)
+
+**Slice 2e — Kill the priming skeleton.**
+Replace solo's `bp-ph-*` placeholder with the real `BridgeTable` in identity-only
+mode, like the host's pre-deal table. Removes the block + CSS; empty states match.
+
+**Slice 3 — Play-after-bid semantics + bot naming (decision #3, functional).**
+When OFF: state machine stops at auction-complete → ready for Next Deal (no play);
+bot seat names show the bidding bot only (`BBA`), dropping the cardplay suffix.
+Touches the deal/cardplay state machine + seat-name derivation, on both surfaces.
+
+**Slice 4 — Fold the CSS namespaces** (`tv-*` + `bp-*` → one `ts-*`), delete dead rules.
+
+**Slice 5 — Collapse the branch (optional):** render `<TableShell>` once with
+`v-if="server"` inside the slots.
 
 ## Constraints & risks
 
