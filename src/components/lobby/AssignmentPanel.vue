@@ -600,8 +600,9 @@ function dueClass(assignment) {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   z-index: 1000;
   padding: 20px;
 }
@@ -611,7 +612,8 @@ function dueClass(assignment) {
   border-radius: var(--radius-card, 12px);
   max-width: 800px;
   width: 100%;
-  max-height: 80vh;
+  margin: auto;
+  max-height: 80dvh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -657,7 +659,7 @@ function dueClass(assignment) {
   }
 
   .modal-content {
-    max-height: 90vh;
+    max-height: 90dvh;
   }
 }
 </style>

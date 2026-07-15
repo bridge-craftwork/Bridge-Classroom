@@ -281,11 +281,11 @@ onMounted(loadList)
 
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
-  display: flex; align-items: center; justify-content: center; z-index: 2100; padding: 20px;
+  display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; z-index: 2100; padding: 20px;
 }
 .confirm-modal {
   background: white; border-radius: var(--radius-card, 10px); padding: 24px 28px;
-  max-width: 440px; width: 100%; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  max-width: 440px; width: 100%; margin: auto; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
 }
 .confirm-modal h3 {
   font-family: var(--font-heading, 'Source Serif 4', serif);

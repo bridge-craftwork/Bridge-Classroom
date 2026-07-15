@@ -331,8 +331,9 @@ async function selectLesson(lesson, category) {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   z-index: 1000;
   padding: 20px;
 }
@@ -342,7 +343,8 @@ async function selectLesson(lesson, category) {
   border-radius: 12px;
   width: 100%;
   max-width: 600px;
-  max-height: 80vh;
+  margin: auto;
+  max-height: 80dvh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -553,7 +555,7 @@ async function selectLesson(lesson, category) {
 
 @media (max-width: 600px) {
   .lesson-browser {
-    max-height: 90vh;
+    max-height: 90dvh;
   }
 
   .browser-header {
