@@ -301,10 +301,30 @@ function occPresence(seat) {
 // cards are struck in the render, never removed), so it's the hands' WIDEST extent and
 // never shrinks as cards are played — no mid-deal magnification creep. Only the shown
 // hand-bearing seats count; no hand yet → the 7-card fallback.
-const dealSeatReserve = computed(() => {
+const rawSeatReserve = computed(() => {
   const shown = SEATS.filter(isHandBearing)
   if (!shown.length) return rowReservePx(7)
   return Math.max(...shown.map((s) => handReservePx(props.hands?.[s])))
+})
+// HIGH-WATER MARK across the deal. `handReservePx` assumes the hand keeps all its
+// cards (A1 STRIKES played cards but keeps them, so the raw value is naturally
+// stable). The SERVER table (useServerTable) instead REMOVES played cards — its
+// hands ref empties through the deal — so the raw reserve would shrink as cards are
+// played, collapsing the seat columns and squeezing the centre trick area onto the
+// hands (reported 2026-07-15). Hold the reserve at the deal's widest and rebaseline
+// only when the hands refill (new deal / undo → total card count RISES). So the
+// layout "sticks from the start of the hand" and never shrinks mid-deal.
+const dealCardTotal = computed(() =>
+  SEATS.reduce((n, s) => {
+    const h = props.hands?.[s]
+    if (!h) return n
+    return n + ['spades', 'hearts', 'diamonds', 'clubs'].reduce((m, suit) => m + (h[suit]?.length || 0), 0)
+  }, 0))
+const dealSeatReserve = ref(rawSeatReserve.value)
+let _prevCardTotal = dealCardTotal.value
+watch([rawSeatReserve, dealCardTotal], ([raw, total]) => {
+  dealSeatReserve.value = total > _prevCardTotal ? raw : Math.max(dealSeatReserve.value, raw)
+  _prevCardTotal = total
 })
 
 // A region's reserve WIDTH (px, 1.0×) for column provisioning.
