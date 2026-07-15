@@ -1,16 +1,14 @@
 <template>
   <!-- ══ Server mode: live table-service seat / kibitz view (ServerEngine) ══ -->
-  <div v-if="server" class="tv-page">
+  <template v-if="server">
     <div v-if="srv.sessionClosed" class="tv-closed-card">
       <h2>Session ended</h2>
       <p>The teacher has ended this table session. Thanks for playing!</p>
       <button class="tv-btn tv-btn-primary" @click="emit('exit')">Back to the lobby</button>
     </div>
 
-    <template v-else>
-      <DealSourceModal v-if="srv.dealModalOpen" @close="srv.dealModalOpen = false" />
-      <div class="tv-header">
-        <div class="tv-header-left">
+    <TableShell v-else>
+      <template #header-left>
           <span class="tv-title">{{ srv.tableTitle }}</span>
           <span v-if="srv.boardNumber !== null" class="tv-tag">Board {{ srv.boardNumber }}</span>
           <StatusStrip v-if="srvStatusSlot === 'status-strip'" :status="srvStatus" />
@@ -31,8 +29,9 @@
           >
             {{ srv.showAllHands ? '👁 all hands' : '👁 my view' }}
           </button>
-        </div>
-        <div class="tv-header-right">
+      </template>
+
+      <template #header-right>
           <span class="tv-conn" :class="'tv-conn-' + srv.connectionStatus">
             {{ srv.connectionLabel }}
           </span>
@@ -87,22 +86,20 @@
           >
             Next deal →
           </button>
-        </div>
-      </div>
+      </template>
 
-      <!-- Seat identity now renders above each hand (BridgeTable occupants); the
-           old seats strip is gone from this view. -->
+      <template #notes>
+        <!-- Seat identity now renders above each hand (BridgeTable occupants); the
+             old seats strip is gone from this view. -->
+        <p v-if="!srv.yourSeat && !srv.seeAll" class="tv-kibitz-note">
+          You're kibitzing — watching all four hands. The host can seat you.
+        </p>
+        <p v-if="srv.pausedSeat" class="tv-paused-note">
+          ⏸ Paused — {{ srv.pausedLabel }}.
+        </p>
+      </template>
 
-      <p v-if="!srv.yourSeat && !srv.seeAll" class="tv-kibitz-note">
-        You're kibitzing — watching all four hands. The host can seat you.
-      </p>
-
-      <p v-if="srv.pausedSeat" class="tv-paused-note">
-        ⏸ Paused — {{ srv.pausedLabel }}.
-      </p>
-
-      <div class="tv-main">
-        <div class="tv-table-wrap">
+      <template #table>
           <SeatControlTable
             arrangement="grid"
             :table-config="tableConfig"
@@ -183,9 +180,9 @@
               />
             </template>
           </SeatControlTable>
-        </div>
+      </template>
 
-        <div class="tv-rail">
+      <template #rail>
           <!-- Auction + bidding box now live in the grid (centre/NE, and SE). The rail
                keeps the host controls + the off-turn waiting cues. -->
           <div v-if="srv.capabilities.doubleDummy" class="tv-card">
@@ -278,19 +275,21 @@
               </div>
             </template>
           </div>
-        </div>
-      </div>
+      </template>
 
-      <transition name="tv-fade">
-        <div v-if="srv.errorMessage" class="tv-toast tv-toast-error">{{ srv.errorMessage }}</div>
-      </transition>
-      <transition name="tv-fade">
-        <div v-if="srv.undoBy" class="tv-toast">{{ srv.undoBy }} undid the last action</div>
-      </transition>
+      <template #overlays>
+        <DealSourceModal v-if="srv.dealModalOpen" @close="srv.dealModalOpen = false" />
+        <transition name="tv-fade">
+          <div v-if="srv.errorMessage" class="tv-toast tv-toast-error">{{ srv.errorMessage }}</div>
+        </transition>
+        <transition name="tv-fade">
+          <div v-if="srv.undoBy" class="tv-toast">{{ srv.undoBy }} undid the last action</div>
+        </transition>
 
-      <TableDiagnostics v-if="srv.showDiagnostics" />
-    </template>
-  </div>
+        <TableDiagnostics v-if="srv.showDiagnostics" />
+      </template>
+    </TableShell>
+  </template>
 
   <!-- ══ Solo mode: the practice bidding shell (LocalEngine) ══ -->
   <div v-else class="bp-app" :class="{ embedded: EMBEDDED, 'intro-open': chatReserved }" :style="{ '--intro-gutter': chatGutter }">
@@ -633,6 +632,7 @@
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
+import TableShell from '../components/table/TableShell.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
@@ -1686,14 +1686,9 @@ async function restartCardplay() {
 .bp-contract :deep(.black) { color: #1a1a1a; }
 
 /* ══ Server-mode (table-service) styles — folded from the old TableView ══ */
-.tv-page {
-  /* 1100 → 1400: fill a typical window so hands show names and the right rail
-     (future chat) has room. Kept in sync with .bp-table-wrap (solo view). */
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 16px;
-  font-family: 'Segoe UI', system-ui, sans-serif;
-}
+/* .tv-page / .tv-header / .tv-main / .tv-table-wrap / .tv-rail moved to the
+   shared TableShell.vue (ts-*). Content-primitive tv-* classes below stay here —
+   they style slot content, which compiles in this component's scope. */
 .tv-closed-card {
   max-width: 420px;
   margin: 80px auto;
@@ -1719,16 +1714,6 @@ async function restartCardplay() {
 .tv-btn-active { background: #fff3cd; border-color: #e0b34d; color: #7a5b00; font-weight: 600; }
 .tv-btn-primary { background: #1d9e75; border-color: #1d9e75; color: #fff; }
 .tv-btn-primary:hover:not(:disabled) { background: #178a65; border-color: #178a65; }
-.tv-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.tv-header-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.tv-header-right { display: flex; align-items: center; gap: 10px; }
 .tv-title { font-size: 20px; font-weight: 700; margin-right: 4px; }
 .tv-tag { background: #f0f0f0; border-radius: 12px; padding: 3px 10px; font-size: 13px; color: #444; }
 .tv-tag-bots { background: #ede7f6; color: #4527a0; }
@@ -1748,19 +1733,6 @@ async function restartCardplay() {
 }
 .tv-passbot-hint { color: #777; font-size: 12px; margin-bottom: 6px; }
 .tv-passbot-row { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
-.tv-main {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-.tv-table-wrap {
-  position: relative;
-  background: #fbfbf8;
-  border: 1px solid #e5e5e0;
-  border-radius: 10px;
-}
-.tv-rail { display: flex; flex-direction: column; gap: 12px; }
 /* NW grid region: BoardIndicator glyph + StatusStrip stacked (mirrors a1's #nw). */
 .tv-grid-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .tv-center-wait { text-align: center; }
@@ -1788,7 +1760,4 @@ async function restartCardplay() {
 .tv-toast-error { background: #c62828; }
 .tv-fade-enter-active, .tv-fade-leave-active { transition: opacity 0.25s; }
 .tv-fade-enter-from, .tv-fade-leave-to { opacity: 0; }
-@media (max-width: 800px) {
-  .tv-main { grid-template-columns: 1fr; }
-}
 </style>
