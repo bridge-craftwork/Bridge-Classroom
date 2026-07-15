@@ -14,6 +14,7 @@
       :presence="presence"
       :card-count="chipCardCount"
       :compact="compactMode"
+      :you="you"
       v-bind="labelProps"
     />
     <HandDisplay
@@ -46,6 +47,9 @@ const props = defineProps({
   // Seat identity (console tiles); table falls back to the compass name.
   name: { type: String, default: null },
   presence: { type: String, default: null },
+  // This seat is the viewer's own (host / your seat) — forwarded to the label so
+  // the name ladder can prefer your full/first name over "First L.".
+  you: { type: Boolean, default: false },
   // Annotation map. `activeSeat` (seat-level) drives the frame here; per-card
   // marks pass through to HandDisplay.
   marks: { type: Object, default: null },

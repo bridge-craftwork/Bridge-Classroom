@@ -25,6 +25,7 @@
         :hand="hands[seat]"
         :seat="seat"
         :name="seatName(seat)"
+        :you="seat === heroSeat"
         :presence="occPresence(seat)"
         :show-hcp="showHcp"
         :clickable="clickableSeat === seat"
