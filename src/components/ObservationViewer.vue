@@ -561,7 +561,11 @@ function parseSuits(hand) {
   position: sticky;
   top: 0;
   z-index: 5;
-  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  /* The container is a fixed inner-scroll region, whose top:0 sits behind the
+     iOS browser chrome (status/address bar). `env(safe-area-*)` is 0 without
+     viewport-fit=cover, so add a real top inset that pushes the header's row
+     (and the ✕) clear of the chrome; the extra height is same-colour padding. */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 44px);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
