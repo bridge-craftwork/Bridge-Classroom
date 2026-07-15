@@ -395,7 +395,10 @@ onBeforeUnmount(teardown)
 }
 .th-center { text-align: center; }
 
-.th-main { max-width: 900px; margin: 0 auto; padding: 20px 24px; }
+/* Was 900px — widened so the embedded table + right rail can fill the window
+   (names fit on the hands, chat won't wrap). Matches the standalone view's cap
+   (.tv-page / .bp-table-wrap, both 1400px) so host and solo look the same. */
+.th-main { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
 
 .th-controls {
   display: flex;
