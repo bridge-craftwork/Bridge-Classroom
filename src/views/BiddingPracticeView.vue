@@ -295,7 +295,6 @@
   <div v-else class="bp-app" :class="{ embedded: EMBEDDED, 'intro-open': chatReserved }" :style="{ '--intro-gutter': chatGutter }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
-      <a class="bp-nav-back" href="/">&larr; All tools</a>
     </nav>
 
     <div class="bp-main">
@@ -592,6 +591,8 @@
             </div>
           </div>
         </template>
+
+        <div v-if="!EMBEDDED" class="bp-footer-row"><PageFooter /></div>
       </main>
     </div>
 
@@ -643,6 +644,7 @@ import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
 import DockablePanel from '../components/DockablePanel.vue'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
+import PageFooter from '../components/lobby/PageFooter.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import { formatBid } from '../utils/cardFormatting.js'
@@ -1323,8 +1325,9 @@ async function restartCardplay() {
 }
 .bp-logo { font-size: 15px; font-weight: 500; color: #222; text-decoration: none; }
 .bp-logo .suit { color: #1D9E75; margin-right: 6px; }
-.bp-nav-back { font-size: 12px; color: #666; text-decoration: none; }
-.bp-nav-back:hover { color: #222; }
+/* Footer pinned to the bottom of the (flex-column) stage; stretch so the shared
+   PageFooter spans the width instead of shrinking to its content. */
+.bp-footer-row { align-self: stretch; margin-top: auto; }
 
 /* The deal source now lives in a modal (opened by the "Deal source…" button),
    so the main area is a single full-width stage — max room for the table. */

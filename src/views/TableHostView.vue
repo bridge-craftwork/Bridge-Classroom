@@ -4,7 +4,6 @@
       <a class="th-logo" href="#/"><span class="suit">&spades;</span> Bridge Classroom &middot; Host a Table</a>
       <span v-if="hasSession" class="th-conn" :class="'th-conn-' + connectionStatus">{{ connectionStatus }}</span>
       <div class="th-nav-right">
-        <a class="th-back" href="#/">&larr; All tools</a>
         <!-- Account circle: same identity menu as the main app (Switch User, edit
              name, display/privacy). Sits the host's own name at the seat below. -->
         <button
@@ -61,6 +60,7 @@
       <!-- The seated player table. The host arranges seats ON the table — drag
            the seat labels, use the per-seat pulldown, and the kibitz box. -->
       <UnifiedTable server @exit="onExitTable" />
+      <PageFooter />
     </main>
 
     <!-- Account / identity menu — the same panel the main app uses (Switch User,
@@ -107,6 +107,7 @@ import { useTeacherConsole } from '../composables/useTeacherConsole.js'
 import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
+import PageFooter from '../components/lobby/PageFooter.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import UnifiedTable from './BiddingPracticeView.vue'
 import { API_URL } from '../utils/apiUrl.js'
