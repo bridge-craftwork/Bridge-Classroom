@@ -535,7 +535,7 @@ function parseSuits(hand) {
   left: 0 !important;
   top: 0 !important;
   width: 100% !important;
-  height: 100% !important;
+  height: 100dvh !important;
   max-width: 100%;
   border-radius: 0;
   overflow-y: auto;
