@@ -299,6 +299,8 @@
 
     <div class="bp-main">
       <main class="bp-stage">
+        <TableShell :embedded="EMBEDDED">
+          <template #notes>
         <div v-if="dealError" class="bp-error-box">
           <strong>Error:</strong> {{ dealError }}
           <div v-if="dealErrorHint" class="bp-error-hint">{{ dealErrorHint }}</div>
@@ -364,6 +366,9 @@
             <button v-if="!EMBEDDED && capabilities.narrative" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
           </div>
         </div>
+          </template>
+
+          <template #table>
 
         <!-- Priming table skeleton (no deal yet): a placeholder hand + inert
              auction/bidding box so the beginner sees the shape of the table. -->
@@ -591,6 +596,8 @@
             </div>
           </div>
         </template>
+          </template>
+        </TableShell>
 
         <div v-if="!EMBEDDED" class="bp-footer-row"><PageFooter /></div>
       </main>
@@ -1340,7 +1347,10 @@ async function restartCardplay() {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Children are now the full-width TableShell (which centres its own content at
+     1400) + the footer, so stretch rather than centre. Matches the embedded
+     override below. */
+  align-items: stretch;
   gap: 18px;
 }
 
@@ -1597,6 +1607,7 @@ async function restartCardplay() {
 .bp-scenario-bar {
   width: 100%;
   max-width: 940px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
