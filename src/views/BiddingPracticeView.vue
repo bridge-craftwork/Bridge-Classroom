@@ -1630,9 +1630,10 @@ async function restartCardplay() {
   align-items: start;
   width: 100%;
   /* Cardplay needs ~240px for the center trick area; with two 220-min
-     hand columns + 320px right rail + 24px gap, 1100px max-width gives
-     the table enough breathing room. */
-  max-width: 1100px;
+     hand columns + 320px right rail + 24px gap, the table has room.
+     1100 → 1400 to match the server/host table (.tv-page) width so the solo
+     and multi-user views look the same to the user. */
+  max-width: 1400px;
 }
 @media (max-width: 1100px) {
   .bp-table-wrap { grid-template-columns: minmax(0, 1fr); gap: 14px; }
@@ -1686,7 +1687,9 @@ async function restartCardplay() {
 
 /* ══ Server-mode (table-service) styles — folded from the old TableView ══ */
 .tv-page {
-  max-width: 1100px;
+  /* 1100 → 1400: fill a typical window so hands show names and the right rail
+     (future chat) has room. Kept in sync with .bp-table-wrap (solo view). */
+  max-width: 1400px;
   margin: 0 auto;
   padding: 16px;
   font-family: 'Segoe UI', system-ui, sans-serif;
