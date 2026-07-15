@@ -82,9 +82,11 @@ than a per-user toggle. Confirm the intended host semantics before wiring it
 
 ## Decisions (2026-07-15, from Rick)
 
-1. **Solo has no right rail — keep it that way.** Instead, rearrange the grid at
-   end-of-hand (complete/review): **Double dummy → NE**, **auction → center**,
-   **tricks/result → NW** (with the table status). (Solo Slice 2c.)
+1. ~~Solo has no right rail~~ **REVISED 2026-07-15: solo DOES use its right rail**
+   (`bp-right-rail` holds cardplay controls: waiting cue, tricks, bot stats). Keep
+   it. **Slice 2c (grid rearrange) cancelled** — solo maps its rail to the shell's
+   `#table`'s internal grid (unchanged) for now; a future end-of-hand DD→NE /
+   auction→center / tricks→NW rearrange can be revisited separately if wanted.
 2. **Header & footer match the A1 app** (`MainLayout`'s `.app-header` look +
    the shared `PageFooter`). **Drop "All Tools"** for now; inter-app nav comes
    later. Apply to both table views so they match A1 and each other.
@@ -125,10 +127,32 @@ right, bottom border) — a small shared header component. Footer already shared
 Replace solo's `bp-ph-*` placeholder with the real `BridgeTable` in identity-only
 mode, like the host's pre-deal table. Removes the block + CSS; empty states match.
 
-**Slice 3 — Play-after-bid semantics + bot naming (decision #3, functional).**
-When OFF: state machine stops at auction-complete → ready for Next Deal (no play);
-bot seat names show the bidding bot only (`BBA`), dropping the cardplay suffix.
-Touches the deal/cardplay state machine + seat-name derivation, on both surfaces.
+**Slice 3 — Bidding-only mode (decision #3, functional).**
+"Bidding only" is a **table/room MODE**, not a per-client front-end behavior — the
+state machine is authoritative where it lives, and all clients must agree:
+
+- **Server (`/tables/host`):** configure it on the **table-service (backend)** — a
+  table-level flag (e.g. `mode: "bidding-only"` / `playAfterBid: false`) set at
+  table create/config, alongside the existing deal-source / PassBot config. The
+  backend then stops the shared state machine at auction-complete (board → ready
+  for next, no play phase) and **never broadcasts cardplay commands** to the
+  seated players / kibitzers / other tabs. Front-end just sends the flag and
+  renders the resulting state — it does NOT locally "drop" the state machine
+  (that would desync clients). Requires a change in the **`bridge-table-service`
+  repo** (state machine + broadcast) plus a wire-contract field; capture the
+  contract before wiring the UI.
+- **Solo (`/bidding-practice`, LocalEngine):** no backend — here the *local* state
+  machine honors the same flag (this is roughly today's `playCardplay` toggle:
+  false → stop at auction-complete, ready for Next Deal).
+- **Bot seat names (both):** in bidding-only, name seats by the **bidding** engine
+  only (`BBA`), dropping the cardplay suffix (`+Ben` / `+RulesBot`) since no
+  cardplay bot runs. Server: the table-service assigns/ō reports seat bot identity,
+  so the naming likely follows the backend flag too — confirm where seat bot names
+  are sourced (`bots.rs` vs front-end derivation) as part of the contract.
+
+So Slice 3 = one shared *toggle/UI* that maps to a **backend table flag** (server)
+or a **local engine flag** (solo). Do the table-service side first (or in
+lockstep) so the host toggle actually changes shared behavior.
 
 **Slice 4 — Fold the CSS namespaces** (`tv-*` + `bp-*` → one `ts-*`), delete dead rules.
 
