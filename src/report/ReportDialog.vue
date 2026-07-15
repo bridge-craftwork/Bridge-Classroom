@@ -381,7 +381,7 @@ function saveStr(key, val) { try { localStorage.setItem(key, val) } catch { /* i
      the display underneath while composing; only the floating panel captures events. */
   pointer-events: none;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
 }
@@ -389,7 +389,8 @@ function saveStr(key, val) { try { localStorage.setItem(key, val) } catch { /* i
   pointer-events: auto;
   width: 460px;
   max-width: 100%;
-  max-height: calc(100vh - 48px);
+  margin: auto;
+  max-height: calc(100dvh - 48px);
   overflow: auto;
   background: #fff;
   border-radius: var(--radius-card, 8px);
