@@ -552,6 +552,18 @@ function parseSuits(hand) {
   touch-action: pan-y;
 }
 
+/* Mobile: pin the header (with the ✕) so it stays reachable no matter how far
+   the body has scrolled. An inner scroll container doesn't collapse the iOS
+   browser chrome the way body-scroll does, so a non-sticky header at the top
+   ends up behind the address bar / notch. The safe-area padding clears the
+   status bar so the close box is always tappable. */
+.obs-viewer--mobile .obs-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 /* Header */
