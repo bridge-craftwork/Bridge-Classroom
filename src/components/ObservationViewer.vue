@@ -548,8 +548,12 @@ function parseSuits(hand) {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   /* Base .obs-viewer sets `touch-action: none` for desktop drag; re-enable
-     vertical panning so the full-screen mobile viewer scrolls by touch. */
-  touch-action: pan-y;
+     touch on mobile. `manipulation` (= pan-x pan-y pinch-zoom) lets the viewer
+     scroll AND pinch-zoom: it often opens while the page is still pinch-zoomed
+     in (the reporter zoomed into a mastery-graph dot to tap it), so it must
+     allow zooming back out and horizontal panning to stay readable. Plain
+     `pan-y` would scroll but trap it at the zoomed-in scale. */
+  touch-action: manipulation;
 }
 
 /* Mobile: pin the header (with the ✕) so it stays reachable no matter how far
