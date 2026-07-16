@@ -46,6 +46,11 @@ defineProps({
 
 <style scoped>
 .ts-page {
+  /* width:100% is load-bearing: without it, `margin: 0 auto` (auto cross-margins)
+     overrides `align-items: stretch` in the solo flex-column stage, so ts-page
+     shrinks to its WIDEST CHILD (the header row) instead of filling the frame —
+     which starves the arranger's table column (2026-07-15 collapse). */
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
   padding: 16px;
