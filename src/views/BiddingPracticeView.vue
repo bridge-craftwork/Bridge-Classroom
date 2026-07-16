@@ -1481,27 +1481,6 @@ async function restartCardplay() {
 }
 
 
-.bp-rotate-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #555;
-  cursor: pointer;
-  user-select: none;
-  margin-right: 4px;
-}
-.bp-rotate-toggle input { cursor: pointer; }
-
-.bp-bot-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #555;
-  user-select: none;
-  margin-right: 4px;
-}
 .bp-bot-select {
   font-size: 12px;
   padding: 3px 6px;
@@ -1537,25 +1516,6 @@ async function restartCardplay() {
   padding: 4px 6px;
   margin-bottom: 8px;
 }
-.bp-cardplay-toggles {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
-  padding-top: 8px;
-  border-top: 0.5px solid #eee;
-}
-.bp-cardplay-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #555;
-  cursor: pointer;
-  user-select: none;
-}
-.bp-cardplay-toggle input { cursor: pointer; }
-
 .bp-cardplay-actions {
   display: flex;
   gap: 6px;
