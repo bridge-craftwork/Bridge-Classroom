@@ -205,6 +205,45 @@ export function useAssignments() {
     }
   }
 
+  /**
+   * Close (archive) or reopen an assignment. Non-destructive: the record and
+   * its results are kept — closing just marks it review-only (drops off the
+   * open count / dashboard cards; shows as "Closed" in the student panel).
+   * Updates the matching row's closed_at in place so the UI reflects it
+   * without a refetch.
+   */
+  async function setAssignmentClosed(assignmentId, closed) {
+    try {
+      const response = await apiFetch(
+        `${API_URL}/assignments/${encodeURIComponent(assignmentId)}/closed`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ closed })
+        }
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        error.value = text || `Server error (${response.status})`
+        return { success: false, error: error.value }
+      }
+      const data = await response.json()
+      if (data.success) {
+        const closedAt = closed ? new Date().toISOString() : null
+        const apply = (list) => {
+          const a = list.value.find(x => x.id === assignmentId)
+          if (a) a.closed_at = closedAt
+        }
+        apply(teacherAssignments)
+        apply(studentAssignments)
+      }
+      return data
+    } catch (err) {
+      console.error('Failed to update assignment closed state:', err)
+      return { success: false, error: 'Unable to connect to server' }
+    }
+  }
+
   /** Fetch exercise boards for loading into practice mode */
   async function fetchExerciseBoards(exerciseId) {
     try {
@@ -244,6 +283,7 @@ export function useAssignments() {
     fetchAssignmentDetail,
     createAssignment,
     deleteAssignment,
+    setAssignmentClosed,
     fetchExerciseBoards,
     reset
   }

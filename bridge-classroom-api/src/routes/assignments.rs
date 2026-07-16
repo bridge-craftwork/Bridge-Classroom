@@ -7,7 +7,7 @@ use axum::{
 use crate::models::{
     AssignmentActionResponse, AssignmentDetail, AssignmentDetailResponse, AssignmentInfo,
     AssignmentListResponse, AssignmentQuery, CreateAssignmentRequest, CreateAssignmentResponse,
-    StudentAssignmentProgress,
+    SetAssignmentClosedRequest, StudentAssignmentProgress,
 };
 use crate::AppState;
 
@@ -30,6 +30,7 @@ struct AssignmentRow {
     assigned_by: String,
     assigned_at: String,
     due_at: Option<String>,
+    closed_at: Option<String>,
     sort_order: Option<i32>,
     exercise_name: String,
     classroom_name: Option<String>,
@@ -190,6 +191,7 @@ pub async fn create_assignment(
             assigned_by: req.assigned_by,
             assigned_at: now,
             due_at: req.due_at,
+            closed_at: None,
             total_boards: board_count,
             attempted_boards: 0,
             correct_boards: 0,
@@ -246,7 +248,7 @@ async fn list_student_assignments(
     let rows = sqlx::query_as::<_, AssignmentRow>(
         r#"
         SELECT a.id, a.exercise_id, a.classroom_id, a.student_id, a.assigned_by,
-               a.assigned_at, a.due_at, a.sort_order,
+               a.assigned_at, a.due_at, a.closed_at, a.sort_order,
                e.name AS exercise_name, c.name AS classroom_name
         FROM assignments a
         JOIN exercises e ON e.id = a.exercise_id
@@ -284,6 +286,7 @@ async fn list_student_assignments(
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
+            closed_at: row.closed_at,
             total_boards: progress.total,
             attempted_boards: progress.attempted,
             correct_boards: progress.correct,
@@ -308,7 +311,7 @@ async fn list_teacher_assignments(
     let rows = sqlx::query_as::<_, AssignmentRow>(
         r#"
         SELECT a.id, a.exercise_id, a.classroom_id, a.student_id, a.assigned_by,
-               a.assigned_at, a.due_at, a.sort_order,
+               a.assigned_at, a.due_at, a.closed_at, a.sort_order,
                e.name AS exercise_name, c.name AS classroom_name
         FROM assignments a
         JOIN exercises e ON e.id = a.exercise_id
@@ -352,6 +355,7 @@ async fn list_teacher_assignments(
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
+            closed_at: row.closed_at,
             total_boards: board_count,
             attempted_boards: 0,
             correct_boards: 0,
@@ -376,7 +380,7 @@ async fn list_classroom_assignments(
     let rows = sqlx::query_as::<_, AssignmentRow>(
         r#"
         SELECT a.id, a.exercise_id, a.classroom_id, a.student_id, a.assigned_by,
-               a.assigned_at, a.due_at, a.sort_order,
+               a.assigned_at, a.due_at, a.closed_at, a.sort_order,
                e.name AS exercise_name, c.name AS classroom_name
         FROM assignments a
         JOIN exercises e ON e.id = a.exercise_id
@@ -419,6 +423,7 @@ async fn list_classroom_assignments(
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
+            closed_at: row.closed_at,
             total_boards: board_count,
             attempted_boards: 0,
             correct_boards: 0,
@@ -668,7 +673,7 @@ pub async fn get_assignment(
     let row = sqlx::query_as::<_, AssignmentRow>(
         r#"
         SELECT a.id, a.exercise_id, a.classroom_id, a.student_id, a.assigned_by,
-               a.assigned_at, a.due_at, a.sort_order,
+               a.assigned_at, a.due_at, a.closed_at, a.sort_order,
                e.name AS exercise_name, c.name AS classroom_name
         FROM assignments a
         JOIN exercises e ON e.id = a.exercise_id
@@ -863,6 +868,55 @@ pub async fn delete_assignment(
     }
 
     tracing::info!("Assignment deleted: {}", assignment_id);
+
+    Ok(Json(AssignmentActionResponse {
+        success: true,
+        error: None,
+    }))
+}
+
+/// PUT /api/assignments/:id/closed — Close (archive) or reopen an assignment.
+///
+/// Non-destructive counterpart to DELETE: sets `closed_at` to now (close) or
+/// NULL (reopen). Closed assignments drop off the teacher dashboard's open
+/// count + classroom cards and render as review-only ("Closed") in the student
+/// panel, but the record and all its results are retained. API-key gated, to
+/// match `delete_assignment`'s auth model.
+pub async fn set_assignment_closed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(assignment_id): Path<String>,
+    Json(req): Json<SetAssignmentClosedRequest>,
+) -> Result<Json<AssignmentActionResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
+    let closed_at: Option<String> = if req.closed {
+        Some(chrono::Utc::now().to_rfc3339())
+    } else {
+        None
+    };
+
+    let result = sqlx::query("UPDATE assignments SET closed_at = ? WHERE id = ?")
+        .bind(&closed_at)
+        .bind(&assignment_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update assignment closed state: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Assignment not found".to_string()));
+    }
+
+    tracing::info!(
+        "Assignment {} {}",
+        assignment_id,
+        if req.closed { "closed" } else { "reopened" }
+    );
 
     Ok(Json(AssignmentActionResponse {
         success: true,

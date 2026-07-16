@@ -942,6 +942,15 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // tombstoned row.
     add_column_if_missing(pool, "exercises", "deleted_at", "TEXT").await?;
 
+    // ---- Assignment close/archive ----
+    // A teacher-controlled archive flag. When set (RFC3339 timestamp), the
+    // assignment stops counting as "open" work: it drops off the teacher
+    // dashboard's open count + classroom cards, and the student panel shows
+    // it as "Closed" (review-only) rather than current homework. NULL = open.
+    // Non-destructive and reversible (reopen sets it back to NULL) — distinct
+    // from DELETE, which discards the record and its results.
+    add_column_if_missing(pool, "assignments", "closed_at", "TEXT").await?;
+
     // Indexes for the exercise usage rollup (issue #15): when listing a
     // teacher's exercises we look up assignment / observation / student
     // counts per exercise_id.
