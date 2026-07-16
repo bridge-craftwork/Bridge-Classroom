@@ -123,9 +123,12 @@ Give both table views the `.app-header` look (brand left + user avatar/settings
 right, bottom border) — a small shared header component. Footer already shared in
 2a. (Host already has `SettingsPanel`; solo needs the avatar→settings wire.)
 
-**Slice 2e — Kill the priming skeleton.**
-Replace solo's `bp-ph-*` placeholder with the real `BridgeTable` in identity-only
-mode, like the host's pre-deal table. Removes the block + CSS; empty states match.
+**Slice 2e — Kill the priming skeleton. ✅ DONE (#255).**
+Replaced solo's faked `bp-ph-*` + rail skeleton with the real `BridgeTable` in
+`:identity-only` mode (named seat chips, no hands), like the host's pre-deal
+table. Removed the dead `bp-ph-*` / `bp-disabled` CSS; the empty state now matches
+the live layout (fixed a report that the faked rail bidding box "looks like it's
+in the rail").
 
 **Slice 3 — Bidding-only mode (decision #3, functional).**
 "Bidding only" is a **table/room MODE**, not a per-client front-end behavior — the
@@ -144,6 +147,12 @@ state machine is authoritative where it lives, and all clients must agree:
 - **Solo (`/bidding-practice`, LocalEngine):** no backend — here the *local* state
   machine honors the same flag (this is roughly today's `playCardplay` toggle:
   false → stop at auction-complete, ready for Next Deal).
+- **RulesBot in solo cardplay:** BEN has its own service; RulesBot is currently
+  called *locally by the table service*, so the solo (LocalEngine) front-end has
+  no adapter. Surface it either as a **wasm** (`bridge-rulebot-wasm`) OR as a
+  **BEN-style HTTP service** — either registers into `cardplayBots.js`. Until
+  then it's shown **disabled ("RulesBot — coming soon")** in the solo pulldown
+  (PR #255) so it reads as planned, not forgotten.
 - **Bot seat names (both):** in bidding-only, name seats by the **bidding** engine
   only (`BBA`), dropping the cardplay suffix (`+Ben` / `+RulesBot`) since no
   cardplay bot runs. Server: the table-service assigns/ō reports seat bot identity,

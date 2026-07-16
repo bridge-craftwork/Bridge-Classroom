@@ -170,12 +170,14 @@
               />
             </template>
 
-            <!-- SE: bidding box, on your turn only (the off-turn waiting cue is in the rail). -->
-            <template v-if="srvActionSlot === 'bidding-box'" #se>
+            <!-- SE: bidding box for the whole auction (seated players) — stays
+                 visible but DISABLED off-turn, mirroring the solo table. -->
+            <template v-if="srv.yourSeat && srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode !== 'play-only'" #se>
               <BiddingBox
                 :last-bid="srv.lastSuitBid"
                 :can-double="srv.canDouble"
                 :can-redouble="srv.canRedouble"
+                :disabled="srvActionSlot !== 'bidding-box'"
                 @bid="srv.onBid"
               />
             </template>
@@ -348,7 +350,7 @@
             >
               Play bot:
               <select class="bp-bot-select" v-model="cardplayBotName">
-                <option v-for="b in availableBots" :key="b" :value="b">{{ botDisplayName(b) }}</option>
+                <option v-for="o in botOptions" :key="o.value" :value="o.value" :disabled="o.disabled">{{ o.label }}</option>
               </select>
             </label>
             <button
@@ -374,31 +376,18 @@
 
           <template #table>
 
-        <!-- Priming table skeleton (no deal yet): a placeholder hand + inert
-             auction/bidding box so the beginner sees the shape of the table. -->
-        <div v-if="!currentDeal && !EMBEDDED" class="bp-table-wrap">
-          <div class="bp-ph-hand">
-            <div class="bp-ph-seat">South</div>
-            <div class="bp-ph-suits">
-              <div class="bp-ph-suit"><span class="bp-ph-blk">&spades;</span> &mdash;</div>
-              <div class="bp-ph-suit"><span class="bp-ph-red">&hearts;</span> &mdash;</div>
-              <div class="bp-ph-suit"><span class="bp-ph-red">&diams;</span> &mdash;</div>
-              <div class="bp-ph-suit"><span class="bp-ph-blk">&clubs;</span> &mdash;</div>
-            </div>
-            <div class="bp-ph-note">{{ drawing ? 'Dealing…' : 'Your hand will appear here' }}</div>
-          </div>
-          <div class="bp-right-rail">
-            <div class="bp-card">
-              <h3>Auction</h3>
-              <AuctionTable :bids="[]" dealer="S" :current-bid-index="0" :wrong-bid-indices="[]" :show-turn-indicator="false" :meanings="[]" :diverged-bids="{}" :allow-divergence-toggle="false" />
-            </div>
-            <div class="bp-card">
-              <h3>Your bid</h3>
-              <div class="bp-disabled" aria-hidden="true">
-                <BiddingBox />
-              </div>
-            </div>
-          </div>
+        <!-- No deal yet: the REAL table in identity-only mode (named seat chips,
+             no hands), so the empty state matches the live layout — not a faked
+             auction/bidding-box rail (which put them in the wrong place). -->
+        <div v-if="!currentDeal && !EMBEDDED" class="bp-empty-table">
+          <BridgeTable
+            arrangement="grid"
+            :table-config="tableConfig"
+            :hero-seat="yourSeat"
+            :hands="{ N: null, E: null, S: null, W: null }"
+            :identity-only="true"
+            :occupants="soloOccupants"
+          />
         </div>
 
         <template v-if="currentDeal">
@@ -892,6 +881,17 @@ function botDisplayName(b) {
 // mirroring the host table.
 const soloBotSeatName = computed(() =>
   playCardplay.value ? `BBA+${botDisplayName(cardplayBotName.value)}` : 'BBA')
+// Cardplay-bot dropdown options. RulesBot isn't wired into the frontend yet
+// (server-side only; called locally by the table service — a wasm or a BEN-style
+// service would surface it here). Show it DISABLED so it reads as planned, not
+// forgotten. It becomes selectable automatically once registered in cardplayBots.
+const botOptions = computed(() => {
+  const opts = availableBots.map((b) => ({ value: b, label: botDisplayName(b), disabled: false }))
+  if (!availableBots.includes('rules')) {
+    opts.push({ value: 'rules', label: 'RulesBot — coming soon', disabled: true })
+  }
+  return opts
+})
 const soloOccupants = computed(() => {
   const u = currentUser.value
   const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
@@ -1587,38 +1587,8 @@ async function restartCardplay() {
   .bp-btn-attn { animation: none; }
 }
 
-.bp-ph-hand {
-  justify-self: center;
-  align-self: start;
-  min-width: 200px;
-  background: #fff;
-  border: 0.5px solid #ddd;
-  border-radius: 10px;
-  padding: 18px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.bp-ph-seat { font-size: 16px; font-weight: 700; color: #444; }
-.bp-ph-suits {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 20px;
-  letter-spacing: 3px;
-  color: #cbcbcb;
-}
-.bp-ph-red { color: #e6b3b3; }
-.bp-ph-blk { color: #b0b0b0; }
-.bp-ph-note { font-size: 12px; color: #aaa; margin-top: 6px; }
-
-/* Inert clone of the bidding box (and any wrapped control). */
-.bp-disabled {
-  opacity: 0.5;
-  pointer-events: none;
-  filter: grayscale(0.35);
-}
+/* No-deal empty table (identity-only BridgeTable). Match the live table width. */
+.bp-empty-table { width: 100%; max-width: 1400px; margin: 0 auto; }
 .bp-error-box {
   color: #b00;
   font-size: 13px;
