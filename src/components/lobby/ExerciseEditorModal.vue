@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay" @mousedown="onBackdropMouseDown" @click.self="onBackdropClick">
     <div class="modal-content">
       <div class="step">
         <h2>{{ isEdit ? 'Edit Exercise' : 'Create Exercise' }}</h2>
@@ -199,12 +199,17 @@ import { useExercises } from '../../composables/useExercises.js'
 import { useUserStore } from '../../composables/useUserStore.js'
 import { BAKER_BRIDGE_TAXONOMY, TAXONOMY_CATEGORIES, getTaxonomyEntry } from '../../utils/bakerBridgeTaxonomy.js'
 import { deriveWildernessForBoardList } from '../../utils/wilderness.js'
+import { useBackdropClose } from '../../composables/useBackdropClose.js'
 
 const props = defineProps({
   exerciseId: { type: String, default: null },
 })
 
 const emit = defineEmits(['close', 'saved'])
+
+// Dismiss on a genuine backdrop click, but NOT when a text-drag inside the modal
+// releases over the overlay (that would discard an in-progress exercise).
+const { onBackdropMouseDown, onBackdropClick } = useBackdropClose(() => emit('close'))
 
 const userStore = useUserStore()
 const exercisesStore = useExercises()

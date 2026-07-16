@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay" @mousedown="onBackdropMouseDown" @click.self="onBackdropClick">
     <div class="modal-content">
       <div class="step">
         <h2>Create Assignment</h2>
@@ -107,6 +107,7 @@ import { useExercises } from '../../composables/useExercises.js'
 import { useAssignments } from '../../composables/useAssignments.js'
 import { useClassrooms } from '../../composables/useClassrooms.js'
 import { useTeacherRole } from '../../composables/useTeacherRole.js'
+import { useBackdropClose } from '../../composables/useBackdropClose.js'
 
 const props = defineProps({
   preselectedClassroomId: {
@@ -116,6 +117,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'assignment-created'])
+
+// Don't dismiss when a text-drag inside the modal releases over the backdrop.
+const { onBackdropMouseDown, onBackdropClick } = useBackdropClose(() => emit('close'))
 
 const userStore = useUserStore()
 const exercisesStore = useExercises()
