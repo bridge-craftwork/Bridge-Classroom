@@ -15,7 +15,7 @@
     </div>
   </div>
 
-  <div v-else-if="activeAssignments.length > 0" class="assignment-panel">
+  <div v-else class="assignment-panel">
     <div class="section-header">
       <h3 class="section-title">My Assignments</h3>
       <button
@@ -27,7 +27,20 @@
       </button>
     </div>
 
-    <div class="assignment-cards">
+    <!-- Dead-zone fix: the student HAS assignments but none are current (all
+         past the active window or closed). Previously no branch matched here
+         and the whole panel rendered blank, so students looking for homework
+         saw nothing and fell back to ad-hoc practice, confused. Show an
+         explicit caught-up state with a path to review prior/closed work. -->
+    <div v-if="activeAssignments.length === 0" class="caught-up">
+      <p class="caught-up-title">You're all caught up!</p>
+      <p class="caught-up-desc">
+        No current assignments.
+        <button class="link-btn" @click="showAllModal = true">View past assignments</button>
+      </p>
+    </div>
+
+    <div v-else class="assignment-cards">
       <div
         v-for="a in activeAssignments"
         :key="a.id"
@@ -97,15 +110,18 @@
               v-for="a in assignments"
               :key="a.id"
               class="assignment-card"
-              :class="statusClass(a)"
+              :class="[statusClass(a), { closed: a.closed_at }]"
               @click="$emit('select-assignment', a); showAllModal = false"
             >
               <div class="card-top">
                 <div class="card-titles">
-                  <span class="exercise-name">{{ a.exercise_name }}</span>
+                  <span class="exercise-name">
+                    {{ a.exercise_name }}
+                    <span v-if="a.closed_at" class="closed-pill">Closed</span>
+                  </span>
                   <div class="card-meta">
                     <span v-if="a.classroom_name" class="meta-item classroom-name">{{ a.classroom_name }}</span>
-                    <span v-if="a.due_at" class="meta-item" :class="dueClass(a)">{{ dueText(a) }}</span>
+                    <span v-if="a.due_at" class="meta-item" :class="a.closed_at ? '' : dueClass(a)">{{ dueText(a) }}</span>
                   </div>
                 </div>
                 <div class="card-right">
@@ -113,7 +129,7 @@
                     class="action-btn"
                     @click.stop="$emit('select-assignment', a); showAllModal = false"
                   >
-                    {{ actionLabel(a) }}
+                    {{ a.closed_at ? 'Review' : actionLabel(a) }}
                   </button>
                 </div>
               </div>
@@ -171,11 +187,15 @@ const assignmentStatusApi = useAssignmentStatus()
 const masteryMap = ref({})
 const showAllModal = ref(false)
 
-// Filter to active assignments: no due date, due in future, or due within past 7 days
+// Filter to active assignments: not closed, and either undated, due in the
+// future, or due within the past 7 days. Closed (teacher-archived) assignments
+// are never active — they surface only in the "All assignments" review list,
+// tagged "Closed".
 const activeAssignments = computed(() => {
   const now = new Date()
   const cutoff = new Date(now.getTime() - ACTIVE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   return props.assignments.filter(a => {
+    if (a.closed_at) return false
     if (!a.due_at) return true
     return parseDueDate(a.due_at) >= cutoff
   })
@@ -395,12 +415,58 @@ function dueClass(assignment) {
 }
 
 .loading-state,
-.empty-state {
+.empty-state,
+.caught-up {
   padding: 32px 20px;
   text-align: center;
   background: white;
   border-radius: var(--radius-card, 10px);
   border: 1px solid var(--card-border, #e0ddd7);
+}
+
+.caught-up-title {
+  font-weight: 600;
+  color: var(--green-dark, #2d6a4f);
+  margin-bottom: 4px;
+}
+
+.caught-up-desc {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+}
+
+/* Inline text button that reads like a link — reuses view-all's affordance
+   inside the caught-up prose. */
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--green-dark, #2d6a4f);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* Closed (archived) assignment in the All-assignments review list: dimmed,
+   grey left rail, "Closed" tag — clearly not current homework. */
+.assignment-card.closed {
+  border-left-color: #cbd5e1;
+  opacity: 0.75;
+}
+
+.closed-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
 }
 
 .spinner {

@@ -18,15 +18,19 @@
 
     <div v-else class="assignment-list">
       <div
-        v-for="a in assignments"
+        v-for="a in sortedAssignments"
         :key="a.id"
         class="assignment-row"
+        :class="{ closed: a.closed_at }"
         @click="selectedAssignmentId = a.id"
       >
         <div class="assignment-body">
           <div class="assignment-top">
             <div class="assignment-main">
-              <span class="assignment-name">{{ a.exercise_name }}</span>
+              <span class="assignment-name">
+                {{ a.exercise_name }}
+                <span v-if="a.closed_at" class="closed-badge">Closed</span>
+              </span>
               <!--
                 Individual assignments don't have a classroom_name; the
                 backend supplies student_name so the row shows
@@ -38,10 +42,18 @@
             </div>
             <div class="assignment-meta">
               <span class="assignment-boards">{{ a.total_boards }} {{ a.total_boards === 1 ? 'board' : 'boards' }}</span>
-              <span v-if="a.due_at" class="assignment-due" :class="{ overdue: isOverdue(a) }">
+              <span v-if="a.due_at" class="assignment-due" :class="{ overdue: isOverdue(a) && !a.closed_at }">
                 Due {{ formatDate(a.due_at) }}
               </span>
               <span v-else class="assignment-due no-due">No due date</span>
+              <button
+                class="close-toggle"
+                :class="{ reopen: a.closed_at }"
+                :disabled="busyId === a.id"
+                @click.stop="toggleClosed(a)"
+              >
+                {{ a.closed_at ? 'Reopen' : 'Close' }}
+              </button>
             </div>
           </div>
           <AssignmentStatChips :assignment="a" />
@@ -77,9 +89,25 @@ const assignmentStore = useAssignments()
 
 const showAssignModal = ref(false)
 const selectedAssignmentId = ref(null)
+const busyId = ref(null)
 
 const assignments = computed(() => assignmentStore.teacherAssignments.value)
 const loading = computed(() => assignmentStore.loading.value)
+
+// Open assignments first, closed (archived) sink to the bottom. Array.sort is
+// stable, so within each group the server's assigned_at-DESC order is kept.
+const sortedAssignments = computed(() =>
+  [...assignments.value].sort((a, b) => (a.closed_at ? 1 : 0) - (b.closed_at ? 1 : 0))
+)
+
+async function toggleClosed(a) {
+  busyId.value = a.id
+  try {
+    await assignmentStore.setAssignmentClosed(a.id, !a.closed_at)
+  } finally {
+    busyId.value = null
+  }
+}
 
 // Classroom assignments show the classroom name; individual assignments
 // show the targeted student's name (the backend denormalizes it onto
@@ -268,6 +296,61 @@ onMounted(loadAssignments)
 .assignment-due.no-due {
   color: #9ca3af;
   font-style: italic;
+}
+
+/* Closed (archived) assignments: dimmed, badged, sunk to the bottom. Still
+   clickable to review results. */
+.assignment-row.closed {
+  background: #f7f7f6;
+  opacity: 0.72;
+}
+
+.assignment-row.closed:hover {
+  opacity: 1;
+}
+
+.closed-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.close-toggle {
+  border: 1px solid var(--card-border, #e0ddd7);
+  background: white;
+  color: var(--text-secondary, #6b7280);
+  padding: 3px 12px;
+  border-radius: var(--radius-button, 6px);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.close-toggle:hover {
+  background: #fff5f5;
+  border-color: #f0b4b4;
+  color: #c0392b;
+}
+
+.close-toggle.reopen:hover {
+  background: #eef7f1;
+  border-color: var(--green-mid, #40916c);
+  color: var(--green-dark, #2d6a4f);
+}
+
+.close-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .view-arrow {

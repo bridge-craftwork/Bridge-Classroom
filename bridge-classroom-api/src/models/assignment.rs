@@ -25,6 +25,13 @@ pub struct CreateAssignmentRequest {
     pub sort_order: Option<i32>,
 }
 
+/// Request to close/reopen an assignment (`PUT /api/assignments/:id/closed`).
+#[derive(Debug, Deserialize)]
+pub struct SetAssignmentClosedRequest {
+    /// true → archive (set `closed_at` = now); false → reopen (`closed_at` = NULL).
+    pub closed: bool,
+}
+
 /// Query parameters for listing assignments
 #[derive(Debug, Deserialize)]
 pub struct AssignmentQuery {
@@ -62,6 +69,11 @@ pub struct AssignmentInfo {
     pub assigned_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub due_at: Option<String>,
+    /// Teacher-controlled archive timestamp (RFC3339) or null. Non-null =
+    /// closed: shown as review-only, dropped from open counts. See the
+    /// `assignments.closed_at` migration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closed_at: Option<String>,
     pub total_boards: i64,
     pub attempted_boards: i64,
     pub correct_boards: i64,

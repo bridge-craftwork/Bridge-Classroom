@@ -196,7 +196,7 @@ pub async fn teacher_dashboard(
             SELECT a.id, a.exercise_id, e.name as exercise_name, a.due_at, a.assigned_at
             FROM assignments a
             JOIN exercises e ON e.id = a.exercise_id
-            WHERE a.classroom_id = ?
+            WHERE a.classroom_id = ? AND a.closed_at IS NULL
             ORDER BY a.assigned_at DESC
             "#,
         )
