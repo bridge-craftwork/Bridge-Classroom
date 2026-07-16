@@ -19,6 +19,7 @@
     :declarer="declarer"
     :occupants="occupants"
     :active-seat="activeSeat"
+    :thinking-seat="thinkingSeat"
     :label-component="labelComponent"
     :label-props="labelProps"
     @card-click="(p) => $emit('card-click', p)"
@@ -178,6 +179,11 @@ const props = defineProps({
   // Seat to highlight as "on turn" with the active-hand frame, even when it isn't
   // clickable (e.g. during the auction). Additive to clickableSeat.
   activeSeat: {
+    type: String,
+    default: null
+  },
+  // Seat where a bot is currently thinking (pink frame; e.g. BEN on the lead).
+  thinkingSeat: {
     type: String,
     default: null
   },

@@ -3,7 +3,7 @@
        and owns their relationship: the box, the on-turn frame, and the density
        (chip = chip alone; compact/full = chip + hand). The layout-inertness
        obligation (reserved frame width) lives here, not in HandDisplay. -->
-  <div class="seat-panel" :class="[{ compact: compactMode, active: activeSeat, chip: density === 'chip' }]">
+  <div class="seat-panel" :class="[{ compact: compactMode, active: activeSeat, thinking: thinking, chip: density === 'chip' }]">
     <!-- Seat identity. Default = the plain SeatChip label (A1 and every other
          caller). A drag/drop variant (SeatControlTable) injects a grabbable label
          component here — the base itself carries no seat-control code. -->
@@ -72,6 +72,9 @@ const props = defineProps({
 defineEmits(['card-click'])
 
 const activeSeat = computed(() => !!props.marks?.activeSeat)
+// A bot is thinking on this seat (pink frame) — the counterpart to `active`
+// (blue) for a human's turn. `active` wins if both are somehow set.
+const thinking = computed(() => !activeSeat.value && !!props.marks?.thinking)
 // compact sizing comes from the explicit prop OR the 'compact' density rung.
 const compactMode = computed(() => props.compact || props.density === 'compact')
 // Holding shows at compact/full; 'chip' density (and hidden) drop to identity.
@@ -102,6 +105,12 @@ const chipCardCount = computed(() => {
 .seat-panel.active {
   background: #e3f2fd;
   border-color: #2196f3;
+}
+/* A bot is thinking on this seat (e.g. BEN on the opening lead) — pink, the
+   counterpart to the blue "your turn" frame. */
+.seat-panel.thinking {
+  background: #fdecf2;
+  border-color: #f06292;
 }
 .seat-panel.compact {
   padding: calc(8px * var(--table-scale));
