@@ -279,7 +279,11 @@ pub async fn create_exercise(
         .bind(&board.deal_subfolder)
         .bind(board.deal_number)
         .bind(board.sort_order)
-        .bind(&board.collection_id)
+        // exercise_boards.collection_id is NOT NULL DEFAULT 'baker-bridge'. A
+        // bound explicit NULL bypasses the column default (SQLite only applies
+        // a DEFAULT when the column is omitted), so coalesce None here — older
+        // clients (and the teacher exercise editor pre-retrofit) send null.
+        .bind(board.collection_id.as_deref().unwrap_or("baker-bridge"))
         .execute(&mut *tx)
         .await
         .map_err(|e| {
@@ -532,7 +536,9 @@ pub async fn update_exercise(
             .bind(&board.deal_subfolder)
             .bind(board.deal_number)
             .bind(board.sort_order)
-            .bind(&board.collection_id)
+            // Coalesce None → the column default; a bound NULL trips the NOT
+            // NULL on collection_id (see create_exercise for the full note).
+            .bind(board.collection_id.as_deref().unwrap_or("baker-bridge"))
             .execute(&mut *tx)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
