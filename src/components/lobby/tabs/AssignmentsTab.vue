@@ -4,6 +4,10 @@
       <button class="action-btn assign" @click="showAssignModal = true">
         + New Assignment
       </button>
+      <label v-if="closedCount" class="show-closed">
+        <input type="checkbox" v-model="showClosed" />
+        Show closed ({{ closedCount }})
+      </label>
     </div>
 
     <div v-if="loading && !assignments.length" class="loading-state">
@@ -16,9 +20,20 @@
       <p class="empty-desc">Click <strong>+ New Assignment</strong> to assign an exercise to a classroom.</p>
     </div>
 
+    <!-- All assignments are closed and hidden: keep the tab from looking empty,
+         and point at the checkbox that reveals them. -->
+    <div v-else-if="!visibleAssignments.length" class="empty-state">
+      <p class="empty-title">No open assignments</p>
+      <p class="empty-desc">
+        {{ closedCount }} closed {{ closedCount === 1 ? 'assignment is' : 'assignments are' }} hidden — tick
+        <strong>Show closed</strong> to review {{ closedCount === 1 ? 'it' : 'them' }}, or
+        <strong>+ New Assignment</strong> to assign one.
+      </p>
+    </div>
+
     <div v-else class="assignment-list">
       <div
-        v-for="a in sortedAssignments"
+        v-for="a in visibleAssignments"
         :key="a.id"
         class="assignment-row"
         :class="{ closed: a.closed_at }"
@@ -77,7 +92,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useUserStore } from '../../../composables/useUserStore.js'
 import { useAssignments } from '../../../composables/useAssignments.js'
 import AssignmentCreateModal from '../AssignmentCreateModal.vue'
@@ -91,14 +106,28 @@ const showAssignModal = ref(false)
 const selectedAssignmentId = ref(null)
 const busyId = ref(null)
 
+// Hide closed (archived) assignments by default so the list doesn't grow
+// forever — the teacher opts into reviewing them. Preference persists.
+const SHOW_CLOSED_KEY = 'bridgeAssignmentsShowClosed'
+const showClosed = ref(localStorage.getItem(SHOW_CLOSED_KEY) === '1')
+watch(showClosed, (v) => {
+  try { localStorage.setItem(SHOW_CLOSED_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
+
 const assignments = computed(() => assignmentStore.teacherAssignments.value)
 const loading = computed(() => assignmentStore.loading.value)
 
-// Open assignments first, closed (archived) sink to the bottom. Array.sort is
-// stable, so within each group the server's assigned_at-DESC order is kept.
-const sortedAssignments = computed(() =>
-  [...assignments.value].sort((a, b) => (a.closed_at ? 1 : 0) - (b.closed_at ? 1 : 0))
-)
+const closedCount = computed(() => assignments.value.filter(a => a.closed_at).length)
+
+// Open assignments first; closed (archived) sink to the bottom and only appear
+// when "Show closed" is on. Array.sort is stable, so within each group the
+// server's assigned_at-DESC order is kept.
+const visibleAssignments = computed(() => {
+  const list = showClosed.value
+    ? assignments.value
+    : assignments.value.filter(a => !a.closed_at)
+  return [...list].sort((a, b) => (a.closed_at ? 1 : 0) - (b.closed_at ? 1 : 0))
+})
 
 async function toggleClosed(a) {
   busyId.value = a.id
@@ -160,8 +189,25 @@ onMounted(loadAssignments)
 
 .actions-row {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 20px;
+}
+
+.show-closed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  user-select: none;
+}
+
+.show-closed input {
+  cursor: pointer;
+  margin: 0;
 }
 
 .action-btn {
