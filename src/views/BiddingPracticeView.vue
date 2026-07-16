@@ -369,6 +369,7 @@
               @click="showPicker = true"
             >Deal source&hellip;</button>
             <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
+            <button class="bp-btn" @click="undo" :disabled="!canUndo" title="Undo — steps back to your last decision (bid or card)">Undo</button>
             <button class="bp-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading">Restart this deal</button>
             <button
               v-if="!EMBEDDED"
@@ -899,6 +900,7 @@ const {
   phase: enginePhase,
   summary, canDouble, canRedouble,
   loadDeal, onUserBid, toggleDivergedBid, resetAuction,
+  undo, canUndo,
 } = engine
 const availableBots = listBots()
 // Display name for a cardplay-bot key. NOTE: only `random`/`ben` exist in the
