@@ -934,15 +934,15 @@ const scenarioNameNoBoard = computed(() =>
 const soloOccupants = computed(() => {
   const u = currentUser.value
   const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
-  // During the play of the hand, solo only supports South-as-declarer, so North
-  // is the dummy that South plays. Label it "Dummy" (not the bidding bot) so it's
-  // clear the bot isn't in charge of that hand at this stage.
+  // Solo supports South-as-declarer only, so North is the dummy South plays — it's
+  // NEVER a cardplay bot. So North toggles "BBA" (bidding) ↔ "Dummy" (play), with
+  // no "+play-bot" suffix. E/W are bid by BBA and played by the cardplay bot.
   const inPlay = localCenterSlot.value === 'trick-area' || localCenterSlot.value === 'review'
   const out = {}
   for (const s of ['N', 'E', 'S', 'W']) {
     let name
     if (s === yourSeat.value) name = myName
-    else if (inPlay && s === 'N') name = 'Dummy'
+    else if (s === 'N') name = inPlay ? 'Dummy' : 'BBA'
     else name = soloBotSeatName.value
     out[s] = { name }
   }
