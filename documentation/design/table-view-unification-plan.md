@@ -118,10 +118,11 @@ Solo renders `<TableShell embedded=EMBEDDED>` with: scenario **buttons** →
 At complete/review: Double dummy → NE, auction → center, tricks/result → NW (with
 table status). Solo grid-slot arrangement only.
 
-**Slice 2d — A1-style header (decision #2).**
-Give both table views the `.app-header` look (brand left + user avatar/settings
-right, bottom border) — a small shared header component. Footer already shared in
-2a. (Host already has `SettingsPanel`; solo needs the avatar→settings wire.)
+**Slice 2d — A1-style header (decision #2). ✅ DONE (#256).**
+Both table views now have brand + account avatar → Settings. Host already had it;
+added the same to the solo nav (`user-btn` + `userInitials` + `SettingsPanel`,
+switch/logout → main app). Footer shared in 2a. (Future polish: extract a single
+shared header component / fold in inter-app nav.)
 
 **Slice 2e — Kill the priming skeleton. ✅ DONE (#255).**
 Replaced solo's faked `bp-ph-*` + rail skeleton with the real `BridgeTable` in

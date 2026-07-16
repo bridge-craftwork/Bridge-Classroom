@@ -297,6 +297,13 @@
   <div v-else class="bp-app" :class="{ embedded: EMBEDDED, 'intro-open': chatReserved }" :style="{ '--intro-gutter': chatGutter }">
     <nav v-if="!EMBEDDED" class="bp-nav">
       <a class="bp-logo" href="/"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</a>
+      <!-- Account circle — same identity menu as the main app / host table. -->
+      <button
+        v-if="currentUser"
+        class="user-btn"
+        :title="userName"
+        @click="showSettings = true"
+      >{{ userInitials }}</button>
     </nav>
 
     <div class="bp-main">
@@ -627,6 +634,16 @@
     >
       <ScenarioChatBody :text="scenarioChat?.text || ''" />
     </DockablePanel>
+
+    <!-- Account / identity menu (Switch User, edit name, display/privacy) —
+         switching or signing out returns to the main app to re-authenticate. -->
+    <SettingsPanel
+      :visible="showSettings"
+      @close="showSettings = false"
+      @switchUser="leaveToMainApp"
+      @logout="leaveToMainApp"
+      @become-teacher="leaveToMainApp"
+    />
   </div>
 </template>
 
@@ -645,6 +662,7 @@ import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
 import DockablePanel from '../components/DockablePanel.vue'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
+import SettingsPanel from '../components/SettingsPanel.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
@@ -734,6 +752,22 @@ function postEmbedded(msg) {
 // any) makes those tabs functional; anonymous users see a register note.
 const userStore = useUserStore()
 const { currentUser } = userStore
+
+// Account avatar (top-right) — same identity menu as the main app / host table.
+const showSettings = ref(false)
+const userInitials = computed(() => {
+  const u = currentUser.value
+  if (!u) return '?'
+  return `${(u.firstName || '').charAt(0)}${(u.lastName || '').charAt(0)}`.toUpperCase() || '?'
+})
+const userName = computed(() => {
+  const u = currentUser.value
+  return u ? `${u.firstName} ${u.lastName}`.trim() : ''
+})
+function leaveToMainApp() {
+  showSettings.value = false
+  router.push('/')
+}
 // Deep-links land here without going through the main app, so load the signed-in
 // user from storage ourselves (idempotent) — needed for "Invite friends" and the
 // picker's account-gated tabs (Club/Library).
@@ -897,7 +931,7 @@ const soloOccupants = computed(() => {
   const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
   const out = {}
   for (const s of ['N', 'E', 'S', 'W']) {
-    out[s] = { name: s === yourSeat ? myName : soloBotSeatName.value }
+    out[s] = { name: s === yourSeat.value ? myName : soloBotSeatName.value }
   }
   return out
 })
@@ -1360,6 +1394,23 @@ async function restartCardplay() {
 }
 .bp-logo { font-size: 15px; font-weight: 500; color: #222; text-decoration: none; }
 .bp-logo .suit { color: #1D9E75; margin-right: 6px; }
+/* Account circle — matches the main app / host table avatar. */
+.user-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--green-mid, #667eea) 0%, var(--green-dark, #764ba2) 100%);
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.user-btn:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18); }
 /* Footer pinned to the bottom of the (flex-column) stage; stretch so the shared
    PageFooter spans the width instead of shrinking to its content. */
 .bp-footer-row { align-self: stretch; margin-top: auto; }
