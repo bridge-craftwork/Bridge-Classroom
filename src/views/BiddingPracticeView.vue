@@ -321,7 +321,7 @@
              Description) stay greyed until a deal loads, and the Deal source
              button is spotlighted while there's no deal yet. -->
         <div v-if="currentDeal || !EMBEDDED" class="bp-scenario-bar">
-          <div>
+          <div class="bp-scenario-info">
             <template v-if="currentDeal">
               <div class="bp-scenario-name">{{ currentScenarioLabel }}</div>
               <div class="bp-scenario-meta">
@@ -1665,19 +1665,23 @@ async function restartCardplay() {
 /* Scenario header */
 .bp-scenario-bar {
   width: 100%;
-  max-width: 940px;
-  margin: 0 auto;
+  /* Column: action buttons on top (they wrap), then the board-source info
+     full-width below on ~2 lines — instead of the info squeezed into a narrow,
+     deeply-wrapped column beside a non-wrapping button row. */
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 10px 14px;
   background: #fff;
   border: 0.5px solid #ddd;
   border-radius: 8px;
 }
+/* Board source / meta — flows horizontally and wraps, full width, under the buttons. */
+.bp-scenario-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
 .bp-scenario-name { font-size: 15px; font-weight: 500; }
 .bp-scenario-meta { font-size: 12px; color: #666; }
-.bp-scenario-actions { display: flex; gap: 8px; }
+.bp-scenario-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; order: -1; }
 .bp-btn {
   padding: 6px 14px;
   border-radius: 6px;
