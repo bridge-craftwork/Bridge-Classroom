@@ -266,7 +266,19 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
-            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, "x-api-key".parse().unwrap()])
+            // Includes the ADR-0003 signed-request headers (x-bc-*) so the
+            // browser's CORS preflight for signed admin/teacher calls (e.g. the
+            // account-merge GUI) isn't blocked. Without them the POST fails with
+            // "Failed to fetch" even though the endpoint is reachable.
+            .allow_headers([
+                header::CONTENT_TYPE,
+                header::AUTHORIZATION,
+                "x-api-key".parse().unwrap(),
+                "x-bc-user".parse().unwrap(),
+                "x-bc-timestamp".parse().unwrap(),
+                "x-bc-nonce".parse().unwrap(),
+                "x-bc-signature".parse().unwrap(),
+            ])
     } else {
         // Specific origins
         let allowed: Vec<_> = origins
@@ -278,7 +290,19 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
             .allow_origin(allowed)
             .allow_credentials(true)
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
-            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, "x-api-key".parse().unwrap()])
+            // Includes the ADR-0003 signed-request headers (x-bc-*) so the
+            // browser's CORS preflight for signed admin/teacher calls (e.g. the
+            // account-merge GUI) isn't blocked. Without them the POST fails with
+            // "Failed to fetch" even though the endpoint is reachable.
+            .allow_headers([
+                header::CONTENT_TYPE,
+                header::AUTHORIZATION,
+                "x-api-key".parse().unwrap(),
+                "x-bc-user".parse().unwrap(),
+                "x-bc-timestamp".parse().unwrap(),
+                "x-bc-nonce".parse().unwrap(),
+                "x-bc-signature".parse().unwrap(),
+            ])
     }
 }
 
