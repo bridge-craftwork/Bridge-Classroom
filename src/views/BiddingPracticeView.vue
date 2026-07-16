@@ -378,6 +378,13 @@
         </div>
 
         <template v-if="currentDeal">
+          <!-- DD review banner: which trick is recoloured on the table below. -->
+          <div v-if="inspectInfo" class="bp-review-banner">
+            <span><strong>Trick {{ inspectInfo.trickNo }}</strong> — {{ inspectInfo.seat }} played {{ cardLabel(inspectInfo.card) }}</span>
+            <span v-if="inspectInfo.cost > 0" class="bp-review-bad">gave away {{ inspectInfo.cost }} trick<span v-if="inspectInfo.cost > 1">s</span></span>
+            <span v-else-if="inspectInfo.cost === 0" class="bp-review-good">double-dummy best</span>
+            <span class="bp-review-hint">click any card to return</span>
+          </div>
           <!-- One layout for solo AND embedded (iframe ?pbn) bidding: the grid
                arranger. The embed is just this table in a narrower frame — the
                shell collapses the rail below the table at embed widths. -->
@@ -417,11 +424,11 @@
               <template #center>
                 <TrickArea
                   v-if="localCenterSlot === 'trick-area' || localCenterSlot === 'review'"
-                  :current-trick="cardplay.currentTrick"
-                  :last-finished-trick="cardplay.lastFinishedTrick.value"
+                  :current-trick="centerTrick"
+                  :last-finished-trick="centerLastTrick"
                   :tricks-taken="cardplay.tricksTaken.value"
-                  :next-seat="cardplay.currentPlayer.value"
-                  :bot-loading="cardplay.botLoading.value"
+                  :next-seat="centerNextSeat"
+                  :bot-loading="inspecting ? false : cardplay.botLoading.value"
                   :bot-name="botName"
                 />
                 <AuctionTable
@@ -657,47 +664,6 @@
         <label class="bp-setting-row" title="Show the BBA expected-auction comparison in the bidding grid.">
           <input type="checkbox" v-model="showBbaCompare"> Show BBA auction comparison
         </label>
-      </div>
-    </div>
-
-    <!-- Tap-to-inspect: DD alternatives for one played card (#24). -->
-    <div v-if="inspect" class="modal-overlay" @click.self="closeInspect">
-      <div class="bp-inspect-modal">
-        <div class="bp-settings-head">
-          <h3>Trick {{ inspect.trickNo }} — {{ inspect.seat }} played {{ cardLabel(inspect.card) }}</h3>
-          <button class="bp-settings-x" @click="closeInspect" title="Close">&times;</button>
-        </div>
-        <p class="bp-inspect-sub">
-          <span v-if="inspect.loading">Analysing…</span>
-          <span v-else-if="inspect.alternatives">
-            <template v-if="inspect.cost > 0">Cost: gave away {{ inspect.cost }} trick<span v-if="inspect.cost > 1">s</span> (double-dummy).</template>
-            <template v-else>Double-dummy best — no trick given away.</template>
-          </span>
-          <span v-else>Analysis unavailable.</span>
-        </p>
-
-        <!-- Four hands as they stood before this card was played. -->
-        <div class="bp-inspect-hands">
-          <div v-for="s in ['N','E','S','W']" :key="s" class="bp-inspect-hand" :class="{ acting: s === inspect.seat }">
-            <div class="bp-inspect-seat">{{ s }}</div>
-            <div v-for="row in inspectHoldings(inspect.hands4[s])" :key="row.suit" class="bp-inspect-suit">
-              <span class="bp-inspect-pip" :class="{ red: row.red }">{{ row.suit }}</span> {{ row.ranks }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Alternatives at this node (best first); flag the card actually played. -->
-        <table v-if="inspect.alternatives" class="bp-inspect-alts">
-          <thead><tr><th>Card</th><th>DD tricks</th><th>Cost</th></tr></thead>
-          <tbody>
-            <tr v-for="a in inspect.alternatives" :key="a.card"
-                :class="{ played: a.card === inspect.card, best: a.cost === 0 }">
-              <td>{{ cardLabel(a.card) }}<span v-if="a.card === inspect.card" class="bp-alt-tag">played</span></td>
-              <td>{{ a.tricks }}</td>
-              <td>{{ a.cost > 0 ? '−' + a.cost : '·' }}</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
   </div>
@@ -1143,8 +1109,92 @@ const cardAnalysis = useCardPlayAnalysis()
 // Per-seat DD error badges for the fresh reveal (F2): only cards with cost > 0,
 // grouped by the seat that played them. `−N` = tricks that play gave away; the
 // fill deepens with cost. Only present at 'complete' with the setting on.
+// Card code ("H4") → display text ("♥4"); formatCardCode returns {text, html}.
+function cardLabel(code) { return formatCardCode(code).text }
+
+// ── Post-hand DD review: recolor the MAIN table for one trick (#24, bug#21721) ─
+// Reporter refinement: don't pop a second table. Clicking a card at the reveal
+// rewinds the real table to that trick — hands show the position, the center
+// TrickArea shows the cards led so far — and tints the acting seat's LEGAL cards
+// green (double-dummy best) / pink (gave a trick away), ringing the card actually
+// played. Click any card again to revert to the full fresh reveal.
+const ddInspectEnabled = computed(() =>
+  cardplayShowDdErrors.value && cardplayPhase.value === 'complete' && !!cardAnalysis.trace.value
+)
+const inspectedK = ref(null)      // play-index under review, or null (= full reveal)
+const inspectedAlts = ref(null)   // node payload { seat, card, cost, alternatives }
+const inspecting = computed(() => inspectedK.value !== null)
+
+async function onCardInspect({ seat, suit, rank }) {
+  // While reviewing, ANY card click returns to the full reveal.
+  if (inspecting.value) { inspectedK.value = null; inspectedAlts.value = null; return }
+  const k = cardplay.played.value.findIndex(p => p.seat === seat && p.suit === suit && p.rank === rank)
+  if (k < 0) return
+  inspectedK.value = k
+  inspectedAlts.value = null
+  const res = await cardAnalysis.alternativesForNode(k)
+  if (inspectedK.value === k && res) inspectedAlts.value = res // ignore if superseded
+}
+
+// The trick containing the inspected play (played[] is 4-per-trick, chronological).
+const inspectedTrickStart = computed(() =>
+  inspectedK.value === null ? 0 : Math.floor(inspectedK.value / 4) * 4
+)
+const actingSeat = computed(() =>
+  inspectedK.value === null ? null : cardplay.played.value[inspectedK.value]?.seat || null
+)
+// Banner context (which trick, who, what, cost) — replaces the old modal header.
+const inspectInfo = computed(() => {
+  if (!inspecting.value) return null
+  const p = cardplay.played.value[inspectedK.value]
+  return {
+    trickNo: Math.floor(inspectedK.value / 4) + 1,
+    seat: p?.seat || '',
+    card: p ? p.suit + p.rank : '',
+    cost: inspectedAlts.value?.cost ?? null,
+  }
+})
+
+// TrickArea feed: while reviewing, synthesise the cards led to that trick BEFORE
+// the acting seat (the position the player faced); otherwise the live trick.
+const centerTrick = computed(() => {
+  if (!inspecting.value) return cardplay.currentTrick
+  const played = cardplay.played.value
+  const start = inspectedTrickStart.value
+  return { leader: played[start]?.seat || null, plays: played.slice(start, inspectedK.value) }
+})
+const centerLastTrick = computed(() =>
+  inspecting.value ? null : cardplay.lastFinishedTrick.value
+)
+const centerNextSeat = computed(() =>
+  inspecting.value ? actingSeat.value : cardplay.currentPlayer.value
+)
+
+// Flat [{suit,rank}] (computeRemaining output) → suit-keyed hand for the table.
+function seatCardsToHand(flat) {
+  const h = { spades: [], hearts: [], diamonds: [], clubs: [] }
+  const key = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }
+  for (const c of flat || []) h[key[c.suit]].push(c.rank)
+  return h
+}
+
+// Per-seat card marks fed to the table's cardBadges prop:
+//  • plain reveal → the −N error badges (F2);
+//  • reviewing    → the acting seat's legal cards tinted green/pink + the played
+//    card ringed (`chosen`). Colour carries the verdict; the badge number drops.
+const GOOD_FILL = 'rgba(46,160,67,0.34)'
+const BAD_FILL = 'rgba(216,72,72,0.34)'
 const ddCardBadges = computed(() => {
   if (!cardplayShowDdErrors.value || cardplayPhase.value !== 'complete') return null
+  if (inspecting.value) {
+    const node = inspectedAlts.value
+    const seat = actingSeat.value
+    if (!node || !seat) return null
+    const cards = {}
+    for (const a of node.alternatives) cards[a.card] = { fill: a.cost > 0 ? BAD_FILL : GOOD_FILL }
+    if (node.card) cards[node.card] = { ...cards[node.card], chosen: true }
+    return { N: {}, E: {}, S: {}, W: {}, [seat]: cards }
+  }
   const t = cardAnalysis.trace.value?.trace
   if (!t) return null
   const out = { N: {}, E: {}, S: {}, W: {} }
@@ -1159,54 +1209,18 @@ const ddCardBadges = computed(() => {
   return out
 })
 
-// Tap-to-inspect (F3): at the reveal, any card is tappable to see the four hands
-// as they stood at that play + the DD cost of every card then in the hand
-// (fetched on demand). Gated on the same setting + a ready trace.
-const ddInspectEnabled = computed(() =>
-  cardplayShowDdErrors.value && cardplayPhase.value === 'complete' && !!cardAnalysis.trace.value
-)
-const inspect = ref(null) // { trickNo, seat, card, cost, hands4, alternatives, loading }
-async function onCardInspect({ seat, suit, rank }) {
-  const deal = currentDeal.value
-  if (!deal) return
-  const played = cardplay.played.value
-  const k = played.findIndex(p => p.seat === seat && p.suit === suit && p.rank === rank)
-  if (k < 0) return
-  // Position BEFORE card k = the deal minus the first k plays (card k still held),
-  // i.e. the hands + choices the player faced at that moment.
-  const hands4 = computeRemaining(deal.hands, played.slice(0, k))
-  inspect.value = {
-    trickNo: Math.floor(k / 4) + 1,
-    seat, card: suit + rank, cost: 0, hands4, alternatives: null, loading: true,
-  }
-  const res = await cardAnalysis.alternativesForNode(k)
-  if (!inspect.value || inspect.value.card !== suit + rank) return // superseded/closed
-  inspect.value.loading = false
-  if (res) {
-    inspect.value.cost = res.cost
-    // Best (lowest cost) first; the actually-played card is flagged in the row.
-    inspect.value.alternatives = [...res.alternatives].sort((a, b) => a.cost - b.cost)
-  }
-}
-function closeInspect() { inspect.value = null }
-// Card code ("H4") → display text ("♥4"); formatCardCode returns {text, html}.
-function cardLabel(code) { return formatCardCode(code).text }
-// Group a seat's remaining cards into display holdings (one line per suit).
-function inspectHoldings(cards) {
-  const order = 'AKQJT98765432'
-  const bySuit = { S: [], H: [], D: [], C: [] }
-  for (const c of cards || []) (bySuit[c.suit] ||= []).push(c.rank)
-  return ['S', 'H', 'D', 'C'].map(s => ({
-    suit: { S: '♠', H: '♥', D: '♦', C: '♣' }[s],
-    red: s === 'H' || s === 'D',
-    ranks: bySuit[s].sort((a, b) => order.indexOf(a) - order.indexOf(b))
-      .map(r => (r === 'T' ? '10' : r)).join(' ') || '—',
-  }))
-}
-
 // ── Derived (view-side: presentation over the engine + cardplay + prefs) ─
 const visibleHands = computed(() => {
   if (!currentDeal.value) return { N: null, E: null, S: null, W: null }
+  // DD review: rewind every hand to the position BEFORE the inspected card, so the
+  // acting seat still holds its options (incl. the played card) and the trick's
+  // earlier cards show in the center TrickArea.
+  if (inspecting.value) {
+    const rem = computeRemaining(currentDeal.value.hands, cardplay.played.value.slice(0, inspectedK.value))
+    const out = {}
+    for (const s of ['N', 'E', 'S', 'W']) out[s] = seatCardsToHand(rem[s])
+    return out
+  }
   // During cardplay, defer to the engine for which seats are visible — but
   // the "Show all hands" teaching toggle overrides to reveal defenders too.
   if (cardplayPhase.value === 'playing') {
@@ -1265,7 +1279,7 @@ const cardplayPhase = computed(() => {
 // Fire the post-hand DD analysis on entering 'complete' (see cardAnalysis above).
 // Declared here because the eager watch getter reads cardplayPhase immediately.
 watch(() => cardplayPhase.value, (phase) => {
-  if (phase !== 'complete') { cardAnalysis.reset(); inspect.value = null; return }
+  if (phase !== 'complete') { cardAnalysis.reset(); inspectedK.value = null; inspectedAlts.value = null; return }
   if (!cardplayShowDdErrors.value) return
   const deal = currentDeal.value
   const fc = finalContract.value
@@ -1896,47 +1910,24 @@ async function restartCardplay() {
   color: #999;
 }
 
-/* Tap-to-inspect modal (DD alternatives for one played card, #24). */
-.bp-inspect-modal {
-  background: #fff;
-  border-radius: var(--radius-card, 10px);
-  max-width: 460px;
-  width: 100%;
-  margin: auto;
-  max-height: 90dvh;
-  overflow-y: auto;
-  padding: 18px 20px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+/* DD review banner: context for the recoloured trick on the table below (#24). */
+.bp-review-banner {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 12px;
-}
-.bp-inspect-sub { margin: 0; font-size: 13px; color: #555; }
-.bp-inspect-hands {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.bp-inspect-hand {
-  border: 1px solid #eee;
-  border-radius: 8px;
-  padding: 8px 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0 auto 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface-2, #f3f4f6);
+  border: 1px solid var(--border, #e3e5e8);
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
+  color: var(--text, #333);
 }
-.bp-inspect-hand.acting { border-color: #d84848; background: rgba(216, 72, 72, 0.06); }
-.bp-inspect-seat { font-weight: 700; font-size: 12px; color: #888; margin-bottom: 2px; }
-.bp-inspect-suit { white-space: nowrap; letter-spacing: 0.02em; }
-.bp-inspect-pip { color: #333; }
-.bp-inspect-pip.red { color: #c62828; }
-.bp-inspect-alts { width: 100%; border-collapse: collapse; font-size: 13px; }
-.bp-inspect-alts th, .bp-inspect-alts td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
-.bp-inspect-alts th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #999; }
-.bp-inspect-alts td:nth-child(2), .bp-inspect-alts td:nth-child(3),
-.bp-inspect-alts th:nth-child(2), .bp-inspect-alts th:nth-child(3) { text-align: right; }
-.bp-inspect-alts tr.best td { color: #2e7d32; }
-.bp-inspect-alts tr.played td { font-weight: 700; background: rgba(216, 72, 72, 0.08); }
-.bp-alt-tag { margin-left: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; color: #d84848; }
+.bp-review-good { color: #2e7d32; font-weight: 600; }
+.bp-review-bad { color: #c62828; font-weight: 600; }
+.bp-review-hint { color: #999; font-style: italic; }
 
 /* Deal-control buttons (VCR-style) — a centred row below the table. */
 .bp-deal-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

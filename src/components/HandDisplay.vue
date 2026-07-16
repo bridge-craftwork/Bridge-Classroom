@@ -194,6 +194,7 @@ function cellClass(suit, rank) {
     current: isCardCurrent(suit, rank),
     interactive: props.clickable && !isCardPlayed(suit, rank) && !isCardCurrent(suit, rank),
     inspectable: props.inspectable && !(props.clickable && !isCardPlayed(suit, rank)),
+    chosen: !!cardMark(suit, rank)?.chosen,
     'has-badge': !!cardBadge(suit, rank),
   }
 }
@@ -445,6 +446,12 @@ function onPopupSelect(rank) {
 /* Tap-to-inspect (post-hand DD review): pointer affordance without the play
    hover styling. Error cards additionally carry a `fill` background + badge. */
 .cell.inspectable { cursor: pointer; }
+/* The specifically chosen card in a recoloured review trick: a dark ring over
+   the green/pink fill so it reads as "this is the card that was played". */
+.cell.chosen {
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px #333;
+}
 
 .cell.interactive {
   cursor: pointer;
