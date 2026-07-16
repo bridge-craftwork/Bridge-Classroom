@@ -39,11 +39,11 @@ describe('resolveArrangement (priority: query → localStorage → default)', ()
     expect(resolveArrangement({ param: 'grid', stored: 'legacy' })).toEqual({ arrangement: 'grid', source: 'query' })
   })
   it('falls back to the stored value when no query', () => {
-    expect(resolveArrangement({ param: null, stored: 'grid' })).toEqual({ arrangement: 'grid', source: 'localStorage' })
+    expect(resolveArrangement({ param: null, stored: 'legacy' })).toEqual({ arrangement: 'legacy', source: 'localStorage' })
   })
-  it('defaults to legacy when neither is set', () => {
+  it('defaults to grid when neither is set', () => {
     expect(resolveArrangement({})).toEqual({ arrangement: DEFAULT_ARRANGEMENT, source: 'default' })
-    expect(resolveArrangement({ param: 'bogus', stored: 'bogus' })).toEqual({ arrangement: 'legacy', source: 'default' })
+    expect(resolveArrangement({ param: 'bogus', stored: 'bogus' })).toEqual({ arrangement: DEFAULT_ARRANGEMENT, source: 'default' })
   })
   it('a query=legacy override reverts even when grid is stored', () => {
     expect(resolveArrangement({ param: 'legacy', stored: 'grid' })).toEqual({ arrangement: 'legacy', source: 'query' })

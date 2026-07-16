@@ -1,21 +1,22 @@
-// Per-client arrangement axis (a1 grid-flip slice 1.6a). Resolves which table
-// arrangement the CURRENT client renders — `legacy` (today's compass layout) or
-// `grid` (the named-area arranger) — from, in priority order:
-//   1. a `?arrangement=grid|legacy` query param (the preview switch), which also
-//      PERSISTS the choice so navigation within the app doesn't shed it;
+// Per-client arrangement axis (a1 grid-flip). Resolves which table arrangement the
+// CURRENT client renders — `grid` (the named-area arranger, now the default) or
+// `legacy` (the old compass layout, opt-in during the retirement window) — from, in
+// priority order:
+//   1. an `?arrangement=grid|legacy` query param (the switch), which also PERSISTS
+//      the choice so navigation within the app doesn't shed it;
 //   2. the persisted localStorage value from a prior query override;
-//   3. the default (`legacy`) — so every client without the override is untouched.
+//   3. the default (`grid`) — so every client without an override gets the arranger.
 //
-// Production default stays `legacy`; this is the standing mechanism for previewing
-// any arrangement candidate against prod (grid-arranger-spec / a1-grid-flip-slice-spec
-// §1.6a — the override is permanent dev apparatus, not scaffolding).
+// Production default is `grid` as of slice 1.6b (flipped from `legacy` 2026-07-15
+// after the soak; a1-grid-flip-slice-spec §1.6b). `?arrangement=legacy` remains the
+// standing escape hatch until slice 1.7 retires legacy entirely.
 //
 // Pure + side-effect-free here (no localStorage / window reads baked in) so it's
 // unit-testable; the composable (useArrangement.js) supplies the live inputs.
 
 export const ARRANGEMENT_STORAGE_KEY = 'bcArrangement'
 export const ARRANGEMENTS = ['legacy', 'grid']
-export const DEFAULT_ARRANGEMENT = 'legacy'
+export const DEFAULT_ARRANGEMENT = 'grid'
 
 /** Normalize an arbitrary value to a valid arrangement, or null. */
 export function normalizeArrangement(v) {

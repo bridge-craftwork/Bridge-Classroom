@@ -3,8 +3,9 @@
 // and expose the resolved arrangement + provenance as shared reactive state.
 //
 // Reading once (not per-navigation) is deliberate — the override is meant to stick
-// for the session so navigating within the app doesn't shed it. A client reverts by
-// visiting `?arrangement=legacy` (which clears the key) or clearing localStorage.
+// for the session so navigating within the app doesn't shed it. Grid is the default;
+// a client pins legacy by visiting `?arrangement=legacy` (persisted), and returns to
+// the grid default via `?arrangement=grid` (which clears the key) or clearing storage.
 
 import { ref } from 'vue'
 import {
@@ -21,8 +22,8 @@ function readStored() {
 }
 function writeStored(value) {
   try {
-    // Persist a grid override; a legacy override (or default) CLEARS the key, so
-    // "revert" leaves no residue — the client is byte-identical to a fresh one.
+    // Persist a non-default (legacy) override; picking the default (grid) CLEARS the
+    // key, so returning to default leaves no residue — byte-identical to a fresh client.
     if (value === DEFAULT_ARRANGEMENT) localStorage.removeItem(ARRANGEMENT_STORAGE_KEY)
     else localStorage.setItem(ARRANGEMENT_STORAGE_KEY, value)
   } catch { /* private mode / no storage — fall back to in-memory only */ }
@@ -37,7 +38,7 @@ export function initArrangement(loc = (typeof window !== 'undefined' ? window.lo
   const r = resolveArrangement({ param, stored })
   arrangement.value = r.arrangement
   arrangementSource.value = r.source
-  // A query override is the persist trigger (grid sticks; legacy clears).
+  // A query override is the persist trigger (legacy sticks; grid = default clears).
   if (r.source === 'query') writeStored(r.arrangement)
   // Re-read on hashchange so editing `?arrangement=` in the URL switches arrangement LIVE
   // (no refresh) — the reactive ref drives the practice view's grid/legacy branch
