@@ -46,6 +46,8 @@ The outer loop is **prod-with-override**: real deployed build, real bridge-class
 
 **Type:** Visible change (the named region is the entire A1 arrangement — this is the look-and-feel integration the roadmap sequenced everything toward).
 
+**Status:** ✅ **FLIPPED 2026-07-15.** `DEFAULT_ARRANGEMENT` in `src/utils/arrangement.js` changed `legacy` → `grid` (one line); comments + the two arrangement test suites inverted to grid-as-default (all key off `DEFAULT_ARRANGEMENT`, so `?arrangement=legacy` now persists and `?arrangement=grid` clears the key). `legacy` retained via the override axis until 1.7.
+
 **Statement.** Change the A1 default from `legacy` to `grid`. One line. `legacy` remains fully intact and selectable via the same override axis (`?arrangement=legacy`) — this satisfies Invariant 5 (no dual rendering: a config axis is not dual rendering; exactly one arrangement renders per client) while making revert trivial and *remote-operable*.
 
 **Rollback:** the same one line back (or a server-side default if the axis is read from config — prefer whichever is operable from a laptop in a hotel in ≤ 5 minutes without repo-state context). Rollback procedure written into the PR description verbatim, so it's executable by David if Rick is unreachable.

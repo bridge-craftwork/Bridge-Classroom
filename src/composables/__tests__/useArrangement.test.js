@@ -10,47 +10,47 @@ describe('useArrangement (singleton: read once, persist a query override)', () =
     try { localStorage.clear() } catch { /* ignore */ }
   })
 
-  it('defaults to legacy with no param and no storage', () => {
+  it('defaults to grid with no param and no storage', () => {
     initArrangement(loc())
     const { arrangement, arrangementSource } = useArrangement()
-    expect(arrangement.value).toBe('legacy')
+    expect(arrangement.value).toBe('grid')
     expect(arrangementSource.value).toBe('default')
     expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBeNull()
   })
 
-  it('a ?arrangement=grid query selects grid AND persists it', () => {
-    initArrangement(loc('?arrangement=grid'))
+  it('a ?arrangement=legacy query selects legacy AND persists it', () => {
+    initArrangement(loc('?arrangement=legacy'))
     const { arrangement, arrangementSource } = useArrangement()
-    expect(arrangement.value).toBe('grid')
+    expect(arrangement.value).toBe('legacy')
     expect(arrangementSource.value).toBe('query')
-    expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBe('grid')
+    expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBe('legacy')
   })
 
-  it('a persisted grid override survives a later visit with no param (source = localStorage)', () => {
-    localStorage.setItem(ARRANGEMENT_STORAGE_KEY, 'grid')
+  it('a persisted legacy override survives a later visit with no param (source = localStorage)', () => {
+    localStorage.setItem(ARRANGEMENT_STORAGE_KEY, 'legacy')
     initArrangement(loc())
     const { arrangement, arrangementSource } = useArrangement()
-    expect(arrangement.value).toBe('grid')
+    expect(arrangement.value).toBe('legacy')
     expect(arrangementSource.value).toBe('localStorage')
   })
 
-  it('?arrangement=legacy reverts and clears the persisted key', () => {
-    localStorage.setItem(ARRANGEMENT_STORAGE_KEY, 'grid')
-    initArrangement(loc('?arrangement=legacy'))
+  it('?arrangement=grid reverts to the default and clears the persisted key', () => {
+    localStorage.setItem(ARRANGEMENT_STORAGE_KEY, 'legacy')
+    initArrangement(loc('?arrangement=grid'))
     const { arrangement } = useArrangement()
-    expect(arrangement.value).toBe('legacy')
+    expect(arrangement.value).toBe('grid')
     expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBeNull()
   })
 
   it('setArrangement marks provenance by value-vs-default (drives the profile ring)', () => {
     initArrangement(loc())
     const { arrangement, arrangementSource } = useArrangement()
-    setArrangement('grid')
-    expect(arrangement.value).toBe('grid')
-    expect(arrangementSource.value).toBe('query') // override → orange
-    expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBe('grid')
     setArrangement('legacy')
     expect(arrangement.value).toBe('legacy')
+    expect(arrangementSource.value).toBe('query') // override → orange
+    expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBe('legacy')
+    setArrangement('grid')
+    expect(arrangement.value).toBe('grid')
     expect(arrangementSource.value).toBe('default') // back to default → green
     expect(localStorage.getItem(ARRANGEMENT_STORAGE_KEY)).toBeNull()
   })
