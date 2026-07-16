@@ -349,13 +349,15 @@ async function handleSave() {
   saving.value = true
   error.value = null
 
-  // Materialize sort_order from array position. The collection_id field
-  // is unused for teacher-built exercises; pass null.
+  // Materialize sort_order from array position. Teacher-built exercises pick
+  // from the baker-bridge taxonomy, so their boards belong to that collection.
+  // exercise_boards.collection_id is NOT NULL, so this must be a real value —
+  // passing null trips a DB constraint (the backend also coalesces defensively).
   const payloadBoards = boards.value.map((b, i) => ({
     deal_subfolder: b.deal_subfolder,
     deal_number: b.deal_number,
     sort_order: i,
-    collection_id: null,
+    collection_id: 'baker-bridge',
   }))
 
   let result
