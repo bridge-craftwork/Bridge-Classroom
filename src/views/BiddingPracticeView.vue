@@ -109,7 +109,8 @@
             :hidden-seats="srv.displayHiddenSeats"
             :identity-only="!srv.dealLoaded"
             :occupants="srv.seatOccupants"
-            :active-seat="srv.nextToAct"
+            :active-seat="srv.botThinking ? null : srv.nextToAct"
+            :thinking-seat="srv.botThinking ? srv.nextToAct : null"
             :show-hcp="false"
             :clickable-seat="srv.clickableSeat"
             :hide-played-cards="true"
@@ -412,6 +413,7 @@
               :show-hcp="true"
               :show-total-points="true"
               :clickable-seat="cardplay.clickableSeat.value"
+              :thinking-seat="cardplayThinkingSeat"
               :played-cards="cardplay.playedBySeat.value"
               :hide-played-cards="cardplayHidePlayed"
               @card-click="onCardClick"
@@ -926,6 +928,11 @@ const botOptions = computed(() => {
   }
   return opts
 })
+// The seat a cardplay bot is currently thinking on (pink frame) — mostly BEN on
+// the first trick or two. Null when it's a human's turn (that seat goes blue).
+const cardplayThinkingSeat = computed(() =>
+  cardplay.botLoading.value ? cardplay.currentPlayer.value : null)
+
 // Scenario/source name without a trailing "· Board N" — the board number is shown
 // in the board-status glyph (NW), so it's not repeated in the ribbon.
 const scenarioNameNoBoard = computed(() =>

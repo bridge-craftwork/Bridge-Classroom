@@ -108,6 +108,8 @@ const props = defineProps({
   occupants: { type: Object, default: null },
   // Seat highlighted as "on turn" (auction/play), additive to clickableSeat.
   activeSeat: { type: String, default: null },
+  // Seat where a bot is currently thinking (pink frame; e.g. BEN on the lead).
+  thinkingSeat: { type: String, default: null },
   // Optional grabbable/droppable seat-label component + its shared props
   // (SeatControlTable injects ManageableSeatLabel for host drag/drop + the
   // Sit/Remove/Kick menu). null → the plain SeatChip; A1 passes neither.
@@ -195,7 +197,11 @@ function marksFor(seat) {
   for (const code of props.currentCards?.[seat] || []) {
     cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { current: true }
   }
-  return { cards, activeSeat: props.clickableSeat === seat || props.activeSeat === seat }
+  return {
+    cards,
+    activeSeat: props.clickableSeat === seat || props.activeSeat === seat,
+    thinking: props.thinkingSeat === seat,
+  }
 }
 
 // Bidding-scene vertical model (grid-arranger-spec §1, amended no-reflow rule):
