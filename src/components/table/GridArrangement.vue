@@ -29,12 +29,14 @@
         :presence="occPresence(seat)"
         :show-hcp="showHcp"
         :clickable="clickableSeat === seat"
+        :inspectable="inspectable"
         :density="seatDensity(seat)"
         :marks="marksFor(seat)"
         :hide-played-cards="hidePlayedCards"
         :label-component="labelComponent"
         :label-props="labelProps"
         @card-click="(p) => $emit('card-click', { seat, ...p })"
+        @card-inspect="(p) => $emit('card-inspect', { seat, ...p })"
       />
     </div>
 
@@ -93,6 +95,13 @@ const props = defineProps({
   playedCards: { type: Object, default: null },
   // Current-trick cards to HIGHLIGHT (vs playedCards, which strike through).
   currentCards: { type: Object, default: null },
+  // Per-seat DD overlay badges: { N: { "H4": { badge, fill } }, ... }. Merged
+  // into each card's mark (badge text + cell fill) WITHOUT the `played` strike —
+  // used for the post-hand double-dummy cardplay-error overlay on the fresh
+  // reveal (#24). Independent of playedCards.
+  cardBadges: { type: Object, default: null },
+  // Post-hand review: make every card tappable to inspect its DD alternatives.
+  inspectable: { type: Boolean, default: false },
   hidePlayedCards: { type: Boolean, default: false },
   config: { type: Object, required: true },
   phase: { type: String, default: 'bidding' },
@@ -116,7 +125,7 @@ const props = defineProps({
   labelComponent: { type: [Object, Function], default: null },
   labelProps: { type: Object, default: null },
 })
-defineEmits(['card-click'])
+defineEmits(['card-click', 'card-inspect'])
 
 const SEATS = ['N', 'E', 'S', 'W']
 const SUIT_LETTER = { spades: 'S', hearts: 'H', diamonds: 'D', clubs: 'C' }
@@ -196,6 +205,11 @@ function marksFor(seat) {
   // Current-trick cards (e.g. dummy's led card) highlight rather than strike through.
   for (const code of props.currentCards?.[seat] || []) {
     cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { current: true }
+  }
+  // DD error overlay: merge badge/fill onto the card WITHOUT `played` (no strike).
+  for (const [code, mark] of Object.entries(props.cardBadges?.[seat] || {})) {
+    const key = code[0].toUpperCase() + code.slice(1).toUpperCase()
+    cards[key] = { ...cards[key], ...mark }
   }
   return {
     cards,

@@ -11,6 +11,8 @@
     :clickable-seat="clickableSeat"
     :played-cards="playedCards"
     :current-cards="currentCards"
+    :card-badges="cardBadges"
+    :inspectable="inspectable"
     :hide-played-cards="hidePlayedCards"
     :config="tableConfig"
     :phase="phase"
@@ -23,6 +25,7 @@
     :label-component="labelComponent"
     :label-props="labelProps"
     @card-click="(p) => $emit('card-click', p)"
+    @card-inspect="(p) => $emit('card-inspect', p)"
   >
     <template v-if="$slots.center" #center><slot name="center" /></template>
     <template v-if="$slots.nw" #nw><slot name="nw" /></template>
@@ -165,6 +168,17 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  // Per-seat DD overlay badges { N: { "H4": { badge, fill } }, ... } — merged
+  // onto card marks without the `played` strike (post-hand DD error overlay, #24).
+  cardBadges: {
+    type: Object,
+    default: null
+  },
+  // Post-hand review: tap a card to inspect its DD alternatives (grid path).
+  inspectable: {
+    type: Boolean,
+    default: false
+  },
   hidePlayedCards: {
     type: Boolean,
     default: false
@@ -238,7 +252,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['card-click'])
+defineEmits(['card-click', 'card-inspect'])
 
 function occName(seat) { return props.occupants?.[seat]?.name || null }
 function occPresence(seat) {
@@ -332,6 +346,11 @@ function marksFor(seat) {
   // Current-trick cards (e.g. dummy's led card) highlight rather than strike through.
   for (const code of props.currentCards?.[seat] || []) {
     cards[code[0].toUpperCase() + code.slice(1).toUpperCase()] = { current: true }
+  }
+  // DD error overlay: merge badge/fill onto the card WITHOUT `played` (no strike).
+  for (const [code, mark] of Object.entries(props.cardBadges?.[seat] || {})) {
+    const key = code[0].toUpperCase() + code.slice(1).toUpperCase()
+    cards[key] = { ...cards[key], ...mark }
   }
   return { cards, activeSeat: props.activeSeat === seat || props.clickableSeat === seat }
 }

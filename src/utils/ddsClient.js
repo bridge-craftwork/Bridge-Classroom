@@ -27,3 +27,58 @@ export async function fetchDoubleDummy(deal) {
   const json = await resp.json()
   return json.ddtricks && json.ddtricks.length >= 20 ? json.ddtricks : null
 }
+
+// ── Per-card cardplay analysis (bridge-solver-service #4) ──────────────────
+// Post-hand double-dummy "AnalysePlay". Two endpoints, both best-effort (null on
+// any failure — the overlay is never load-bearing). See
+// documentation/design/dd-cardplay-analysis-spec.md.
+//
+// `req` shape (shared): { hands, trump, declarer, leader, plays } where
+//   hands   — { N:{spades,hearts,...}, ... } (the ORIGINAL deal)
+//   trump   — 'S'|'H'|'D'|'C'|'NT'  (map a null/NT trump to the string 'NT')
+//   declarer/leader — 'N'|'E'|'S'|'W'
+//   plays   — ['H4','CT', ...] play order (suit letter + rank, 'T' for ten)
+
+function ddPlayBody({ hands, trump, declarer, leader, plays }) {
+  return JSON.stringify({
+    dealstr: 'N:' + handsToPbnString(hands),
+    trump: trump || 'NT',
+    declarer,
+    leader,
+    plays,
+  })
+}
+
+// The running trace: { contract_tricks, trace: [{index, seat, card, cost}] }.
+// Powers the error badges — a card with cost > 0 gave away that many tricks.
+export async function fetchDdPlay(req) {
+  try {
+    const resp = await fetch(`${SOLVER_URL}/dd/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: ddPlayBody(req),
+    })
+    if (!resp.ok) return null
+    const json = await resp.json()
+    return Array.isArray(json.trace) ? json : null
+  } catch {
+    return null
+  }
+}
+
+// One node's alternatives (on click): { index, seat, card, cost,
+// alternatives: [{card, tricks, cost}] }. `node` indexes into `plays`.
+export async function fetchDdPlayNode(req, node) {
+  try {
+    const resp = await fetch(`${SOLVER_URL}/dd/play/node`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...JSON.parse(ddPlayBody(req)), node }),
+    })
+    if (!resp.ok) return null
+    const json = await resp.json()
+    return Array.isArray(json.alternatives) ? json : null
+  } catch {
+    return null
+  }
+}

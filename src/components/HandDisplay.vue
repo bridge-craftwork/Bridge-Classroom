@@ -29,7 +29,7 @@
             class="cell"
             :class="cellClass(suit, card)"
             :style="cellFill(suit, card)"
-            @click.stop="clickable && !isCardPlayed(suit, card) && $emit('card-click', { suit: suitLetter(suit), rank: card })"
+            @click.stop="onCellClick(suit, card)"
           >{{ formatCard(card) }}<span v-if="cardBadge(suit, card)" class="cell-badge">{{ cardBadge(suit, card) }}</span></span>{{ i < visibleRanks(suit).length - 1 ? ' ' : '' }}</template><span
             v-if="hiddenCount(suit) > 0"
             class="cell chip"
@@ -97,6 +97,10 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   // Interaction only: makes cells clickable (cursor + card-click emit).
   clickable: { type: Boolean, default: false },
+  // Read-only "tap to inspect" mode (post-hand DD overlay). Independent of
+  // `clickable` (which drives PLAY). When set, a cell click emits `card-inspect`
+  // instead of playing — used at the reveal to open a card's DD alternatives.
+  inspectable: { type: Boolean, default: false },
   // Annotation map: cards: { <code>: { played, badge, fill } } — per-card, keyed
   // by "SK"/"DT". (Seat-level marks like active-seat live on SeatPanel now.)
   marks: { type: Object, default: null },
@@ -107,7 +111,17 @@ const props = defineProps({
   hidePlayedCards: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['card-click'])
+const emit = defineEmits(['card-click', 'card-inspect'])
+
+// Cell click routes to PLAY when clickable, else to INSPECT when inspectable.
+// The two modes are mutually exclusive in practice (play vs. post-hand review).
+function onCellClick(suit, card) {
+  if (props.clickable && !isCardPlayed(suit, card)) {
+    emit('card-click', { suit: suitLetter(suit), rank: card })
+  } else if (props.inspectable) {
+    emit('card-inspect', { suit: suitLetter(suit), rank: card })
+  }
+}
 
 const suits = SUIT_ORDER
 
@@ -179,6 +193,7 @@ function cellClass(suit, rank) {
     played: isCardPlayed(suit, rank),
     current: isCardCurrent(suit, rank),
     interactive: props.clickable && !isCardPlayed(suit, rank) && !isCardCurrent(suit, rank),
+    inspectable: props.inspectable && !(props.clickable && !isCardPlayed(suit, rank)),
     'has-badge': !!cardBadge(suit, rank),
   }
 }
@@ -427,6 +442,9 @@ function onPopupSelect(rank) {
   user-select: none;
 }
 .holding.hide-played .cell.played { display: none; }
+/* Tap-to-inspect (post-hand DD review): pointer affordance without the play
+   hover styling. Error cards additionally carry a `fill` background + badge. */
+.cell.inspectable { cursor: pointer; }
 
 .cell.interactive {
   cursor: pointer;

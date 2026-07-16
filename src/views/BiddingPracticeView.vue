@@ -394,9 +394,12 @@
               :show-total-points="true"
               :clickable-seat="cardplay.clickableSeat.value"
               :thinking-seat="cardplayThinkingSeat"
-              :played-cards="cardplay.playedBySeat.value"
+              :played-cards="revealPlayedCards"
+              :card-badges="ddCardBadges"
+              :inspectable="ddInspectEnabled"
               :hide-played-cards="cardplayHidePlayed"
               @card-click="onCardClick"
+              @card-inspect="onCardInspect"
             >
               <!-- NW: board status (a1-style BoardIndicator glyph + StatusStrip). -->
               <template #nw>
@@ -429,7 +432,7 @@
                   :wrong-bid-indices="wrongIndicesArray"
                   :show-turn-indicator="!auctionComplete"
                   :meanings="meanings"
-                  :diverged-bids="divergedBids"
+                  :diverged-bids="shownDivergedBids"
                   :allow-divergence-toggle="!auctionLoading"
                   @toggle-bid="toggleDivergedBid"
                 />
@@ -442,7 +445,7 @@
                   :current-bid-index="bids.length"
                   :wrong-bid-indices="wrongIndicesArray"
                   :meanings="meanings"
-                  :diverged-bids="divergedBids"
+                  :diverged-bids="shownDivergedBids"
                   :show-turn-indicator="false"
                   :allow-divergence-toggle="false"
                 />
@@ -647,6 +650,54 @@
         <label class="bp-setting-row"><input type="checkbox" v-model="cardplayShowPlayed"> Show played cards</label>
         <label class="bp-setting-row"><input type="checkbox" v-model="cardplayShowAll"> Show all hands</label>
         <label class="bp-setting-row"><input type="checkbox" v-model="cardplay.autoplayUserSingletons.value"> Auto-play singletons</label>
+        <label class="bp-setting-row" title="After the hand, flag each played card with its double-dummy cost.">
+          <input type="checkbox" v-model="cardplayShowDdErrors"> Show double-dummy cardplay errors
+        </label>
+        <div class="bp-setting-sep">Auction</div>
+        <label class="bp-setting-row" title="Show the BBA expected-auction comparison in the bidding grid.">
+          <input type="checkbox" v-model="showBbaCompare"> Show BBA auction comparison
+        </label>
+      </div>
+    </div>
+
+    <!-- Tap-to-inspect: DD alternatives for one played card (#24). -->
+    <div v-if="inspect" class="modal-overlay" @click.self="closeInspect">
+      <div class="bp-inspect-modal">
+        <div class="bp-settings-head">
+          <h3>Trick {{ inspect.trickNo }} — {{ inspect.seat }} played {{ cardLabel(inspect.card) }}</h3>
+          <button class="bp-settings-x" @click="closeInspect" title="Close">&times;</button>
+        </div>
+        <p class="bp-inspect-sub">
+          <span v-if="inspect.loading">Analysing…</span>
+          <span v-else-if="inspect.alternatives">
+            <template v-if="inspect.cost > 0">Cost: gave away {{ inspect.cost }} trick<span v-if="inspect.cost > 1">s</span> (double-dummy).</template>
+            <template v-else>Double-dummy best — no trick given away.</template>
+          </span>
+          <span v-else>Analysis unavailable.</span>
+        </p>
+
+        <!-- Four hands as they stood before this card was played. -->
+        <div class="bp-inspect-hands">
+          <div v-for="s in ['N','E','S','W']" :key="s" class="bp-inspect-hand" :class="{ acting: s === inspect.seat }">
+            <div class="bp-inspect-seat">{{ s }}</div>
+            <div v-for="row in inspectHoldings(inspect.hands4[s])" :key="row.suit" class="bp-inspect-suit">
+              <span class="bp-inspect-pip" :class="{ red: row.red }">{{ row.suit }}</span> {{ row.ranks }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Alternatives at this node (best first); flag the card actually played. -->
+        <table v-if="inspect.alternatives" class="bp-inspect-alts">
+          <thead><tr><th>Card</th><th>DD tricks</th><th>Cost</th></tr></thead>
+          <tbody>
+            <tr v-for="a in inspect.alternatives" :key="a.card"
+                :class="{ played: a.card === inspect.card, best: a.cost === 0 }">
+              <td>{{ cardLabel(a.card) }}<span v-if="a.card === inspect.card" class="bp-alt-tag">played</span></td>
+              <td>{{ a.tricks }}</td>
+              <td>{{ a.cost > 0 ? '−' + a.cost : '·' }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -671,7 +722,7 @@ import SettingsPanel from '../components/SettingsPanel.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
-import { formatBid } from '../utils/cardFormatting.js'
+import { formatBid, formatCardCode } from '../utils/cardFormatting.js'
 import { getBot, listBots } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
@@ -683,6 +734,9 @@ import { useTableSlots } from '../composables/engines/tableSlots.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useServerTable } from '../composables/useServerTable.js'
 import { useAppConfig } from '../composables/useAppConfig.js'
+import { useCardPlayAnalysis } from '../composables/useCardPlayAnalysis.js'
+import { trumpFromContract, computeRemaining } from '../utils/cardplayRules.js'
+import { seatAtIndex } from '../utils/handAnalysis.js'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
 
@@ -885,6 +939,30 @@ watch(cardplayShowAll, (v) => {
   try { localStorage.setItem(SHOW_ALL_KEY, v ? '1' : '0') } catch {}
 })
 
+// Two review overlays, both default ON (opt-out via '0', unlike the teaching
+// toggles above which are opt-in via '1'):
+//   showDdErrors: flag each played card with its double-dummy cost after the hand
+//     (see documentation/design/dd-cardplay-analysis-spec.md). State + persistence
+//     live now; the overlay that reads this ref ships once solver-service /dd/play
+//     exists (bridge-solver-service#4).
+//   showBbaCompare: show the BBA "expected auction" comparison (divergedBids) in
+//     the auction grid. Off → we pass an empty map so AuctionTable skips the
+//     stacked user/BBA rows.
+const SHOW_DD_ERRORS_KEY = 'bp.cardplayShowDdErrors'
+const SHOW_BBA_COMPARE_KEY = 'bp.cardplayShowBbaCompare'
+const cardplayShowDdErrors = ref(
+  typeof localStorage === 'undefined' || localStorage.getItem(SHOW_DD_ERRORS_KEY) !== '0'
+)
+const showBbaCompare = ref(
+  typeof localStorage === 'undefined' || localStorage.getItem(SHOW_BBA_COMPARE_KEY) !== '0'
+)
+watch(cardplayShowDdErrors, (v) => {
+  try { localStorage.setItem(SHOW_DD_ERRORS_KEY, v ? '1' : '0') } catch {}
+})
+watch(showBbaCompare, (v) => {
+  try { localStorage.setItem(SHOW_BBA_COMPARE_KEY, v ? '1' : '0') } catch {}
+})
+
 // ── The board-manager engine (LocalEngine) ─────────────────────────────
 // Owns the deal source, the auction/board flow, AND cardplay (useCardPlay).
 // The shell reads engine.yourSeat / engine.capabilities (seat-agnostic) and
@@ -908,6 +986,9 @@ const {
   loadDeal, onUserBid, toggleDivergedBid, resetAuction,
   undo, canUndo,
 } = engine
+// Gate the BBA "expected auction" comparison on the user setting: when off, hand
+// AuctionTable an empty map so it skips the stacked user/BBA rows entirely.
+const shownDivergedBids = computed(() => showBbaCompare.value ? divergedBids.value : {})
 const availableBots = listBots()
 // Display name for a cardplay-bot key. NOTE: only `random`/`ben` exist in the
 // frontend today; `rules` (RulesBot) runs server-side and needs the planned
@@ -1040,6 +1121,89 @@ const cardplayHidePlayed = computed(() => {
   return !cardplayShowPlayed.value
 })
 
+// End-of-play reveal shows the deal FRESH — no strike-through (bug-artifacts#21).
+// During live play, played cards may be struck (the "Show played cards" teaching
+// toggle); at 'complete' we drop the `played` marks entirely so every hand reads
+// like the original deal. The DD cardplay-error overlay (#24) will re-annotate
+// only the error cards here via its own mark path, on top of this fresh reveal.
+const revealPlayedCards = computed(() =>
+  cardplayPhase.value === 'complete' ? null : cardplay.playedBySeat.value
+)
+
+// ── Post-hand double-dummy cardplay-error analysis (#24) ─────────────────
+// Fires the batch DD trace when the hand completes (best-effort), gated on the
+// "Show double-dummy cardplay errors" setting. Snapshot the deal + play trace
+// here — `cardplay` is a singleton the next deal resets, and the trace/node
+// calls must keep referring to THIS hand. F2 reads `errorsByCard` for badges;
+// F3 calls `alternativesForNode` on tap.
+const cardAnalysis = useCardPlayAnalysis()
+// NB: the watch that fires the analysis lives below cardplayPhase's definition
+// (it reads that computed eagerly, so it must be declared after it).
+
+// Per-seat DD error badges for the fresh reveal (F2): only cards with cost > 0,
+// grouped by the seat that played them. `−N` = tricks that play gave away; the
+// fill deepens with cost. Only present at 'complete' with the setting on.
+const ddCardBadges = computed(() => {
+  if (!cardplayShowDdErrors.value || cardplayPhase.value !== 'complete') return null
+  const t = cardAnalysis.trace.value?.trace
+  if (!t) return null
+  const out = { N: {}, E: {}, S: {}, W: {} }
+  for (const e of t) {
+    if (e.cost > 0 && out[e.seat]) {
+      out[e.seat][e.card] = {
+        badge: '−' + e.cost, // U+2212 minus
+        fill: e.cost >= 2 ? 'rgba(198,40,40,0.40)' : 'rgba(216,72,72,0.28)',
+      }
+    }
+  }
+  return out
+})
+
+// Tap-to-inspect (F3): at the reveal, any card is tappable to see the four hands
+// as they stood at that play + the DD cost of every card then in the hand
+// (fetched on demand). Gated on the same setting + a ready trace.
+const ddInspectEnabled = computed(() =>
+  cardplayShowDdErrors.value && cardplayPhase.value === 'complete' && !!cardAnalysis.trace.value
+)
+const inspect = ref(null) // { trickNo, seat, card, cost, hands4, alternatives, loading }
+async function onCardInspect({ seat, suit, rank }) {
+  const deal = currentDeal.value
+  if (!deal) return
+  const played = cardplay.played.value
+  const k = played.findIndex(p => p.seat === seat && p.suit === suit && p.rank === rank)
+  if (k < 0) return
+  // Position BEFORE card k = the deal minus the first k plays (card k still held),
+  // i.e. the hands + choices the player faced at that moment.
+  const hands4 = computeRemaining(deal.hands, played.slice(0, k))
+  inspect.value = {
+    trickNo: Math.floor(k / 4) + 1,
+    seat, card: suit + rank, cost: 0, hands4, alternatives: null, loading: true,
+  }
+  const res = await cardAnalysis.alternativesForNode(k)
+  if (!inspect.value || inspect.value.card !== suit + rank) return // superseded/closed
+  inspect.value.loading = false
+  if (res) {
+    inspect.value.cost = res.cost
+    // Best (lowest cost) first; the actually-played card is flagged in the row.
+    inspect.value.alternatives = [...res.alternatives].sort((a, b) => a.cost - b.cost)
+  }
+}
+function closeInspect() { inspect.value = null }
+// Card code ("H4") → display text ("♥4"); formatCardCode returns {text, html}.
+function cardLabel(code) { return formatCardCode(code).text }
+// Group a seat's remaining cards into display holdings (one line per suit).
+function inspectHoldings(cards) {
+  const order = 'AKQJT98765432'
+  const bySuit = { S: [], H: [], D: [], C: [] }
+  for (const c of cards || []) (bySuit[c.suit] ||= []).push(c.rank)
+  return ['S', 'H', 'D', 'C'].map(s => ({
+    suit: { S: '♠', H: '♥', D: '♦', C: '♣' }[s],
+    red: s === 'H' || s === 'D',
+    ranks: bySuit[s].sort((a, b) => order.indexOf(a) - order.indexOf(b))
+      .map(r => (r === 'T' ? '10' : r)).join(' ') || '—',
+  }))
+}
+
 // ── Derived (view-side: presentation over the engine + cardplay + prefs) ─
 const visibleHands = computed(() => {
   if (!currentDeal.value) return { N: null, E: null, S: null, W: null }
@@ -1096,6 +1260,25 @@ const cardplayPhase = computed(() => {
   if (!cardplayPossible.value) return 'unsupported'
   if (cardplay.playComplete.value) return 'complete'
   return 'playing'
+})
+
+// Fire the post-hand DD analysis on entering 'complete' (see cardAnalysis above).
+// Declared here because the eager watch getter reads cardplayPhase immediately.
+watch(() => cardplayPhase.value, (phase) => {
+  if (phase !== 'complete') { cardAnalysis.reset(); inspect.value = null; return }
+  if (!cardplayShowDdErrors.value) return
+  const deal = currentDeal.value
+  const fc = finalContract.value
+  if (!deal || !fc?.contract || fc.contract === 'Pass' || !fc.declarer) return
+  const plays = cardplay.played.value.map(p => p.suit + p.rank)
+  if (!plays.length) return
+  cardAnalysis.analyze({
+    hands: deal.hands,
+    trump: trumpFromContract(fc.contract) || 'NT',
+    declarer: fc.declarer,
+    leader: seatAtIndex(fc.declarer, 1), // opening leader = declarer's LHO
+    plays,
+  })
 })
 
 // ── Slice 6: mutually-exclusive table slots, decided in ONE place ──────────
@@ -1712,6 +1895,48 @@ async function restartCardplay() {
   letter-spacing: 0.04em;
   color: #999;
 }
+
+/* Tap-to-inspect modal (DD alternatives for one played card, #24). */
+.bp-inspect-modal {
+  background: #fff;
+  border-radius: var(--radius-card, 10px);
+  max-width: 460px;
+  width: 100%;
+  margin: auto;
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: 18px 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.bp-inspect-sub { margin: 0; font-size: 13px; color: #555; }
+.bp-inspect-hands {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bp-inspect-hand {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.bp-inspect-hand.acting { border-color: #d84848; background: rgba(216, 72, 72, 0.06); }
+.bp-inspect-seat { font-weight: 700; font-size: 12px; color: #888; margin-bottom: 2px; }
+.bp-inspect-suit { white-space: nowrap; letter-spacing: 0.02em; }
+.bp-inspect-pip { color: #333; }
+.bp-inspect-pip.red { color: #c62828; }
+.bp-inspect-alts { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bp-inspect-alts th, .bp-inspect-alts td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
+.bp-inspect-alts th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #999; }
+.bp-inspect-alts td:nth-child(2), .bp-inspect-alts td:nth-child(3),
+.bp-inspect-alts th:nth-child(2), .bp-inspect-alts th:nth-child(3) { text-align: right; }
+.bp-inspect-alts tr.best td { color: #2e7d32; }
+.bp-inspect-alts tr.played td { font-weight: 700; background: rgba(216, 72, 72, 0.08); }
+.bp-alt-tag { margin-left: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; color: #d84848; }
 
 /* Deal-control buttons (VCR-style) — a centred row below the table. */
 .bp-deal-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
