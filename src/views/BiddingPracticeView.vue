@@ -931,9 +931,17 @@ const botOptions = computed(() => {
 const soloOccupants = computed(() => {
   const u = currentUser.value
   const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
+  // During the play of the hand, solo only supports South-as-declarer, so North
+  // is the dummy that South plays. Label it "Dummy" (not the bidding bot) so it's
+  // clear the bot isn't in charge of that hand at this stage.
+  const inPlay = localCenterSlot.value === 'trick-area' || localCenterSlot.value === 'review'
   const out = {}
   for (const s of ['N', 'E', 'S', 'W']) {
-    out[s] = { name: s === yourSeat.value ? myName : soloBotSeatName.value }
+    let name
+    if (s === yourSeat.value) name = myName
+    else if (inPlay && s === 'N') name = 'Dummy'
+    else name = soloBotSeatName.value
+    out[s] = { name }
   }
   return out
 })
