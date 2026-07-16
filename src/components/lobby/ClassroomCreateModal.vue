@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay" @mousedown="onBackdropMouseDown" @click.self="onBackdropClick">
     <div class="modal-content">
       <div class="step">
         <h2>Create a Classroom</h2>
@@ -50,8 +50,12 @@
 import { ref } from 'vue'
 import { useUserStore } from '../../composables/useUserStore.js'
 import { useClassrooms } from '../../composables/useClassrooms.js'
+import { useBackdropClose } from '../../composables/useBackdropClose.js'
 
 const emit = defineEmits(['close', 'classroom-created'])
+
+// Don't dismiss when a text-drag inside the modal releases over the backdrop.
+const { onBackdropMouseDown, onBackdropClick } = useBackdropClose(() => emit('close'))
 
 const userStore = useUserStore()
 const classrooms = useClassrooms()

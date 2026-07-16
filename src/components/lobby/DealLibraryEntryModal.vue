@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay" @mousedown="onBackdropMouseDown" @click.self="onBackdropClick">
     <div class="modal-content">
       <div class="step">
         <h2>{{ isEdit ? 'Edit ' + kindLabel : 'New ' + kindLabel }}</h2>
@@ -103,6 +103,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useDealLibrary } from '../../composables/useDealLibrary.js'
 import { useUserStore } from '../../composables/useUserStore.js'
+import { useBackdropClose } from '../../composables/useBackdropClose.js'
 
 const props = defineProps({
   entryId: { type: String, default: null },
@@ -114,6 +115,9 @@ const props = defineProps({
   folderOptions: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['close', 'saved'])
+
+// Don't dismiss when a text-drag inside the modal releases over the backdrop.
+const { onBackdropMouseDown, onBackdropClick } = useBackdropClose(() => emit('close'))
 
 const { entries, fetchEntry, createEntry, updateEntry, error: storeError } = useDealLibrary()
 const userStore = useUserStore()
