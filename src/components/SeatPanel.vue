@@ -24,10 +24,12 @@
       :show-total-points="showTotalPoints"
       :compact="compactMode"
       :clickable="clickable"
+      :inspectable="inspectable"
       :marks="marks"
       :density="density"
       :hide-played-cards="hidePlayedCards"
       @card-click="$emit('card-click', $event)"
+      @card-inspect="$emit('card-inspect', $event)"
     />
   </div>
 </template>
@@ -57,6 +59,7 @@ const props = defineProps({
   showTotalPoints: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
   clickable: { type: Boolean, default: false },
+  inspectable: { type: Boolean, default: false },
   hidePlayedCards: { type: Boolean, default: false },
   // 'chip' → identity only; 'compact' | 'full' → identity + holding.
   density: { type: String, default: 'full' },
@@ -69,7 +72,7 @@ const props = defineProps({
   labelProps: { type: Object, default: null },
 })
 
-defineEmits(['card-click'])
+defineEmits(['card-click', 'card-inspect'])
 
 const activeSeat = computed(() => !!props.marks?.activeSeat)
 // A bot is thinking on this seat (pink frame) — the counterpart to `active`
