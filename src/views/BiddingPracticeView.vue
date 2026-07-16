@@ -341,24 +341,6 @@
             </template>
           </div>
           <div class="bp-scenario-actions">
-            <label v-if="!EMBEDDED" class="bp-rotate-toggle">
-              <input type="checkbox" v-model="rotateDeals">
-              Rotate randomly
-            </label>
-            <label v-if="!EMBEDDED" class="bp-rotate-toggle">
-              <input type="checkbox" v-model="playCardplay">
-              Play the hand after bidding
-            </label>
-            <label
-              v-if="!EMBEDDED && playCardplay"
-              class="bp-bot-label"
-              title="The bots always BID with BBA — this picks the CARDPLAY bot only."
-            >
-              Play bot:
-              <select class="bp-bot-select" v-model="cardplayBotName">
-                <option v-for="o in botOptions" :key="o.value" :value="o.value" :disabled="o.disabled">{{ o.label }}</option>
-              </select>
-            </label>
             <button
               v-if="!EMBEDDED"
               class="bp-btn"
@@ -367,9 +349,6 @@
               title="Choose where deals come from"
               @click="showPicker = true"
             >Deal source&hellip;</button>
-            <button v-if="!EMBEDDED" class="bp-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection">Next deal &rarr;</button>
-            <button class="bp-btn" @click="undo" :disabled="!canUndo" title="Undo — steps back to your last decision (bid or card)">Undo</button>
-            <button class="bp-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading">Restart this deal</button>
             <button
               v-if="!EMBEDDED"
               class="bp-btn"
@@ -377,6 +356,7 @@
               @click="inviteFriends"
             >Invite friends&hellip;</button>
             <button v-if="!EMBEDDED && capabilities.narrative" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
+            <button v-if="!EMBEDDED" class="bp-btn bp-settings-btn" @click="showTableSettings = true" title="Table setup + cardplay options">⚙ Table settings</button>
           </div>
         </div>
           </template>
@@ -479,6 +459,21 @@
                   @bid="onUserBid"
                 />
               </template>
+
+              <!-- SW: deal control buttons (VCR-style) — undo / restart / next. -->
+              <template #sw>
+                <div class="bp-sw-controls">
+                  <button class="bp-vcr-btn" @click="undo" :disabled="!canUndo" title="Undo — steps back to your last decision (bid or card)">
+                    <span class="bp-vcr-ico">⏪</span> Undo
+                  </button>
+                  <button class="bp-vcr-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading" title="Restart this deal from the top">
+                    <span class="bp-vcr-ico">⏮</span> Restart deal
+                  </button>
+                  <button v-if="!EMBEDDED" class="bp-vcr-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection" title="Deal the next board">
+                    <span class="bp-vcr-ico">⏭</span> Next deal
+                  </button>
+                </div>
+              </template>
             </BridgeTable>
 
             <div class="bp-right-rail">
@@ -500,20 +495,6 @@
                   last {{ fmtMs(cardplay.botStats.value.last) }} ·
                   avg {{ fmtMs(cardplay.botStats.value.mean) }} ·
                   max {{ fmtMs(cardplay.botStats.value.max) }}
-                </div>
-                <div class="bp-cardplay-toggles">
-                  <label class="bp-cardplay-toggle">
-                    <input type="checkbox" v-model="cardplayShowPlayed">
-                    Show played cards
-                  </label>
-                  <label class="bp-cardplay-toggle">
-                    <input type="checkbox" v-model="cardplayShowAll">
-                    Show all hands
-                  </label>
-                  <label class="bp-cardplay-toggle">
-                    <input type="checkbox" v-model="cardplay.autoplayUserSingletons.value">
-                    Auto-play singletons
-                  </label>
                 </div>
                 <!-- Claim flow: button opens an inline picker. v1 trusts the
                      claim; future enhancement is DD validation via libdds. -->
@@ -645,6 +626,28 @@
       @logout="leaveToMainApp"
       @become-teacher="leaveToMainApp"
     />
+
+    <!-- Table settings: deal setup + cardplay display options, grouped. -->
+    <div v-if="showTableSettings" class="modal-overlay" @click.self="showTableSettings = false">
+      <div class="bp-settings-modal">
+        <div class="bp-settings-head">
+          <h3>Table settings</h3>
+          <button class="bp-settings-x" @click="showTableSettings = false" title="Close">&times;</button>
+        </div>
+        <label class="bp-setting-row"><input type="checkbox" v-model="rotateDeals"> Rotate deals randomly</label>
+        <label class="bp-setting-row"><input type="checkbox" v-model="playCardplay"> Play the hand after bidding</label>
+        <label v-if="playCardplay" class="bp-setting-row" title="The bots always BID with BBA — this picks the CARDPLAY bot only.">
+          <span>Play bot</span>
+          <select class="bp-bot-select" v-model="cardplayBotName">
+            <option v-for="o in botOptions" :key="o.value" :value="o.value" :disabled="o.disabled">{{ o.label }}</option>
+          </select>
+        </label>
+        <div class="bp-setting-sep">Cardplay display</div>
+        <label class="bp-setting-row"><input type="checkbox" v-model="cardplayShowPlayed"> Show played cards</label>
+        <label class="bp-setting-row"><input type="checkbox" v-model="cardplayShowAll"> Show all hands</label>
+        <label class="bp-setting-row"><input type="checkbox" v-model="cardplay.autoplayUserSingletons.value"> Auto-play singletons</label>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -756,6 +759,8 @@ const { currentUser } = userStore
 
 // Account avatar (top-right) — same identity menu as the main app / host table.
 const showSettings = ref(false)
+// Table settings popup (deal setup + cardplay display options).
+const showTableSettings = ref(false)
 const userInitials = computed(() => {
   const u = currentUser.value
   if (!u) return '?'
@@ -1701,6 +1706,69 @@ async function restartCardplay() {
   cursor: pointer;
 }
 .bp-btn:hover { border-color: #888; }
+
+/* "Table settings" button pushed to the right end of the top action row. */
+.bp-settings-btn { margin-left: auto; }
+
+/* Table-settings popup (deal setup + cardplay display options). */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  z-index: 2000;
+  padding: 20px;
+}
+.bp-settings-modal {
+  background: #fff;
+  border-radius: var(--radius-card, 10px);
+  max-width: 360px;
+  width: 100%;
+  margin: auto;
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: 18px 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bp-settings-head { display: flex; align-items: center; justify-content: space-between; }
+.bp-settings-head h3 { margin: 0; font-size: 16px; }
+.bp-settings-x { background: none; border: none; font-size: 24px; line-height: 1; color: #999; cursor: pointer; padding: 0; }
+.bp-settings-x:hover { color: #333; }
+.bp-setting-row { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.bp-setting-row > span { margin-right: auto; }
+.bp-setting-sep {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #999;
+}
+
+/* SW deal-control buttons (VCR-style). */
+.bp-sw-controls { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.bp-vcr-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bp-vcr-btn:hover:not(:disabled) { border-color: #888; }
+.bp-vcr-btn:disabled { opacity: 0.45; cursor: default; }
+.bp-vcr-ico { font-size: 12px; }
 .bp-btn:disabled {
   opacity: 0.45;
   cursor: default;
