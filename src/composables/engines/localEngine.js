@@ -280,6 +280,59 @@ export function useLocalEngine(config = {}) {
     await playToHumanTurn()
   }
 
+  // Can the current human decision be undone — a card while playing, else a bid?
+  const canUndo = computed(() => {
+    if (auctionLoading.value) return false
+    if (cardplay.isActive.value && cardplay.canUndo.value) return true
+    if (!currentDeal.value) return false
+    const dealer = currentDeal.value.dealer
+    for (let i = bids.value.length - 1; i >= 0; i--) {
+      if (seatAtIndex(dealer, i) === yourSeat.value) return true
+    }
+    return false
+  })
+
+  // Rewind the auction to just before the human's most recent bid (dropping the
+  // bots' bids that followed) and restore BBA's expected continuation for that
+  // prefix — otherwise the bot just re-bids the same thing. Then it's the human's
+  // turn to re-bid.
+  async function undoLastBid() {
+    if (!currentDeal.value || auctionLoading.value) return
+    const dealer = currentDeal.value.dealer
+    let idx = -1
+    for (let i = bids.value.length - 1; i >= 0; i--) {
+      if (seatAtIndex(dealer, i) === yourSeat.value) { idx = i; break }
+    }
+    if (idx < 0) return // no human bid to undo
+    bids.value = bids.value.slice(0, idx)
+    const keptDivs = {}
+    for (const [k, v] of Object.entries(divergedBids.value)) {
+      if (Number(k) < idx) keptDivs[k] = v
+    }
+    divergedBids.value = keptDivs
+    auctionLoading.value = true
+    try {
+      const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
+      expectedAuction.value = result.auction
+      meanings.value = result.meanings || []
+      if (result.conventionsUsed) conventionsUsed.value = result.conventionsUsed
+    } catch (err) {
+      dealError.value = 'BBA error on undo: ' + err.message
+    } finally {
+      auctionLoading.value = false
+    }
+  }
+
+  // Undo to the last human DECISION — a card if cardplay is underway, else a bid
+  // — mirroring the server's "rewind to the last human action".
+  async function undo() {
+    if (cardplay.isActive.value && cardplay.canUndo.value) {
+      cardplay.undo()
+      return
+    }
+    await undoLastBid()
+  }
+
   return {
     capabilities: LOCAL_CAPABILITIES,
     yourSeat,
@@ -339,11 +392,14 @@ export function useLocalEngine(config = {}) {
     summary,
     canDouble,
     canRedouble,
+    // derived (undo)
+    canUndo,
     // actions
     loadDeal,
     onUserBid,
     toggleDivergedBid,
     resetAuction,
+    undo,
 
     // ── Analysis hooks (also usable directly by other engines/views) ───────
     async getDoubleDummy(deal) {

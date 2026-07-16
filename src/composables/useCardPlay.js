@@ -422,6 +422,63 @@ watch(autoplayUserSingletons, (v) => {
   void advanceBotsIfTheirTurn()
 })
 
+// Rebuild the derived trick state (currentTrick / completedTricks / tricksTaken)
+// purely from the flat `played` log — the single source of truth (remaining hands
+// are computed as original hands − played, so truncating `played` restores hands
+// for free). Used by undo.
+function rebuildFromPlayed() {
+  const ctx = dealCtx.value
+  if (!ctx) return
+  const flat = played.value
+  const completed = []
+  const taken = { NS: 0, EW: 0 }
+  let leader = ctx.openingLeader
+  let i = 0
+  for (; i + 4 <= flat.length; i += 4) {
+    const plays = flat.slice(i, i + 4)
+    const winner = trickWinner(plays, ctx.trump)
+    completed.push({ leader, plays, winner })
+    taken[SIDE_OF[winner]]++
+    leader = winner
+  }
+  completedTricks.value = completed
+  tricksTaken.value = taken
+  currentTrick.leader = leader
+  currentTrick.plays = flat.slice(i)
+  dummyRevealed.value = flat.length >= 1
+  lastFinishedTrick.value = null
+}
+
+// Is there a user-played card to undo?
+const canUndo = computed(() => {
+  if (!isActive.value || botLoading.value) return false
+  const seats = dealCtx.value?.userSeats || []
+  return played.value.some(p => seats.includes(p.seat))
+})
+
+// Undo back to (and including) the user's most recent card — dropping any bot
+// plays that followed — so it's the user's turn again. Instant: just truncates
+// `played` and rebuilds the trick state (no bot calls). The bots re-play (and
+// only then recompute) on the user's next card. Bumps the epoch to cancel any
+// in-flight bot driver.
+function undo() {
+  if (!isActive.value) return { ok: false, reason: 'cardplay not active' }
+  const flat = played.value
+  const seats = dealCtx.value.userSeats || []
+  let idx = -1
+  for (let i = flat.length - 1; i >= 0; i--) {
+    if (seats.includes(flat[i].seat)) { idx = i; break }
+  }
+  if (idx < 0) return { ok: false, reason: 'nothing to undo' }
+  playEpoch++
+  botLoading.value = false
+  botError.value = ''
+  claim.value = null
+  played.value = flat.slice(0, idx)
+  rebuildFromPlayed()
+  return { ok: true }
+}
+
 // ── Exported reactive surface ──────────────────────────────────────────
 
 export function useCardPlay() {
@@ -454,5 +511,7 @@ export function useCardPlay() {
     onUserCard,
     claimTricks,
     validateClaim,
+    undo,
+    canUndo,
   }
 }
