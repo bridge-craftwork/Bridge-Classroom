@@ -7,8 +7,14 @@
 // at call time from the key already on the device.
 
 import { importSigningKey, signMessage, sha256Hex } from './crypto.js'
+import { API_URL } from './apiUrl.js'
 
-const API_URL = import.meta.env.VITE_API_URL || ''
+// API_URL is the RESOLVED base from apiUrl.js — NOT `import.meta.env.VITE_API_URL`.
+// In production VITE_API_URL is intentionally empty (the Norton/.org host-fallback
+// design), so reading the env var directly made signedFetch build a *relative* URL
+// that hit the frontend origin (bridge-classroom.com) instead of the API host —
+// GitHub Pages then served index.html, and the caller's `res.json()` choked on
+// "<html>…". apiUrl.js resolves the correct .com/.org API host at runtime.
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 
 // >=16 alphanumeric chars (the server bounds nonce length).
