@@ -460,20 +460,6 @@
                 />
               </template>
 
-              <!-- SW: deal control buttons (VCR-style) — undo / restart / next. -->
-              <template #sw>
-                <div class="bp-sw-controls">
-                  <button class="bp-vcr-btn" @click="undo" :disabled="!canUndo" title="Undo — steps back to your last decision (bid or card)">
-                    <span class="bp-vcr-ico">⏪</span> Undo
-                  </button>
-                  <button class="bp-vcr-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading" title="Restart this deal from the top">
-                    <span class="bp-vcr-ico">⏮</span> Restart deal
-                  </button>
-                  <button v-if="!EMBEDDED" class="bp-vcr-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection" title="Deal the next board">
-                    <span class="bp-vcr-ico">⏭</span> Next deal
-                  </button>
-                </div>
-              </template>
             </BridgeTable>
 
             <div class="bp-right-rail">
@@ -577,6 +563,21 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- Deal controls (VCR-style) below the table: undo / restart / next.
+               (The SW grid corner is 'none' in the table config, so these live
+               here rather than in the arranger.) -->
+          <div class="bp-deal-controls">
+            <button class="bp-vcr-btn" @click="undo" :disabled="!canUndo" title="Undo — steps back to your last decision (bid or card)">
+              <span class="bp-vcr-ico">⏪</span> Undo
+            </button>
+            <button class="bp-vcr-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading" title="Restart this deal from the top">
+              <span class="bp-vcr-ico">⏮</span> Restart deal
+            </button>
+            <button v-if="!EMBEDDED" class="bp-vcr-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection" title="Deal the next board">
+              <span class="bp-vcr-ico">⏭</span> Next deal
+            </button>
           </div>
         </template>
           </template>
@@ -1712,8 +1713,8 @@ async function restartCardplay() {
   color: #999;
 }
 
-/* SW deal-control buttons (VCR-style). */
-.bp-sw-controls { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+/* Deal-control buttons (VCR-style) — a centred row below the table. */
+.bp-deal-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .bp-vcr-btn {
   display: flex;
   align-items: center;
