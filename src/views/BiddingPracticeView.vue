@@ -323,11 +323,9 @@
         <div v-if="currentDeal || !EMBEDDED" class="bp-scenario-bar">
           <div class="bp-scenario-info">
             <template v-if="currentDeal">
-              <div class="bp-scenario-name">{{ currentScenarioLabel }}</div>
-              <div class="bp-scenario-meta">
-                Deal {{ dealsDrawn }} &middot;
-                Dealer {{ currentDeal.dealer }} &middot; Vul {{ currentDeal.vulnerable }}
-              </div>
+              <!-- Board number, dealer, deal number and vul live in the board-status
+                   glyph (NW) — don't repeat them here. Just the source + CC. -->
+              <div class="bp-scenario-name">{{ scenarioNameNoBoard }}</div>
               <div v-if="conventionsUsed" class="bp-scenario-meta">
                 CC &middot; NS: {{ conventionsUsed.ns }} &middot; EW: {{ conventionsUsed.ew }}
               </div>
@@ -928,6 +926,11 @@ const botOptions = computed(() => {
   }
   return opts
 })
+// Scenario/source name without a trailing "· Board N" — the board number is shown
+// in the board-status glyph (NW), so it's not repeated in the ribbon.
+const scenarioNameNoBoard = computed(() =>
+  (currentScenarioLabel.value || '').replace(/\s*·\s*Board\b.*$/i, '').trim())
+
 const soloOccupants = computed(() => {
   const u = currentUser.value
   const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
