@@ -1180,8 +1180,10 @@ function seatCardsToHand(flat) {
 
 // Per-seat card marks fed to the table's cardBadges prop:
 //  • plain reveal → the −N error badges (F2);
-//  • reviewing    → the acting seat's legal cards tinted green/pink + the played
-//    card ringed (`chosen`). Colour carries the verdict; the badge number drops.
+//  • overview   → each error card is badged with the TRICK NUMBER it went wrong
+//    at (e.g. "error at trick 3"), red fill by severity.
+//  • reviewing  → the acting seat's legal cards tinted green/pink, the played
+//    card ringed (`chosen`), and each negative (pink) card badged with its COST.
 const GOOD_FILL = 'rgba(46,160,67,0.34)'
 const BAD_FILL = 'rgba(216,72,72,0.34)'
 const ddCardBadges = computed(() => {
@@ -1191,7 +1193,11 @@ const ddCardBadges = computed(() => {
     const seat = actingSeat.value
     if (!node || !seat) return null
     const cards = {}
-    for (const a of node.alternatives) cards[a.card] = { fill: a.cost > 0 ? BAD_FILL : GOOD_FILL }
+    for (const a of node.alternatives) {
+      cards[a.card] = a.cost > 0
+        ? { fill: BAD_FILL, badge: '−' + a.cost } // cost on each negative card
+        : { fill: GOOD_FILL }
+    }
     if (node.card) cards[node.card] = { ...cards[node.card], chosen: true }
     return { N: {}, E: {}, S: {}, W: {}, [seat]: cards }
   }
@@ -1201,7 +1207,7 @@ const ddCardBadges = computed(() => {
   for (const e of t) {
     if (e.cost > 0 && out[e.seat]) {
       out[e.seat][e.card] = {
-        badge: '−' + e.cost, // U+2212 minus
+        badge: String(Math.floor(e.index / 4) + 1), // trick number the error occurred at
         fill: e.cost >= 2 ? 'rgba(198,40,40,0.40)' : 'rgba(216,72,72,0.28)',
       }
     }
