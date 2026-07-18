@@ -65,7 +65,27 @@
       </div>
 
       <!-- Stats row -->
-      <AdminStatsRow :stats="admin.stats.value" />
+      <AdminStatsRow :stats="admin.stats.value" :expanded="showNewUsers" @toggle="showNewUsers = !showNewUsers" />
+
+      <!-- New-users roster: tap the "N New this Week" pill to expand. Replaces the
+           old hover-only tooltip (invisible on touch). Tap a row → Find User detail. -->
+      <div v-if="showNewUsers" class="new-users-panel">
+        <div class="new-users-head">New this week</div>
+        <div v-if="newUsersRecent.length" class="new-users-list">
+          <button
+            v-for="u in newUsersRecent"
+            :key="u.id"
+            type="button"
+            class="new-user-row"
+            @click="selectNewUser(u)"
+          >
+            <span class="nu-name">{{ u.first_name }} {{ u.last_name }}</span>
+            <span class="nu-email">{{ u.email }}</span>
+            <span class="nu-when">{{ joinedAgo(u.created_at) }}</span>
+          </button>
+        </div>
+        <div v-else class="new-users-empty">No new-user details available.</div>
+      </div>
 
       <!-- Two-column: Popular Lessons + Database -->
       <div class="content-grid">
@@ -223,7 +243,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAdminDashboard } from '../../composables/useAdminDashboard.js'
 import { useAnnouncement } from '../../composables/useAnnouncement.js'
 import { useUserStore } from '../../composables/useUserStore.js'
@@ -349,6 +369,25 @@ const editLastName = ref('')
 const saving = ref(false)
 const saveSuccess = ref(false)
 const saveError = ref('')
+
+// New-users roster (expand from the Total Users stat pill).
+const showNewUsers = ref(false)
+const newUsersRecent = computed(() => admin.stats.value?.new_users_recent || [])
+function joinedAgo(iso) {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000))
+  if (mins < 60) return mins <= 1 ? 'just now' : `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.round(hrs / 24)}d ago`
+}
+// From the roster → open the user in the existing Find User detail (edit / merge).
+function selectNewUser(user) {
+  selectUser(user)
+  nextTick(() => document.querySelector('.edit-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+}
 
 async function handleSearchUser() {
   if (!searchEmail.value.trim()) return
@@ -859,6 +898,48 @@ onMounted(loadData)
 
 .result-name { font-weight: 500; color: var(--text-primary, #1a1a1a); }
 .result-email { color: var(--text-secondary, #6b7280); }
+
+/* New-users roster (expands from the Total Users stat pill). */
+.new-users-panel {
+  background: white;
+  border: 1px solid var(--card-border, #e0ddd7);
+  border-radius: var(--radius-card, 10px);
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  margin-top: -8px;
+}
+.new-users-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.new-users-list { display: flex; flex-direction: column; gap: 4px; }
+.new-user-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button, 6px);
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.new-user-row:hover { background: #f8f9fa; }
+.nu-name { font-weight: 600; color: var(--text-primary, #1a1a1a); white-space: nowrap; }
+.nu-email { color: var(--text-secondary, #6b7280); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nu-when { color: var(--text-secondary, #9ca3af); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.new-users-empty { font-size: 13px; color: var(--text-secondary, #6b7280); }
+@media (max-width: 600px) {
+  .new-user-row { flex-wrap: wrap; gap: 2px 10px; }
+  .nu-email { flex-basis: 100%; order: 3; }
+}
 
 .corrected-badge {
   font-size: 10px;

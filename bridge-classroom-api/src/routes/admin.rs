@@ -44,14 +44,31 @@ pub struct AdminStats {
     pub total_users: i64,
     pub new_users_7d: i64,
     pub new_users_today: i64,
-    /// Names of users created in the last 7 days, newest first (for tooltip).
+    /// Names of users created in the last 7 days, newest first (legacy; the UI
+    /// now renders `new_users_recent`, but this is kept for backward-compat with
+    /// any older frontend bundle still deployed).
     pub new_users_7d_names: Vec<String>,
+    /// Full records of the week's new users, newest first (capped). Powers the
+    /// admin "new users" roster — name, email, join time — and tap-through to the
+    /// Find User detail. Shaped like a search result so the same row handler works.
+    pub new_users_recent: Vec<NewUserRow>,
     pub active_7d: i64,
     pub observation_count_7d: i64,
     pub active_today: i64,
     pub total_observations: i64,
     pub total_classrooms: i64,
     pub total_assignments: i64,
+}
+
+/// One recent registration, shaped to match the Find User search result so the
+/// frontend can hand it straight to `selectUser`.
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct NewUserRow {
+    pub id: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -159,9 +176,20 @@ pub async fn admin_stats(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Names of the week's new users (newest first), capped — for the tooltip.
+    // Names of the week's new users (newest first), capped — legacy field.
     let new_users_7d_names: Vec<String> = sqlx::query_scalar(
         "SELECT trim(first_name || ' ' || last_name) FROM users \
+         WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50",
+    )
+    .bind(&seven_days_ago)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Full records of the week's new users (newest first), capped — powers the
+    // admin roster + tap-through to the Find User detail.
+    let new_users_recent: Vec<NewUserRow> = sqlx::query_as(
+        "SELECT id, first_name, last_name, email, created_at FROM users \
          WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50",
     )
     .bind(&seven_days_ago)
@@ -273,6 +301,7 @@ pub async fn admin_stats(
             new_users_7d: new_users_7d.count,
             new_users_today: new_users_today.count,
             new_users_7d_names,
+            new_users_recent,
             active_7d: active_7d.count,
             observation_count_7d: obs_count_7d.count,
             active_today: active_today.count,
