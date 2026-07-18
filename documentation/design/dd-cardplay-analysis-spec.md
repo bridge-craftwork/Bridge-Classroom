@@ -190,10 +190,14 @@ Either way, tap alternatives are always on-demand (`alternativesForNode`).
   `complete` (watch below `cardplayPhase`; snapshots deal + trace).
 - **F2 (built):** `cardBadges` prop threaded BridgeTable → GridArrangement →
   SeatPanel → HandDisplay, merged in `marksFor` without `played`; view computes
-  `ddCardBadges` (`−N` badge + red fill) gated on `cardplayShowDdErrors`.
-- **F3 (built):** `inspectable`/`card-inspect` threaded the same path; tapping a
-  card opens the modal (four hands via `computeRemaining` + on-demand
-  `alternativesForNode`, best-first, played card flagged).
+  `ddCardBadges` gated on `cardplayShowDdErrors`. On the overview reveal each
+  error card is badged with the **trick number** it went wrong at (red fill).
+- **F3 (built, later reworked — PR #276):** replaced the modal with an in-place
+  **recolor of the main table**. Clicking a card rewinds the table to that trick
+  (`visibleHands` ← `computeRemaining`, center `TrickArea` shows cards led so
+  far), tints the acting seat's legal cards green (DD-best) / pink (gave a trick
+  away), badges each **negative card with its cost**, and rings the played card
+  (`chosen`). Any card click reverts to the fresh reveal.
 - **F1.5 (optional, not built):** incremental prefetch during play, if the batch
   reveal is slow. Frontend-only.
 
