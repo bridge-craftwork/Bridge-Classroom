@@ -3,7 +3,14 @@
     <div class="stat-card" style="border-top-color: #2d6a4f">
       <div class="stat-number">{{ stats?.total_users ?? '—' }}</div>
       <div class="stat-label">Total Users</div>
-      <div v-if="newUsersLine" class="stat-sub" :class="{ 'has-names': newUsersTooltip }" :title="newUsersTooltip">{{ newUsersLine }}</div>
+      <button
+        v-if="newUsersLine"
+        type="button"
+        class="stat-sub"
+        :class="{ open: expanded }"
+        :aria-expanded="expanded"
+        @click="$emit('toggle')"
+      >{{ newUsersLine }} <span class="caret" aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span></button>
     </div>
     <div class="stat-card" style="border-top-color: #1565c0">
       <div class="stat-number">{{ stats?.active_7d ?? '—' }}</div>
@@ -24,8 +31,11 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  stats: { type: Object, default: null }
+  stats: { type: Object, default: null },
+  // Whether the new-users roster (owned by AdminLobby) is expanded — drives the caret.
+  expanded: { type: Boolean, default: false }
 })
+defineEmits(['toggle'])
 
 // Sub-line under Total Users. Shows nothing if no new users this week.
 // Shows "N New Today" only when every new user this week registered today;
@@ -38,15 +48,6 @@ const newUsersLine = computed(() => {
     return `${today} New Today`
   }
   return `${week} New this Week`
-})
-
-// Native tooltip listing the new users' names (newest first). The backend
-// returns the week's names; that set also covers the "New Today" case, since
-// that label only shows when every new user this week registered today.
-const newUsersTooltip = computed(() => {
-  const names = props.stats?.new_users_7d_names
-  if (!Array.isArray(names) || names.length === 0) return ''
-  return names.join('\n')
 })
 
 function formatNumber(n) {
@@ -87,17 +88,23 @@ function formatNumber(n) {
 }
 
 .stat-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
   font-size: 12px;
   font-weight: 600;
+  font-family: inherit;
   color: #2d6a4f;
+  cursor: pointer;
 }
-
-.stat-sub.has-names {
-  cursor: help;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
-}
+.stat-sub:hover { background: rgba(45, 106, 79, 0.08); }
+.stat-sub.open { background: rgba(45, 106, 79, 0.12); border-color: rgba(45, 106, 79, 0.25); }
+.stat-sub .caret { font-size: 9px; }
 
 @media (max-width: 600px) {
   .stats-row {
