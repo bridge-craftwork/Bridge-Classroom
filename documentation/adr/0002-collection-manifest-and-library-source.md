@@ -17,7 +17,7 @@ Every collection publishes one **build-generated manifest** — Baker Bridge ado
 the same manifest format David's Practice-Bidding-Scenarios already emits. The
 manifest becomes the **authoritative roster** of a collection: for each lesson
 (keyed by PBN basename = `deal_subfolder`), the list of boards with their number,
-`stable` flag, `[BoardVersionToken]`, and skill path. The backend consumes it
+`stable` flag, `[VersionToken]`, and skill path. The backend consumes it
 through a **`LibrarySource` abstraction** — GitHub-raw polling is the first
 implementation, but the interface admits future stores (Google Docs, object
 storage, local files) without touching the routes that use the data. Change
@@ -191,7 +191,7 @@ acceptance:
 
 > **R5 — Publish a build-generated manifest.** Your build emits a manifest in the
 > shared schema (§ this ADR / design doc) describing every lesson and its board
-> roster: per board, `number`, `stable`, `[BoardVersionToken]`, and `skillPath`.
+> roster: per board, `number`, `stable`, `[VersionToken]`, and `skillPath`.
 > The manifest is regenerated every build and is the authoritative shape of your
 > collection. It carries your `stable` flag (BC derives `prerelease` from it); it
 > does **not** carry BC's `collection` id, `report` flag, or `prerelease` column

@@ -160,8 +160,14 @@ export function parsePbn(pbnContent) {
             // Per-board override of the file-level %bridge-classroom-stable.
             currentDeal.stable = /^true$/i.test(tagValue)
             break
+          case 'VersionToken':
+          // Legacy spelling, still present in already-published collections. The tag was
+          // renamed off the "Board" prefix because dealing-machine software (Dealer4)
+          // prefix-matches [Board*] and tries to parse the hex token as a board number.
           case 'BoardVersionToken':
             // Opaque rotation-canonical stamp (ADR-0001 §5); recorded verbatim.
+            // Property name and manifest field stay `boardVersionToken` — the value is
+            // unchanged by the rename, so previously recorded tokens still match.
             currentDeal.boardVersionToken = tagValue
             break
           case 'Category':
@@ -535,7 +541,7 @@ function createEmptyDeal() {
     bridgeContext: '',    // File-level %bridge-context: convention/carding summary
     // ADR-0001 board identity / prerelease
     stable: false,            // From %bridge-classroom-stable + [Stable]; default not stable
-    boardVersionToken: null   // [BoardVersionToken] — opaque rotation-canonical stamp
+    boardVersionToken: null   // [VersionToken] (legacy: [BoardVersionToken]) — opaque stamp
   }
 }
 
