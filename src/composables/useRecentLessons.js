@@ -70,7 +70,11 @@ export function useRecentLessons() {
           boardNumbers = []
           for (let i = 1; i <= (e.total_boards || 0); i++) boardNumbers.push(i)
         }
-        return { subfolder, boardNumbers, lastActivity: null }
+        // The server rollup is grouped by (collection_id, deal_subfolder), so
+        // each entry already carries its own collection. Use it directly rather
+        // than the single-valued subfolder→collection map, which mis-scopes a
+        // subfolder shared across collections.
+        return { subfolder, collectionId: e.collection_id || null, boardNumbers, lastActivity: null }
       })
 
     if (lessons.length === 0) return []
@@ -80,8 +84,9 @@ export function useRecentLessons() {
       : {}
 
     const enriched = lessons.map(lesson => {
-      // Collection scope must match ensureLessonData's fetch for the cache to hit.
-      const lessonCollectionId = mastery.getLessonCollection(lesson.subfolder)
+      // Collection scope must match ensureLessonData's fetch for the cache to
+      // hit. Carried from the server rollup entry (see above), not the map.
+      const lessonCollectionId = lesson.collectionId
       const apiBoards = userId
         ? (boardStatusApi.getCachedBoards(userId, lesson.subfolder, lessonCollectionId) || [])
         : []
@@ -191,14 +196,17 @@ export function useRecentLessons() {
     // which lessons the user has touched — for both self and view-as.
     await boardStatusApi.fetchLessonMastery(userId, true)
     const entries = boardStatusApi.getCachedLessonEntries(userId) || []
-    const subfolders = entries
+    // Fetch board-status per (subfolder, collection_id) so a shared subfolder's
+    // two collections are cached under distinct scopes — matching the scope
+    // recentLessons reads back with. Collection comes from the rollup entry.
+    const scoped = entries
       .filter(e => (e.attempted_boards || 0) > 0)
-      .map(e => e.deal_subfolder)
-    if (subfolders.length === 0) return
+      .map(e => ({ subfolder: e.deal_subfolder, collectionId: e.collection_id || null }))
+    if (scoped.length === 0) return
 
-    await mastery.fetchMissingBoardCounts(subfolders)
-    await Promise.all(subfolders.map(sf =>
-      boardStatusApi.fetchBoardStatus(userId, sf, false, mastery.getLessonCollection(sf))
+    await mastery.fetchMissingBoardCounts(scoped.map(s => s.subfolder))
+    await Promise.all(scoped.map(s =>
+      boardStatusApi.fetchBoardStatus(userId, s.subfolder, false, s.collectionId)
     ))
   }
 
