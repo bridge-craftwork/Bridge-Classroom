@@ -60,9 +60,10 @@
           No lesson data available yet.
         </div>
         <div v-else class="lesson-list">
-          <div v-for="lesson in lessonMasteryList" :key="lesson.subfolder" class="lesson-row">
+          <div v-for="lesson in lessonMasteryList" :key="`${lesson.collectionId || ''}::${lesson.subfolder}`" class="lesson-row">
             <div class="lesson-header">
               <button class="lesson-name lesson-link" @click="emit('navigate-to-lesson', lesson.subfolder)">{{ formatLessonName(lesson.subfolder) }}</button>
+              <span v-if="lesson.collectionName" class="lesson-collection">{{ lesson.collectionName }}</span>
               <span
                 v-if="lesson.achievement !== 'none'"
                 :class="['achievement-badge', lesson.achievement]"
@@ -111,6 +112,7 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { useTeacherRole } from '../composables/useTeacherRole.js'
 import { useBoardMastery } from '../composables/useBoardMastery.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
+import { useAppConfig } from '../composables/useAppConfig.js'
 import PawIcon from './PawIcon.vue'
 import { useAccomplishments } from '../composables/useAccomplishments.js'
 import StudentProgressPanel from './StudentProgressPanel.vue'
@@ -125,6 +127,7 @@ const emit = defineEmits(['back', 'navigate-to-lesson'])
 const teacherRole = useTeacherRole()
 const mastery = useBoardMastery()
 const boardStatusApi = useBoardStatus()
+const appConfig = useAppConfig()
 const accomplishments = useAccomplishments()
 const loading = ref(false)
 const activeTab = ref('progress')
@@ -182,40 +185,43 @@ const lastActiveText = computed(() => {
 })
 
 /**
- * Lesson mastery strips — uses board_status API when available, falls back to local computation
+ * Lesson mastery strips. The lesson list is derived directly from the student's
+ * board_status rollup (fetched unscoped in onMounted) — grouped by
+ * (collection_id, deal_subfolder), the lesson's real identity — NOT by iterating
+ * observations. A subfolder shared across two collections is two distinct
+ * lessons, each its own row. board_status is the single source of truth
+ * (CORRECTNESS_AND_MASTERY.md §10).
  */
 const lessonMasteryList = computed(() => {
-  const obs = observations.value
-  if (obs.length === 0 && apiBoardStatus.value.length === 0) return []
+  const rows = apiBoardStatus.value
+  if (rows.length === 0) return []
 
-  const lessons = mastery.extractLessonsFromObservations(obs)
+  const boardCounts = mastery.boardCountCache.value
 
-  // Index API board status by subfolder
-  const apiBySubfolder = {}
-  for (const b of apiBoardStatus.value) {
-    if (!apiBySubfolder[b.deal_subfolder]) apiBySubfolder[b.deal_subfolder] = []
-    apiBySubfolder[b.deal_subfolder].push(b)
+  const groups = {}
+  for (const b of rows) {
+    const collectionId = b.collection_id || null
+    const key = `${collectionId || ''}::${b.deal_subfolder}`
+    if (!groups[key]) groups[key] = { subfolder: b.deal_subfolder, collectionId, rows: [] }
+    groups[key].rows.push(b)
   }
 
-  // Add lessons that only exist in API data but not in observations
-  for (const subfolder in apiBySubfolder) {
-    if (!lessons.find(l => l.subfolder === subfolder)) {
-      const boards = apiBySubfolder[subfolder].map(b => b.deal_number).sort((a, b) => a - b)
-      lessons.push({ subfolder, boardNumbers: boards, lastActivity: null })
-    }
-  }
-
-  return lessons
-    .map(lesson => {
-      // Backend `board_status` is the single source of truth — see
-      // CORRECTNESS_AND_MASTERY.md §10. If the API cache is empty for
-      // a lesson, all boards show as not_attempted/grey until the
-      // fetch lands; the watcher below populates the cache.
-      const apiData = apiBySubfolder[lesson.subfolder] || []
-      const boardMasteryResults = boardStatusApi.buildBoardMastery(apiData, lesson.boardNumbers)
+  return Object.values(groups)
+    .map(g => {
+      // Prefer the full board-number list (cached) so untried boards show grey;
+      // fall back to just the boards the student has rows for.
+      const boardNumbers = boardCounts[g.subfolder]
+        || g.rows.map(b => b.deal_number).sort((a, b) => a - b)
+      const boardMasteryResults = boardStatusApi.buildBoardMastery(g.rows, boardNumbers)
       const lessonAchievement = mastery.computeLessonAchievement(boardMasteryResults)
+      const collection = g.collectionId
+        ? appConfig.COLLECTIONS.find(c => c.id === g.collectionId)
+        : null
       return {
-        ...lesson,
+        subfolder: g.subfolder,
+        collectionId: g.collectionId,
+        collectionName: collection?.name || null,
+        boardNumbers,
         boardMastery: boardMasteryResults,
         achievement: lessonAchievement.achievement
       }
@@ -439,6 +445,17 @@ function getTooltip(board) {
   font-weight: 600;
   font-size: 14px;
   color: #333;
+}
+
+/* Collection label — distinguishes two rows sharing a subfolder name across
+   different collections. */
+.lesson-collection {
+  font-size: 11px;
+  font-weight: 600;
+  color: #667eea;
+  background: #eef0fb;
+  padding: 1px 8px;
+  border-radius: 10px;
 }
 
 .achievement-badge {
