@@ -133,15 +133,22 @@ function handleReturn() {
 }
 
 .assignment-info {
-  flex: 1;
-  min-width: 200px;
+  flex: 1 1 200px;
+  /* A flex item defaults to min-width:auto, which refuses to shrink below its
+     content and lets long assignment names overflow into the row below. */
+  min-width: 0;
 }
 
 .assignment-title {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Wrap instead of overflowing when the name is long or the banner is narrow
+     (bug-artifacts #32: "Assignment: NMF 1 of 3" collided with the meta row). */
+  flex-wrap: wrap;
+  row-gap: 2px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .assignment-label {
@@ -154,14 +161,21 @@ function handleReturn() {
 .assignment-name {
   font-weight: 600;
   font-size: 15px;
+  /* Break rather than force the row wider than its container. */
+  overflow-wrap: anywhere;
 }
 
 .assignment-meta {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Let the progress text and due chip wrap onto their own line instead of
+     colliding with the title above on narrow/squeezed banners. */
+  flex-wrap: wrap;
+  row-gap: 4px;
   font-size: 13px;
   opacity: 0.9;
+  min-width: 0;
 }
 
 .due-text {
