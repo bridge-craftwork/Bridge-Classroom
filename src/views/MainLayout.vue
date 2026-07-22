@@ -978,6 +978,12 @@ onMounted(async () => {
   // already authenticated locally. No-op if there is no valid session cookie.
   if (!claimingRecovery && !userStore.isAuthenticated.value) {
     await userStore.restoreSessionFromCookie()
+  } else if (!claimingRecovery && userStore.isAuthenticated.value) {
+    // ADR-0004 Phase 3b (Path A): already logged in from localStorage, but this
+    // device may have no durable cookie yet (pre-feature login / never re-claimed).
+    // Silently mint one for any teacher on the device so a future ITP purge is
+    // survivable. Fire-and-forget — must never delay startup.
+    userStore.backfillSessionCookie()
   }
 
   assignmentStore.initializeFromUrl()
