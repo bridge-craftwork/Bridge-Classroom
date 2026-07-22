@@ -201,6 +201,17 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'dot-click'])
 
+// A raw observation belongs to this lesson when it matches on (collection_id,
+// deal_subfolder) — the lesson's identity. Permissive on collection when either
+// side is null (legacy untagged rows / ad-hoc PBNs), mirroring the rest of the
+// collection-scoping logic.
+function belongsToLesson(r) {
+  if (r.deal_subfolder !== props.lesson.subfolder) return false
+  const lessonColl = props.lesson.collectionId || null
+  const rowColl = r.collection_id || null
+  return !(lessonColl && rowColl && lessonColl !== rowColl)
+}
+
 const DOT_R = 7
 const OVERLAP = 0.30
 const Y_LABEL_W = 110
@@ -294,7 +305,7 @@ function badgeTooltip(dn) {
 // become anchor points on the chart; long stretches with no activity
 // in *any* board collapse into a fixed-width break region.
 const lessonAxis = computed(() => {
-  const lessonRaw = props.rawData.filter(r => r.skill_path === props.lesson.path)
+  const lessonRaw = props.rawData.filter(belongsToLesson)
   if (lessonRaw.length === 0) return null
 
   const dayKeys = [...new Set(lessonRaw.map(r => localDayKey(new Date(r.timestamp).getTime())))].sort()
@@ -374,7 +385,7 @@ const breakRegions = computed(() => lessonAxis.value?.breakBounds || [])
 
 // Build positioned dots over the day-bucket axis.
 const positionedDots = computed(() => {
-  const lessonRaw = props.rawData.filter(r => r.skill_path === props.lesson.path)
+  const lessonRaw = props.rawData.filter(belongsToLesson)
   const nums = boardNums.value
   const axis = lessonAxis.value
 

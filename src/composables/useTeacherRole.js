@@ -133,6 +133,7 @@ async function fetchStudentObservations(userId) {
       timestamp: o.timestamp,
       skill_path: o.skill_path,
       correct: o.correct,
+      collection_id: o.collection_id,
       deal_subfolder: o.deal_subfolder,
       deal_number: o.deal_number,
       board_result: o.board_result
@@ -349,6 +350,7 @@ async function decryptStudentObservation(studentUserId, rawObs) {
       timestamp: rawObs.timestamp,
       skill_path: rawObs.skill_path,
       correct: rawObs.correct,
+      collection_id: rawObs.collection_id,
       deal_subfolder: rawObs.deal_subfolder,
       deal_number: rawObs.deal_number,
       board_result: rawObs.board_result,
@@ -368,15 +370,21 @@ async function decryptStudentObservation(studentUserId, rawObs) {
  * @param {number} timestamp - Raw timestamp in ms
  * @param {number} dealNumber
  * @param {boolean} correct
+ * @param {string|null} [collectionId] - Active lesson's collection. When both it
+ *   and the row's collection_id are known and differ, the row belongs to another
+ *   collection sharing this subfolder and is skipped. Permissive when either is
+ *   null (legacy untagged rows).
  * @returns {Promise<Object|null>}
  */
-async function findAndDecryptObservation(studentUserId, timestamp, dealNumber, correct) {
+async function findAndDecryptObservation(studentUserId, timestamp, dealNumber, correct, collectionId = null) {
   const rawObs = studentRawObservations.value[studentUserId] || []
 
-  // Find matching observation by timestamp and deal_number
+  // Find matching observation by timestamp, deal_number, and collection scope
   const match = rawObs.find(o => {
     const obsTs = new Date(o.timestamp).getTime()
-    return Math.abs(obsTs - timestamp) < 1000 && o.deal_number === dealNumber && o.correct === correct
+    if (Math.abs(obsTs - timestamp) >= 1000 || o.deal_number !== dealNumber || o.correct !== correct) return false
+    if (collectionId && o.collection_id && o.collection_id !== collectionId) return false
+    return true
   })
 
   if (!match) return null
@@ -397,15 +405,18 @@ async function findAndDecryptObservation(studentUserId, timestamp, dealNumber, c
  * @param {string} dealSubfolder
  * @param {number} dealNumber
  * @param {number} beforeMs - Only consider observations strictly older than this
+ * @param {string|null} [collectionId] - Active lesson's collection; skips rows
+ *   from a different collection sharing this subfolder (permissive when null).
  * @returns {Promise<Object|null>}
  */
-async function findAndDecryptErroringObservation(studentUserId, dealSubfolder, dealNumber, beforeMs) {
+async function findAndDecryptErroringObservation(studentUserId, dealSubfolder, dealNumber, beforeMs, collectionId = null) {
   const rawObs = studentRawObservations.value[studentUserId] || []
   let best = null
   let bestTs = -Infinity
   for (const o of rawObs) {
     if (o.deal_number !== dealNumber) continue
     if (dealSubfolder && o.deal_subfolder !== dealSubfolder) continue
+    if (collectionId && o.collection_id && o.collection_id !== collectionId) continue
     if (o.correct) continue // only erroring plays
     const ts = new Date(o.timestamp).getTime()
     if (ts >= beforeMs) continue

@@ -6,10 +6,20 @@
  * progress visualization with sparklines, mastery bars, and detail views.
  */
 
-import { getTaxonomyEntry } from './bakerBridgeTaxonomy.js'
-import { getSkillFromPath } from './skillPath.js'
+import { getTaxonomyEntryBySubfolder } from './bakerBridgeTaxonomy.js'
 
 const ONE_HOUR = 3600000
+
+/**
+ * A lesson's identity in progress views is (collection_id, deal_subfolder) —
+ * NOT skill_path. Two collections may reuse a subfolder name; the backend keeps
+ * them distinct and every observation / board_status row carries collection_id,
+ * so we key on the composite. Keep this the single source of the key format so
+ * every producer/consumer agrees. Null collection (legacy / ad-hoc) → '' half.
+ */
+export function lessonKeyOf(collectionId, subfolder) {
+  return `${collectionId || ''}::${subfolder || ''}`
+}
 
 /**
  * Board states from CORRECTNESS_AND_MASTERY.md §5.1. Returned by
@@ -112,28 +122,36 @@ export function classifyBoard(attempts, boardStatusEntry = null) {
  * using the same rules — the doc says backend is authoritative, so the
  * local path is a fallback for offline / pre-fetch render.
  *
- * @param {Array} rawData - [{id, timestamp, skill_path, correct, board_result, deal_subfolder, deal_number}]
- * @param {Object} lessonTotals - {skill_path: totalBoardCount}
- * @param {Object} lessonNames - {skill_path: "Display Name"}
- * @param {Object} [boardStatusByPath] - {skill_path: [{deal_number, status, ...}, ...]}
- * @param {Object} [lessonTiers] - {skill_path: 'Exploring'|'Learning'|'Retaining'|'Mastering'}
+ * Lessons are keyed by (collection_id, deal_subfolder) via lessonKeyOf — the
+ * lesson's real identity. `lessonTotals` / `lessonNames` / `boardStatusByKey` /
+ * `lessonTiers` are all keyed the same way.
+ *
+ * @param {Array} rawData - [{id, timestamp, correct, board_result, collection_id, deal_subfolder, deal_number}]
+ * @param {Object} lessonTotals - {lessonKey: totalBoardCount}
+ * @param {Object} lessonNames - {lessonKey: "Display Name"}
+ * @param {Object} [boardStatusByKey] - {lessonKey: [{deal_number, status, ...}, ...]}
+ * @param {Object} [lessonTiers] - {lessonKey: 'Exploring'|'Learning'|'Retaining'|'Mastering'}
  * @returns {Array} Lesson objects sorted by last activity desc
  */
-export function processData(rawData, lessonTotals = {}, lessonNames = {}, boardStatusByPath = {}, lessonTiers = {}) {
+export function processData(rawData, lessonTotals = {}, lessonNames = {}, boardStatusByKey = {}, lessonTiers = {}) {
   const byLesson = {}
   rawData.forEach(r => {
-    if (!byLesson[r.skill_path]) byLesson[r.skill_path] = {}
+    const subfolder = r.deal_subfolder
+    if (!subfolder) return
+    const collectionId = r.collection_id || null
+    const key = lessonKeyOf(collectionId, subfolder)
+    if (!byLesson[key]) byLesson[key] = { collectionId, subfolder, deals: {} }
     const dn = r.deal_number
-    if (!byLesson[r.skill_path][dn]) byLesson[r.skill_path][dn] = []
-    byLesson[r.skill_path][dn].push({ correct: r.correct, ts: new Date(r.timestamp), board_result: r.board_result })
+    if (!byLesson[key].deals[dn]) byLesson[key].deals[dn] = []
+    byLesson[key].deals[dn].push({ correct: r.correct, ts: new Date(r.timestamp), board_result: r.board_result })
   })
 
-  const lessons = Object.entries(byLesson).map(([path, deals]) => {
+  const lessons = Object.entries(byLesson).map(([key, { collectionId, subfolder, deals }]) => {
     const dealNums = Object.keys(deals).map(Number).sort((a, b) => a - b)
 
     // Index board_status entries by deal_number for this lesson
     const statusByDeal = {}
-    for (const row of boardStatusByPath[path] || []) {
+    for (const row of boardStatusByKey[key] || []) {
       statusByDeal[row.deal_number] = row
     }
 
@@ -248,12 +266,14 @@ export function processData(rawData, lessonTotals = {}, lessonNames = {}, boardS
     })()
 
     return {
-      path,
-      name: lessonNames[path] || path.split('/').pop().replace(/_/g, ' '),
+      key,
+      collectionId,
+      subfolder,
+      name: lessonNames[key] || subfolder,
       tried,
       stateCounts,
-      tier: lessonTiers[path] || (tried > 0 ? 'Exploring' : null),
-      totalBoards: lessonTotals[path] ?? tried,
+      tier: lessonTiers[key] || (tried > 0 ? 'Exploring' : null),
+      totalBoards: lessonTotals[key] ?? tried,
       totalAttempts: allAttempts.length,
       recentRate,
       boardLines,
@@ -313,23 +333,27 @@ export function monoCubicPath(pts) {
 }
 
 /**
- * Build lessonTotals and lessonNames from observations using the Baker Bridge taxonomy.
- * Replaces the React component's explicit props with automatic lookup.
+ * Build lessonTotals and lessonNames from observations, keyed by lessonKeyOf
+ * (collection_id, deal_subfolder). Name + board total come from the Baker Bridge
+ * taxonomy looked up by subfolder (1:1 with skill_path); unknown subfolders
+ * (e.g. ad-hoc PBNs) fall back to the raw subfolder name and observed count.
  * @param {Array} observations - Raw observation array
  * @returns {{lessonTotals: Object, lessonNames: Object}}
  */
 export function buildLessonMeta(observations) {
-  const paths = new Set(observations.map(o => o.skill_path).filter(Boolean))
   const lessonTotals = {}
   const lessonNames = {}
-  for (const path of paths) {
-    const entry = getTaxonomyEntry(path)
+  for (const o of observations) {
+    const subfolder = o.deal_subfolder
+    if (!subfolder) continue
+    const key = lessonKeyOf(o.collection_id, subfolder)
+    if (key in lessonNames) continue
+    const entry = getTaxonomyEntryBySubfolder(subfolder)
     if (entry) {
-      lessonTotals[path] = entry.dealCount
-      lessonNames[path] = entry.name
+      lessonTotals[key] = entry.dealCount
+      lessonNames[key] = entry.name
     } else {
-      const info = getSkillFromPath(path)
-      lessonNames[path] = info.name
+      lessonNames[key] = subfolder
     }
   }
   return { lessonTotals, lessonNames }

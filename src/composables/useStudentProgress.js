@@ -48,6 +48,7 @@ async function decryptSingleObservation(encrypted, secretKey) {
       skill_path: encrypted.skill_path,
       correct: encrypted.correct,
       classroom: encrypted.classroom,
+      collection_id: encrypted.collection_id,
       deal_subfolder: encrypted.deal_subfolder,
       deal_number: encrypted.deal_number,
       board_result: encrypted.board_result
@@ -75,6 +76,7 @@ function getLocalObservations() {
       skill_path: meta.skill_path,
       correct: meta.correct,
       classroom: meta.classroom,
+      collection_id: meta.collection_id,
       deal_subfolder: meta.deal_subfolder,
       deal_number: meta.deal_number,
       board_result: meta.board_result,
