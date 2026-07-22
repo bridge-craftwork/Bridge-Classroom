@@ -125,6 +125,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/session/key", get(routes::get_session_key))
         // Fire-and-forget bookmark of the active roster member (never an authz input).
         .route("/api/session/active-user", post(routes::set_active_user))
+        // Durable-session BACKFILL (ADR-0004 Phase 3b, Path A): an already-logged-in
+        // teacher/viewer mints a cookie via an ADR-0003 signed request — no email.
+        .route("/api/session/attach", post(routes::attach_session))
         // Convention card routes
         .route("/api/cards", get(routes::list_cards))
         .route("/api/cards", post(routes::create_card))

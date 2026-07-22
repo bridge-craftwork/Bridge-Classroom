@@ -332,6 +332,51 @@ pub async fn mint_cookie_header(state: &AppState, headers: &HeaderMap, user_id: 
     out
 }
 
+/// Response for `POST /api/session/attach`.
+#[derive(Debug, Serialize)]
+pub struct AttachResponse {
+    pub attached: bool,
+}
+
+/// POST /api/session/attach — durable-session **backfill** for an already-logged-in
+/// teacher/viewer (ADR-0004 Phase 3b, Path A). See
+/// `documentation/design/durable-session-backfill.md`.
+///
+/// The caller proves control of their registered `viewers.public_key` with an
+/// ADR-0003 signed request (`x-bc-user` / `-timestamp` / `-nonce` / `-signature`
+/// over the canonical string, empty body). On success we mint — or join — the
+/// device session and set the cookie, giving an existing localStorage-only login a
+/// durable cookie **without** a magic-link email.
+///
+/// Safe by construction: this only mints for a caller who *already* proved it
+/// controls the key, so it grants no new capability — it just persists access that
+/// was already proven. Students (no viewer/RSA key) get 401 here and use Path B
+/// (the AES challenge–response, not yet built). `verify_signed_request` already
+/// enforces freshness + one-time nonce, so no extra rate limiter is needed.
+pub async fn attach_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<(HeaderMap, Json<AttachResponse>), (StatusCode, String)> {
+    let caller = crate::auth_sig::verify_signed_request(
+        &state,
+        &headers,
+        "POST",
+        "/api/session/attach",
+        &body,
+    )
+    .await?;
+
+    let cookie = mint_cookie_header(&state, &headers, &caller.user_id).await;
+    tracing::info!(
+        event = "session_attach_signed",
+        user_id = %caller.user_id,
+        viewer_id = %caller.viewer_id,
+        "durable session backfilled via signed request (ADR-0004 Phase 3b Path A)"
+    );
+    Ok((cookie, Json(AttachResponse { attached: true })))
+}
+
 /// A roster member in the `GET /api/session` restore packet (identity only).
 #[derive(Debug, Serialize)]
 pub struct RosterMember {
