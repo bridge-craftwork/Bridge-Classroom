@@ -1624,8 +1624,13 @@ async function handleSelectAssignment(assignment) {
     deal.displayNumber = i + 1
   })
 
-  // Build exercise context for assignment-scoped mastery
+  // Build exercise context for assignment-scoped mastery. `assignmentId` lets
+  // the board strip read the server's assignment-scoped rollup, which is the
+  // only cross-device source of truth (bug-artifacts #32: computing status from
+  // local observations alone showed every board grey on a device that hadn't
+  // played them, even though the server had the completions).
   exerciseContext.value = {
+    assignmentId: assignment.id,
     boards: allDeals.map(d => ({
       displayNumber: d.displayNumber,
       originalSubfolder: d.subfolder,

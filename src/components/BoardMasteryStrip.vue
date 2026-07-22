@@ -45,6 +45,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
+import { useAssignmentStatus } from '../composables/useAssignmentStatus.js'
 import { useBoardMastery } from '../composables/useBoardMastery.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import PawIcon from './PawIcon.vue'
@@ -95,16 +96,52 @@ const props = defineProps({
 const emit = defineEmits(['goto', 'open-intro'])
 
 const boardStatusApi = useBoardStatus()
+const assignmentStatusApi = useAssignmentStatus()
 const mastery = useBoardMastery()
 const userStore = useUserStore()
 const apiBoards = ref([])
 const useApi = ref(false)
+// Assignment-scoped server rollup, remapped to the strip's displayNumbers.
+// Null until loaded / when unavailable → local computation is used instead.
+const assignmentRows = ref(null)
 
 // Fetch board status from API
 async function loadBoardStatus() {
-  if (props.exerciseContext) return // Exercise mode uses local computation with date filtering
   const uid = props.userId || userStore.currentUser.value?.id
-  if (!uid || !props.lessonSubfolder) return
+  if (!uid) return
+
+  // Assignment/exercise mode: read the assignment-scoped server rollup. This is
+  // the ONLY cross-device source of truth — computing from local observations
+  // alone renders every board grey on a device that didn't play them
+  // (bug-artifacts #32). Falls back to local computation when the assignment id
+  // is absent (legacy context) or the rollup is unavailable/offline.
+  const ctx = props.exerciseContext
+  if (ctx) {
+    if (!ctx.assignmentId) return
+    try {
+      const entries = await assignmentStatusApi.fetchAssignmentStatus(uid, ctx.assignmentId)
+      if (entries && entries.length > 0) {
+        // The rollup is keyed by (deal_subfolder, deal_number); the strip is
+        // keyed by the exercise's sequential displayNumber. Remap so the shared
+        // buildBoardMastery() colour/star logic can be reused unchanged — this
+        // also keeps mixed-lesson assignments correct, where the same
+        // deal_number occurs in more than one subfolder.
+        const byKey = {}
+        for (const e of entries) byKey[`${e.deal_subfolder}::${e.deal_number}`] = e
+        assignmentRows.value = ctx.boards
+          .map(b => {
+            const e = byKey[`${b.originalSubfolder}::${b.originalBoardNumber}`]
+            return e ? { ...e, deal_number: b.displayNumber } : null
+          })
+          .filter(Boolean)
+      }
+    } catch {
+      // Leave assignmentRows null → local computation fallback below.
+    }
+    return
+  }
+
+  if (!props.lessonSubfolder) return
 
   try {
     // Scope to this lesson's collection so a subfolder shared across
@@ -124,6 +161,10 @@ async function loadBoardStatus() {
 onMounted(loadBoardStatus)
 watch(() => props.lessonSubfolder, loadBoardStatus)
 watch(() => boardStatusApi.cacheVersion.value, loadBoardStatus)
+// Re-read when the assignment changes, and after a sync invalidates the rollup
+// (so a board just completed here turns colour without a reload).
+watch(() => props.exerciseContext?.assignmentId, loadBoardStatus)
+watch(() => assignmentStatusApi.cacheVersion.value, loadBoardStatus)
 
 const boardMastery = computed(() => {
   // Exercise mode: compute mastery locally with date filtering across multiple subfolders
@@ -132,7 +173,7 @@ const boardMastery = computed(() => {
     const cutoff = props.exerciseContext.assignedAt
     const filtered = cutoff ? allObs.filter(o => o.timestamp >= cutoff) : allObs
 
-    const results = props.exerciseContext.boards.map(eb => {
+    let results = props.exerciseContext.boards.map(eb => {
       const boardObs = filtered
         .filter(o =>
           (o.deal_subfolder || o.deal?.subfolder) === eb.originalSubfolder &&
@@ -148,6 +189,28 @@ const boardMastery = computed(() => {
         lastAttemptTime: boardObs.length > 0 ? boardObs[boardObs.length - 1].timestamp : null
       }
     })
+
+    // Prefer the assignment-scoped server rollup when we have it: it reflects
+    // every device this student has played on, whereas `results` above only
+    // knows this device's observations (bug-artifacts #32). Local results are
+    // overlaid for boards played here but not yet synced, so instant feedback
+    // still works and a just-played board never regresses to grey.
+    if (assignmentRows.value && assignmentRows.value.length > 0) {
+      const merged = boardStatusApi.buildBoardMastery(
+        assignmentRows.value,
+        props.boardNumbers,
+        props.localPrerelease
+      )
+      for (const board of merged) {
+        const local = results.find(r => r.boardNumber === board.boardNumber)
+        if (!local || !local.lastAttemptTime) continue
+        if (!board.lastObservationAt || local.lastAttemptTime > board.lastObservationAt) {
+          board.status = local.status
+          board.achievement = local.achievement
+        }
+      }
+      results = merged
+    }
 
     if (props.forceBoardStatus) {
       for (const [bn, status] of Object.entries(props.forceBoardStatus)) {
