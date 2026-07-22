@@ -91,7 +91,7 @@
           <div class="practice-left">
             <BoardMasteryStrip
               v-if="deals.length > 1"
-              :boardNumbers="deals.map(d => d.displayNumber || d.boardNumber)"
+              :boardNumbers="deals.map(d => d.displayNumber)"
               :lessonSubfolder="currentDeal?.subfolder || currentDeal?.category || ''"
               :currentIndex="currentDealIndex"
               :forceBoardStatus="forceBoardStatus"
@@ -103,7 +103,7 @@
             />
 
             <DealInfo
-              :boardNumber="currentDeal?.displayNumber || currentDeal?.boardNumber"
+              :boardNumber="currentDeal?.displayNumber"
               :dealer="currentDeal?.dealer"
               :vulnerable="currentDeal?.vulnerable"
               :contract="currentDeal?.contract"
@@ -320,7 +320,7 @@
           <div class="practice-grid-stage">
             <BoardMasteryStrip
               v-if="deals.length > 1"
-              :boardNumbers="deals.map(d => d.displayNumber || d.boardNumber)"
+              :boardNumbers="deals.map(d => d.displayNumber)"
               :lessonSubfolder="currentDeal?.subfolder || currentDeal?.category || ''"
               :currentIndex="currentDealIndex"
               :forceBoardStatus="forceBoardStatus"
@@ -352,7 +352,7 @@
               <template #nw>
                 <div class="a1-grid-nw">
                   <BoardIndicator
-                    :board-number="currentDeal?.displayNumber || currentDeal?.boardNumber || 1"
+                    :board-number="currentDeal?.displayNumber || 1"
                     :dealer="currentDeal?.dealer || null"
                     :vulnerable="currentDeal?.vulnerable || null"
                     :size="A1_BOARD_SIZE"
@@ -1109,7 +1109,7 @@ const currentDeal = computed(() => deals.value[currentDealIndex.value] || null)
 const prereleaseByBoard = computed(() => {
   const map = {}
   for (const d of deals.value) {
-    map[d.displayNumber || d.boardNumber] = d.stable !== true
+    map[d.displayNumber] = d.stable !== true
   }
   return map
 })
@@ -1195,7 +1195,7 @@ watch(() => practice.observationStore.pendingCount.value, (newCount, oldCount) =
 // Set final board status when deal completes (persists until API refreshes)
 watch(() => practice.isComplete.value, (isComplete) => {
   if (isComplete && currentDeal.value) {
-    const board = currentDeal.value.boardNumber
+    const board = currentDeal.value.displayNumber
     const hadWrong = practice.boardState.boardHadWrong
     const allFixed = hadWrong && Object.keys(practice.boardState.wrongStepIndices).length === 0
     const status = !hadWrong ? 'green' : allFixed ? 'yellow' : 'red'
@@ -1206,6 +1206,24 @@ watch(() => practice.isComplete.value, (isComplete) => {
 // Note: forceBoardStatus is NOT cleared on cache refresh — the local override
 // persists for the session to avoid a grey flicker between cache invalidation
 // and the API response arriving. Both use the same status logic so they agree.
+
+// Single choke point for committing the deal list. Stamps each deal with its
+// canonical strip identity, `displayNumber` — the ONE key the board strip,
+// forceBoardStatus, and prerelease map all use. In assignment/exercise mode
+// boards are pulled out of their source order, so they're renumbered 1..N;
+// everywhere else displayNumber mirrors the deal's own boardNumber, so free
+// practice still shows the PBN board numbers. Assigning it here (rather than
+// re-deriving `displayNumber || boardNumber` at each read site) means the
+// identity always exists and can't be forgotten — a forgotten fallback in the
+// deal-complete watcher is what let a status write land on the wrong board
+// (bug-artifacts #33).
+function setDeals(list, { renumber = false } = {}) {
+  list.forEach((deal, i) => {
+    deal.displayNumber = renumber ? i + 1 : deal.boardNumber
+  })
+  deals.value = list
+  return list
+}
 
 // File handling
 async function onFileSelect(event) {
@@ -1224,7 +1242,7 @@ async function onFileSelect(event) {
         category: deal.category || category,
         collectionId: currentCollection.value || null
       }))
-      deals.value = dealsWithCategory
+      setDeals(dealsWithCategory)
       currentDealIndex.value = 0
       practice.loadDeal(dealsWithCategory[0])
       practice.resetStats()
@@ -1257,7 +1275,7 @@ async function loadBundledFile(file) {
         category: file.name,
         collectionId: currentCollection.value || null
       }))
-      deals.value = dealsWithCategory
+      setDeals(dealsWithCategory)
       currentDealIndex.value = 0
       practice.loadDeal(dealsWithCategory[0])
       practice.resetStats()
@@ -1278,7 +1296,7 @@ function handleLessonLoad({ subfolder, name, category, content }) {
       category: deal.category || category,
       collectionId: currentCollection.value || null
     }))
-    deals.value = dealsWithCategory
+    setDeals(dealsWithCategory)
     currentDealIndex.value = 0
     practice.loadDeal(dealsWithCategory[0])
     practice.resetStats()
@@ -1321,7 +1339,7 @@ function onCardClick({ seat, suit, rank }) {
 }
 
 function updateBoardOverride(correct) {
-  const board = currentDeal.value.displayNumber || currentDeal.value.boardNumber
+  const board = currentDeal.value.displayNumber
   if (!correct) {
     forceBoardStatus.value = { ...forceBoardStatus.value, [board]: 'red' }
   } else if (practice.boardState.boardHadWrong) {
@@ -1619,10 +1637,10 @@ async function handleSelectAssignment(assignment) {
   // Sort by the exercise's sort_order
   allDeals.sort((a, b) => a._sortOrder - b._sortOrder)
 
-  // Assign sequential display numbers for the exercise (1, 2, ..., N)
-  allDeals.forEach((deal, i) => {
-    deal.displayNumber = i + 1
-  })
+  // Assign sequential display numbers for the exercise (1, 2, ..., N) and commit
+  // the list. Renumbered because assignment boards are pulled out of source
+  // order; displayNumber is the canonical strip identity (see setDeals).
+  setDeals(allDeals, { renumber: true })
 
   // Build exercise context for assignment-scoped mastery. `assignmentId` lets
   // the board strip read the server's assignment-scoped rollup, which is the
@@ -1645,8 +1663,7 @@ async function handleSelectAssignment(assignment) {
   // play submits as untagged free-form practice.
   assignmentStore.setCurrentClassroomAssignment(assignment)
 
-  // Load into practice mode
-  deals.value = allDeals
+  // Load into practice mode (deals already committed via setDeals above)
   currentDealIndex.value = 0
   practice.loadDeal(allDeals[0])
   practice.resetStats()
@@ -1799,9 +1816,10 @@ async function loadLessonFromUrl(collectionId, lessonId) {
       const dealsWithCategory = parsed.map(deal => ({
         ...deal,
         subfolder: deal.subfolder || lessonId,
-        category: deal.category || foundCategory.name
+        category: deal.category || foundCategory.name,
+        collectionId: collectionId || null
       }))
-      deals.value = dealsWithCategory
+      setDeals(dealsWithCategory)
 
       // Restore deal number from URL if present
       const dealNum = appConfig.getDealFromUrl()
