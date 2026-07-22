@@ -93,6 +93,7 @@
               v-if="deals.length > 1"
               :boardNumbers="deals.map(d => d.displayNumber)"
               :lessonSubfolder="currentDeal?.subfolder || currentDeal?.category || ''"
+              :collectionId="currentDeal?.collectionId || null"
               :currentIndex="currentDealIndex"
               :forceBoardStatus="forceBoardStatus"
               :exerciseContext="exerciseContext"
@@ -322,6 +323,7 @@
               v-if="deals.length > 1"
               :boardNumbers="deals.map(d => d.displayNumber)"
               :lessonSubfolder="currentDeal?.subfolder || currentDeal?.category || ''"
+              :collectionId="currentDeal?.collectionId || null"
               :currentIndex="currentDealIndex"
               :forceBoardStatus="forceBoardStatus"
               :exerciseContext="exerciseContext"
@@ -1471,13 +1473,14 @@ async function hasCompletedBoardInLesson() {
   try {
     // Reuse the SAME board-status the board strip shows — one source of truth, not a
     // divergent second query (Rick, 2026-07-13). Both read the useBoardStatus singleton
-    // cache under the identical (subfolder, collectionId) scope: getLessonCollection with
-    // NO `|| currentCollection` fallback (the earlier fallback scoped the query and
+    // cache under the identical (subfolder, collectionId) scope. The scope is the loaded
+    // deal's own collectionId — the same value passed to the strip's :collectionId prop —
+    // NOT a `|| currentCollection` fallback (the earlier fallback scoped the query and
     // filtered OUT completed rows with a null/mismatched collection_id — defence lessons —
     // so the strip showed the board green while this gate saw "not completed" and
     // re-opened the intro every visit). Read the strip's cached result first; only fetch
     // if the strip hasn't populated it yet (e.g. this gate runs before the strip mounts).
-    const collectionId = useBoardMastery().getLessonCollection(subfolder)
+    const collectionId = currentDeal.value?.collectionId || null
     const boards = boardStatusApi.getCachedBoards(uid, subfolder, collectionId)
       || await boardStatusApi.fetchBoardStatus(uid, subfolder, false, collectionId)
     if ((boards || []).some(b => b?.status && b.status !== 'not_attempted')) return true
