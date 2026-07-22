@@ -343,18 +343,6 @@ async function fetchLessonMastery(userId, force = false) {
 }
 
 /**
- * Read cached lesson mastery tiers synchronously. Returns the map
- * subfolder → tier (possibly empty) or null if not yet fetched.
- *
- * @param {string} userId
- * @returns {Object<string,string>|null}
- */
-function getCachedLessonTiers(userId) {
-  if (!userId) return null
-  return lessonMasteryCache[userId]?.tiers || null
-}
-
-/**
  * Read cached lesson-mastery entries synchronously — the full set of
  * lessons the user has touched, with attempted/total counts and tier.
  * Returns null if not yet fetched.
@@ -378,7 +366,6 @@ export function useBoardStatus() {
     mergeLocalPending,
     getCachedBoards,
     fetchLessonMastery,
-    getCachedLessonTiers,
     getCachedLessonEntries
   }
 }

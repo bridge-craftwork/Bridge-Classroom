@@ -71,17 +71,19 @@ export function useRecentLessons() {
           for (let i = 1; i <= (e.total_boards || 0); i++) boardNumbers.push(i)
         }
         // The server rollup is grouped by (collection_id, deal_subfolder), so
-        // each entry already carries its own collection. Use it directly rather
-        // than the single-valued subfolder→collection map, which mis-scopes a
-        // subfolder shared across collections.
-        return { subfolder, collectionId: e.collection_id || null, boardNumbers, lastActivity: null }
+        // each entry already carries its own collection AND tier. Use them
+        // directly rather than a subfolder-keyed map, which mis-scopes a
+        // subfolder shared across collections (tier there is last-write-wins).
+        return {
+          subfolder,
+          collectionId: e.collection_id || null,
+          tier: e.tier || null,
+          boardNumbers,
+          lastActivity: null
+        }
       })
 
     if (lessons.length === 0) return []
-
-    const tiersByLesson = userId
-      ? (boardStatusApi.getCachedLessonTiers(userId) || {})
-      : {}
 
     const enriched = lessons.map(lesson => {
       // Collection scope must match ensureLessonData's fetch for the cache to
@@ -148,9 +150,9 @@ export function useRecentLessons() {
         resumeDealNumber,
         lastActivity,
         relativeTime: lastActivity ? formatRelativeTime(lastActivity) : '',
-        // Lesson mastery tier per CORRECTNESS_AND_MASTERY.md §13.
-        // Null until /api/lesson-mastery has been fetched.
-        tier: tiersByLesson[lesson.subfolder] || null,
+        // Lesson mastery tier per CORRECTNESS_AND_MASTERY.md §13, carried from
+        // this lesson's own (collection_id, subfolder) rollup entry.
+        tier: lesson.tier,
         // Achievement tallies for the tile badges.
         goldStars,
         silverStars,
