@@ -128,6 +128,10 @@ async fn main() -> anyhow::Result<()> {
         // Durable-session BACKFILL (ADR-0004 Phase 3b, Path A): an already-logged-in
         // teacher/viewer mints a cookie via an ADR-0003 signed request — no email.
         .route("/api/session/attach", post(routes::attach_session))
+        // Path B: a student (AES key only) mints a cookie by proving key possession
+        // via a challenge–response — no email. challenge issues, claim mints.
+        .route("/api/session/attach/challenge", post(routes::attach_challenge))
+        .route("/api/session/attach/claim", post(routes::attach_claim))
         // Convention card routes
         .route("/api/cards", get(routes::list_cards))
         .route("/api/cards", post(routes::create_card))

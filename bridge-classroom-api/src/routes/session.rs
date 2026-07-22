@@ -27,6 +27,7 @@ use axum::{
     Json,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use ring::aead::{self, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN};
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -373,6 +374,172 @@ pub async fn attach_session(
         user_id = %caller.user_id,
         viewer_id = %caller.viewer_id,
         "durable session backfilled via signed request (ADR-0004 Phase 3b Path A)"
+    );
+    Ok((cookie, Json(AttachResponse { attached: true })))
+}
+
+// ── Path B: student AES-key challenge–response backfill (ADR-0004 §3b) ──────
+//
+// A student holds no RSA key (Path A n/a), only their AES `secretKey`. We prove
+// possession WITHOUT transmitting the key: the server encrypts a random nonce
+// under the user's escrowed key (crypto.js-compatible), the client decrypts it
+// with its localStorage key and echoes the nonce back, and only then do we mint.
+// Safe by construction — a caller who can open the challenge already holds the key
+// (already fully authorized), so this only persists proven access.
+
+/// In-flight challenges: `challenge_id` -> (user_id, nonce_b64, issued). Single-use
+/// and short-lived; in-memory (a lost one just forces a client retry).
+static ATTACH_CHALLENGES: LazyLock<Mutex<HashMap<String, (String, String, Instant)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+const ATTACH_CHALLENGE_TTL_SECS: u64 = 120;
+
+/// Per-user issuance limiter for `/attach/challenge` (bounds escrow-decrypt abuse).
+static ATTACH_CHALLENGE_LIMITER: LazyLock<Mutex<HashMap<String, (Instant, u32)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+const ATTACH_CHALLENGE_MAX: u32 = 8;
+const ATTACH_CHALLENGE_WINDOW_SECS: u64 = 60;
+
+fn allow_attach_challenge(user_id: &str) -> bool {
+    let mut m = ATTACH_CHALLENGE_LIMITER.lock().unwrap_or_else(|e| e.into_inner());
+    let now = Instant::now();
+    m.retain(|_, (start, _)| now.duration_since(*start).as_secs() < ATTACH_CHALLENGE_WINDOW_SECS);
+    let entry = m.entry(user_id.to_string()).or_insert((now, 0));
+    if now.duration_since(entry.0).as_secs() >= ATTACH_CHALLENGE_WINDOW_SECS {
+        *entry = (now, 0);
+    }
+    entry.1 += 1;
+    entry.1 <= ATTACH_CHALLENGE_MAX
+}
+
+fn random_b64(n: usize) -> String {
+    let mut b = vec![0u8; n];
+    let _ = SystemRandom::new().fill(&mut b);
+    BASE64.encode(&b)
+}
+
+/// AES-256-GCM encrypt matching the frontend's `crypto.js::encryptObservation`
+/// (12-byte IV, 16-byte tag appended to the ciphertext, no AAD), so the browser's
+/// `decryptObservation(encrypted_data, iv, secretKey)` opens it. Returns
+/// `(encrypted_data_b64, iv_b64)`.
+fn encrypt_for_user_key(secret_key_b64: &str, plaintext: &[u8]) -> Result<(String, String), String> {
+    let key_bytes = BASE64.decode(secret_key_b64).map_err(|_| "bad secret key".to_string())?;
+    let unbound = UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| "bad key length".to_string())?;
+    let key = LessSafeKey::new(unbound);
+    let mut iv = [0u8; NONCE_LEN];
+    SystemRandom::new().fill(&mut iv).map_err(|_| "rng failed".to_string())?;
+    let nonce = Nonce::assume_unique_for_key(iv);
+    let mut in_out = plaintext.to_vec();
+    key.seal_in_place_append_tag(nonce, aead::Aad::empty(), &mut in_out)
+        .map_err(|_| "encryption failed".to_string())?;
+    Ok((BASE64.encode(&in_out), BASE64.encode(iv)))
+}
+
+#[derive(Deserialize)]
+pub struct AttachChallengeRequest {
+    pub user_id: String,
+}
+
+#[derive(Serialize)]
+pub struct AttachChallengeResponse {
+    pub challenge_id: String,
+    pub encrypted_data: String,
+    pub iv: String,
+}
+
+#[derive(Deserialize)]
+pub struct AttachClaimRequest {
+    pub challenge_id: String,
+    pub nonce: String,
+}
+
+/// POST /api/session/attach/challenge — Path B step 1. Issues a nonce encrypted
+/// under the user's escrowed AES key. Body `{ user_id }`. `409 not_attachable`
+/// when the user has no escrow (falls back to email recovery client-side).
+pub async fn attach_challenge(
+    State(state): State<AppState>,
+    Json(req): Json<AttachChallengeRequest>,
+) -> Result<Json<AttachChallengeResponse>, (StatusCode, String)> {
+    let user_id = req.user_id.trim();
+    if user_id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "user_id is required".to_string()));
+    }
+    if !allow_attach_challenge(user_id) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "too many challenge requests".to_string()));
+    }
+
+    let recovery_secret = state.config.recovery_secret.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "key recovery is not configured".to_string(),
+    ))?;
+
+    let escrow_row: Option<Option<String>> =
+        sqlx::query_scalar("SELECT recovery_encrypted_key FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let escrow = match escrow_row.flatten() {
+        Some(e) if !e.is_empty() => e,
+        _ => return Err((StatusCode::CONFLICT, "not_attachable".to_string())),
+    };
+
+    // Decrypt the user's key transiently (never stored/returned), same capability
+    // recovery + /session/key already use, to build a key-bound challenge.
+    let secret_key = decrypt_for_recovery(&escrow, recovery_secret)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "escrow decrypt failed".to_string()))?;
+
+    // The client opens this with `decryptObservation`, which JSON.parses — so the
+    // plaintext must be valid JSON. Encode the nonce as a JSON string.
+    let nonce_b64 = random_b64(32);
+    let plaintext = serde_json::to_vec(&nonce_b64)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (encrypted_data, iv) = encrypt_for_user_key(&secret_key, &plaintext)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let challenge_id = random_b64(18);
+    {
+        let mut store = ATTACH_CHALLENGES.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        store.retain(|_, (_, _, t)| now.duration_since(*t).as_secs() < ATTACH_CHALLENGE_TTL_SECS);
+        store.insert(challenge_id.clone(), (user_id.to_string(), nonce_b64, now));
+    }
+
+    Ok(Json(AttachChallengeResponse {
+        challenge_id,
+        encrypted_data,
+        iv,
+    }))
+}
+
+/// POST /api/session/attach/claim — Path B step 2. Body `{ challenge_id, nonce }`.
+/// The echoed nonce proves the caller decrypted the challenge (holds the user's
+/// key); on match we mint/join the device session. Single-use challenge.
+pub async fn attach_claim(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<AttachClaimRequest>,
+) -> Result<(HeaderMap, Json<AttachResponse>), (StatusCode, String)> {
+    let entry = {
+        let mut store = ATTACH_CHALLENGES.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        store.retain(|_, (_, _, t)| now.duration_since(*t).as_secs() < ATTACH_CHALLENGE_TTL_SECS);
+        store.remove(&req.challenge_id) // single-use, consume on claim
+    };
+    let (user_id, expected_nonce, _) = entry
+        .ok_or((StatusCode::UNAUTHORIZED, "invalid or expired challenge".to_string()))?;
+
+    // Constant-time compare (unequal length => Err => reject).
+    if ring::constant_time::verify_slices_are_equal(req.nonce.as_bytes(), expected_nonce.as_bytes())
+        .is_err()
+    {
+        return Err((StatusCode::UNAUTHORIZED, "challenge response mismatch".to_string()));
+    }
+
+    let cookie = mint_cookie_header(&state, &headers, &user_id).await;
+    tracing::info!(
+        event = "session_attach_key",
+        user_id = %user_id,
+        "durable session backfilled via key challenge (ADR-0004 Phase 3b Path B)"
     );
     Ok((cookie, Json(AttachResponse { attached: true })))
 }
