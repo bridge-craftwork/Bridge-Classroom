@@ -141,6 +141,19 @@ export function getTaxonomyEntry(skillPath) {
   return BAKER_BRIDGE_TAXONOMY.find(e => e.path === skillPath) || null
 }
 
+// Reverse of getSubfolderForSkill: deal_subfolder → taxonomy entry. The mapping
+// is 1:1 (each pbn appears once), so a lesson can be named/sized from its
+// subfolder alone — no skill_path needed. Used by progress views that key
+// lessons by (collection_id, deal_subfolder), their true identity.
+const SUBFOLDER_TO_ENTRY = new Map(
+  BAKER_BRIDGE_TAXONOMY.map(e => [e.pbn.replace(/\.pbn$/i, ''), e])
+)
+
+/** Lookup a taxonomy entry by its deal_subfolder (pbn basename). */
+export function getTaxonomyEntryBySubfolder(subfolder) {
+  return (subfolder && SUBFOLDER_TO_ENTRY.get(subfolder)) || null
+}
+
 /** Get all entries for a category */
 export function getTaxonomyByCategory(category) {
   return BAKER_BRIDGE_TAXONOMY.filter(e => e.category === category)

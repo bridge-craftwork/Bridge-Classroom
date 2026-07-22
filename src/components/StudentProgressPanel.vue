@@ -53,7 +53,7 @@
           </div>
           <!-- Legend -->
           <div class="sp-activity-legend">
-            <span v-for="(lesson, li) in lessons" :key="lesson.path" class="sp-activity-legend-item">
+            <span v-for="(lesson, li) in lessons" :key="lesson.key" class="sp-activity-legend-item">
               <span class="sp-legend-dot" :style="{ backgroundColor: lessonColor(li) }"></span>
               {{ lesson.name }}
             </span>
@@ -73,7 +73,7 @@
       <!-- Lesson card grid -->
       <div class="sp-grid">
         <div
-          v-for="lesson in lessons" :key="lesson.path"
+          v-for="lesson in lessons" :key="lesson.key"
           class="sp-lesson-card"
           @click="selectedLesson = lesson"
         >
@@ -147,8 +147,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { processData, buildLessonMeta, STATUS_COLORS, TIER_COLORS } from '../utils/studentProgressData.js'
-import { getSubfolderForSkill } from '../utils/bakerBridgeTaxonomy.js'
+import { processData, buildLessonMeta, lessonKeyOf, STATUS_COLORS, TIER_COLORS } from '../utils/studentProgressData.js'
 import { useTeacherRole } from '../composables/useTeacherRole.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { useUserStore } from '../composables/useUserStore.js'
@@ -174,21 +173,23 @@ const userStore = useUserStore()
 const subjectUserId = computed(() => props.studentId || userStore.currentUser.value?.id || '')
 
 const apiBoards = ref([])
-const apiTiers = ref({})
+const apiLessonEntries = ref([])
 
 async function refreshBackendState() {
   const uid = subjectUserId.value
   if (!uid) {
     apiBoards.value = []
-    apiTiers.value = {}
+    apiLessonEntries.value = []
     return
   }
-  const [boards, tiers] = await Promise.all([
+  const [boards] = await Promise.all([
     boardStatusApi.fetchBoardStatus(uid),
     boardStatusApi.fetchLessonMastery(uid),
   ])
   apiBoards.value = boards || []
-  apiTiers.value = tiers || {}
+  // Per-(collection_id, deal_subfolder) rollup entries — carry the tier for
+  // each lesson keyed correctly, unlike the flattened subfolder→tier map.
+  apiLessonEntries.value = boardStatusApi.getCachedLessonEntries(uid) || []
 }
 
 onMounted(refreshBackendState)
@@ -200,21 +201,21 @@ const lessons = computed(() => {
   if (!props.observations || props.observations.length === 0) return []
   const { lessonTotals, lessonNames } = buildLessonMeta(props.observations)
 
-  // Group board_status rows by skill_path (via the lesson's subfolder).
-  // The endpoint keys on deal_subfolder; the panel keys on skill_path,
-  // so we bridge through getSubfolderForSkill — same join the convention
-  // card uses (see CLAUDE.md ConventionCard section).
-  const boardStatusByPath = {}
-  const tiersByPath = {}
-  const paths = new Set(props.observations.map(o => o.skill_path).filter(Boolean))
-  for (const path of paths) {
-    const subfolder = getSubfolderForSkill(path)
-    if (!subfolder) continue
-    boardStatusByPath[path] = apiBoards.value.filter(b => b.deal_subfolder === subfolder)
-    if (apiTiers.value[subfolder]) tiersByPath[path] = apiTiers.value[subfolder]
+  // A lesson is (collection_id, deal_subfolder) — the identity every board_status
+  // row and lesson-mastery entry already carries. Key everything by lessonKeyOf,
+  // so a subfolder shared across two collections stays two lessons. No skill_path
+  // bridge: board_status joins exactly by (collection, subfolder).
+  const boardStatusByKey = {}
+  for (const b of apiBoards.value) {
+    const key = lessonKeyOf(b.collection_id, b.deal_subfolder)
+    ;(boardStatusByKey[key] ||= []).push(b)
+  }
+  const tiersByKey = {}
+  for (const e of apiLessonEntries.value) {
+    tiersByKey[lessonKeyOf(e.collection_id, e.deal_subfolder)] = e.tier
   }
 
-  return processData(props.observations, lessonTotals, lessonNames, boardStatusByPath, tiersByPath)
+  return processData(props.observations, lessonTotals, lessonNames, boardStatusByKey, tiersByKey)
 })
 
 const totalBoards = computed(() => lessons.value.reduce((s, l) => s + l.tried, 0))
@@ -260,10 +261,15 @@ function formatSpan(lesson) {
 async function handleDotClick({ rawTs, dealNum, correct, event }) {
   if (!popupManager.value) return
 
+  // Scope the match to the open lesson's collection so a subfolder shared across
+  // collections resolves to the right observation.
+  const collectionId = selectedLesson.value?.collectionId || null
+  const subfolder = selectedLesson.value?.subfolder || null
+
   if (props.studentId) {
     // Teacher viewing student — decrypt on demand
     const decrypted = await teacherRole.findAndDecryptObservation(
-      props.studentId, rawTs, dealNum, correct
+      props.studentId, rawTs, dealNum, correct, collectionId
     )
     if (decrypted) {
       popupManager.value.openObservation(decrypted, event)
@@ -274,7 +280,10 @@ async function handleDotClick({ rawTs, dealNum, correct, event }) {
     // Self-viewing — observations are already decrypted, find the match
     const match = props.observations.find(o => {
       const obsTs = new Date(o.timestamp).getTime()
-      return Math.abs(obsTs - rawTs) < 1000 && o.deal_number === dealNum && o.correct === correct
+      if (Math.abs(obsTs - rawTs) >= 1000 || o.deal_number !== dealNum || o.correct !== correct) return false
+      if (subfolder && o.deal_subfolder !== subfolder) return false
+      if (collectionId && (o.collection_id || null) !== collectionId) return false
+      return true
     })
     if (match) {
       popupManager.value.openObservation(match, event)
