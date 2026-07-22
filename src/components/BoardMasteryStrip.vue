@@ -59,6 +59,14 @@ const props = defineProps({
     type: String,
     required: true
   },
+  collectionId: {
+    type: String,
+    default: null
+    // The active collection scope for lessonSubfolder. Passed in (the loaded
+    // deal carries it) rather than re-derived from the global subfolder→
+    // collection map, which is single-valued and mis-scopes a subfolder shared
+    // across collections. Null → unscoped (ad-hoc PBN with no collection).
+  },
   currentIndex: {
     type: Number,
     default: 0
@@ -145,10 +153,11 @@ async function loadBoardStatus() {
 
   try {
     // Scope to this lesson's collection so a subfolder shared across
-    // collections shows only this one's boards. Null when unknown → unscoped
-    // (legacy) fetch, so nothing breaks before the mapping is cached.
-    const collectionId = mastery.getLessonCollection(props.lessonSubfolder)
-    const boards = await boardStatusApi.fetchBoardStatus(uid, props.lessonSubfolder, false, collectionId)
+    // collections shows only this one's boards. The scope is passed in (the
+    // loaded deal carries collectionId) rather than looked up in the global
+    // subfolder→collection map, which is single-valued and can return the
+    // wrong collection for a shared subfolder. Null → unscoped (ad-hoc PBN).
+    const boards = await boardStatusApi.fetchBoardStatus(uid, props.lessonSubfolder, false, props.collectionId)
     if (boards.length > 0) {
       apiBoards.value = boards
       useApi.value = true
@@ -229,7 +238,7 @@ const boardMastery = computed(() => {
     props.boardNumbers,
     props.localPrerelease
   )
-  boardStatusApi.mergeLocalPending(results, props.lessonSubfolder)
+  boardStatusApi.mergeLocalPending(results, props.lessonSubfolder, props.collectionId)
 
   // Local override: force board statuses during/after play
   if (props.forceBoardStatus) {

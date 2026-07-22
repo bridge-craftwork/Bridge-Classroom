@@ -240,8 +240,14 @@ function buildBoardMastery(apiBoards, boardNumbers, localPrerelease = {}) {
  * Pending observations that haven't synced yet override the API data.
  * @param {Array} mastery - Output of buildBoardMastery
  * @param {string} lessonSubfolder
+ * @param {string|null} [collectionId] - Active collection scope. When both this
+ *   and the pending observation's collection_id are known and differ, the
+ *   observation belongs to another collection sharing this subfolder and is
+ *   skipped — otherwise a just-played board in collection B would recolour the
+ *   strip for collection A. Left permissive (no skip) when either side is null,
+ *   so legacy untagged observations and ad-hoc PBNs keep overlaying as before.
  */
-function mergeLocalPending(mastery, lessonSubfolder) {
+function mergeLocalPending(mastery, lessonSubfolder, collectionId = null) {
   try {
     const observationStore = useObservationStore()
     const pending = observationStore.getPendingObservations()
@@ -249,6 +255,7 @@ function mergeLocalPending(mastery, lessonSubfolder) {
     for (const obs of pending) {
       if (!obs.metadata) continue
       if (obs.metadata.deal_subfolder !== lessonSubfolder) continue
+      if (collectionId && obs.metadata.collection_id && obs.metadata.collection_id !== collectionId) continue
 
       const bn = obs.metadata.deal_number
       const board = mastery.find(b => b.boardNumber === bn)
