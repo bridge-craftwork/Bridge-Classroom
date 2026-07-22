@@ -170,49 +170,14 @@ async function selectUser(userId) {
 }
 
 /**
- * Group observations by lesson (deal.subfolder) and calculate stats
- */
-const lessonStats = computed(() => {
-  const obs = getObservations()
-  const groups = {}
-
-  for (const ob of obs) {
-    const lesson = ob.deal_subfolder || ob.deal?.subfolder || 'Unknown'
-
-    if (!groups[lesson]) {
-      groups[lesson] = {
-        lesson,
-        displayName: formatLessonName(lesson),
-        total: 0,
-        correct: 0,
-        incorrect: 0,
-        observations: []
-      }
-    }
-
-    groups[lesson].total++
-    if (ob.correct) {
-      groups[lesson].correct++
-    } else {
-      groups[lesson].incorrect++
-    }
-    groups[lesson].observations.push(ob)
-  }
-
-  // Calculate percentages and sort
-  const result = Object.values(groups).map(group => ({
-    ...group,
-    successRate: group.total > 0 ? Math.round((group.correct / group.total) * 100) : 0
-  }))
-
-  // Sort by name
-  result.sort((a, b) => a.displayName.localeCompare(b.displayName))
-
-  return result
-})
-
-/**
- * Group observations by taxon (skill_path) and calculate stats
+ * Group observations by taxon (skill_path) and calculate stats.
+ *
+ * The only observation-derived aggregate left in this composable: the
+ * Accomplishments "Taxons" tab needs per-skill correct/incorrect counts, and no
+ * server rollup is keyed by skill_path yet (board-status / lesson-mastery are
+ * keyed by collection+subfolder). The Lessons tab was migrated to the
+ * board-status rollup (AccomplishmentsView.lessonMasteryList); this is pending a
+ * taxon-level rollup on the backend.
  */
 const taxonStats = computed(() => {
   const obs = getObservations()
@@ -262,16 +227,6 @@ const taxonStats = computed(() => {
 })
 
 /**
- * Filtered lesson stats (only with observations if filter enabled)
- */
-const filteredLessonStats = computed(() => {
-  if (!onlyWithObservations.value) {
-    return lessonStats.value
-  }
-  return lessonStats.value.filter(item => item.total > 0)
-})
-
-/**
  * Filtered taxon stats (only with observations if filter enabled)
  */
 const filteredTaxonStats = computed(() => {
@@ -301,13 +256,6 @@ function formatLessonName(folderName) {
 }
 
 /**
- * Get current stats based on active tab
- */
-const currentStats = computed(() => {
-  return activeTab.value === 'lessons' ? filteredLessonStats.value : filteredTaxonStats.value
-})
-
-/**
  * Check if current user can view other users
  */
 const canViewOtherUsers = computed(() => {
@@ -326,23 +274,6 @@ const selectedUser = computed(() => {
  */
 const hasData = computed(() => {
   return getObservations().length > 0
-})
-
-/**
- * Total observation count
- */
-const totalObservations = computed(() => {
-  return getObservations().length
-})
-
-/**
- * Overall success rate
- */
-const overallSuccessRate = computed(() => {
-  const obs = getObservations()
-  if (obs.length === 0) return 0
-  const correct = obs.filter(o => o.correct).length
-  return Math.round((correct / obs.length) * 100)
 })
 
 /**
@@ -391,16 +322,11 @@ export function useAccomplishments() {
     disableTestMode,
 
     // Computed
-    lessonStats,
     taxonStats,
-    filteredLessonStats,
     filteredTaxonStats,
-    currentStats,
     canViewOtherUsers,
     selectedUser,
     hasData,
-    totalObservations,
-    overallSuccessRate,
 
     // Methods
     initialize,

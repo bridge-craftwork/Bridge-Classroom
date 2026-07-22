@@ -73,44 +73,6 @@ export function getCategoryFromPath(skillPath) {
 }
 
 /**
- * Group observations by category
- * @param {Array} observations - Array of observation objects with skill_path property
- * @returns {Object} Object with category IDs as keys and observation arrays as values
- */
-export function groupObservationsByCategory(observations) {
-  const groups = {}
-
-  for (const obs of observations) {
-    const category = getCategoryFromPath(obs.skill_path)
-    if (!groups[category]) {
-      groups[category] = []
-    }
-    groups[category].push(obs)
-  }
-
-  return groups
-}
-
-/**
- * Group observations by skill path
- * @param {Array} observations - Array of observation objects with skill_path property
- * @returns {Object} Object with skill paths as keys and observation arrays as values
- */
-export function groupObservationsBySkill(observations) {
-  const groups = {}
-
-  for (const obs of observations) {
-    const path = obs.skill_path || 'uncategorized/unknown'
-    if (!groups[path]) {
-      groups[path] = []
-    }
-    groups[path].push(obs)
-  }
-
-  return groups
-}
-
-/**
  * Get display info for a category ID
  * @param {string} categoryId - Category ID (e.g., "bidding_conventions")
  * @returns {Object} Category info: { id, name }
