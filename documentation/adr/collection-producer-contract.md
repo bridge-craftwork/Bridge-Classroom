@@ -64,7 +64,7 @@ is the key, **you must keep positions stable once you've promoted them.** See §
 |---|---|---|---|
 | R1 | Declare each board's **release status** (`stable`) | `%bridge-classroom-stable:` (file) + `[Stable "…"]` (board) | C3 |
 | R2 | Keep **stable positions frozen** — no renumbering; same-position, same-difficulty, stable replacements only | (behavioral) | C4 |
-| R3 | Stamp a **board-version token** on every board | `[BoardVersionToken "…"]` | C2 |
+| R3 | Stamp a **board-version token** on every board | `[VersionToken "…"]` | C2 |
 | R4 | Give every **stable** board a **real skill path** (required before `stable=true`; `uncategorized` OK while prerelease) | `[SkillPath "…"]` | C5 |
 | R5 | Publish a **build-generated manifest** describing every lesson's board roster | `manifest.json` (build artifact) | ADR-0002 |
 | R6 | **Adhere to the Lesson Directive Specification** — your board directives must render a state that matches your prose (esp. play-lesson trick state) | in-board directives (`[showcards]`, `[PLAY]`, …) | §11 |
@@ -152,7 +152,15 @@ protect *past* records.
 
 ## 5. R3 — Stamp a board-version token (C2)
 
-Stamp `[BoardVersionToken "…"]` on every board from your build pipeline.
+Stamp `[VersionToken "…"]` on every board from your build pipeline.
+
+> **Renamed (was `[BoardVersionToken]`).** The tag must **not** begin with `Board`: some
+> widely-used dealing-machine software (Dealer4) prefix-matches `[Board*]` and tries to parse
+> the value as a decimal board number, aborting the load on the first hex letter. Avoid a
+> `Deal*` prefix for the same reason. **Only the tag name changed** — the value, the
+> `boardVersionToken` manifest field, and the `board_version_token` observation column are
+> unchanged, so previously recorded tokens remain valid and require no migration. Consumers
+> should accept the legacy `[BoardVersionToken]` spelling for already-published collections.
 
 - **Value:** a content hash over a **rotation-canonical** form of the deal —
   rotate the deal *and* the auction so the ♠A holder sits North, then
@@ -225,7 +233,7 @@ containing:
 1. **Identity** — collection, subfolder/lesson, board number.
 2. **The full verbatim deal text** — treat this as the authoritative locator;
    it's greppable against your repo.
-3. **The `[BoardVersionToken]`** — your rotation-canonical stamp, for fast exact
+3. **The `[VersionToken]`** — your rotation-canonical stamp, for fast exact
    matching across rotational variants and other files.
 
 Plus context (auction, contract, the student's seat and the prompt they were on)
@@ -236,7 +244,7 @@ shortcut.
 
 ## 9. Checklist for a new or promoted collection
 
-- [ ] Every board carries a fresh `[BoardVersionToken "…"]` from the build.
+- [ ] Every board carries a fresh `[VersionToken "…"]` from the build.
 - [ ] Prerelease content ships with **no** `stable` flag (or explicit `false`) —
       it will be playable and kept in student history but excluded from mastery.
       (A real skill path is **not** required yet; `uncategorized` is fine here.)

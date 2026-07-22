@@ -178,6 +178,26 @@ Pass
       const deals = parsePbn(pbn)
       expect(deals[0].studentSeat).toBe('S')
     })
+
+    // Both spellings must keep parsing: producers emit [VersionToken], but
+    // already-published collections still carry the legacy [BoardVersionToken].
+    it.each([
+      ['VersionToken'],
+      ['BoardVersionToken']
+    ])('should parse the %s spelling of the board identity stamp', (tag) => {
+      const token = 'a'.repeat(64)
+      const pbn = `
+[Board "1"]
+[Dealer "N"]
+[Vulnerable "None"]
+[${tag} "${token}"]
+[Deal "N:AKQ.JT9.876.5432 T98.876.KQJ.AKQ J76.543.AT9.JT9 543.AKQ2.532.876"]
+[Auction "N"]
+Pass
+`
+      const deals = parsePbn(pbn)
+      expect(deals[0].boardVersionToken).toBe(token)
+    })
   })
 
   describe('getSeatOrder', () => {

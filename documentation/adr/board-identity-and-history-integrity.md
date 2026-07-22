@@ -143,7 +143,7 @@ Step 1 makes the token **rotation-independent**: any rotation of the same deal+a
 
 ### 5.3 Where it lives
 
-- **Stamped in the PBN** as the board-level tag **`[BoardVersionToken "…"]`** by the producer's build pipeline (derived, regenerable, never hand-maintained). For Baker Bridge (`CSVtoPBN`, no native hash) this means adding a post-generation stamping step.
+- **Stamped in the PBN** as the board-level tag **`[VersionToken "…"]`** by the producer's build pipeline (derived, regenerable, never hand-maintained). For Baker Bridge (`CSVtoPBN`, no native hash) this means adding a post-generation stamping step.
 - **Read by BC** from the loaded PBN and **recorded in the clear** on each observation (`board_version_token` column; null if the PBN carries no tag). This is no more revealing than the board id already stored beside it.
 - **Echoed into the "Report a Problem" text** so the producer receives it with the report.
 
@@ -205,11 +205,11 @@ Not touched (and correctly so): assignment progress/completion, teacher-dashboar
 
 ### 7.1 Build pipeline
 
-- Stamp `[BoardVersionToken "…"]` on every board — the rotation-canonical `sha256(deal + "|" + auction)` of §5.2, recomputed each build, never trusted from source. For Baker Bridge this is a **new post-`CSVtoPBN` step** (that pipeline emits no hash today).
+- Stamp `[VersionToken "…"]` on every board — the rotation-canonical `sha256(deal + "|" + auction)` of §5.2, recomputed each build, never trusted from source. For Baker Bridge this is a **new post-`CSVtoPBN` step** (that pipeline emits no hash today).
 - Declare stability: `%bridge-classroom-stable: true|false` at the file level (the default), with a per-board `[Stable "true"|"false"]` override.
 - Ensure every **stable** board carries a real `[SkillPath "…"]`; mint new paths as needed. `uncategorized` is acceptable only while a board is prerelease — assign the real path **before** promoting to `stable=true` (skill path feeds only mastery, which prerelease is excluded from).
 - (Collection is **not** a producer concern — BC sources it from its own config; see §3.2.)
-- **Warn** (not fail) when a stable board's `[BoardVersionToken]` changes, so post-promotion edits are deliberate.
+- **Warn** (not fail) when a stable board's `[VersionToken]` changes, so post-promotion edits are deliberate.
 
 ### 7.2 "Report a Problem" issue template
 
@@ -217,7 +217,7 @@ Each issue contains:
 
 1. **Identity** — `collection_id`, subfolder/lesson, board number.
 2. **Full verbatim deal text** — the ground-truth locator; greppable against the repo.
-3. **`[BoardVersionToken]`** — the rotation-canonical stamp; a fast exact-match for the reported board across its rotational variants and other files.
+3. **`[VersionToken]`** — the rotation-canonical stamp; a fast exact-match for the reported board across its rotational variants and other files.
 
 ### 7.3 PBN carriers (the tagging terms)
 
@@ -227,7 +227,7 @@ Vocabulary note: the producer-facing release flag is **`stable`** (earlier draft
 |---|---|---|---|
 | File (header `%` comment) | `%bridge-classroom-stable:` | `true` / `false` (absent ⇒ not stable) | `observations.prerelease = NOT stable` |
 | Board (`[Tag]`) | `[Stable "true"\|"false"]` | per-board override of the file default | `observations.prerelease` |
-| Board (`[Tag]`) | `[BoardVersionToken "…"]` | rotation-canonical `sha256(deal+auction)`, lowercase hex (§5.2) | `observations.board_version_token` |
+| Board (`[Tag]`) | `[VersionToken "…"]` | rotation-canonical `sha256(deal+auction)`, lowercase hex (§5.2) | `observations.board_version_token` |
 | Board (`[Tag]`) | `[SkillPath "…"]` | existing; must be a real path once `stable=true` (`uncategorized` allowed only while prerelease) | `observations.skill_path` |
 
 **`collection_id` is not a PBN carrier** — BC sources it from its own collection config (`COLLECTIONS[].id`: `baker-bridge`, `pbs-coaching`), stamped from the active collection at write time (§3.2).
@@ -266,7 +266,7 @@ of C1–C7 as author obligations lives in
 Identity is `(collection_id, deal_subfolder, deal_number)`. `collection_id` is the BC-owned collection slug from `COLLECTIONS[].id` (`baker-bridge`, `pbs-coaching`, …) — a BC config value, **not** a PBN carrier and not a producer concern (§3.2); no surrogate id. Subfolder names are **not** assumed unique across collections.
 
 ### C2 — Board-version token
-Producer stamps `[BoardVersionToken "…"]` per board: `sha256( deal + "|" + auction )` over the **rotation-canonical** form (rotate the deal *and* the auction so ♠A is North; §5.2), lowercase hex, from extracted values. **Opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. Producer-owned; there is no consumer implementation and no cross-language matching requirement.
+Producer stamps `[VersionToken "…"]` per board: `sha256( deal + "|" + auction )` over the **rotation-canonical** form (rotate the deal *and* the auction so ♠A is North; §5.2), lowercase hex, from extracted values. **Opaque to the consumer** — BC records and echoes it but never computes, verifies, or compares it. Producer-owned; there is no consumer implementation and no cross-language matching requirement.
 
 ### C3 — Release status (`stable`)
 Producer declares the `stable` flag via `%bridge-classroom-stable: true|false` (file default) + `[Stable "true"|"false"]` (per-board override); absent ⇒ not stable. Not-stable: playable; observations ARE recorded but MUST be flagged `prerelease`, MUST NOT count toward mastery or platform statistics, and the board MUST NOT be selectable into exercises; consumer shows a development warning and a distinct (triangle) history marker. Stable: full behavior. Promotion and token publication are atomic from the consumer's view. **A replacement for a stable board MUST itself be stable.** (`prerelease` is a consumer-side column equal to `NOT stable`; the producer owns only the `stable` declaration. This board-level flag is distinct from the collection-level `report` flag — see §4.1.)
