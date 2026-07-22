@@ -79,9 +79,10 @@
           No lesson data available yet.
         </div>
         <div v-else class="lesson-list">
-          <div v-for="lesson in lessonMasteryList" :key="lesson.subfolder" class="lesson-row">
+          <div v-for="lesson in lessonMasteryList" :key="`${lesson.collectionId || ''}::${lesson.subfolder}`" class="lesson-row">
             <div class="lesson-header">
               <span class="lesson-name">{{ formatLessonName(lesson.subfolder) }}</span>
+              <span v-if="lesson.collectionName" class="lesson-collection">{{ lesson.collectionName }}</span>
               <span
                 v-if="lesson.achievement !== 'none'"
                 :class="['achievement-badge', lesson.achievement]"
@@ -100,6 +101,7 @@
             <BoardMasteryStrip
               :boardNumbers="lesson.boardNumbers"
               :lessonSubfolder="lesson.subfolder"
+              :collectionId="lesson.collectionId"
               :currentIndex="-1"
               :alignLeft="true"
               :userId="accomplishments.selectedUserId.value"
@@ -153,6 +155,7 @@ import { useAccomplishments } from '../composables/useAccomplishments.js'
 import { useBoardMastery } from '../composables/useBoardMastery.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { useUserStore } from '../composables/useUserStore.js'
+import { useAppConfig } from '../composables/useAppConfig.js'
 import { generateBoardMasteryTestData } from '../utils/boardMasteryTestData.js'
 import BoardMasteryStrip from './BoardMasteryStrip.vue'
 import PawIcon from './PawIcon.vue'
@@ -163,6 +166,7 @@ const accomplishments = useAccomplishments()
 const mastery = useBoardMastery()
 const boardStatusApi = useBoardStatus()
 const userStore = useUserStore()
+const appConfig = useAppConfig()
 
 // Check URL for test mode flag
 const urlParams = new URLSearchParams(window.location.search)
@@ -193,34 +197,47 @@ function onBoardClick(subfolder, dealNumber) {
 
 /**
  * All lessons with mastery data, sorted alphabetically.
- * Mastery comes from the backend `board_status` cache via
- * useBoardStatus. The watcher below populates that cache.
+ *
+ * The lesson list is sourced from the server's /lesson-mastery rollup — grouped
+ * by (collection_id, deal_subfolder) — NOT by iterating observations. board_status
+ * already knows every lesson the user has touched and which collection it belongs
+ * to, so a subfolder shared across two collections is two distinct lessons here
+ * (each its own row). Per-board colour/achievement then comes from the
+ * collection-scoped board_status cache. The watcher below populates both caches.
  */
 const lessonMasteryList = computed(() => {
-  const observations = mastery.getObservations()
-  const lessons = mastery.extractLessonsFromObservations(observations)
   const userId = userStore.effectiveUserId.value
-
   // Touch the cache version so this computed re-runs when fetches land.
   boardStatusApi.cacheVersion.value
 
-  return lessons
-    .map(lesson => {
-      const apiBoards = userId
-        ? (boardStatusApi.getCachedBoards(userId, lesson.subfolder, mastery.getLessonCollection(lesson.subfolder)) || [])
-        : []
-      const boardMasteryResults = boardStatusApi.buildBoardMastery(
-        apiBoards,
-        lesson.boardNumbers
-      )
+  const boardCounts = mastery.boardCountCache.value
+  const entries = userId
+    ? (boardStatusApi.getCachedLessonEntries(userId) || []).filter(e => (e.attempted_boards || 0) > 0)
+    : []
+
+  return entries
+    .map(e => {
+      const subfolder = e.deal_subfolder
+      const collectionId = e.collection_id || null
+      let boardNumbers = boardCounts[subfolder]
+      if (!boardNumbers) {
+        boardNumbers = []
+        for (let i = 1; i <= (e.total_boards || 0); i++) boardNumbers.push(i)
+      }
+      const apiBoards = boardStatusApi.getCachedBoards(userId, subfolder, collectionId) || []
+      const boardMasteryResults = boardStatusApi.buildBoardMastery(apiBoards, boardNumbers)
       const lessonAchievement = mastery.computeLessonAchievement(boardMasteryResults)
       // Wild-mastery paws for this lesson: clean_correct on a Wild board.
       // Fresh = earned on a cold board (the strongest signal); Recent = within
       // the spacing window. Already carried per board by buildBoardMastery.
       const freshPaws = boardMasteryResults.filter(b => b.wildAchievement === 'Fresh').length
       const recentPaws = boardMasteryResults.filter(b => b.wildAchievement === 'Recent').length
+      const collection = collectionId ? appConfig.COLLECTIONS.find(c => c.id === collectionId) : null
       return {
-        ...lesson,
+        subfolder,
+        collectionId,
+        collectionName: collection?.name || null,
+        boardNumbers,
         achievement: lessonAchievement.achievement,
         freshPaws,
         recentPaws
@@ -234,20 +251,27 @@ const lessonMasteryList = computed(() => {
 const totalFreshPaws = computed(() => lessonMasteryList.value.reduce((n, l) => n + (l.freshPaws || 0), 0))
 const totalRecentPaws = computed(() => lessonMasteryList.value.reduce((n, l) => n + (l.recentPaws || 0), 0))
 
-// Populate caches the lessons depend on: board-number cache and the
-// API `board_status` cache. Fires on mount and whenever the lesson set
-// changes (e.g. after switching users).
-watch(lessonMasteryList, async (lessons) => {
-  if (lessons.length === 0) return
-  const subfolders = lessons.map(l => l.subfolder)
-  mastery.fetchMissingBoardCounts(subfolders)
+// Populate the caches the lesson list depends on: the /lesson-mastery rollup
+// (the source of the lesson list — see lessonMasteryList), the board-number
+// cache, and the collection-scoped board_status cache. Fires on mount and
+// whenever the effective user changes (e.g. entering view-as / switching users).
+async function ensureLessonData() {
   const userId = userStore.effectiveUserId.value
-  if (userId) {
-    await Promise.all(
-      subfolders.map(sf => boardStatusApi.fetchBoardStatus(userId, sf, false, mastery.getLessonCollection(sf)))
-    )
-  }
-}, { immediate: true })
+  if (!userId) return
+  await boardStatusApi.fetchLessonMastery(userId, true)
+  // Fetch board_status per (subfolder, collection_id) so a shared subfolder's
+  // two collections cache under distinct scopes — matching the scope
+  // lessonMasteryList reads back with.
+  const scoped = (boardStatusApi.getCachedLessonEntries(userId) || [])
+    .filter(e => (e.attempted_boards || 0) > 0)
+    .map(e => ({ subfolder: e.deal_subfolder, collectionId: e.collection_id || null }))
+  if (scoped.length === 0) return
+  await mastery.fetchMissingBoardCounts(scoped.map(s => s.subfolder))
+  await Promise.all(scoped.map(s =>
+    boardStatusApi.fetchBoardStatus(userId, s.subfolder, false, s.collectionId)
+  ))
+}
+watch(() => userStore.effectiveUserId.value, ensureLessonData, { immediate: true })
 
 function formatLessonName(folderName) {
   return accomplishments.formatLessonName(folderName)
@@ -483,6 +507,17 @@ function formatLessonName(folderName) {
   font-weight: 600;
   font-size: 14px;
   color: #333;
+}
+
+/* Collection label — distinguishes two rows that share a subfolder name but
+   belong to different collections. */
+.lesson-collection {
+  font-size: 11px;
+  font-weight: 600;
+  color: #667eea;
+  background: #eef0fb;
+  padding: 1px 8px;
+  border-radius: 10px;
 }
 
 .achievement-badge {

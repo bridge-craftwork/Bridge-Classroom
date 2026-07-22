@@ -1303,12 +1303,11 @@ function handleLessonLoad({ subfolder, name, category, content }) {
     practice.loadDeal(dealsWithCategory[0])
     practice.resetStats()
 
-    // Cache board numbers and collection mapping for progress views
+    // Cache board numbers for progress views. (Collection scope is no longer
+    // cached here — progress views read collection_id straight from the
+    // board_status / lesson-mastery rollups, which carry it per row.)
     const boardMastery = useBoardMastery()
     boardMastery.saveLessonBoardNumbers(subfolder, dealsWithCategory.map(d => d.boardNumber))
-    if (currentCollection.value) {
-      boardMastery.saveLessonCollection(subfolder, currentCollection.value)
-    }
 
     // Store lesson metadata and update URL
     currentLesson.value = { id: subfolder, name, category }
@@ -1831,9 +1830,8 @@ async function loadLessonFromUrl(collectionId, lessonId) {
       practice.loadDeal(dealsWithCategory[currentDealIndex.value])
       practice.resetStats()
 
-      // Cache collection mapping for Recent Lessons panel
-      const boardMastery = useBoardMastery()
-      boardMastery.saveLessonCollection(lessonId, collectionId)
+      // (Collection scope no longer cached here — Recent Lessons reads
+      // collection_id from the /lesson-mastery rollup, which carries it.)
 
       // Store lesson metadata (URL already has the params)
       currentLesson.value = {

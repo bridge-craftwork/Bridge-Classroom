@@ -281,46 +281,11 @@ const LESSON_BOARDS_KEY = 'bridgeLessonBoards'
 const boardCountCache = ref(loadBoardCacheFromStorage())
 const fetchesInFlight = new Set()
 
-// Collection mapping cache (subfolder → collectionId)
-const LESSON_COLLECTIONS_KEY = 'bridgeLessonCollections'
-const collectionCache = ref(loadCollectionCacheFromStorage())
-
-function loadCollectionCacheFromStorage() {
-  try {
-    const stored = localStorage.getItem(LESSON_COLLECTIONS_KEY)
-    return stored ? JSON.parse(stored) : {}
-  } catch {
-    return {}
-  }
-}
-
-function persistCollectionCache() {
-  try {
-    localStorage.setItem(LESSON_COLLECTIONS_KEY, JSON.stringify(collectionCache.value))
-  } catch {
-    // localStorage unavailable
-  }
-}
-
-/**
- * Save the collection mapping for a lesson subfolder.
- * @param {string} subfolder - Lesson subfolder identifier
- * @param {string} collectionId - Collection ID (e.g. 'baker-bridge')
- */
-function saveLessonCollection(subfolder, collectionId) {
-  if (!subfolder || !collectionId) return
-  collectionCache.value = { ...collectionCache.value, [subfolder]: collectionId }
-  persistCollectionCache()
-}
-
-/**
- * Get the collection ID for a lesson subfolder, or null if unknown.
- * @param {string} subfolder
- * @returns {string|null}
- */
-function getLessonCollection(subfolder) {
-  return collectionCache.value[subfolder] || null
-}
+// NOTE: the old subfolder→collectionId localStorage map (getLessonCollection /
+// saveLessonCollection) was removed. It was single-valued (last-write-wins) and
+// so could not represent a subfolder shared across collections. Every consumer
+// now reads collection_id straight from the board_status / lesson-mastery
+// rollups, which are keyed by (collection_id, deal_subfolder) server-side.
 
 function loadBoardCacheFromStorage() {
   try {
@@ -406,51 +371,6 @@ async function fetchMissingBoardCounts(subfolders) {
   }))
 }
 
-/**
- * Extract unique lessons and their board numbers from observations.
- * Uses the reactive board cache to show all boards (including grey).
- * Falls back to 1..max(observed) if not yet cached.
- * @param {Array} observations - All observations
- * @returns {Array<{subfolder: string, boardNumbers: number[], lastActivity: string}>}
- */
-function extractLessonsFromObservations(observations) {
-  // Read the reactive ref so Vue tracks this dependency
-  const cache = boardCountCache.value
-
-  const lessons = {}
-  for (const obs of observations) {
-    const subfolder = obs.deal_subfolder || obs.deal?.subfolder
-    const boardNum = obs.deal_number ?? obs.deal?.deal_number
-    if (!subfolder || boardNum == null) continue
-    if (!lessons[subfolder]) {
-      lessons[subfolder] = { boards: new Set(), lastActivity: obs.timestamp }
-    }
-    lessons[subfolder].boards.add(boardNum)
-    if (obs.timestamp > lessons[subfolder].lastActivity) {
-      lessons[subfolder].lastActivity = obs.timestamp
-    }
-  }
-  return Object.entries(lessons).map(([subfolder, data]) => {
-    const cached = cache[subfolder]
-    if (cached) {
-      return {
-        subfolder,
-        boardNumbers: cached,
-        lastActivity: data.lastActivity
-      }
-    }
-    // Fallback: generate range 1..max from observed boards
-    const maxBoard = Math.max(...data.boards)
-    const allBoards = []
-    for (let i = 1; i <= maxBoard; i++) allBoards.push(i)
-    return {
-      subfolder,
-      boardNumbers: allBoards,
-      lastActivity: data.lastActivity
-    }
-  })
-}
-
 export function useBoardMastery() {
   const accomplishments = useAccomplishments()
 
@@ -468,12 +388,9 @@ export function useBoardMastery() {
     getObservations,
     computeBoardMastery,
     computeLessonAchievement,
-    extractLessonsFromObservations,
     saveLessonBoardNumbers,
     fetchMissingBoardCounts,
     boardCountCache,
-    saveLessonCollection,
-    getLessonCollection,
     // Exposed for testing
     groupIntoBoardAttempts,
     calculateCurrentStatus,
