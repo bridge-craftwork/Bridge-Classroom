@@ -775,8 +775,8 @@ async function restoreSessionFromCookie() {
  */
 async function backfillSessionCookie() {
   try {
-    const teachers = Object.values(users.value).filter((u) => u?.id && u?.viewerPrivateKey)
-    if (teachers.length === 0) return // Path A is teacher-only
+    const candidates = Object.values(users.value).filter((u) => u?.id && (u.viewerPrivateKey || u.secretKey))
+    if (candidates.length === 0) return
 
     // Already have a durable cookie? Then there's nothing to backfill.
     const sessRes = await apiFetch(`${API_URL}/session`)
@@ -785,18 +785,48 @@ async function backfillSessionCookie() {
       if (sess.authenticated) return
     }
 
-    // Mint via each teacher's key. The first attach creates the device session +
-    // cookie; any others join the same roster (server-side). Failures are ignored.
-    for (const u of teachers) {
+    // Mint via each user's key. The first attach creates the device session +
+    // cookie; any others join the same roster (server-side). Sequential so the
+    // fresh cookie is present for the joins. Failures per user are ignored.
+    for (const u of candidates) {
       try {
-        await signedFetch('/session/attach', { userId: u.id, privateKeyBase64: u.viewerPrivateKey })
+        if (u.viewerPrivateKey) {
+          // Path A — teacher/viewer: ADR-0003 signed attach.
+          await signedFetch('/session/attach', { userId: u.id, privateKeyBase64: u.viewerPrivateKey })
+        } else if (u.secretKey) {
+          // Path B — student: prove AES-key possession via challenge–response.
+          await attachViaKeyChallenge(u.id, u.secretKey)
+        }
       } catch {
-        /* best-effort per teacher */
+        /* best-effort per user */
       }
     }
   } catch {
     /* never block startup */
   }
+}
+
+/**
+ * ADR-0004 Phase 3b, Path B — mint the durable cookie for a student by proving
+ * possession of their AES `secretKey`: the server sends a nonce encrypted under
+ * that key (from the escrow), we decrypt it locally and echo it back. The key
+ * never leaves the device. A 409 (`not_attachable`, no escrow) is a silent skip —
+ * email recovery stays the fallback.
+ */
+async function attachViaKeyChallenge(userId, secretKey) {
+  const chRes = await apiFetch(`${API_URL}/session/attach/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  if (!chRes.ok) return // 409 not_attachable / rate-limited → skip
+  const ch = await chRes.json()
+  const nonce = await decryptObservation(ch.encrypted_data, ch.iv, secretKey)
+  await apiFetch(`${API_URL}/session/attach/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challenge_id: ch.challenge_id, nonce }),
+  })
 }
 
 /**
