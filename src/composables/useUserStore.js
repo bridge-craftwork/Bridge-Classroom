@@ -9,6 +9,7 @@ import {
 } from '../utils/crypto.js'
 import { API_URL } from '@/utils/apiUrl.js'
 import { apiFetch } from '@/utils/apiFetch.js'
+import { signedFetch } from '@/utils/signedRequest.js'
 
 const STORAGE_KEY = 'bridgePractice'
 
@@ -758,6 +759,47 @@ async function restoreSessionFromCookie() {
 }
 
 /**
+ * ADR-0004 Phase 3b, Path A — durable-session BACKFILL for already-logged-in
+ * teachers. See documentation/design/durable-session-backfill.md.
+ *
+ * Called at startup when we ARE authenticated from localStorage but may have no
+ * durable cookie yet (logged in before the feature, or on a device that never
+ * re-claimed since Phase 3). For each teacher on this device (a user holding a
+ * `viewerPrivateKey`) we mint the cookie via an ADR-0003 signed request to
+ * `POST /api/session/attach` — no magic-link email — so a future Safari ITP purge
+ * is survivable. Best-effort and fire-and-forget: never blocks startup, and any
+ * failure just leaves the legacy localStorage login as-is.
+ *
+ * Students (no `viewerPrivateKey`) are skipped here — they need Path B (the AES
+ * challenge-response), not yet built.
+ */
+async function backfillSessionCookie() {
+  try {
+    const teachers = Object.values(users.value).filter((u) => u?.id && u?.viewerPrivateKey)
+    if (teachers.length === 0) return // Path A is teacher-only
+
+    // Already have a durable cookie? Then there's nothing to backfill.
+    const sessRes = await apiFetch(`${API_URL}/session`)
+    if (sessRes.ok) {
+      const sess = await sessRes.json()
+      if (sess.authenticated) return
+    }
+
+    // Mint via each teacher's key. The first attach creates the device session +
+    // cookie; any others join the same roster (server-side). Failures are ignored.
+    for (const u of teachers) {
+      try {
+        await signedFetch('/session/attach', { userId: u.id, privateKeyBase64: u.viewerPrivateKey })
+      } catch {
+        /* best-effort per teacher */
+      }
+    }
+  } catch {
+    /* never block startup */
+  }
+}
+
+/**
  * ADR-0004 §3a: fire-and-forget bookmark of the active roster member on the
  * server, so a post-purge restore resumes as the right user. A convenience, never
  * an authority — failures are ignored, no await on the caller's critical path.
@@ -859,6 +901,7 @@ export function useUserStore() {
 
     // ADR-0004 Phase 3: device-session restore + active-user bookmark
     restoreSessionFromCookie,
+    backfillSessionCookie,
     pingActiveUser,
 
     // Account merge handoff (admin merged this account into a keeper)

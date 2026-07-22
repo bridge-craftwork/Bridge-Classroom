@@ -63,7 +63,11 @@ export async function signedFetch(subpath, { userId, privateKeyBase64, method = 
     'x-bc-nonce': nonce,
     'x-bc-signature': signature,
   }
-  const init = { method, headers }
+  // `credentials: 'include'` so the browser (a) sends any existing durable-session
+  // cookie and (b) — crucially for /session/attach — STORES the `Set-Cookie` the
+  // API returns. On a cross-origin API response the cookie is dropped without it.
+  // Phase 2's CORS `allow_credentials(true)` on the pinned origins makes this safe.
+  const init = { method, headers, credentials: 'include' }
   if (bodyStr != null) {
     headers['Content-Type'] = 'application/json'
     init.body = bodyStr // must be the same bytes we hashed
