@@ -214,23 +214,59 @@ Each stage is independently shippable and browser-verifiable on the real route.
 The `server`-prop branch inside the view is kept until stage C, so routing (A/B)
 lands the desired URL without also doing the ~80-binding template merge.
 
-- **A — Session lifecycle → `useHostedTable` composable (pure refactor).**
-  Lift create/resume-session, connect-as-owner, invite link, test-player spawn,
-  handoff apply, end-table, and switch-user teardown out of `TableHostView` into a
-  composable. No behavior change; `/tables/host` still works. This is what lets
-  `/table` enter server mode conditionally.
-- **B — One `/table` route, mode by state.** `/table` renders the view; local by
-  default, server when `useHostedTable` reports an owned/created session. Hosting &
-  "Invite friends" become in-place upgrades (no route jump). **Delete**
-  `/bidding-practice`, `/tables/host`, `TableHostView`. Resolve the `/table` vs
-  `/table/:inviteCode` collision (bare `/table` = your table; `/table/:code` +
-  `/play/:code` = joins, still via `TableLobbyView` → server mode). **Invite-testing
-  now uses the target URL.**
-- **C — Grow `ServerEngine` to the host-management surface**, then **collapse the
-  template** onto one `engine` (host controls gated on `engine.capabilities.seats`).
-  Removes the `server`-prop branch and the `useServerTable` orchestration.
-- **D — Cleanup:** fold `tv-*`/`bp-*` → `ts-*` (old Slice 4), and the table-service
-  bidding-only flag (old Slice 3 server half).
+- **A — Session lifecycle → `useHostedTable` composable (pure refactor). ✅ DONE (PR #299).**
+  Lifted create/resume-session, connect-as-owner, invite link, test-player spawn,
+  handoff apply, end-table, and switch-user teardown out of `TableHostView` into
+  `useHostedTable.js`.
+- **B — One `/table` route, mode by state. ✅ DONE (PR #299).** `/table` starts
+  local; "Invite friends" upgrades to server in place (no route jump).
+  `/bidding-practice`, `/tables/host`, and `TableHostView` deleted; `TableHostView`
+  → `TableView` (mode-aware). Join stays `/table/:code` + `/play/:code` via
+  `TableLobbyView`. Verified end-to-end on prod.
+- **C1 — Fold `useServerTable` into `ServerEngine`. ✅ DONE (PR #301).** One server
+  object (contract + host-UI surface); `useServerTable.js` deleted; the server
+  branch drives `ServerEngine`. **Scope decision (Rick): C1 only — unify the
+  engine, KEEP the two template branches.** The `server`-prop branch stays.
+- **C2 — Merge the two templates into one capability-gated template. ⛔ DEFERRED
+  (Rick's call).** The felt is already shared; gating the (genuinely different)
+  chrome into one template trades two clean branches for one `v-if`-heavy one, for
+  a debatable readability win against real risk. Revisit only if the duplication
+  causes a bug.
+- **D — Cleanup (remaining):** fold `tv-*`/`bp-*` → `ts-*` (old Slice 4), and the
+  **table-service bidding-only flag** (old Slice 3 server half — the `playCardplay`
+  toggle works solo, but `bridge-table-service` has no `bidding_only`/`play_after_bid`
+  flag; needs a Rust change + a wire field, then gate the toggle on the server too).
+
+## Feature parity — private (LocalEngine) vs shared (ServerEngine)
+
+Surveyed 2026-07-23. The differences are mostly **uncoupled-prototyping debt, not
+principled** (Rick: "BBA tracking / RulesBot / bidding+cardplay are nice in either
+instance"). Backlog to close, most-valuable first:
+
+1. **BBA divergence tracking on the shared table** — the core bidding-*practice*
+   feedback (you-vs-BBA) exists only in solo. Mostly **frontend**: `ServerEngine`
+   already implements `getExpectedAuction` (kept in the C1 fold), `bidderDivergence`
+   in `handAnalysis.js` is seat-aware, `AuctionTable` already renders
+   `:diverged-bids` — flip the `divergence`/`bbaExpectedAuction` capability flags and
+   wire a review-time per-seat comparison into the served rail. No backend.
+2. **Deal-source cardplay first, bot on divergence** — a **composite cardplay bot**:
+   follow the deal source's recorded `[Play]` line (parsed by `pbnParser.js` →
+   `playLine.bySeat`) while the play matches it; on divergence-or-absence hand off to
+   the selected engine (BEN/RulesBot/…). Generalizes the existing `makeReplayBot`
+   (whose fallback is a dumb `legalCards[0]`) with a real-bot fallback + divergence
+   tracking, wired into the **private table** (only A1 uses `playLine` today) and the
+   **shared table** (`bots.rs`, Rust). Mirrors the BBA bidding model. **NOTE:** A1 is
+   NOT a consumer — it *forces* the line (told-when-wrong, right answer forced), a
+   different paradigm.
+3. **RulesBot in cardplay — ✅ DONE for both.** Private table now runs it in-browser
+   via `bridge-rulebot-wasm` (PR #303); the shared table already runs the same core
+   server-side. Future direction (Rick): **BEN-hybrid** — punt to BEN when the rules
+   can't decide; **signal-override** BEN's spot cards to match the configured
+   signalling; platform-specific BEN calls. The wasm adapter is shaped to compose
+   with the BEN adapter for this.
+
+BEN cardplay is at parity (default solo bot + server bot); double-dummy is at parity
+(same solver service, both tables).
 
 ## Constraints & risks
 

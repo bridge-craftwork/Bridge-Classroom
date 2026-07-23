@@ -1,7 +1,9 @@
 # Implementation Plan — Friendship, Presence, and Table Identity
 
-**Status:** Phase 0 complete · Phase 2 backend complete (both 2026-07-23) ·
-Phases 1, 3–5 not started
+**Status (2026-07-23):** Phase 0 ✅ · **Phase 2 ✅ (graph + Friends tab + add-friend
++ presence-less UI shipped)** · Phase 1 partially landed via the table-unification
+work (see below) · Phases 3 (presence), 4 (invitations), 5 (guest/enrollment) not
+started.
 **Date:** 2026-07-23
 **Companion to:** [ADR-0005](../adr/0005-friendship-model-and-guest-members.md),
 [ADR-0006](../adr/0006-table-identity-and-access.md) — both now numbered and Accepted.
@@ -153,6 +155,20 @@ with tests. The list is kept as the record of what was changed and why.
 
 ### Phase 1 — Table identity and access
 
+**Partially landed (2026-07-23):**
+- The `/table` route unification (Stage A/B of the table-view plan) delivered
+  ADR-0006's "one URL, mode by state" shape — see
+  [table-view-unification-plan.md](table-view-unification-plan.md).
+- **Kind-scoped join codes** (PR #300): `host_code` → `/play/:code` is the CLASS
+  link (`teacher_set`, teacher-only, → console); `invite_code` → `/table/:code` is
+  the TABLE link (`adhoc`, any user). Resolution is kind-scoped (a student's table
+  link can never resolve into a classroom), and "one open session per owner" is now
+  **per-kind** (a teacher can run a class + a casual table at once).
+
+**Still NOT built** (the ADR-0006 table-entity work): `display_name`, `access_mode`
+(`link` | `friends`), the rotatable per-table `join_token`, and "My Tables". The
+below is the original plan for those.
+
 **Backend (Mac API — `bridge-classroom-api`)**
 
 `db.rs` migrations (additive `ALTER TABLE`, matching the existing idempotent style):
@@ -251,11 +267,22 @@ showing a dead entry.
 **Deliverable:** a host can name a table, see it in a list, and invalidate a leaked link
 without destroying the table.
 
-### Phase 2 — Friend graph (no presence) — ✅ **backend DONE 2026-07-23**
+### Phase 2 — Friend graph (no presence) — ✅ **DONE 2026-07-23** (backend + frontend)
 
-Schema and all six routes are live in [friends.rs](../../bridge-classroom-api/src/routes/friends.rs);
-the **Friends tab is still to build**. Two things landed slightly differently from the
-sketch below, both tightenings:
+Shipped this session:
+- **Backend** (PR #294): schema + all six routes in [friends.rs](../../bridge-classroom-api/src/routes/friends.rs).
+- **Decline no longer bars a re-request** (PR #295, Rick's call): a declined request
+  can be sent again; `declined` rows are history only; blocking deliberately NOT built.
+- **Friends lobby tab** (PR #296): [FriendsTab.vue](../../src/components/lobby/tabs/FriendsTab.vue)
+  + [useFriends.js](../../src/composables/useFriends.js). Shows **no presence** (Phase 3),
+  outgoing requests read "no reply yet" (never "declined"), 401/403 → "sign in on this
+  device" panel.
+- **Add-friend at the table** (PR #298): the bootstrap path — enrolled co-players get an
+  "Add friend" action on their seat. Required exposing `account_id` on the table-service
+  roster ([bridge-table-service#7](https://github.com/bridge-craftwork/bridge-table-service/pull/7)),
+  null for guests.
+
+Two things landed slightly differently from the sketch below, both tightenings:
 
 - **The canonical ordering is enforced by a `CHECK (user_a_id < user_b_id)`**, not just by
   convention in the insert path. A reversed or self edge is rejected by SQLite itself, so a
