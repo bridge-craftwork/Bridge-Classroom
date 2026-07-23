@@ -169,6 +169,69 @@ lockstep) so the host toggle actually changes shared behavior.
 **Slice 5 — Collapse the branch (optional):** render `<TableShell>` once with
 `v-if="server"` inside the slots.
 
+---
+
+## Full collapse + one route — decided 2026-07-23 (Rick)
+
+The visual shell is unified (both routes render `TableShell`), but the two paths
+are still **two live code paths in one file**: the server branch reads `srv.*`
+(`useServerTable`, ~80 bindings) and the solo branch reads `engine.*`
+(`useLocalEngine`). We're now finishing the job: **one interface, engine chosen
+by state, at one URL** — the BBO model (same page; bots vs humans is just who's
+seated).
+
+**Two decisions that shape the work:**
+
+1. **One `/table` route, mode chosen by state.** `/bidding-practice` and
+   `/tables/host` go away. `/table` starts **local** (solo, LocalEngine, zero
+   droplet cost) and **upgrades to server in place** when you host/invite or when
+   you resume an owned open session. Because it's one route deciding its own mode,
+   inviting is an in-place engine swap at the next board — no navigation.
+2. **No back-compat.** Alpha, no real users, and these table views are the
+   "replace freely" tier (only A1 is released). So: **delete** old routes and
+   `TableHostView`; no redirects, no shims.
+
+**Why keep the local default (not "everything on the service"):** a solo all-bots
+table on the droplet holds a socket + session + server-side BBA/BEN bot compute
+(BEN ~20s cold / ~500ms warm). LocalEngine runs all of that in the browser for
+free, and today it *also* has richer analysis (BBA expected auction, divergence,
+narrative) the server doesn't compute server-side — so routing solo through the
+service would be both more load **and** a feature regression. Upgrade on invite;
+never downgrade; never swap mid-hand (only at a board boundary).
+
+### Prior-slice status (verified 2026-07-23, not just checkmarks)
+
+- Slices **1, 2a, 2b, 2d, 2e** ✅ done; **2c** cancelled.
+- Slice **3 (bidding-only) is HALF done**: the solo `playCardplay` toggle works;
+  the **table-service flag does not exist** (grep for it in `bridge-table-service`
+  is empty). In the collapse, the toggle is **capability-gated** — shown for
+  LocalEngine, hidden for ServerEngine until the backend flag lands. Server-side
+  bidding-only is a deferred follow-up, not a blocker.
+
+### Staged sequence (URL-first, so invite-testing hits the target URL early)
+
+Each stage is independently shippable and browser-verifiable on the real route.
+The `server`-prop branch inside the view is kept until stage C, so routing (A/B)
+lands the desired URL without also doing the ~80-binding template merge.
+
+- **A — Session lifecycle → `useHostedTable` composable (pure refactor).**
+  Lift create/resume-session, connect-as-owner, invite link, test-player spawn,
+  handoff apply, end-table, and switch-user teardown out of `TableHostView` into a
+  composable. No behavior change; `/tables/host` still works. This is what lets
+  `/table` enter server mode conditionally.
+- **B — One `/table` route, mode by state.** `/table` renders the view; local by
+  default, server when `useHostedTable` reports an owned/created session. Hosting &
+  "Invite friends" become in-place upgrades (no route jump). **Delete**
+  `/bidding-practice`, `/tables/host`, `TableHostView`. Resolve the `/table` vs
+  `/table/:inviteCode` collision (bare `/table` = your table; `/table/:code` +
+  `/play/:code` = joins, still via `TableLobbyView` → server mode). **Invite-testing
+  now uses the target URL.**
+- **C — Grow `ServerEngine` to the host-management surface**, then **collapse the
+  template** onto one `engine` (host controls gated on `engine.capabilities.seats`).
+  Removes the `server`-prop branch and the `useServerTable` orchestration.
+- **D — Cleanup:** fold `tv-*`/`bp-*` → `ts-*` (old Slice 4), and the table-service
+  bidding-only flag (old Slice 3 server half).
+
 ## Constraints & risks
 
 - **Do not touch `BridgeTable` / `GridArrangement` / `gridArranger.js` / the hand
