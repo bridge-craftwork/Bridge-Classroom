@@ -8,11 +8,14 @@
 //! here parses boards. The Mac↔droplet seam stays thin on purpose: ticket
 //! mint (table_tickets.rs) + session create/close (here).
 //!
-//! # Persistent join codes
+//! # Persistent join codes (kind-scoped)
 //!
-//! Two evergreen per-user codes back the join URLs (plan §Join URLs):
-//! - `host_code`  → `/play/:hostCode`   (teachers; resolves to their open session)
-//! - `invite_code`→ `/table/:inviteCode` (any player's social URL)
+//! Two evergreen per-user codes back the join URLs, and each addresses exactly
+//! ONE kind of session so they never cross-resolve:
+//! - `host_code`  → `/play/:hostCode`   — the CLASS link (teachers only) →
+//!   the owner's open `teacher_set` multi-table classroom (the console).
+//! - `invite_code`→ `/table/:inviteCode` — the TABLE link (any signed-in user) →
+//!   the owner's open casual `adhoc` table.
 //!
 //! Format: `<slug>-<XXXX>` — the user's first name lowercased to `[a-z0-9]`
 //! (max 12 chars, fallback `"table"`) plus 4 random chars from an
@@ -21,10 +24,12 @@
 //! idempotently returned thereafter — so bookmarks stay valid; the
 //! session-specific part of a teacher URL travels in the `#fragment`.
 //!
-//! # One open session per owner
+//! # One open session per owner, PER KIND
 //!
-//! Opening a new session closes the owner's previous open one (DB status +
-//! best-effort service-side delete) so `/play/:hostCode` is never ambiguous.
+//! Opening a new session closes the owner's previous open one OF THE SAME KIND
+//! (DB status + best-effort service-side delete), so each code is unambiguous —
+//! and a teacher can run a `teacher_set` classroom and an `adhoc` casual table
+//! at the same time without one superseding the other.
 
 use axum::{
     extract::{Path, Query, State},
@@ -313,25 +318,32 @@ pub async fn create_table_session(
     let now = chrono::Utc::now().to_rfc3339();
 
     // One open session per owner: opening a new one closes the old (plan).
+    // One open session per owner PER KIND: opening a new casual table supersedes
+    // the owner's previous casual table but leaves a live classroom (teacher_set)
+    // alone, and vice versa. This is what lets the class link (host_code →
+    // teacher_set) and the table link (invite_code → adhoc) stay stable and
+    // unambiguous at the same time — see resolve_code.
     let stale: Vec<String> = sqlx::query_scalar(
-        "SELECT id FROM table_sessions WHERE owner_user_id = ? AND status = 'open'",
+        "SELECT id FROM table_sessions WHERE owner_user_id = ? AND status = 'open' AND kind = ?",
     )
     .bind(&req.owner_user_id)
+    .bind(&req.kind)
     .fetch_all(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !stale.is_empty() {
         sqlx::query(
             "UPDATE table_sessions SET status = 'closed', closed_at = ?
-             WHERE owner_user_id = ? AND status = 'open'",
+             WHERE owner_user_id = ? AND status = 'open' AND kind = ?",
         )
         .bind(&now)
         .bind(&req.owner_user_id)
+        .bind(&req.kind)
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         for old_id in &stale {
-            tracing::info!("closing superseded table session {old_id}");
+            tracing::info!("closing superseded {} session {old_id}", req.kind);
             service_close_session(&state.config.table_service_url, secret, old_id).await;
         }
     }
@@ -524,9 +536,34 @@ pub struct CodeResolution {
     pub session: Option<SessionInfo>,
 }
 
+/// The owner's currently-open session **of a given kind**, or `None`.
+///
+/// Kind-scoping is a security boundary, not a nicety: a student's table link
+/// (`invite_code` → `adhoc`) must never resolve to a teacher's classroom
+/// (`teacher_set`), and the two evergreen links a teacher owns must not
+/// cross-resolve. Split out so the `AND kind = ?` filter is guarded by a test.
+async fn open_session_of_kind(
+    db: &sqlx::SqlitePool,
+    owner_id: &str,
+    kind: &str,
+) -> Result<Option<SessionRow>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT id, kind, owner_user_id, classroom_id, exercise_id, status,
+                seat_policy, table_count, created_at, closed_at
+         FROM table_sessions
+         WHERE owner_user_id = ? AND status = 'open' AND kind = ?
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(owner_id)
+    .bind(kind)
+    .fetch_optional(db)
+    .await
+}
+
 async fn resolve_code(
     state: &AppState,
     column: &str, // "host_code" | "invite_code" — internal constants only
+    kind: &str,   // "teacher_set" | "adhoc" — the session KIND this code addresses
     code: &str,
 ) -> Result<Json<CodeResolution>, (StatusCode, String)> {
     let user: Option<(String, String, String)> = sqlx::query_as(&format!(
@@ -540,17 +577,16 @@ async fn resolve_code(
         return Err((StatusCode::NOT_FOUND, "unknown code".to_string()));
     };
 
-    let session: Option<SessionRow> = sqlx::query_as(
-        "SELECT id, kind, owner_user_id, classroom_id, exercise_id, status,
-                seat_policy, table_count, created_at, closed_at
-         FROM table_sessions
-         WHERE owner_user_id = ? AND status = 'open'
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(&user_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // `host_code` is the CLASS link → the teacher's multi-table `teacher_set`
+    // classroom (the console). `invite_code` is the TABLE link → the owner's
+    // casual `adhoc` table. If the matching kind isn't open, `session` is null
+    // and the join page shows "no active class/table" — it does NOT fall through
+    // to the other kind. Paired with the per-kind open invariant
+    // (create_table_session), a teacher can run a class and a casual table at
+    // once, each link stable.
+    let session = open_session_of_kind(&state.db, &user_id, kind)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(CodeResolution {
         success: true,
@@ -564,15 +600,17 @@ pub async fn resolve_host_code(
     State(state): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<Json<CodeResolution>, (StatusCode, String)> {
-    resolve_code(&state, "host_code", &code).await
+    // Class link → the teacher's multi-table classroom.
+    resolve_code(&state, "host_code", "teacher_set", &code).await
 }
 
-/// GET /api/table/:invite_code — public: player's social URL → open session.
+/// GET /api/table/:invite_code — public: player's social URL → open casual table.
 pub async fn resolve_invite_code(
     State(state): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<Json<CodeResolution>, (StatusCode, String)> {
-    resolve_code(&state, "invite_code", &code).await
+    // Table link → the owner's casual adhoc table.
+    resolve_code(&state, "invite_code", "adhoc", &code).await
 }
 
 // ---- POST /api/users/:id/host-code & /api/users/:id/invite-code ----
@@ -686,6 +724,83 @@ pub async fn generate_invite_code(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::SqlitePool;
+
+    /// Minimal table_sessions schema for the kind-scoping test (no service, no FKs).
+    async fn sessions_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            r#"CREATE TABLE table_sessions (
+                   id TEXT PRIMARY KEY,
+                   kind TEXT NOT NULL,
+                   owner_user_id TEXT NOT NULL,
+                   classroom_id TEXT,
+                   exercise_id TEXT,
+                   status TEXT NOT NULL DEFAULT 'open',
+                   seat_policy TEXT NOT NULL,
+                   table_count INTEGER NOT NULL DEFAULT 1,
+                   created_at TEXT NOT NULL,
+                   closed_at TEXT
+               )"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    async fn add_session(pool: &SqlitePool, id: &str, kind: &str, owner: &str, status: &str) {
+        sqlx::query(
+            "INSERT INTO table_sessions
+               (id, kind, owner_user_id, status, seat_policy, table_count, created_at)
+             VALUES (?, ?, ?, ?, '{}', 1, ?)",
+        )
+        .bind(id)
+        .bind(kind)
+        .bind(owner)
+        .bind(status)
+        .bind(format!("2026-01-01T00:00:{id:0>2}Z")) // distinct created_at for ORDER BY
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn code_resolution_is_kind_scoped_and_never_crosses() {
+        // The security boundary: a table link (adhoc) must never resolve to a
+        // classroom (teacher_set), and vice versa — even when the same owner has
+        // BOTH open at once.
+        let pool = sessions_db().await;
+        add_session(&pool, "1", "teacher_set", "u-teach", "open").await;
+        add_session(&pool, "2", "adhoc", "u-teach", "open").await;
+
+        let class = open_session_of_kind(&pool, "u-teach", "teacher_set")
+            .await
+            .unwrap();
+        let table = open_session_of_kind(&pool, "u-teach", "adhoc")
+            .await
+            .unwrap();
+        assert_eq!(
+            class.unwrap().id,
+            "1",
+            "class link → the teacher_set session"
+        );
+        assert_eq!(table.unwrap().id, "2", "table link → the adhoc session");
+    }
+
+    #[tokio::test]
+    async fn a_closed_kind_does_not_fall_through_to_the_other() {
+        // Class closed but a casual table still open: the class link resolves to
+        // nothing, NOT to the adhoc table.
+        let pool = sessions_db().await;
+        add_session(&pool, "1", "teacher_set", "u-teach", "closed").await;
+        add_session(&pool, "2", "adhoc", "u-teach", "open").await;
+
+        let class = open_session_of_kind(&pool, "u-teach", "teacher_set")
+            .await
+            .unwrap();
+        assert!(class.is_none(), "no open class → null, not the adhoc table");
+    }
 
     #[test]
     fn slugify_handles_normal_and_edge_names() {
