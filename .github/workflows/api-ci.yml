@@ -1,0 +1,37 @@
+name: API CI
+
+# The Rust API is one part of this repo (the rest is the Vue frontend, built by
+# deploy.yml), so this only runs when the API — or this workflow — changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bridge-classroom-api/**'
+      - '.github/workflows/api-ci.yml'
+  pull_request:
+    paths:
+      - 'bridge-classroom-api/**'
+      - '.github/workflows/api-ci.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: bridge-classroom-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bridge-classroom-api
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --all
