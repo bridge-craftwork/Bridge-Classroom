@@ -122,36 +122,47 @@ pub async fn create_bug_report(
     //    files exist on `main`, so the issue body can reference them).
     if let Some(shot) = req.screenshot_base64.as_deref().filter(|s| !s.is_empty()) {
         put_file(
-            &client, repo, token,
+            &client,
+            repo,
+            token,
             &format!("{bundle_path}/screenshot.jpg"),
             &format!("beetle: screenshot for {bundle_path}"),
             shot, // already base64
             None,
-        ).await?;
+        )
+        .await?;
     }
     let fixture_str = serde_json::to_string_pretty(&req.fixture).unwrap_or_else(|_| "{}".into());
     put_file(
-        &client, repo, token,
+        &client,
+        repo,
+        token,
         &format!("{bundle_path}/fixture.json"),
         &format!("beetle: fixture for {bundle_path}"),
         &BASE64.encode(fixture_str.as_bytes()),
         None,
-    ).await?;
+    )
+    .await?;
     let context_str = serde_json::to_string_pretty(&context).unwrap_or_else(|_| "{}".into());
     let context_put = put_file(
-        &client, repo, token,
+        &client,
+        repo,
+        token,
         &format!("{bundle_path}/context.json"),
         &format!("beetle: context for {bundle_path}"),
         &BASE64.encode(context_str.as_bytes()),
         None,
-    ).await?;
+    )
+    .await?;
 
     // 2) File the issue in the SAME repo (inline screenshot renders off session).
-    let shot_url = req.screenshot_base64.as_ref().filter(|s| !s.is_empty()).map(|_| {
-        format!(
-            "https://github.com/{repo}/blob/main/{bundle_path}/screenshot.jpg?raw=true"
-        )
-    });
+    let shot_url = req
+        .screenshot_base64
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .map(|_| {
+            format!("https://github.com/{repo}/blob/main/{bundle_path}/screenshot.jpg?raw=true")
+        });
     let is_feature = req.kind.as_deref() == Some("feature");
     let title = build_title(note, req.reporter_name.as_deref(), is_feature);
     let body = build_issue_body(&BugBody {
@@ -177,14 +188,21 @@ pub async fn create_bug_report(
     }
     let updated = serde_json::to_string_pretty(&context).unwrap_or(context_str);
     let _ = put_file(
-        &client, repo, token,
+        &client,
+        repo,
+        token,
         &format!("{bundle_path}/context.json"),
         &format!("beetle: link context to #{}", issue.number),
         &BASE64.encode(updated.as_bytes()),
         context_put.content.sha.as_deref(),
-    ).await; // best-effort: the report already succeeded; a failed back-ref isn't fatal
+    )
+    .await; // best-effort: the report already succeeded; a failed back-ref isn't fatal
 
-    tracing::info!("Filed beetle bug report #{} ({})", issue.number, issue.html_url);
+    tracing::info!(
+        "Filed beetle bug report #{} ({})",
+        issue.number,
+        issue.html_url
+    );
     Ok(Json(BugReportResponse {
         success: true,
         issue_url: issue.html_url,
@@ -235,17 +253,26 @@ async fn put_file(
         .await
         .map_err(|e| {
             tracing::error!("GitHub contents request failed: {}", e);
-            (StatusCode::BAD_GATEWAY, "Could not reach the artifacts repo".to_string())
+            (
+                StatusCode::BAD_GATEWAY,
+                "Could not reach the artifacts repo".to_string(),
+            )
         })?;
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         tracing::error!("GitHub contents API error: {} - {}", status, text);
-        return Err((StatusCode::BAD_GATEWAY, "The artifacts repo rejected the bundle".to_string()));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            "The artifacts repo rejected the bundle".to_string(),
+        ));
     }
     resp.json::<PutResponse>().await.map_err(|e| {
         tracing::error!("Could not parse GitHub contents response: {}", e);
-        (StatusCode::BAD_GATEWAY, "Unexpected response from the artifacts repo".to_string())
+        (
+            StatusCode::BAD_GATEWAY,
+            "Unexpected response from the artifacts repo".to_string(),
+        )
     })
 }
 
@@ -275,17 +302,26 @@ async fn create_issue(
         .await
         .map_err(|e| {
             tracing::error!("GitHub issue request failed: {}", e);
-            (StatusCode::BAD_GATEWAY, "Could not reach the issue tracker".to_string())
+            (
+                StatusCode::BAD_GATEWAY,
+                "Could not reach the issue tracker".to_string(),
+            )
         })?;
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         tracing::error!("GitHub issue API error: {} - {}", status, text);
-        return Err((StatusCode::BAD_GATEWAY, "The issue tracker rejected the report".to_string()));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            "The issue tracker rejected the report".to_string(),
+        ));
     }
     resp.json::<IssueResponse>().await.map_err(|e| {
         tracing::error!("Could not parse GitHub issue response: {}", e);
-        (StatusCode::BAD_GATEWAY, "Unexpected response from the issue tracker".to_string())
+        (
+            StatusCode::BAD_GATEWAY,
+            "Unexpected response from the issue tracker".to_string(),
+        )
     })
 }
 
@@ -313,13 +349,25 @@ fn build_title(note: &str, reporter_name: Option<&str>, is_feature: bool) -> Str
 
 fn build_labels(env: &Value, is_feature: bool) -> Vec<String> {
     let mut labels = vec![if is_feature { FEATURE_LABEL } else { BUG_LABEL }.to_string()];
-    if let Some(app) = env.get("app").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    if let Some(app) = env
+        .get("app")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
         labels.push(format!("app:{app}"));
     }
-    if let Some(engine) = env.get("engine").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    if let Some(engine) = env
+        .get("engine")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
         labels.push(format!("engine:{engine}"));
     }
-    if let Some(phase) = env.get("phase").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    if let Some(phase) = env
+        .get("phase")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
         labels.push(format!("phase:{phase}"));
     }
     labels
@@ -345,7 +393,9 @@ fn build_issue_body(b: &BugBody) -> String {
     }
 
     if let Some(url) = b.screenshot_url {
-        out.push_str(&format!("\n**Screenshot** (approximate rendering):\n\n![screenshot]({url})\n"));
+        out.push_str(&format!(
+            "\n**Screenshot** (approximate rendering):\n\n![screenshot]({url})\n"
+        ));
     }
 
     // Layout forensics — the highest-signal geometry, collapsed. The full block
@@ -358,7 +408,9 @@ fn build_issue_body(b: &BugBody) -> String {
         "\n**Bundle:** [{path}]({base}) · \
          [context.json](https://github.com/{repo}/blob/main/{path}/context.json) · \
          [fixture.json](https://github.com/{repo}/blob/main/{path}/fixture.json)\n",
-        path = b.bundle_path, repo = b.repo, base = base,
+        path = b.bundle_path,
+        repo = b.repo,
+        base = base,
     ));
     out.push_str("\n_Filed from the in-app bug-report beetle._");
     out
@@ -366,9 +418,23 @@ fn build_issue_body(b: &BugBody) -> String {
 
 /// Preferred display order for the well-known env fields.
 const ENV_ORDER: &[&str] = &[
-    "app", "route", "commit", "version", "engine", "phase", "arrangement",
-    "tableScale", "browser", "platform", "platformVersion", "architecture",
-    "model", "language", "timezone", "connection", "timestamp",
+    "app",
+    "route",
+    "commit",
+    "version",
+    "engine",
+    "phase",
+    "arrangement",
+    "tableScale",
+    "browser",
+    "platform",
+    "platformVersion",
+    "architecture",
+    "model",
+    "language",
+    "timezone",
+    "connection",
+    "timestamp",
 ];
 
 /// Flatten the env block into `(label, value)` rows for the issue table: the
@@ -429,8 +495,10 @@ fn build_layout_section(layout: &Value) -> String {
                 lvl.get("sel").and_then(Value::as_str).unwrap_or("?"),
                 num_or_dash(lvl.get("w")),
                 lvl.get("minW").and_then(Value::as_str).unwrap_or(""),
-                lvl.get("scoped").and_then(Value::as_bool)
-                    .map(|b| if b { "yes" } else { "**no**" }).unwrap_or(""),
+                lvl.get("scoped")
+                    .and_then(Value::as_bool)
+                    .map(|b| if b { "yes" } else { "**no**" })
+                    .unwrap_or(""),
             ));
         }
         s.push('\n');
@@ -448,7 +516,10 @@ fn build_layout_section(layout: &Value) -> String {
             ));
         }
         if list.len() > LAYOUT_ANCHOR_CAP {
-            s.push_str(&format!("\n_(+{} more in context.json)_\n", list.len() - LAYOUT_ANCHOR_CAP));
+            s.push_str(&format!(
+                "\n_(+{} more in context.json)_\n",
+                list.len() - LAYOUT_ANCHOR_CAP
+            ));
         }
     }
 
@@ -475,7 +546,10 @@ fn fmt_vars(v: Option<&Value>) -> String {
     let known = ["ts", "ss", "rs"];
     let mut parts: Vec<String> = known
         .iter()
-        .filter_map(|k| m.get(*k).map(|val| format!("{k}={}", val.as_str().unwrap_or(""))))
+        .filter_map(|k| {
+            m.get(*k)
+                .map(|val| format!("{k}={}", val.as_str().unwrap_or("")))
+        })
         .collect();
     // Any unexpected keys, appended so nothing is silently dropped.
     for (k, val) in m {
@@ -543,7 +617,11 @@ fn slugify(s: &str) -> String {
         }
     }
     let out = out.trim_matches('-').to_string();
-    if out.is_empty() { "report".to_string() } else { out }
+    if out.is_empty() {
+        "report".to_string()
+    } else {
+        out
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -584,11 +662,26 @@ mod tests {
 
     #[test]
     fn title_includes_name_and_kind() {
-        assert_eq!(build_title("hand overlaps", Some("Rick W"), false), "Bug: hand overlaps (from Rick W)");
-        assert_eq!(build_title("hand overlaps", None, false), "Bug: hand overlaps");
-        assert_eq!(build_title("hand overlaps", Some("  "), false), "Bug: hand overlaps");
-        assert_eq!(build_title("dark mode please", None, true), "Feature: dark mode please");
-        assert_eq!(build_title("dark mode", Some("Rick W"), true), "Feature: dark mode (from Rick W)");
+        assert_eq!(
+            build_title("hand overlaps", Some("Rick W"), false),
+            "Bug: hand overlaps (from Rick W)"
+        );
+        assert_eq!(
+            build_title("hand overlaps", None, false),
+            "Bug: hand overlaps"
+        );
+        assert_eq!(
+            build_title("hand overlaps", Some("  "), false),
+            "Bug: hand overlaps"
+        );
+        assert_eq!(
+            build_title("dark mode please", None, true),
+            "Feature: dark mode please"
+        );
+        assert_eq!(
+            build_title("dark mode", Some("Rick W"), true),
+            "Feature: dark mode (from Rick W)"
+        );
     }
 
     #[test]
@@ -599,14 +692,19 @@ mod tests {
             vec!["bug-report", "app:a1", "engine:local", "phase:play"]
         );
         assert_eq!(build_labels(&json!({}), false), vec!["bug-report"]);
-        assert_eq!(build_labels(&json!({ "app": "a1" }), true), vec!["feature-request", "app:a1"]);
+        assert_eq!(
+            build_labels(&json!({ "app": "a1" }), true),
+            vec!["feature-request", "app:a1"]
+        );
     }
 
     #[test]
     fn env_rows_render_viewport() {
         let env = json!({ "app": "a1", "viewport": { "w": 800, "h": 600, "dpr": 2.0 } });
         let rows = env_rows(&env);
-        assert!(rows.iter().any(|(k, v)| k == "viewport" && v == "800×600@2"));
+        assert!(rows
+            .iter()
+            .any(|(k, v)| k == "viewport" && v == "800×600@2"));
         assert!(rows.iter().any(|(k, v)| k == "app" && v == "a1"));
     }
 
@@ -636,7 +734,10 @@ mod tests {
 
     #[test]
     fn fmt_vars_and_num_or_dash() {
-        assert_eq!(fmt_vars(Some(&json!({ "ts": "1.25", "ss": "0.65" }))), "ts=1.25 ss=0.65");
+        assert_eq!(
+            fmt_vars(Some(&json!({ "ts": "1.25", "ss": "0.65" }))),
+            "ts=1.25 ss=0.65"
+        );
         assert_eq!(fmt_vars(Some(&json!({}))), "");
         assert_eq!(fmt_vars(None), "");
         assert_eq!(num_or_dash(Some(&json!(119.0))), "119");

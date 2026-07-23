@@ -141,7 +141,10 @@ impl ConventionCard {
             format: "bridge_classroom".to_string(),
             owner_id,
             card_data: req.card_data.to_string(),
-            visibility: req.visibility.clone().unwrap_or_else(|| "private".to_string()),
+            visibility: req
+                .visibility
+                .clone()
+                .unwrap_or_else(|| "private".to_string()),
             created_at: now.clone(),
             updated_at: now,
         }

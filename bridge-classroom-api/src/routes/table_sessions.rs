@@ -294,13 +294,12 @@ pub async fn create_table_session(
     };
 
     // Owner must exist; teacher_set requires teacher/admin.
-    let row: Option<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT role, first_name, host_code, invite_code FROM users WHERE id = ?",
-    )
-    .bind(&req.owner_user_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let row: Option<(String, String, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT role, first_name, host_code, invite_code FROM users WHERE id = ?")
+            .bind(&req.owner_user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let Some((role, _first_name, host_code, invite_code)) = row else {
         return Err((StatusCode::NOT_FOUND, "owner not found".to_string()));
     };
@@ -349,8 +348,7 @@ pub async fn create_table_session(
         &seat_policy,
         &req.owner_user_id,
     );
-    if let Err(e) =
-        service_create_session(&state.config.table_service_url, secret, &payload).await
+    if let Err(e) = service_create_session(&state.config.table_service_url, secret, &payload).await
     {
         tracing::error!("table session create failed at service: {e}");
         return Err((StatusCode::BAD_GATEWAY, e));

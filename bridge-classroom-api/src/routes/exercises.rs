@@ -50,13 +50,11 @@ async fn check_creation_quota(
         None => return Ok(()),
     };
 
-    let lifetime: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM exercises WHERE created_by = ?",
-    )
-    .bind(owner)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let lifetime: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM exercises WHERE created_by = ?")
+        .bind(owner)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if lifetime >= EXERCISES_LIFETIME {
         return Err((
@@ -161,8 +159,7 @@ async fn fetch_assignments_for_exercises(
     if exercise_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let placeholders = std::iter::repeat("?")
-        .take(exercise_ids.len())
+    let placeholders = std::iter::repeat_n("?", exercise_ids.len())
         .collect::<Vec<_>>()
         .join(",");
     // `users` stores names as (first_name, last_name) — no `name`
@@ -226,7 +223,10 @@ pub async fn create_exercise(
     }
 
     if req.name.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Exercise name is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Exercise name is required".to_string(),
+        ));
     }
 
     if req.boards.is_empty() {
@@ -298,7 +298,11 @@ pub async fn create_exercise(
     })?;
 
     let board_count = req.boards.len() as i64;
-    tracing::info!("Exercise created: {} ({} boards)", req.name.trim(), board_count);
+    tracing::info!(
+        "Exercise created: {} ({} boards)",
+        req.name.trim(),
+        board_count
+    );
 
     // Newly created exercise has no assignments / observations yet — the
     // rollup fields are all zero.
@@ -478,14 +482,19 @@ pub async fn update_exercise(
 
     check_owner(existing.created_by.as_deref(), req.actor_user_id.as_deref())?;
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Update exercise fields if provided
     if let Some(ref name) = req.name {
         if name.trim().is_empty() {
-            return Err((StatusCode::BAD_REQUEST, "Exercise name cannot be empty".to_string()));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Exercise name cannot be empty".to_string(),
+            ));
         }
         sqlx::query("UPDATE exercises SET name = ? WHERE id = ?")
             .bind(name.trim())
@@ -545,9 +554,9 @@ pub async fn update_exercise(
         }
     }
 
-    tx.commit().await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     tracing::info!("Exercise updated: {}", exercise_id);
 
@@ -583,18 +592,22 @@ pub async fn delete_exercise(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Exercise not found".to_string()))?;
 
-    check_owner(existing.created_by.as_deref(), query.actor_user_id.as_deref())?;
+    check_owner(
+        existing.created_by.as_deref(),
+        query.actor_user_id.as_deref(),
+    )?;
 
     let now = chrono::Utc::now().to_rfc3339();
-    let result = sqlx::query("UPDATE exercises SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL")
-        .bind(&now)
-        .bind(&exercise_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to soft-delete exercise: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+    let result =
+        sqlx::query("UPDATE exercises SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL")
+            .bind(&now)
+            .bind(&exercise_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to soft-delete exercise: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?;
 
     if result.rows_affected() == 0 {
         return Err((StatusCode::NOT_FOUND, "Exercise not found".to_string()));

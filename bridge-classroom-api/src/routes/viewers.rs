@@ -121,18 +121,17 @@ pub async fn get_viewer_public_key(
     State(state): State<AppState>,
     Path(viewer_id): Path<String>,
 ) -> Result<Json<ViewerPublicKeyResponse>, (StatusCode, String)> {
-    let viewer: Option<Viewer> =
-        sqlx::query_as::<_, Viewer>("SELECT * FROM viewers WHERE id = ?")
-            .bind(&viewer_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch viewer: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to fetch viewer: {}", e),
-                )
-            })?;
+    let viewer: Option<Viewer> = sqlx::query_as::<_, Viewer>("SELECT * FROM viewers WHERE id = ?")
+        .bind(&viewer_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch viewer: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch viewer: {}", e),
+            )
+        })?;
 
     match viewer {
         Some(v) => Ok(Json(ViewerPublicKeyResponse {

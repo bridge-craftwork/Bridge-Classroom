@@ -10,16 +10,17 @@ use sqlx::{Pool, Sqlite};
 
 /// Rebuild the `student_summary` row for the given user from scratch.
 /// Upserts on conflict. Idempotent.
-pub async fn recompute_student_summary(
-    pool: &Pool<Sqlite>,
-    user_id: &str,
-) -> Result<(), String> {
+pub async fn recompute_student_summary(pool: &Pool<Sqlite>, user_id: &str) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
 
     // ---- Top-line counts from observations ----
-    let (total_obs, last_obs_at, distinct_lessons, distinct_boards): (i64, Option<String>, i64, i64) =
-        sqlx::query_as(
-            r#"
+    let (total_obs, last_obs_at, distinct_lessons, distinct_boards): (
+        i64,
+        Option<String>,
+        i64,
+        i64,
+    ) = sqlx::query_as(
+        r#"
             SELECT
                 COUNT(*),
                 MAX(timestamp),
@@ -28,11 +29,11 @@ pub async fn recompute_student_summary(
             FROM observations
             WHERE user_id = ?
             "#,
-        )
-        .bind(user_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Observations aggregation failed: {}", e))?;
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| format!("Observations aggregation failed: {}", e))?;
 
     // ---- Board-state distribution from board_status ----
     let status_counts: Vec<(String, i64)> = sqlx::query_as(
@@ -56,8 +57,8 @@ pub async fn recompute_student_summary(
             .unwrap_or(0)
     };
     let boards_not_attempted = count("not_attempted");
-    let boards_failed        = count("failed");
-    let boards_corrected     = count("corrected");
+    let boards_failed = count("failed");
+    let boards_corrected = count("corrected");
     let boards_close_correct = count("close_correct");
     let boards_clean_correct = count("clean_correct");
 
@@ -113,7 +114,7 @@ pub async fn recompute_student_summary(
     // yet on the server. Leaving all four counts at 0 until that
     // catalog exists; the column is reserved for future use.
     let lessons_exploring: i64 = 0;
-    let lessons_learning:  i64 = 0;
+    let lessons_learning: i64 = 0;
     let lessons_retaining: i64 = 0;
     let lessons_mastering: i64 = 0;
 

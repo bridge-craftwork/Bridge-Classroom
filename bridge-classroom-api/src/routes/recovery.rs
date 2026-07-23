@@ -7,12 +7,12 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
-use ring::aead::{self, LessSafeKey, UnboundKey, AES_256_GCM, Nonce, NONCE_LEN};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use reqwest::Client;
+use ring::aead::{self, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN};
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use reqwest::Client;
+use sha2::{Digest, Sha256};
 
 use crate::AppState;
 
@@ -164,7 +164,8 @@ pub fn encrypt_for_recovery(secret_key: &str, recovery_secret: &str) -> Result<S
 /// Decrypt the user's secret key using the server's RECOVERY_SECRET
 pub fn decrypt_for_recovery(encrypted: &str, recovery_secret: &str) -> Result<String, String> {
     // Decode from base64
-    let combined = BASE64.decode(encrypted)
+    let combined = BASE64
+        .decode(encrypted)
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     if combined.len() < NONCE_LEN {
@@ -173,8 +174,8 @@ pub fn decrypt_for_recovery(encrypted: &str, recovery_secret: &str) -> Result<St
 
     // Split nonce and ciphertext
     let (nonce_bytes, ciphertext) = combined.split_at(NONCE_LEN);
-    let nonce_array: [u8; NONCE_LEN] = nonce_bytes.try_into()
-        .map_err(|_| "Invalid nonce length")?;
+    let nonce_array: [u8; NONCE_LEN] =
+        nonce_bytes.try_into().map_err(|_| "Invalid nonce length")?;
     let nonce = Nonce::assume_unique_for_key(nonce_array);
 
     // Derive key from recovery_secret
@@ -189,19 +190,21 @@ pub fn decrypt_for_recovery(encrypted: &str, recovery_secret: &str) -> Result<St
 
     // Decrypt
     let mut in_out = ciphertext.to_vec();
-    let decrypted = key.open_in_place(nonce, aead::Aad::empty(), &mut in_out)
+    let decrypted = key
+        .open_in_place(nonce, aead::Aad::empty(), &mut in_out)
         .map_err(|e| format!("Decryption failed: {:?}", e))?;
 
-    String::from_utf8(decrypted.to_vec())
-        .map_err(|e| format!("Invalid UTF-8: {}", e))
+    String::from_utf8(decrypted.to_vec()).map_err(|e| format!("Invalid UTF-8: {}", e))
 }
 
 /// Generate a secure random recovery token
 fn generate_recovery_token() -> String {
     let rng = SystemRandom::new();
     let mut token_bytes = [0u8; 32];
-    rng.fill(&mut token_bytes).expect("Failed to generate random token");
-    BASE64.encode(&token_bytes)
+    rng.fill(&mut token_bytes)
+        .expect("Failed to generate random token");
+    BASE64
+        .encode(token_bytes)
         .replace('+', "-")
         .replace('/', "_")
         .replace('=', "")
@@ -218,7 +221,8 @@ fn hash_token(token: &str) -> String {
 fn generate_recovery_code() -> String {
     let rng = SystemRandom::new();
     let mut bytes = [0u8; 4];
-    rng.fill(&mut bytes).expect("Failed to generate random code");
+    rng.fill(&mut bytes)
+        .expect("Failed to generate random code");
     let num = u32::from_be_bytes(bytes) % 1_000_000;
     format!("{:06}", num)
 }
@@ -334,7 +338,9 @@ pub async fn request_recovery(
             // But for this classroom app, we'll be helpful
             return Ok(Json(RecoveryRequestResponse {
                 success: false,
-                message: "No account found with this email address. Please register as a new student.".to_string(),
+                message:
+                    "No account found with this email address. Please register as a new student."
+                        .to_string(),
                 user_id: None,
             }));
         }
@@ -356,10 +362,22 @@ pub async fn request_recovery(
     // Per-email stops hammering one address; per-IP stops one host bombing many.
     let email_key = req.email.trim().to_lowercase();
     let ip = client_ip(&headers);
-    if !rate_limit_allow(&REQUEST_EMAIL_LIMITER, &email_key, REQUEST_MAX_PER_EMAIL, REQUEST_EMAIL_WINDOW_SECS)
-        || !rate_limit_allow(&REQUEST_IP_LIMITER, &ip, REQUEST_MAX_PER_IP, REQUEST_IP_WINDOW_SECS)
-    {
-        tracing::warn!("Recovery request throttled (email={}, ip={})", email_key, ip);
+    if !rate_limit_allow(
+        &REQUEST_EMAIL_LIMITER,
+        &email_key,
+        REQUEST_MAX_PER_EMAIL,
+        REQUEST_EMAIL_WINDOW_SECS,
+    ) || !rate_limit_allow(
+        &REQUEST_IP_LIMITER,
+        &ip,
+        REQUEST_MAX_PER_IP,
+        REQUEST_IP_WINDOW_SECS,
+    ) {
+        tracing::warn!(
+            "Recovery request throttled (email={}, ip={})",
+            email_key,
+            ip
+        );
         return Ok(Json(RecoveryRequestResponse {
             success: false,
             message: "You've requested account recovery several times recently. Please check your email (including spam) or wait a few minutes before trying again.".to_string(),
@@ -434,9 +452,15 @@ pub async fn request_recovery(
             &first_name,
             &recovery_url,
             &recovery_code,
-        ).await {
+        )
+        .await
+        {
             Ok(_) => {
-                tracing::info!("Recovery email sent to {} for user {}", req.email, first_name);
+                tracing::info!(
+                    "Recovery email sent to {} for user {}",
+                    req.email,
+                    first_name
+                );
                 email_sent = true;
             }
             Err(e) => {
@@ -517,24 +541,33 @@ async fn claim_recovery_inner(
 ) -> Result<Json<RecoveryClaimResponse>, (StatusCode, String)> {
     tracing::info!("========== Recovery claim request ==========");
     tracing::info!("user_id: {}", req.user_id);
-    tracing::info!("token (first 10 chars): {}...", &req.token.chars().take(10).collect::<String>());
+    tracing::info!(
+        "token (first 10 chars): {}...",
+        &req.token.chars().take(10).collect::<String>()
+    );
 
     // Validate request
     if req.user_id.is_empty() || req.token.is_empty() {
         tracing::warn!("Invalid request: user_id or token empty");
-        return Err((StatusCode::BAD_REQUEST, "user_id and token are required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "user_id and token are required".to_string(),
+        ));
     }
 
     let token_hash = hash_token(&req.token);
     let now = chrono::Utc::now().to_rfc3339();
-    tracing::info!("Looking for valid token with hash: {}...", &token_hash.chars().take(16).collect::<String>());
+    tracing::info!(
+        "Looking for valid token with hash: {}...",
+        &token_hash.chars().take(16).collect::<String>()
+    );
 
     // Find valid token
     let token_record = sqlx::query_as::<_, (String, String)>(
         r#"
         SELECT id, user_id FROM recovery_tokens
         WHERE user_id = ? AND token_hash = ? AND used = 0 AND expires_at > ?
-        "#
+        "#,
     )
     .bind(&req.user_id)
     .bind(&token_hash)
@@ -547,7 +580,7 @@ async fn claim_recovery_inner(
         Some(t) => {
             tracing::info!("Found valid token: {}", t.0);
             t
-        },
+        }
         None => {
             tracing::warn!("No valid token found for user_id: {}", req.user_id);
             return Ok(Json(RecoveryClaimResponse {
@@ -598,19 +631,25 @@ async fn claim_recovery_inner(
     };
 
     // Decrypt the secret key
-    let recovery_secret = state.config.recovery_secret.as_ref()
-        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Recovery not configured".to_string()))?;
+    let recovery_secret = state.config.recovery_secret.as_ref().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Recovery not configured".to_string(),
+        )
+    })?;
 
-    let secret_key = decrypt_for_recovery(&encrypted_key, recovery_secret)
-        .map_err(|e| {
-            tracing::error!("Failed to decrypt recovery key: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to decrypt recovery key".to_string())
-        })?;
+    let secret_key = decrypt_for_recovery(&encrypted_key, recovery_secret).map_err(|e| {
+        tracing::error!("Failed to decrypt recovery key: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to decrypt recovery key".to_string(),
+        )
+    })?;
 
     // If user is teacher/admin, also recover viewer private key
     let viewer_private_key = if role == "teacher" || role == "admin" {
         let viewer_row = sqlx::query_as::<_, (Option<String>,)>(
-            "SELECT recovery_encrypted_private_key FROM viewers WHERE email = ?"
+            "SELECT recovery_encrypted_private_key FROM viewers WHERE email = ?",
         )
         .bind(&email)
         .fetch_optional(&state.db)
@@ -637,7 +676,12 @@ async fn claim_recovery_inner(
     };
 
     tracing::info!("========== Recovery claim SUCCESS ==========");
-    tracing::info!("Account recovered for user: {} {} ({})", first_name, last_name, email);
+    tracing::info!(
+        "Account recovered for user: {} {} ({})",
+        first_name,
+        last_name,
+        email
+    );
     tracing::info!("Secret key length: {} chars", secret_key.len());
     tracing::info!("Returning user data with id: {}", id);
 
@@ -682,7 +726,10 @@ async fn claim_by_code_inner(
 
     // Validate request
     if email.is_empty() || code.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "email and code are required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "email and code are required".to_string(),
+        ));
     }
 
     if code.len() != 6 || !code.chars().all(|c| c.is_ascii_digit()) {
@@ -720,13 +767,11 @@ async fn claim_by_code_inner(
     }
 
     // Find user by email
-    let user_row = sqlx::query_as::<_, (String,)>(
-        "SELECT id FROM users WHERE email = ?"
-    )
-    .bind(&email)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let user_row = sqlx::query_as::<_, (String,)>("SELECT id FROM users WHERE email = ?")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let user_id = match user_row {
         Some((id,)) => id,
@@ -748,7 +793,7 @@ async fn claim_by_code_inner(
         r#"
         SELECT id FROM recovery_tokens
         WHERE user_id = ? AND recovery_code_hash = ? AND used = 0 AND expires_at > ?
-        "#
+        "#,
     )
     .bind(&user_id)
     .bind(&code_hash)
@@ -761,13 +806,15 @@ async fn claim_by_code_inner(
         Some((id,)) => {
             tracing::info!("Found valid token by code for user: {}", user_id);
             id
-        },
+        }
         None => {
             tracing::warn!("No valid token found for code claim, email: {}", email);
             return Ok(Json(RecoveryClaimResponse {
                 success: false,
                 user: None,
-                error: Some("Invalid or expired code. Please request a new recovery email.".to_string()),
+                error: Some(
+                    "Invalid or expired code. Please request a new recovery email.".to_string(),
+                ),
             }));
         }
     };
@@ -812,14 +859,20 @@ async fn claim_by_code_inner(
     };
 
     // Decrypt the secret key
-    let recovery_secret = state.config.recovery_secret.as_ref()
-        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Recovery not configured".to_string()))?;
+    let recovery_secret = state.config.recovery_secret.as_ref().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Recovery not configured".to_string(),
+        )
+    })?;
 
-    let secret_key = decrypt_for_recovery(&encrypted_key, recovery_secret)
-        .map_err(|e| {
-            tracing::error!("Failed to decrypt recovery key: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to decrypt recovery key".to_string())
-        })?;
+    let secret_key = decrypt_for_recovery(&encrypted_key, recovery_secret).map_err(|e| {
+        tracing::error!("Failed to decrypt recovery key: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to decrypt recovery key".to_string(),
+        )
+    })?;
 
     // Clear rate limit on success
     {
@@ -830,7 +883,7 @@ async fn claim_by_code_inner(
     // If user is teacher/admin, also recover viewer private key
     let viewer_private_key = if role == "teacher" || role == "admin" {
         let viewer_row = sqlx::query_as::<_, (Option<String>,)>(
-            "SELECT recovery_encrypted_private_key FROM viewers WHERE email = ?"
+            "SELECT recovery_encrypted_private_key FROM viewers WHERE email = ?",
         )
         .bind(&user_email)
         .fetch_optional(&state.db)
@@ -848,7 +901,12 @@ async fn claim_by_code_inner(
     };
 
     tracing::info!("========== Recovery claim-by-code SUCCESS ==========");
-    tracing::info!("Account recovered for user: {} {} ({})", first_name, last_name, user_email);
+    tracing::info!(
+        "Account recovered for user: {} {} ({})",
+        first_name,
+        last_name,
+        user_email
+    );
 
     Ok(Json(RecoveryClaimResponse {
         success: true,
@@ -893,8 +951,14 @@ mod tests {
         assert_ne!(encrypted1, encrypted2);
 
         // Both should decrypt correctly
-        assert_eq!(decrypt_for_recovery(&encrypted1, recovery_secret).unwrap(), secret_key);
-        assert_eq!(decrypt_for_recovery(&encrypted2, recovery_secret).unwrap(), secret_key);
+        assert_eq!(
+            decrypt_for_recovery(&encrypted1, recovery_secret).unwrap(),
+            secret_key
+        );
+        assert_eq!(
+            decrypt_for_recovery(&encrypted2, recovery_secret).unwrap(),
+            secret_key
+        );
     }
 
     #[test]

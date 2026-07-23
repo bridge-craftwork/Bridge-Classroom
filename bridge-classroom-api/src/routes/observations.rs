@@ -13,7 +13,9 @@ use crate::{
     AppState,
 };
 
-use super::board_status::{derive_wilderness, recompute_assignment_boards, recompute_board_history};
+use super::board_status::{
+    derive_wilderness, recompute_assignment_boards, recompute_board_history,
+};
 use crate::student_summary::recompute_student_summary;
 
 use std::collections::HashSet;
@@ -166,11 +168,16 @@ pub async fn submit_observations(
     // the new state machine, stars, and wild_achievement.
     for (user_id, collection_id, subfolder, deal_number) in &boards_to_recompute {
         if let Err(e) =
-            recompute_board_history(&state.db, user_id, collection_id, subfolder, *deal_number).await
+            recompute_board_history(&state.db, user_id, collection_id, subfolder, *deal_number)
+                .await
         {
             tracing::error!(
                 "Failed to recompute board history for {}/{}/{}/{}: {}",
-                user_id, collection_id, subfolder, deal_number, e
+                user_id,
+                collection_id,
+                subfolder,
+                deal_number,
+                e
             );
         }
     }
@@ -180,7 +187,9 @@ pub async fn submit_observations(
         if let Err(e) = recompute_assignment_boards(&state.db, user_id, assignment_id).await {
             tracing::error!(
                 "Failed to recompute assignment_board_status for {}/{}: {}",
-                user_id, assignment_id, e
+                user_id,
+                assignment_id,
+                e
             );
         }
     }
@@ -195,7 +204,11 @@ pub async fn submit_observations(
 
     tracing::info!(
         "Stored {}/{} observations ({} boards, {} assignments recomputed, {} summaries refreshed)",
-        stored, received, boards_to_recompute.len(), assignments_to_recompute.len(), users_to_refresh.len(),
+        stored,
+        received,
+        boards_to_recompute.len(),
+        assignments_to_recompute.len(),
+        users_to_refresh.len(),
     );
 
     Ok(Json(SubmitObservationsResponse {
@@ -348,7 +361,20 @@ pub async fn get_observations_metadata(
     sql.push_str(" ORDER BY timestamp DESC");
 
     // Build and execute the query
-    let mut query_builder = sqlx::query_as::<_, (String, String, String, String, bool, Option<String>, Option<String>, Option<i32>, Option<String>)>(&sql);
+    let mut query_builder = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            String,
+            bool,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+        ),
+    >(&sql);
     let mut count_builder = sqlx::query_scalar::<_, i64>(&count_sql);
 
     // Bind parameters in order
@@ -385,9 +411,9 @@ pub async fn get_observations_metadata(
 
     let observations: Vec<ObservationMetadata> = rows
         .into_iter()
-        .map(|(id, user_id, timestamp, skill_path, correct, classroom, deal_subfolder, deal_number, board_result)| {
-            ObservationMetadata {
-                observation_id: id,
+        .map(
+            |(
+                id,
                 user_id,
                 timestamp,
                 skill_path,
@@ -396,8 +422,20 @@ pub async fn get_observations_metadata(
                 deal_subfolder,
                 deal_number,
                 board_result,
-            }
-        })
+            )| {
+                ObservationMetadata {
+                    observation_id: id,
+                    user_id,
+                    timestamp,
+                    skill_path,
+                    correct,
+                    classroom,
+                    deal_subfolder,
+                    deal_number,
+                    board_result,
+                }
+            },
+        )
         .collect();
 
     let total = count_builder
@@ -405,5 +443,8 @@ pub async fn get_observations_metadata(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(ObservationsMetadataResponse { observations, total }))
+    Ok(Json(ObservationsMetadataResponse {
+        observations,
+        total,
+    }))
 }

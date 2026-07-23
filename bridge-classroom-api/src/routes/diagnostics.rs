@@ -1,4 +1,8 @@
-use axum::{extract::{Query, State}, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
 use serde::Deserialize;
 use tracing::warn;
 
@@ -51,9 +55,7 @@ pub async fn log_diagnostics(
 /// GET /api/diagnostics — log a single client-side error via query params
 /// No CORS preflight needed (simple GET request), so this works even when
 /// POST requests are blocked by CORS/preflight issues.
-pub async fn log_diagnostic_get(
-    Query(params): Query<DiagnosticQuery>,
-) -> Json<serde_json::Value> {
+pub async fn log_diagnostic_get(Query(params): Query<DiagnosticQuery>) -> Json<serde_json::Value> {
     warn!(
         event = %params.event,
         context = params.context.as_deref().unwrap_or("none"),

@@ -10,8 +10,7 @@ use crate::{
     models::{
         ConventionCard, ConventionCardFull, ConventionCardInfo, CreateConventionCardRequest,
         CreateConventionCardResponse, LinkCardRequest, LinkCardResponse,
-        UpdateConventionCardRequest, UpdateConventionCardResponse, UserCardInfo,
-        UserCardsResponse,
+        UpdateConventionCardRequest, UpdateConventionCardResponse, UserCardInfo, UserCardsResponse,
     },
     AppState,
 };
@@ -143,7 +142,10 @@ pub async fn get_card(
         None => None,
     };
     if !can_read(&card, query.viewer_id.as_deref(), &viewer_role) {
-        return Err((StatusCode::FORBIDDEN, "Not allowed to read this card".to_string()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Not allowed to read this card".to_string(),
+        ));
     }
 
     let full = c_to_full(&card).map_err(|e| {
@@ -259,7 +261,10 @@ pub async fn update_card(
 
     let role = fetch_caller_role(&state.db, &req.acting_user_id).await;
     if !can_write(&card, Some(&req.acting_user_id), &role) {
-        return Err((StatusCode::FORBIDDEN, "Not allowed to edit this card".to_string()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Not allowed to edit this card".to_string(),
+        ));
     }
 
     // Visibility changes (public ↔ private) require admin.
@@ -333,7 +338,10 @@ pub async fn delete_card(
 
     let role = fetch_caller_role(&state.db, &acting_user_id).await;
     if !can_write(&card, Some(&acting_user_id), &role) {
-        return Err((StatusCode::FORBIDDEN, "Not allowed to delete this card".to_string()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Not allowed to delete this card".to_string(),
+        ));
     }
 
     // Cascade: remove user-card links first, then the card.
@@ -380,14 +388,16 @@ pub async fn get_user_cards(
 
     let cards: Vec<UserCardInfo> = rows
         .into_iter()
-        .map(|(link_id, card_id, card_name, is_primary, label, linked_at)| UserCardInfo {
-            link_id,
-            card_id,
-            card_name,
-            is_primary,
-            label,
-            linked_at,
-        })
+        .map(
+            |(link_id, card_id, card_name, is_primary, label, linked_at)| UserCardInfo {
+                link_id,
+                card_id,
+                card_name,
+                is_primary,
+                label,
+                linked_at,
+            },
+        )
         .collect();
 
     Ok(Json(UserCardsResponse { cards }))
@@ -422,7 +432,10 @@ pub async fn link_card_to_user(
             ))?;
         let role = fetch_caller_role(&state.db, acting).await;
         if !can_read(&card, Some(acting), &role) {
-            return Err((StatusCode::FORBIDDEN, "Not allowed to link this card".to_string()));
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Not allowed to link this card".to_string(),
+            ));
         }
     }
 

@@ -40,6 +40,10 @@ anyhow = "1"
 # Cryptography (for recovery key encryption)
 ring = "0.17"
 sha2 = "0.10"
+# Constant-time equality. ring's own verify_slices_are_equal is deprecated
+# ("internal function ... no promises regarding side channels"); subtle is the
+# standard primitive and was already in the tree transitively.
+subtle = "2.6"
 base64 = "0.21"
 hex = "0.4"
 # RSA signature verification for signed teacher/admin requests (ADR-0003).

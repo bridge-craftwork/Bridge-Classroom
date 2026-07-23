@@ -78,18 +78,23 @@ pub async fn save_club_game(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
                 tracing::info!("Club game updated: {} for {}", id, req.owner);
-                return Ok(Json(SaveClubGameResponse { success: true, id, updated: true }));
+                return Ok(Json(SaveClubGameResponse {
+                    success: true,
+                    id,
+                    updated: true,
+                }));
             }
         }
     }
 
     // Insert path — enforce the per-owner lifetime cap first.
-    let lifetime: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM club_games WHERE owner = ? AND deleted_at IS NULL")
-            .bind(&req.owner)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let lifetime: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM club_games WHERE owner = ? AND deleted_at IS NULL",
+    )
+    .bind(&req.owner)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if lifetime >= GAMES_LIFETIME {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
@@ -125,7 +130,11 @@ pub async fn save_club_game(
     })?;
 
     tracing::info!("Club game saved: {} for {}", id, req.owner);
-    Ok(Json(SaveClubGameResponse { success: true, id, updated: false }))
+    Ok(Json(SaveClubGameResponse {
+        success: true,
+        id,
+        updated: false,
+    }))
 }
 
 /// GET /api/club-games?owner=X — list a user's games (metadata only, no payload).
@@ -160,7 +169,10 @@ pub async fn list_club_games(
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    Ok(Json(ClubGameListResponse { success: true, games }))
+    Ok(Json(ClubGameListResponse {
+        success: true,
+        games,
+    }))
 }
 
 /// GET /api/club-games/:id — fetch one game WITH its normalized JSON payload.
@@ -187,7 +199,10 @@ pub async fn get_club_game(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Club game not found".to_string()))?;
 
-    Ok(Json(ClubGameDetailResponse { success: true, game }))
+    Ok(Json(ClubGameDetailResponse {
+        success: true,
+        game,
+    }))
 }
 
 /// DELETE /api/club-games/:id — soft-delete a game (owner only).
@@ -225,5 +240,8 @@ pub async fn delete_club_game(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     tracing::info!("Club game soft-deleted: {}", id);
-    Ok(Json(ClubGameActionResponse { success: true, error: None }))
+    Ok(Json(ClubGameActionResponse {
+        success: true,
+        error: None,
+    }))
 }

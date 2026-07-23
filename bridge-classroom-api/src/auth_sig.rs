@@ -44,7 +44,13 @@ fn unauthorized(msg: &str) -> (StatusCode, String) {
 
 /// Build the exact string the client signs. Kept in one place so client and
 /// server can't drift. `body` is the raw request bytes (empty for no body).
-pub fn canonical_string(method: &str, path: &str, body: &[u8], timestamp_ms: i64, nonce: &str) -> String {
+pub fn canonical_string(
+    method: &str,
+    path: &str,
+    body: &[u8],
+    timestamp_ms: i64,
+    nonce: &str,
+) -> String {
     let body_hash = hex::encode(Sha256::digest(body));
     format!("{SCHEME_TAG}\n{method}\n{path}\n{body_hash}\n{timestamp_ms}\n{nonce}")
 }
@@ -60,9 +66,11 @@ pub async fn verify_signed_request(
     body: &[u8],
 ) -> Result<VerifiedCaller, (StatusCode, String)> {
     let user_id = header(headers, "x-bc-user").ok_or_else(|| unauthorized("missing x-bc-user"))?;
-    let ts_str = header(headers, "x-bc-timestamp").ok_or_else(|| unauthorized("missing x-bc-timestamp"))?;
+    let ts_str =
+        header(headers, "x-bc-timestamp").ok_or_else(|| unauthorized("missing x-bc-timestamp"))?;
     let nonce = header(headers, "x-bc-nonce").ok_or_else(|| unauthorized("missing x-bc-nonce"))?;
-    let sig_b64 = header(headers, "x-bc-signature").ok_or_else(|| unauthorized("missing x-bc-signature"))?;
+    let sig_b64 =
+        header(headers, "x-bc-signature").ok_or_else(|| unauthorized("missing x-bc-signature"))?;
 
     if nonce.len() < 16 || nonce.len() > 128 {
         return Err(unauthorized("bad nonce"));
@@ -98,12 +106,13 @@ pub async fn verify_signed_request(
     let der = B64
         .decode(public_key_b64.as_bytes())
         .map_err(|_| unauthorized("stored public key not base64"))?;
-    let public_key =
-        RsaPublicKey::from_public_key_der(&der).map_err(|_| unauthorized("unparseable stored public key"))?;
+    let public_key = RsaPublicKey::from_public_key_der(&der)
+        .map_err(|_| unauthorized("unparseable stored public key"))?;
     let sig_bytes = B64
         .decode(sig_b64.as_bytes())
         .map_err(|_| unauthorized("signature not base64"))?;
-    let signature = Signature::try_from(sig_bytes.as_slice()).map_err(|_| unauthorized("malformed signature"))?;
+    let signature = Signature::try_from(sig_bytes.as_slice())
+        .map_err(|_| unauthorized("malformed signature"))?;
     VerifyingKey::<Sha256>::new(public_key)
         .verify(canonical.as_bytes(), &signature)
         .map_err(|_| unauthorized("signature verification failed"))?;
@@ -117,12 +126,13 @@ pub async fn verify_signed_request(
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let inserted = sqlx::query("INSERT OR IGNORE INTO used_nonces (nonce, expires_at) VALUES (?, ?)")
-        .bind(nonce)
-        .bind(expires_at)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let inserted =
+        sqlx::query("INSERT OR IGNORE INTO used_nonces (nonce, expires_at) VALUES (?, ?)")
+            .bind(nonce)
+            .bind(expires_at)
+            .execute(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if inserted.rows_affected() == 0 {
         return Err(unauthorized("nonce already used (replay)"));
     }
@@ -156,18 +166,57 @@ mod tests {
 
     #[test]
     fn canonical_is_stable_and_binds_fields() {
-        let a = canonical_string("POST", "/api/admin/x", b"", 1_700_000_000_000, "nonce123456789012");
+        let a = canonical_string(
+            "POST",
+            "/api/admin/x",
+            b"",
+            1_700_000_000_000,
+            "nonce123456789012",
+        );
         // Same inputs → same string.
         assert_eq!(
             a,
-            canonical_string("POST", "/api/admin/x", b"", 1_700_000_000_000, "nonce123456789012")
+            canonical_string(
+                "POST",
+                "/api/admin/x",
+                b"",
+                1_700_000_000_000,
+                "nonce123456789012"
+            )
         );
         // Empty-body hash is the well-known SHA-256("").
         assert!(a.contains("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
         // Different method/path/body/nonce → different string.
-        assert_ne!(a, canonical_string("GET", "/api/admin/x", b"", 1_700_000_000_000, "nonce123456789012"));
-        assert_ne!(a, canonical_string("POST", "/api/admin/y", b"", 1_700_000_000_000, "nonce123456789012"));
-        assert_ne!(a, canonical_string("POST", "/api/admin/x", b"{}", 1_700_000_000_000, "nonce123456789012"));
+        assert_ne!(
+            a,
+            canonical_string(
+                "GET",
+                "/api/admin/x",
+                b"",
+                1_700_000_000_000,
+                "nonce123456789012"
+            )
+        );
+        assert_ne!(
+            a,
+            canonical_string(
+                "POST",
+                "/api/admin/y",
+                b"",
+                1_700_000_000_000,
+                "nonce123456789012"
+            )
+        );
+        assert_ne!(
+            a,
+            canonical_string(
+                "POST",
+                "/api/admin/x",
+                b"{}",
+                1_700_000_000_000,
+                "nonce123456789012"
+            )
+        );
     }
 
     /// Cross-stack proof: a signature produced by WebCrypto (RSA-OAEP key

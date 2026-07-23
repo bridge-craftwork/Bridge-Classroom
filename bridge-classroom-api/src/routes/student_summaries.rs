@@ -153,7 +153,10 @@ pub async fn get_student_summaries(
             } else {
                 "mixed"
             };
-            entry.push(RecentLesson { subfolder, status: status.to_string() });
+            entry.push(RecentLesson {
+                subfolder,
+                status: status.to_string(),
+            });
         }
     }
 
