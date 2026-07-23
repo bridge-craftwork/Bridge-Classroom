@@ -58,19 +58,23 @@ export function useHostedTable({ onExit } = {}) {
   const ending = ref(false) // host clicked "End table" (vs an unexpected close)
   let recoveredOnce = false
 
-  // ── Invite link (evergreen host code → /play/:code join URL) ────────────────
+  // ── Table invite link (evergreen invite_code → /table/:code join URL) ───────
+  // The TABLE link, not the class link: invite_code is available to ANY signed-in
+  // user (host_code is teacher-only and backs the /play class link → console). So
+  // students get a working invite link here too, and it resolves to this casual
+  // adhoc table — never a classroom.
   const shareUrl = ref('')
   const copied = ref(false)
-  async function fetchHostCode() {
+  async function fetchInviteCode() {
     if (!currentUser.value) return null
     try {
-      const res = await fetch(`${API_URL}/users/${currentUser.value.id}/host-code`, {
+      const res = await fetch(`${API_URL}/users/${currentUser.value.id}/invite-code`, {
         method: 'POST',
         headers: { 'x-api-key': API_KEY },
       })
       const data = await res.json()
       if (data.code) {
-        shareUrl.value = `${window.location.origin}${window.location.pathname}#/play/${data.code}`
+        shareUrl.value = `${window.location.origin}${window.location.pathname}#/table/${data.code}`
         return data.code
       }
     } catch {
@@ -126,14 +130,16 @@ export function useHostedTable({ onExit } = {}) {
     resolving.value = true
     startError.value = ''
     try {
-      const code = await fetchHostCode() // also populates the invite link
+      const code = await fetchInviteCode() // also populates the table invite link
       let id = null
       if (!forceCreate && code) {
         try {
-          const res = await fetch(`${API_URL}/play/${code}`)
+          // Resume the owner's open ADHOC table (invite_code → adhoc); a live
+          // classroom, if any, is untouched.
+          const res = await fetch(`${API_URL}/table/${code}`)
           const data = await res.json()
           if (data?.session?.id) id = data.session.id
-        } catch { /* no open session → create one */ }
+        } catch { /* no open table → create one */ }
       }
       if (!id) id = await createSession()
       if (!id) throw new Error('Could not start your table.')
@@ -236,7 +242,6 @@ export function useHostedTable({ onExit } = {}) {
     shareUrl,
     copied,
     spawnCount,
-    fetchHostCode,
     copyShareUrl,
     spawnPlayers,
     // actions
