@@ -115,6 +115,24 @@ async fn main() -> anyhow::Result<()> {
             "/api/users/:user_id/invite-code",
             post(routes::generate_invite_code),
         )
+        // Friendships (ADR-0005). Session-authorized: every handler proves the
+        // supplied acting_user_id is on the cookie's device roster. There is
+        // deliberately no user-search endpoint — a request can only be addressed
+        // to someone whose id the caller already has (a table co-player).
+        .route("/api/friends", get(routes::list_friends))
+        .route("/api/friends/:user_id", delete(routes::remove_friend))
+        .route(
+            "/api/friends/requests",
+            get(routes::list_requests).post(routes::create_request),
+        )
+        .route(
+            "/api/friends/requests/:id/accept",
+            post(routes::accept_request),
+        )
+        .route(
+            "/api/friends/requests/:id/decline",
+            post(routes::decline_request),
+        )
         // Recovery routes
         .route("/api/recovery/request", post(routes::request_recovery))
         .route("/api/recovery/claim", post(routes::claim_recovery))

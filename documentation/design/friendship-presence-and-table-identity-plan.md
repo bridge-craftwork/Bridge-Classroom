@@ -1,6 +1,7 @@
 # Implementation Plan — Friendship, Presence, and Table Identity
 
-**Status:** Phase 0 complete (2026-07-23) · Phases 1–5 not started
+**Status:** Phase 0 complete · Phase 2 backend complete (both 2026-07-23) ·
+Phases 1, 3–5 not started
 **Date:** 2026-07-23
 **Companion to:** [ADR-0005](../adr/0005-friendship-model-and-guest-members.md),
 [ADR-0006](../adr/0006-table-identity-and-access.md) — both now numbered and Accepted.
@@ -104,9 +105,15 @@ Phase 4  Seat reservations + invitations         (needs 1 + 3)
 Phase 5  Guest normalization + enrollment prompts + pending-request-through-signup
 ```
 
-Phases 1 and 2 are independent and can run in parallel. Phase 2 ships genuinely useful
-(friends list, requests, bootstrap-at-table) with no droplet work at all — a good
-de-risking point before committing to Phase 3.
+**Correction (2026-07-23): Phase 2 runs BEFORE Phase 1, not in parallel.** The original
+claim that they're independent was wrong in one direction. Once §6.4 collapsed the access
+modes to `link` | `friends`, ADR-0006 §3's `friends` mode is enforced by asking *"is the
+requester the owner or one of the owner's friends?"* — which needs the friend graph. Build
+Phase 1 first and its headline mode can only be half-enforced (owner-only), which then has
+to be revisited. Phase 2 has no such dependency on Phase 1.
+
+Phase 2 also ships genuinely useful on its own (friends list, requests, bootstrap-at-table)
+with no droplet work at all — a good de-risking point before committing to Phase 3.
 
 ---
 
@@ -244,7 +251,19 @@ showing a dead entry.
 **Deliverable:** a host can name a table, see it in a list, and invalidate a leaked link
 without destroying the table.
 
-### Phase 2 — Friend graph (no presence)
+### Phase 2 — Friend graph (no presence) — ✅ **backend DONE 2026-07-23**
+
+Schema and all six routes are live in [friends.rs](../../bridge-classroom-api/src/routes/friends.rs);
+the **Friends tab is still to build**. Two things landed slightly differently from the
+sketch below, both tightenings:
+
+- **The canonical ordering is enforced by a `CHECK (user_a_id < user_b_id)`**, not just by
+  convention in the insert path. A reversed or self edge is rejected by SQLite itself, so a
+  half-edge is unrepresentable rather than merely un-written.
+- **Crossing proposals auto-accept.** If A requests B while B already has a pending request
+  out to A, that is mutual consent by definition — so the second request accepts the first
+  instead of leaving two crossing pendings for a human to reconcile.
+
 
 **Schema** (Mac API — the user DB is the only correct home for the graph):
 

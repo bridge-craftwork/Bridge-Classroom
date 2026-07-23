@@ -1133,6 +1133,90 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Friendships (ADR-0005) ----
+    // One UNDIRECTED edge per relationship, stored with the pair in canonical
+    // order (user_a_id < user_b_id) as the PK. That makes ADR-0005 §1's symmetry
+    // a property of the SCHEMA rather than an application invariant: a half-edge
+    // is unrepresentable, and "either party may remove it" is a single DELETE.
+    //
+    // Both endpoints REFERENCE users(id), which is how §2 ("only enrolled members
+    // can be friends") is enforced structurally — a guest has no users row, so a
+    // guest edge cannot be written at all.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS friendships (
+            user_a_id  TEXT NOT NULL REFERENCES users(id),
+            user_b_id  TEXT NOT NULL REFERENCES users(id),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_a_id, user_b_id),
+            CHECK (user_a_id < user_b_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // "Who are B's friends?" — the a-side is already covered by the PK.
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_friendships_b ON friendships(user_b_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // Friend requests: the pending state, which needs its own table because a
+    // request outlives the table session that produced it and has a lifecycle the
+    // edge doesn't.
+    //
+    // `to_guest_id` is the enrollment-pending path (ADR-0005 §4): a request
+    // addressed to a guest is held until they enroll. The COLUMN exists now so
+    // the schema doesn't have to change later, but no route writes it yet —
+    // materializing those on enrollment is Phase 5, and a pending row nothing can
+    // resolve would just be a dead row.
+    //
+    // `declined` rows are RETAINED rather than deleted: that's what lets a repeat
+    // request be silently swallowed instead of re-notifying someone who already
+    // said no, and it's the groundwork for the "block" question ADR-0005 leaves
+    // open.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id           TEXT PRIMARY KEY,
+            from_user_id TEXT NOT NULL REFERENCES users(id),
+            to_user_id   TEXT REFERENCES users(id),
+            to_guest_id  TEXT REFERENCES guest_users(id),
+            status       TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','accepted','declined','expired')),
+            created_at   TEXT NOT NULL,
+            responded_at TEXT,
+            CHECK ((to_user_id IS NOT NULL) <> (to_guest_id IS NOT NULL)),
+            CHECK (from_user_id <> to_user_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // At most ONE pending request per ordered pair — the DB, not the handler, is
+    // what stops a spam loop of duplicate pendings.
+    sqlx::query(
+        r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_friend_requests_pending_pair
+           ON friend_requests(from_user_id, to_user_id)
+           WHERE status = 'pending' AND to_user_id IS NOT NULL"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // Inbox lookup: "my pending inbound requests".
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_friend_requests_to
+           ON friend_requests(to_user_id, status)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ---- Teacher deal library (Phase 2.5) ----
     // A per-teacher hierarchy of deal material. One table covers the
     // library, favorites, AND playlists via `kind`:
