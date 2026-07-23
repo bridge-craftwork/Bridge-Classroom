@@ -24,6 +24,21 @@
 //!
 //! Guests are unreachable from this module by construction — `friendships`
 //! endpoints resolve against `users`, and a guest has no `users` row.
+//!
+//! # Re-requesting after a decline is allowed
+//!
+//! A declined request does **not** bar a later one. The tempting design — treat
+//! a decline as "never ask again" — gets the likelier failure mode backwards for
+//! this user base: someone declines because an unexpected prompt appeared and
+//! they didn't know what it meant, and is then permanently unfriendable with no
+//! way to undo it, and no way for either party to even see why. Repeat-request
+//! noise is the lesser problem, and it's already bounded by the rate limit and
+//! the outstanding-request ceiling below.
+//!
+//! `declined` rows are still retained, but purely as history — they no longer
+//! suppress anything. **Blocking is deliberately not implemented at this stage**
+//! (ADR-0005 leaves it open); if it ever arrives it should be an explicit,
+//! visible action a user takes, not an invisible side effect of one decline.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -288,8 +303,6 @@ pub async fn list_requests(
 /// Several outcomes deliberately return a plain success rather than an error, so
 /// this endpoint can't be used as an oracle about other accounts:
 /// - already friends → success, no-op
-/// - a previous request was declined → success, but **nothing is created**; the
-///   recipient is not re-notified (ADR-0005's "block" groundwork)
 /// - a duplicate pending → success, no-op
 ///
 /// The one genuinely interesting case: if the *recipient* already has a pending
@@ -345,20 +358,9 @@ pub async fn create_request(
         return Ok(Json(json!({ "success": true, "status": "accepted" })));
     }
 
-    // Previously declined → swallow silently. The sender sees success; the
-    // recipient is never re-notified about someone they already turned down.
-    let declined: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM friend_requests
-         WHERE from_user_id = ? AND to_user_id = ? AND status = 'declined'",
-    )
-    .bind(&from)
-    .bind(&to)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(db_err)?;
-    if declined.is_some() {
-        return Ok(Json(json!({ "success": true, "status": "sent" })));
-    }
+    // NOTE: a previous decline does NOT block a new request — see the
+    // "re-requesting" note in the module docs. Prior `declined` rows are left
+    // alone as history and a fresh pending is created below.
 
     let outstanding: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM friend_requests WHERE from_user_id = ? AND status = 'pending'",
@@ -487,9 +489,9 @@ pub async fn accept_request(
 
 // ---- POST /api/friends/requests/:id/decline ----
 
-/// Decline. The row is kept (status `declined`) rather than deleted — that's
-/// what makes a repeat request from the same person silently swallowed instead
-/// of re-notifying someone who already said no.
+/// Decline. The row is kept (status `declined`) rather than deleted, as history
+/// — but it does **not** bar the sender from asking again later (see the
+/// re-requesting note in the module docs).
 pub async fn decline_request(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -612,5 +614,95 @@ mod tests {
     async fn self_edge_is_rejected() {
         let pool = friends_db().await;
         assert!(insert_edge(&pool, "u-a", "u-a").await.is_err());
+    }
+
+    /// `friend_requests` minus the users/guest FKs.
+    async fn requests_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            r#"CREATE TABLE friend_requests (
+                   id           TEXT PRIMARY KEY,
+                   from_user_id TEXT NOT NULL,
+                   to_user_id   TEXT,
+                   status       TEXT NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending','accepted','declined','expired')),
+                   created_at   TEXT NOT NULL,
+                   responded_at TEXT,
+                   CHECK (from_user_id <> to_user_id)
+               )"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"CREATE UNIQUE INDEX idx_pending_pair
+               ON friend_requests(from_user_id, to_user_id)
+               WHERE status = 'pending' AND to_user_id IS NOT NULL"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    async fn send(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO friend_requests (id, from_user_id, to_user_id, status, created_at)
+             VALUES (?, 'u-a', 'u-b', 'pending', 'now')",
+        )
+        .bind(id)
+        .execute(pool)
+        .await
+        .map(|_| ())
+    }
+
+    #[tokio::test]
+    async fn only_one_pending_request_per_pair() {
+        let pool = requests_db().await;
+        send(&pool, "r1").await.unwrap();
+        assert!(send(&pool, "r2").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_decline_does_not_bar_a_later_request() {
+        // The accidental-decline case: someone declines an unfamiliar prompt,
+        // then genuinely wants to be friends later. The partial unique index
+        // covers only `pending`, so the resolved row doesn't wedge the pair.
+        let pool = requests_db().await;
+        send(&pool, "r1").await.unwrap();
+        sqlx::query("UPDATE friend_requests SET status = 'declined' WHERE id = 'r1'")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        send(&pool, "r2").await.expect("re-request must be allowed");
+
+        // The decline is kept as history alongside the new pending.
+        let declined: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM friend_requests WHERE status = 'declined'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let pending: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM friend_requests WHERE status = 'pending'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!((declined, pending), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn a_removed_friendship_can_be_re_requested() {
+        // Same principle one step further along: unfriending (silent, either
+        // party, ADR-0005 §1) must not permanently wedge the pair either.
+        let pool = requests_db().await;
+        send(&pool, "r1").await.unwrap();
+        sqlx::query("UPDATE friend_requests SET status = 'accepted' WHERE id = 'r1'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        send(&pool, "r2")
+            .await
+            .expect("re-request after unfriend must be allowed");
     }
 }

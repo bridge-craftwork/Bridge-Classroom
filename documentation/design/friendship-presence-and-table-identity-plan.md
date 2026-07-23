@@ -300,11 +300,16 @@ limiter):
 | `POST /api/friends/requests` | `{ to_user_id \| to_guest_id }` — **no email/name lookup** |
 | `POST /api/friends/requests/:id/accept` / `/decline` | accept creates the edge in a transaction |
 
-Abuse controls the ADRs don't mention but that a real-name social graph needs: a cap on
-outbound pending requests, a cooldown on re-requesting after a decline, and — since §102
-flags "block" as probably-eventual — at minimum record `declined` rows so a repeat request
-can be silently swallowed rather than re-notifying the target. Cheap now, expensive
-to retrofit.
+Abuse controls the ADRs don't mention but that a real-name social graph needs: a per-user
+rate limit and a cap on outstanding outbound requests. Cheap now, expensive to retrofit.
+
+**What was rejected here (2026-07-23):** an earlier draft of this plan also proposed
+suppressing repeat requests after a decline, as cheap groundwork for "block". That is
+**not** built, and blocking is deliberately out of scope at this stage. It optimizes for a
+determined pest while breaking the far likelier case — someone declines an unfamiliar
+prompt, and is then permanently unfriendable with no way for either party to see why or
+undo it. **A decline never bars a later request**; `declined` rows are kept as history
+only. See ADR-0005 Open Questions.
 
 **Frontend:** a **Friends** lobby tab (`src/components/lobby/tabs/FriendsTab.vue`,
 registered in `LobbyView.vue`'s role→tab map for all three roles), plus the bootstrap
@@ -411,7 +416,7 @@ a notification and land in the seat.
 | **In-memory presence dies on every API restart** (`launchctl kickstart` is routine here). | Clients reconnect with backoff and re-heartbeat; presence is soft state by nature. Accept, don't persist. |
 | **A leaked class link is auto-seatable** under an auto seat policy — the bot resistance `approval` was meant to provide. | Accepted deliberately (Phase 1): sessions are open only during class, and `wait_to_seat` / park / boot are already built. Targeted fixes if it ever becomes real: rotate the link, or flip the session to `friends`. Never reintroduce a per-arrival click. |
 | **Rotating the social `invite_code` breaks anyone holding it.** | That's the point of rotation; the UI must say so at the moment of rotation ("everyone with the old link will need a new one"). Scope is now bounded — decision §6.1 means class links (`host_code`) are never affected. |
-| **Friend-request spam on a real-name graph.** | Caps, cooldowns, and persisted `declined` rows in Phase 2 — not deferred to a later "block" feature. |
+| **Friend-request spam on a real-name graph.** | Per-user rate limit + outstanding-request ceiling, in from day one. Deliberately *not* handled by suppressing post-decline re-requests — that breaks the accidental-decline case, which is likelier here than a determined pest. |
 | **The bootstrap path is narrow**: you can only friend people who have been at a table with you. A club wanting to seed 40 members has no path. | Acknowledged in ADR-0005 §96 (rosters are the eventual answer). Make sure Phase 2's ACL reads "may this viewer see this person" rather than "are these two friends," so the roster ACL slots in without redesign — this is the ADR's own §79 requirement and it is easy to violate by writing `is_friend()` checks inline. |
 | **Seat reservations are droplet-only state** and vanish on service restart. | ADR-0006 §4 wants reservations to survive *host reloads*, which in-memory state does satisfy. Service restarts already drop live tables; no new class of loss. |
 

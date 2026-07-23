@@ -128,7 +128,10 @@ Accepted costs: the API process becomes stateful for presence (it already is for
 
 ## Open Questions
 
-- Should friend removal also be offered as "block" (removal + refusal of future requests from that account)? Probably yes eventually; not required for v1. **[2026-07-23]** v1 lays the groundwork by *retaining* `declined` request rows rather than deleting them, so a repeat request can be silently swallowed instead of re-notifying someone who already said no. That is most of the value of blocking, at no extra cost.
+- Should friend removal also be offered as "block" (removal + refusal of future requests from that account)? Probably yes eventually; not required for v1.
+  - **[2026-07-23, superseded same day]** An earlier revision proposed getting "most of the value of blocking for free" by retaining `declined` rows and silently swallowing any repeat request from the same sender. **That is now rejected, and blocking is deliberately not implemented at this stage.**
+  - **Why:** it gets the likelier failure mode backwards for this user base. The common case is not a determined pest — it's someone who declines because an unexpected prompt appeared and they had no idea what it referred to. Under silent-swallow they become **permanently unfriendable**, the sender sees "sent" forever, and neither party can see why or undo it. Re-request noise is the lesser harm, and it is already bounded by the per-user rate limit and the outstanding-request ceiling.
+  - **So: a decline never bars a later request.** `declined` rows are still retained, but only as history. If blocking is ever added it should be an explicit, visible action a user chooses — not an invisible side effect of one decline.
 - Exact invitation timeout and whether it is host-configurable. *(Still open; start at 2–3 minutes, not configurable.)*
 - ~~Whether `practicing` is reported automatically or is an explicit user state.~~ **Closed 2026-07-23: automatic** (§6).
 
