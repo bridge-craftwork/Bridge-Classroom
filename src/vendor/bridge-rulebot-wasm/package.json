@@ -1,0 +1,17 @@
+{
+  "name": "bridge-rulebot-wasm",
+  "type": "module",
+  "description": "Browser (wasm) wrapper for the bridge-rulebot cardplay bot",
+  "version": "0.1.0",
+  "license": "Unlicense",
+  "files": [
+    "bridge_rulebot_wasm_bg.wasm",
+    "bridge_rulebot_wasm.js",
+    "bridge_rulebot_wasm.d.ts"
+  ],
+  "main": "bridge_rulebot_wasm.js",
+  "types": "bridge_rulebot_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
