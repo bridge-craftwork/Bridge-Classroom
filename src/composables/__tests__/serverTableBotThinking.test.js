@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useRemoteTable } from '../useRemoteTable.js'
-import { useServerTable } from '../useServerTable.js'
+import { useServerEngine } from '../engines/serverEngine.js'
 
 // Regression (2026-07-14 host-table report): you are declarer in 3NT and dummy
 // (North) is a BOT-occupied seat on lead. The human declarer plays dummy's card —
@@ -34,11 +34,11 @@ const declarerHumanBotDummy = {
   },
 }
 
-describe('useServerTable botThinking (human plays dummy)', () => {
+describe('serverEngine botThinking (human plays dummy)', () => {
   let srv, table
   beforeEach(() => {
     table = useRemoteTable()
-    srv = useServerTable()
+    srv = useServerEngine()
     table._resetTableState()
   })
 
