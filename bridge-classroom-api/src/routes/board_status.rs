@@ -67,12 +67,10 @@ pub struct BoardStatusQuery {
     pub collection_id: Option<String>,
 }
 
-
 /// Parse an ISO8601 timestamp string into a chrono DateTime.
 fn parse_timestamp(ts: &str) -> Option<DateTime<Utc>> {
     ts.parse::<DateTime<Utc>>().ok()
 }
-
 
 // ---- API Handler ----
 
@@ -108,7 +106,10 @@ pub async fn get_board_status(
     // (deal_subfolder, collection_id). Binds are pushed in the same order the
     // placeholders are appended. The (user_id, collection_id, deal_subfolder)
     // prefix of the PK indexes every combination.
-    let mut sql = format!("SELECT {} FROM board_status WHERE user_id = ?", select_columns);
+    let mut sql = format!(
+        "SELECT {} FROM board_status WHERE user_id = ?",
+        select_columns
+    );
     if query.deal_subfolder.is_some() {
         sql.push_str(" AND deal_subfolder = ?");
     }
@@ -246,14 +247,12 @@ pub async fn derive_wilderness(
     let resolved_exercise_id: Option<String> = if let Some(eid) = exercise_id {
         Some(eid.to_string())
     } else if let Some(aid) = assignment_id {
-        sqlx::query_scalar::<_, String>(
-            r#"SELECT exercise_id FROM assignments WHERE id = ?"#,
-        )
-        .bind(aid)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
+        sqlx::query_scalar::<_, String>(r#"SELECT exercise_id FROM assignments WHERE id = ?"#)
+            .bind(aid)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
     } else {
         None
     };
@@ -281,7 +280,11 @@ pub async fn derive_wilderness(
     match row {
         Ok((total, same_lesson)) if total > 0 => {
             let ratio = same_lesson as f64 / total as f64;
-            if ratio < 0.25 { "Wild".to_string() } else { "Tame".to_string() }
+            if ratio < 0.25 {
+                "Wild".to_string()
+            } else {
+                "Tame".to_string()
+            }
         }
         // Empty or missing exercise — default safe, treat as Tame.
         _ => "Tame".to_string(),
@@ -346,9 +349,20 @@ pub async fn recompute_board_history(
 
     if observations.is_empty() {
         upsert_board_status_v2(
-            pool, user_id, collection_id, deal_subfolder, deal_number,
-            "not_attempted", "Tame",
-            None, 0, 0, None, None, None, false,
+            pool,
+            user_id,
+            collection_id,
+            deal_subfolder,
+            deal_number,
+            "not_attempted",
+            "Tame",
+            None,
+            0,
+            0,
+            None,
+            None,
+            None,
+            false,
         )
         .await?;
         return Ok(());
@@ -373,11 +387,16 @@ pub async fn recompute_board_history(
     // transaction. Previously each row was UPDATEd independently against the
     // pool, so an error partway through left observations.status inconsistent
     // with the derived history until the next sync happened to fix it.
-    let mut tx = pool.begin().await.map_err(|e| format!("begin recompute tx failed: {}", e))?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("begin recompute tx failed: {}", e))?;
 
     for (i, obs) in observations.iter().enumerate() {
         let obs_ts = parse_timestamp(&obs.timestamp);
-        let wilderness = obs.wilderness.clone()
+        let wilderness = obs
+            .wilderness
+            .clone()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "Tame".to_string());
         let is_tame = wilderness == "Tame";
@@ -396,13 +415,11 @@ pub async fn recompute_board_history(
                     last_star_update = Some(t);
                     // star_count stays at 0 — track initiated, no star yet.
                 }
-                (Some(lsu), Some(cur)) => {
-                    if (cur - lsu).num_days() >= ACHIEVEMENT_SPACING_DAYS {
-                        star_count += 1;
-                        last_star_update = Some(cur);
-                        if star_count > max_stars {
-                            max_stars = star_count;
-                        }
+                (Some(lsu), Some(cur)) if (cur - lsu).num_days() >= ACHIEVEMENT_SPACING_DAYS => {
+                    star_count += 1;
+                    last_star_update = Some(cur);
+                    if star_count > max_stars {
+                        max_stars = star_count;
                     }
                 }
                 _ => {} // timestamps unparseable; skip
@@ -411,9 +428,7 @@ pub async fn recompute_board_history(
         // close_correct and wild failed/corrected: no star change.
 
         // Wild achievement transitions (§7.2).
-        if obs_status == "clean_correct"
-            && !is_tame
-            && wild_achievement.as_deref() != Some("Fresh")
+        if obs_status == "clean_correct" && !is_tame && wild_achievement.as_deref() != Some("Fresh")
         {
             let cold = is_board_cold(&observations, i, obs_ts);
             if cold {
@@ -424,15 +439,13 @@ pub async fn recompute_board_history(
         }
 
         // Write the per-observation fields.
-        sqlx::query(
-            r#"UPDATE observations SET status = ?, wilderness = ? WHERE id = ?"#,
-        )
-        .bind(obs_status)
-        .bind(&wilderness)
-        .bind(&obs.id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| format!("Observation update failed: {}", e))?;
+        sqlx::query(r#"UPDATE observations SET status = ?, wilderness = ? WHERE id = ?"#)
+            .bind(obs_status)
+            .bind(&wilderness)
+            .bind(&obs.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("Observation update failed: {}", e))?;
 
         final_status = obs_status.to_string();
         final_wilderness = wilderness;
@@ -440,7 +453,9 @@ pub async fn recompute_board_history(
         final_prerelease = obs.prerelease;
     }
 
-    tx.commit().await.map_err(|e| format!("commit recompute tx failed: {}", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| format!("commit recompute tx failed: {}", e))?;
 
     upsert_board_status_v2(
         pool,
@@ -499,7 +514,11 @@ fn derive_obs_status_v2(
                 (Some(led), Some(cur)) => (cur - led).num_seconds() < COOLDOWN_SECS,
                 _ => false,
             };
-            if within_cooldown { "close_correct" } else { "clean_correct" }
+            if within_cooldown {
+                "close_correct"
+            } else {
+                "clean_correct"
+            }
         }
         _ => {
             // Defensive — effective_board_result_v2 normalises null/empty;
@@ -608,6 +627,9 @@ pub async fn recompute_assignment_boards(
     Ok(())
 }
 
+// One parameter per column of the upsert; bundling them into a struct would
+// just move the same list somewhere else.
+#[allow(clippy::too_many_arguments)]
 async fn upsert_assignment_board_status(
     pool: &Pool<Sqlite>,
     user_id: &str,

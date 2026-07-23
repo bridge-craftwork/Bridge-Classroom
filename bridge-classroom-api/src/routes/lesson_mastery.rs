@@ -9,7 +9,7 @@
 //!   - "Learning"  — ≥50% of the lesson's boards have max_stars ≥ 1
 //!   - "Retaining" — ≥80% of the lesson's boards have max_stars ≥ 2
 //!   - "Mastering" — ≥80% have (max_stars ≥ 2 OR wild_achievement='Fresh')
-//!                   AND ≥25% have wild_achievement='Fresh'
+//!     AND ≥25% have wild_achievement='Fresh'
 //!
 //! A lesson can only be in one tier; we return the highest the user
 //! qualifies for. Lessons the user has never touched are omitted.

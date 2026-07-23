@@ -32,6 +32,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
+use subtle::ConstantTimeEq;
 
 use crate::routes::recovery::decrypt_for_recovery;
 use crate::AppState;
@@ -54,7 +55,8 @@ fn cookie_name(secure: bool) -> &'static str {
 fn generate_session_token() -> String {
     let rng = SystemRandom::new();
     let mut bytes = [0u8; 32];
-    rng.fill(&mut bytes).expect("Failed to generate session token");
+    rng.fill(&mut bytes)
+        .expect("Failed to generate session token");
     BASE64
         .encode(bytes)
         .replace('+', "-")
@@ -213,12 +215,14 @@ pub async fn join_or_create_session(
             .bind(&now)
             .execute(&state.db)
             .await;
-            let _ = sqlx::query("UPDATE session_users SET last_active = ? WHERE session_id = ? AND user_id = ?")
-                .bind(&now)
-                .bind(&session_id)
-                .bind(user_id)
-                .execute(&state.db)
-                .await;
+            let _ = sqlx::query(
+                "UPDATE session_users SET last_active = ? WHERE session_id = ? AND user_id = ?",
+            )
+            .bind(&now)
+            .bind(&session_id)
+            .bind(user_id)
+            .execute(&state.db)
+            .await;
             let _ = sqlx::query("UPDATE sessions SET active_user_id = ? WHERE id = ?")
                 .bind(user_id)
                 .bind(&session_id)
@@ -313,9 +317,10 @@ pub async fn require_session(
 ) -> Result<String, (StatusCode, String)> {
     let token = parse_session_cookie(headers, state.config.cookie_secure)
         .ok_or((StatusCode::UNAUTHORIZED, "No session".to_string()))?;
-    active_session_id(&state.db, &token)
-        .await
-        .ok_or((StatusCode::UNAUTHORIZED, "Invalid or expired session".to_string()))
+    active_session_id(&state.db, &token).await.ok_or((
+        StatusCode::UNAUTHORIZED,
+        "Invalid or expired session".to_string(),
+    ))
 }
 
 /// Is `user_id` on this device session's roster? The authorization predicate behind
@@ -460,9 +465,12 @@ pub async fn attach_session(
 // Safe by construction — a caller who can open the challenge already holds the key
 // (already fully authorized), so this only persists proven access.
 
-/// In-flight challenges: `challenge_id` -> (user_id, nonce_b64, issued). Single-use
-/// and short-lived; in-memory (a lost one just forces a client retry).
-static ATTACH_CHALLENGES: LazyLock<Mutex<HashMap<String, (String, String, Instant)>>> =
+/// `(user_id, nonce_b64, issued_at)` for one in-flight challenge.
+type AttachChallenge = (String, String, Instant);
+
+/// In-flight challenges keyed by `challenge_id`. Single-use and short-lived;
+/// in-memory (a lost one just forces a client retry).
+static ATTACH_CHALLENGES: LazyLock<Mutex<HashMap<String, AttachChallenge>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 const ATTACH_CHALLENGE_TTL_SECS: u64 = 120;
 
@@ -473,7 +481,9 @@ const ATTACH_CHALLENGE_MAX: u32 = 8;
 const ATTACH_CHALLENGE_WINDOW_SECS: u64 = 60;
 
 fn allow_attach_challenge(user_id: &str) -> bool {
-    let mut m = ATTACH_CHALLENGE_LIMITER.lock().unwrap_or_else(|e| e.into_inner());
+    let mut m = ATTACH_CHALLENGE_LIMITER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     m.retain(|_, (start, _)| now.duration_since(*start).as_secs() < ATTACH_CHALLENGE_WINDOW_SECS);
     let entry = m.entry(user_id.to_string()).or_insert((now, 0));
@@ -494,12 +504,20 @@ fn random_b64(n: usize) -> String {
 /// (12-byte IV, 16-byte tag appended to the ciphertext, no AAD), so the browser's
 /// `decryptObservation(encrypted_data, iv, secretKey)` opens it. Returns
 /// `(encrypted_data_b64, iv_b64)`.
-fn encrypt_for_user_key(secret_key_b64: &str, plaintext: &[u8]) -> Result<(String, String), String> {
-    let key_bytes = BASE64.decode(secret_key_b64).map_err(|_| "bad secret key".to_string())?;
-    let unbound = UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| "bad key length".to_string())?;
+fn encrypt_for_user_key(
+    secret_key_b64: &str,
+    plaintext: &[u8],
+) -> Result<(String, String), String> {
+    let key_bytes = BASE64
+        .decode(secret_key_b64)
+        .map_err(|_| "bad secret key".to_string())?;
+    let unbound =
+        UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| "bad key length".to_string())?;
     let key = LessSafeKey::new(unbound);
     let mut iv = [0u8; NONCE_LEN];
-    SystemRandom::new().fill(&mut iv).map_err(|_| "rng failed".to_string())?;
+    SystemRandom::new()
+        .fill(&mut iv)
+        .map_err(|_| "rng failed".to_string())?;
     let nonce = Nonce::assume_unique_for_key(iv);
     let mut in_out = plaintext.to_vec();
     key.seal_in_place_append_tag(nonce, aead::Aad::empty(), &mut in_out)
@@ -537,7 +555,10 @@ pub async fn attach_challenge(
         return Err((StatusCode::BAD_REQUEST, "user_id is required".to_string()));
     }
     if !allow_attach_challenge(user_id) {
-        return Err((StatusCode::TOO_MANY_REQUESTS, "too many challenge requests".to_string()));
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many challenge requests".to_string(),
+        ));
     }
 
     let recovery_secret = state.config.recovery_secret.as_ref().ok_or((
@@ -558,8 +579,12 @@ pub async fn attach_challenge(
 
     // Decrypt the user's key transiently (never stored/returned), same capability
     // recovery + /session/key already use, to build a key-bound challenge.
-    let secret_key = decrypt_for_recovery(&escrow, recovery_secret)
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "escrow decrypt failed".to_string()))?;
+    let secret_key = decrypt_for_recovery(&escrow, recovery_secret).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "escrow decrypt failed".to_string(),
+        )
+    })?;
 
     // The client opens this with `decryptObservation`, which JSON.parses — so the
     // plaintext must be valid JSON. Encode the nonce as a JSON string.
@@ -598,14 +623,21 @@ pub async fn attach_claim(
         store.retain(|_, (_, _, t)| now.duration_since(*t).as_secs() < ATTACH_CHALLENGE_TTL_SECS);
         store.remove(&req.challenge_id) // single-use, consume on claim
     };
-    let (user_id, expected_nonce, _) = entry
-        .ok_or((StatusCode::UNAUTHORIZED, "invalid or expired challenge".to_string()))?;
+    let (user_id, expected_nonce, _) = entry.ok_or((
+        StatusCode::UNAUTHORIZED,
+        "invalid or expired challenge".to_string(),
+    ))?;
 
-    // Constant-time compare (unequal length => Err => reject).
-    if ring::constant_time::verify_slices_are_equal(req.nonce.as_bytes(), expected_nonce.as_bytes())
-        .is_err()
-    {
-        return Err((StatusCode::UNAUTHORIZED, "challenge response mismatch".to_string()));
+    // Constant-time compare. `ct_eq` is only constant-time across equal-length
+    // inputs, so the length check is a separate (deliberately non-secret)
+    // comparison — the nonce length is fixed and public, unlike its contents.
+    let presented = req.nonce.as_bytes();
+    let expected = expected_nonce.as_bytes();
+    if presented.len() != expected.len() || presented.ct_eq(expected).unwrap_u8() != 1 {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "challenge response mismatch".to_string(),
+        ));
     }
 
     let cookie = mint_cookie_header(&state, &headers, &user_id).await;
@@ -648,7 +680,10 @@ fn unauthenticated() -> SessionResponse {
 }
 
 /// GET /api/session — restore the device roster + resume-as hint from the cookie.
-pub async fn get_session(State(state): State<AppState>, headers: HeaderMap) -> Json<SessionResponse> {
+pub async fn get_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Json<SessionResponse> {
     let session_id = match require_session(&state, &headers).await {
         Ok(sid) => sid,
         Err(_) => return Json(unauthenticated()),
@@ -657,13 +692,22 @@ pub async fn get_session(State(state): State<AppState>, headers: HeaderMap) -> J
     let member_ids = session_member_ids(&state.db, &session_id).await;
     let mut roster = Vec::new();
     for uid in &member_ids {
-        if let Ok(Some((id, first_name, last_name, email, classroom, role))) =
-            sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, String)>(
-                "SELECT id, first_name, last_name, email, classroom, role FROM users WHERE id = ?",
-            )
-            .bind(uid)
-            .fetch_optional(&state.db)
-            .await
+        if let Ok(Some((id, first_name, last_name, email, classroom, role))) = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                String,
+            ),
+        >(
+            "SELECT id, first_name, last_name, email, classroom, role FROM users WHERE id = ?",
+        )
+        .bind(uid)
+        .fetch_optional(&state.db)
+        .await
         {
             roster.push(RosterMember {
                 user_id: id,
@@ -725,7 +769,8 @@ fn allow_key_redelivery(user_id: &str) -> bool {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
-    limiter.retain(|_, (start, _)| now.duration_since(*start).as_secs() < KEY_REDELIVERY_WINDOW_SECS);
+    limiter
+        .retain(|_, (start, _)| now.duration_since(*start).as_secs() < KEY_REDELIVERY_WINDOW_SECS);
     let entry = limiter.entry(user_id.to_string()).or_insert((now, 0));
     if now.duration_since(entry.0).as_secs() >= KEY_REDELIVERY_WINDOW_SECS {
         *entry = (now, 0);
@@ -766,9 +811,10 @@ pub async fn get_session_key(
 ) -> Result<Json<SessionKeyResponse>, (StatusCode, String)> {
     let token = parse_session_cookie(&headers, state.config.cookie_secure)
         .ok_or((StatusCode::UNAUTHORIZED, "No session".to_string()))?;
-    let session_id = active_session_id(&state.db, &token)
-        .await
-        .ok_or((StatusCode::UNAUTHORIZED, "Invalid or expired session".to_string()))?;
+    let session_id = active_session_id(&state.db, &token).await.ok_or((
+        StatusCode::UNAUTHORIZED,
+        "Invalid or expired session".to_string(),
+    ))?;
 
     let recovery_secret = state.config.recovery_secret.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -800,8 +846,12 @@ pub async fn get_session_key(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        let Some((encrypted_key, role, email)) = row else { continue };
-        let Some(encrypted_key) = encrypted_key else { continue };
+        let Some((encrypted_key, role, email)) = row else {
+            continue;
+        };
+        let Some(encrypted_key) = encrypted_key else {
+            continue;
+        };
         let Ok(secret_key) = decrypt_for_recovery(&encrypted_key, recovery_secret) else {
             tracing::error!("Key redelivery: failed to unwrap AES key for {}", uid);
             continue;

@@ -4,11 +4,11 @@ use axum::{
     Json,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use ring::aead::{self, LessSafeKey, UnboundKey, AES_256_GCM, Nonce, NONCE_LEN};
+use ring::aead::{self, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN};
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
 use super::recovery::decrypt_for_recovery;
+use crate::AppState;
 
 /// Validate API key from request headers
 fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
@@ -28,6 +28,9 @@ fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
 
 #[derive(Debug, Deserialize)]
 pub struct AdminQuery {
+    // Accepted (and logged by callers) but not read here: these endpoints
+    // authorize on the x-admin-secret header, never on a client-supplied id.
+    #[allow(dead_code)]
     pub admin_id: Option<String>,
 }
 
@@ -150,7 +153,10 @@ pub async fn admin_stats(
     let local_now = chrono::Local::now();
     let local_offset = *local_now.offset();
     let local_midnight = local_now.date_naive().and_hms_opt(0, 0, 0).unwrap();
-    let local_midnight_utc = local_midnight.and_local_timezone(local_offset).unwrap().with_timezone(&chrono::Utc);
+    let local_midnight_utc = local_midnight
+        .and_local_timezone(local_offset)
+        .unwrap()
+        .with_timezone(&chrono::Utc);
     let today_start = local_midnight_utc.to_rfc3339();
 
     // Fetch all stats in parallel
@@ -208,12 +214,13 @@ pub async fn admin_stats(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let obs_count_7d: CountRow =
-        sqlx::query_as("SELECT COUNT(*) as count FROM observations WHERE timestamp >= ? AND prerelease = 0")
-            .bind(&seven_days_ago)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let obs_count_7d: CountRow = sqlx::query_as(
+        "SELECT COUNT(*) as count FROM observations WHERE timestamp >= ? AND prerelease = 0",
+    )
+    .bind(&seven_days_ago)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let active_today: CountRow = sqlx::query_as(
         "SELECT COUNT(DISTINCT user_id) as count FROM observations WHERE timestamp >= ? AND prerelease = 0",
@@ -223,10 +230,11 @@ pub async fn admin_stats(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let total_obs: CountRow = sqlx::query_as("SELECT COUNT(*) as count FROM observations WHERE prerelease = 0")
-        .fetch_one(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let total_obs: CountRow =
+        sqlx::query_as("SELECT COUNT(*) as count FROM observations WHERE prerelease = 0")
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let total_classrooms: CountRow = sqlx::query_as("SELECT COUNT(*) as count FROM classrooms")
         .fetch_one(&state.db)
@@ -348,10 +356,7 @@ pub async fn admin_health(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Database writable check
-    let database_writable = sqlx::query("SELECT 1")
-        .execute(&state.db)
-        .await
-        .is_ok();
+    let database_writable = sqlx::query("SELECT 1").execute(&state.db).await.is_ok();
 
     Ok(Json(AdminHealthResponse {
         success: true,
@@ -414,12 +419,14 @@ fn decrypt_observation_data(
         .map_err(|e| format!("Bad ciphertext base64: {}", e))?;
 
     if iv_bytes.len() != NONCE_LEN {
-        return Err(format!("IV length {} != expected {}", iv_bytes.len(), NONCE_LEN));
+        return Err(format!(
+            "IV length {} != expected {}",
+            iv_bytes.len(),
+            NONCE_LEN
+        ));
     }
 
-    let nonce_array: [u8; NONCE_LEN] = iv_bytes
-        .try_into()
-        .map_err(|_| "Invalid nonce length")?;
+    let nonce_array: [u8; NONCE_LEN] = iv_bytes.try_into().map_err(|_| "Invalid nonce length")?;
     let nonce = Nonce::assume_unique_for_key(nonce_array);
 
     let unbound_key = UnboundKey::new(&AES_256_GCM, &key_bytes)
@@ -442,7 +449,8 @@ pub async fn admin_decrypt_observations(
     uri: axum::http::Uri,
     headers: HeaderMap,
 ) -> Result<Json<DecryptObservationsResponse>, (StatusCode, String)> {
-    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), b"").await?;
+    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), b"")
+        .await?;
     let (users_processed, observations_decrypted, users_skipped, errors) =
         populate_observations_decrypted(&state).await?;
     Ok(Json(DecryptObservationsResponse {
@@ -460,17 +468,21 @@ pub async fn admin_decrypt_observations(
 async fn populate_observations_decrypted(
     state: &AppState,
 ) -> Result<(usize, usize, usize, usize), (StatusCode, String)> {
-    let recovery_secret = state
-        .config
-        .recovery_secret
-        .as_ref()
-        .ok_or((StatusCode::BAD_REQUEST, "RECOVERY_SECRET not configured".to_string()))?;
+    let recovery_secret = state.config.recovery_secret.as_ref().ok_or((
+        StatusCode::BAD_REQUEST,
+        "RECOVERY_SECRET not configured".to_string(),
+    ))?;
 
     // Create (or recreate) the observations_decrypted table
     sqlx::query("DROP TABLE IF EXISTS observations_decrypted")
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Drop table failed: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Drop table failed: {}", e),
+            )
+        })?;
 
     sqlx::query(
         r#"
@@ -501,15 +513,19 @@ async fn populate_observations_decrypted(
     )
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Create table failed: {}", e)))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Create table failed: {}", e),
+        )
+    })?;
 
     // Fetch all users with recovery keys
-    let users: Vec<UserRecoveryRow> = sqlx::query_as(
-        "SELECT id, recovery_encrypted_key FROM users",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let users: Vec<UserRecoveryRow> =
+        sqlx::query_as("SELECT id, recovery_encrypted_key FROM users")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let mut users_processed = 0usize;
     let mut users_skipped = 0usize;
@@ -557,7 +573,11 @@ async fn populate_observations_decrypted(
                     let json: serde_json::Value = match serde_json::from_str(&json_str) {
                         Ok(v) => v,
                         Err(e) => {
-                            tracing::warn!("Failed to parse decrypted JSON for obs {}: {}", obs.id, e);
+                            tracing::warn!(
+                                "Failed to parse decrypted JSON for obs {}: {}",
+                                obs.id,
+                                e
+                            );
                             total_errors += 1;
                             continue;
                         }
@@ -570,7 +590,10 @@ async fn populate_observations_decrypted(
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0) as i32;
 
-                    let session_id = json.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let session_id = json
+                        .get("session_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
 
                     let student_bid = json
                         .get("result")
@@ -608,12 +631,15 @@ async fn populate_observations_decrypted(
                         Some(serde_json::Value::Object(obj)) => {
                             // Object format: {"spades":["Q","T"],"hearts":["7"],...}
                             let mut parts = Vec::new();
-                            for (suit, symbol) in [("spades", "S"), ("hearts", "H"), ("diamonds", "D"), ("clubs", "C")] {
+                            for (suit, symbol) in [
+                                ("spades", "S"),
+                                ("hearts", "H"),
+                                ("diamonds", "D"),
+                                ("clubs", "C"),
+                            ] {
                                 if let Some(cards) = obj.get(suit).and_then(|v| v.as_array()) {
-                                    let card_str: Vec<&str> = cards
-                                        .iter()
-                                        .filter_map(|c| c.as_str())
-                                        .collect();
+                                    let card_str: Vec<&str> =
+                                        cards.iter().filter_map(|c| c.as_str()).collect();
                                     if !card_str.is_empty() {
                                         parts.push(format!("{}{}", symbol, card_str.join("")));
                                     }
@@ -653,9 +679,8 @@ async fn populate_observations_decrypted(
                     let prompt_count = prompts.map(|a| a.len()).unwrap_or(0) as i32;
                     let had_wrong_prompt = prompts
                         .map(|arr| {
-                            arr.iter().any(|p| {
-                                p.get("correct").and_then(|v| v.as_bool()) == Some(false)
-                            })
+                            arr.iter()
+                                .any(|p| p.get("correct").and_then(|v| v.as_bool()) == Some(false))
                         })
                         .unwrap_or(false);
 
@@ -694,7 +719,7 @@ async fn populate_observations_decrypted(
                     .bind(&obs.user_id)
                     .bind(&obs.timestamp)
                     .bind(&obs.deal_subfolder)
-                    .bind(&obs.deal_number)
+                    .bind(obs.deal_number)
                     .bind(prompt_index)
                     .bind(obs.correct)
                     .bind(&obs.board_result)
@@ -735,7 +760,12 @@ async fn populate_observations_decrypted(
         users_processed, total_decrypted, users_skipped, total_errors
     );
 
-    Ok((users_processed, total_decrypted, users_skipped, total_errors))
+    Ok((
+        users_processed,
+        total_decrypted,
+        users_skipped,
+        total_errors,
+    ))
 }
 
 // ---- Active-time backfill (one-shot) ----
@@ -793,24 +823,28 @@ pub async fn admin_backfill_active_time(
     uri: axum::http::Uri,
     headers: HeaderMap,
 ) -> Result<Json<BackfillActiveTimeResponse>, (StatusCode, String)> {
-    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), b"").await?;
+    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), b"")
+        .await?;
 
     // 1. Decrypt every observation into observations_decrypted (DROP+CREATE+fill).
     populate_observations_decrypted(&state).await?;
 
     // 2. Recompute time_taken_ms per observation from the decrypted per-prompt
     //    times and rewrite the clear-text column.
-    let decrypted: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT observation_id, decrypted_json FROM observations_decrypted",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let decrypted: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT observation_id, decrypted_json FROM observations_decrypted")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let mut observations_updated = 0usize;
     for (obs_id, json) in &decrypted {
-        let Some(json) = json.as_deref() else { continue };
-        let Some(ms) = active_ms_from_decrypted(json) else { continue };
+        let Some(json) = json.as_deref() else {
+            continue;
+        };
+        let Some(ms) = active_ms_from_decrypted(json) else {
+            continue;
+        };
         if sqlx::query("UPDATE observations SET time_taken_ms = ? WHERE id = ?")
             .bind(ms)
             .bind(obs_id)
@@ -834,9 +868,13 @@ pub async fn admin_backfill_active_time(
 
     let mut pairs_recomputed = 0usize;
     for (user_id, assignment_id) in &pairs {
-        if crate::routes::board_status::recompute_assignment_boards(&state.db, user_id, assignment_id)
-            .await
-            .is_ok()
+        if crate::routes::board_status::recompute_assignment_boards(
+            &state.db,
+            user_id,
+            assignment_id,
+        )
+        .await
+        .is_ok()
         {
             pairs_recomputed += 1;
         }
@@ -846,11 +884,17 @@ pub async fn admin_backfill_active_time(
     sqlx::query("DROP TABLE IF EXISTS observations_decrypted")
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Drop table failed: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Drop table failed: {}", e),
+            )
+        })?;
 
     tracing::info!(
         "backfill-active-time: {} observations updated, {} pairs recomputed",
-        observations_updated, pairs_recomputed
+        observations_updated,
+        pairs_recomputed
     );
 
     Ok(Json(BackfillActiveTimeResponse {
@@ -862,9 +906,7 @@ pub async fn admin_backfill_active_time(
 
 /// Get disk usage using df command (macOS/Linux compatible)
 fn get_disk_usage() -> (f64, f64) {
-    let output = std::process::Command::new("df")
-        .args(["-g", "/"])
-        .output();
+    let output = std::process::Command::new("df").args(["-g", "/"]).output();
 
     match output {
         Ok(out) => {
@@ -884,4 +926,3 @@ fn get_disk_usage() -> (f64, f64) {
         Err(_) => (0.0, 0.0),
     }
 }
-

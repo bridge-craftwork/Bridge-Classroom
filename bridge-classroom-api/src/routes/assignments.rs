@@ -31,6 +31,8 @@ struct AssignmentRow {
     assigned_at: String,
     due_at: Option<String>,
     closed_at: Option<String>,
+    // Selected so the row mirrors the table, but not surfaced in any response yet.
+    #[allow(dead_code)]
     sort_order: Option<i32>,
     exercise_name: String,
     classroom_name: Option<String>,
@@ -73,12 +75,11 @@ pub async fn create_assignment(
     }
 
     // Verify teacher role
-    let role: Option<String> =
-        sqlx::query_scalar("SELECT role FROM users WHERE id = ?")
-            .bind(&req.assigned_by)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let role: Option<String> = sqlx::query_scalar("SELECT role FROM users WHERE id = ?")
+        .bind(&req.assigned_by)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     match role.as_deref() {
         Some("teacher") | Some("admin") => {}
@@ -101,8 +102,8 @@ pub async fn create_assignment(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let exercise_name = exercise_name
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Exercise not found".to_string()))?;
+    let exercise_name =
+        exercise_name.ok_or_else(|| (StatusCode::NOT_FOUND, "Exercise not found".to_string()))?;
 
     // Get board count for the exercise
     let board_count: i64 =
@@ -155,13 +156,12 @@ pub async fn create_assignment(
     // show it immediately.
     let mut student_name: Option<String> = None;
     if let Some(sid) = req.student_id.as_deref() {
-        let row: Option<(String, String)> = sqlx::query_as(
-            "SELECT first_name, last_name FROM users WHERE id = ?",
-        )
-        .bind(sid)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT first_name, last_name FROM users WHERE id = ?")
+                .bind(sid)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if let Some((f, l)) = row {
             student_name = Some(format!("{} {}", f, l).trim().to_string());
         }
@@ -269,12 +269,15 @@ async fn list_student_assignments(
 
     let mut assignments = Vec::new();
     for row in rows {
-        let progress = compute_student_progress(state, &row.id, &row.exercise_id, student_id).await?;
+        let progress =
+            compute_student_progress(state, &row.id, &row.exercise_id, student_id).await?;
         let stats = compute_assignment_stats(
-            state, &row.id,
+            state,
+            &row.id,
             row.classroom_id.as_deref(),
             row.student_id.as_deref(),
-        ).await?;
+        )
+        .await?;
         assignments.push(AssignmentInfo {
             id: row.id,
             exercise_name: row.exercise_name,
@@ -339,10 +342,12 @@ async fn list_teacher_assignments(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let stats = compute_assignment_stats(
-            state, &row.id,
+            state,
+            &row.id,
             row.classroom_id.as_deref(),
             row.student_id.as_deref(),
-        ).await?;
+        )
+        .await?;
 
         assignments.push(AssignmentInfo {
             id: row.id,
@@ -407,10 +412,12 @@ async fn list_classroom_assignments(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let stats = compute_assignment_stats(
-            state, &row.id,
+            state,
+            &row.id,
             row.classroom_id.as_deref(),
             row.student_id.as_deref(),
-        ).await?;
+        )
+        .await?;
 
         assignments.push(AssignmentInfo {
             id: row.id,
@@ -455,6 +462,9 @@ struct LatestObsRow {
     status: Option<String>,
 }
 
+// Superseded: the duration rollup now reads into a tuple via query_as. Kept as
+// the named shape of that query's result; delete if it stays unused.
+#[allow(dead_code)]
 #[derive(sqlx::FromRow)]
 struct UserDurationRow {
     user_id: String,
@@ -475,13 +485,12 @@ async fn compute_assignment_stats(
 
     // Student name (only meaningful for individual assignments)
     if let Some(sid) = student_id {
-        let name: Option<(String, String)> = sqlx::query_as(
-            "SELECT first_name, last_name FROM users WHERE id = ?",
-        )
-        .bind(sid)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let name: Option<(String, String)> =
+            sqlx::query_as("SELECT first_name, last_name FROM users WHERE id = ?")
+                .bind(sid)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if let Some((f, l)) = name {
             stats.student_name = Some(format!("{} {}", f, l).trim().to_string());
         }
@@ -526,9 +535,12 @@ async fn compute_assignment_stats(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let mut per_user_attempts: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+    let mut per_user_attempts: std::collections::HashMap<String, (i64, i64)> =
+        std::collections::HashMap::new();
     for row in &latest_rows {
-        let entry = per_user_attempts.entry(row.user_id.clone()).or_insert((0, 0));
+        let entry = per_user_attempts
+            .entry(row.user_id.clone())
+            .or_insert((0, 0));
         entry.0 += 1; // attempted
         if row.status.as_deref() == Some("clean_correct") {
             entry.1 += 1;
@@ -541,7 +553,9 @@ async fn compute_assignment_stats(
         .filter(|(att, _)| *att > 0)
         .map(|(att, clean)| (*clean as f64) / (*att as f64))
         .collect();
-    stats.clean_rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    stats
+        .clean_rates
+        .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Active duration per student for the box-plot chips: the idle-capped total
     // time across all attempts, read from the assignment_board_status rollup
@@ -642,22 +656,33 @@ async fn compute_student_progress(
 
     if let Some((total, attempted, correct, first_pass_ms, total_active_ms)) = row {
         if total > 0 {
-            return Ok(StudentProgress { total, attempted, correct, first_pass_ms, total_active_ms });
+            return Ok(StudentProgress {
+                total,
+                attempted,
+                correct,
+                first_pass_ms,
+                total_active_ms,
+            });
         }
     }
 
     // Rollup not yet populated for this assignment (e.g. brand-new assignment
     // with no observations). Fall back to the exercise board count so the
     // "X of N" denominator is always the assignment size.
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM exercise_boards WHERE exercise_id = ?",
-    )
-    .bind(exercise_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM exercise_boards WHERE exercise_id = ?")
+            .bind(exercise_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(StudentProgress { total, attempted: 0, correct: 0, first_pass_ms: 0, total_active_ms: 0 })
+    Ok(StudentProgress {
+        total,
+        attempted: 0,
+        correct: 0,
+        first_pass_ms: 0,
+        total_active_ms: 0,
+    })
 }
 
 /// GET /api/assignments/:id — Get assignment detail with per-student progress
@@ -720,13 +745,9 @@ pub async fn get_assignment(
         for member in members {
             // Progress + both idle-capped durations come from the rollup in a
             // single read — no per-student observation scan.
-            let progress = compute_student_progress(
-                &state,
-                &row.id,
-                &row.exercise_id,
-                &member.student_id,
-            )
-            .await?;
+            let progress =
+                compute_student_progress(&state, &row.id, &row.exercise_id, &member.student_id)
+                    .await?;
 
             student_progress.push(StudentAssignmentProgress {
                 student_id: member.student_id,
@@ -750,8 +771,7 @@ pub async fn get_assignment(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         if let Some(s) = student {
-            let progress =
-                compute_student_progress(&state, &row.id, &row.exercise_id, sid).await?;
+            let progress = compute_student_progress(&state, &row.id, &row.exercise_id, sid).await?;
             student_progress.push(StudentAssignmentProgress {
                 student_id: s.student_id,
                 first_name: s.first_name,
