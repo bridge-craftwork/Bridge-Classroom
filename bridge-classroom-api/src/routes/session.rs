@@ -318,6 +318,79 @@ pub async fn require_session(
         .ok_or((StatusCode::UNAUTHORIZED, "Invalid or expired session".to_string()))
 }
 
+/// Is `user_id` on this device session's roster? The authorization predicate behind
+/// [`require_roster_member`], split out so it is testable without an `AppState`.
+///
+/// A DB error is propagated rather than folded into `false` — the caller turns it
+/// into a 500. Collapsing it to `false` would be a 403, which reads to the client
+/// as a settled authorization answer when in fact nothing was decided.
+pub async fn is_roster_member(
+    db: &SqlitePool,
+    session_id: &str,
+    user_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let hit = sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM session_users WHERE session_id = ? AND user_id = ?",
+    )
+    .bind(session_id)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(hit.is_some())
+}
+
+/// Authorize `acting_user_id` as a **proven** identity on this request: the cookie
+/// must name an active device session, and `acting_user_id` must be on that
+/// session's roster (`session_users`).
+///
+/// This is the ordinary-user counterpart to [`require_session`] and the primitive
+/// every user-scoped route should authorize with (ADR-0004 §S7). Two rules it
+/// exists to enforce, both easy to get wrong by hand:
+///
+/// 1. **The client-supplied id is checked, never trusted.** Routes today take a
+///    `user_id`/`teacher_id`/`owner_user_id` from the body or query and act on it
+///    unverified — the structural root of the review's IDOR family. Passing that
+///    same field through here converts it from a claim into a proven identity.
+/// 2. **Authorization keys off roster membership, never `active_user_id`.** The
+///    cookie is a *device* session with several members (ADR-0004 §3a); the active
+///    user is a resume bookmark. A device may legitimately act as any member, so
+///    membership is the authorization set — deliberately, per the ADR's security
+///    statement (shared-device households, classroom iPads).
+///
+/// Returns the device-session id on success (callers that need it for audit), 401
+/// if there's no valid session, 403 if the session is valid but the acting user is
+/// not one of its members.
+// Landed ahead of its callers: the friendship/table-identity routes (plan Phases
+// 1-2) and the §S7 retrofit of existing id-keyed routes all authorize through this.
+#[allow(dead_code)]
+pub async fn require_roster_member(
+    state: &AppState,
+    headers: &HeaderMap,
+    acting_user_id: &str,
+) -> Result<String, (StatusCode, String)> {
+    let session_id = require_session(state, headers).await?;
+    let is_member = is_roster_member(&state.db, &session_id, acting_user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("roster membership check failed: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "membership check failed".to_string(),
+            )
+        })?;
+
+    if !is_member {
+        // Deliberately vague to the caller: a valid session probing for which
+        // ids exist learns only "not you".
+        tracing::warn!("session {session_id} tried to act as non-member {acting_user_id}");
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Not authorized for this user".to_string(),
+        ));
+    }
+    Ok(session_id)
+}
+
 /// Admit `user_id` to the device session on a proven-identity flow (recovery /
 /// registration) and return a `Set-Cookie` header — but only when a NEW device
 /// session was created. Joining an existing device roster reuses its cookie (empty
@@ -866,5 +939,77 @@ mod tests {
         assert_eq!(parse_session_cookie(&h, true).as_deref(), Some("xyz"));
         // Wrong name for the secure flag → not found.
         assert_eq!(parse_session_cookie(&h, false), None);
+    }
+
+    // ---- Roster membership (the authorization predicate) ----
+
+    /// In-memory DB with just the roster table. Deliberately minimal: this
+    /// exercises the authorization query, not the migration.
+    async fn roster_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            r#"CREATE TABLE session_users (
+                   session_id  TEXT NOT NULL,
+                   user_id     TEXT NOT NULL,
+                   added_at    TEXT NOT NULL,
+                   last_active TEXT NOT NULL,
+                   PRIMARY KEY (session_id, user_id)
+               )"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    async fn add_member(pool: &SqlitePool, session_id: &str, user_id: &str) {
+        sqlx::query("INSERT INTO session_users VALUES (?, ?, 'now', 'now')")
+            .bind(session_id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn roster_member_is_authorized() {
+        let pool = roster_db().await;
+        add_member(&pool, "sess-1", "user-a").await;
+        assert!(is_roster_member(&pool, "sess-1", "user-a").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn every_roster_member_is_authorized_not_just_the_active_one() {
+        // ADR-0004 §3a: a device session has several members and may act as any
+        // of them. Authorization must NOT narrow to `active_user_id`.
+        let pool = roster_db().await;
+        add_member(&pool, "sess-1", "user-a").await;
+        add_member(&pool, "sess-1", "user-b").await;
+        assert!(is_roster_member(&pool, "sess-1", "user-a").await.unwrap());
+        assert!(is_roster_member(&pool, "sess-1", "user-b").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn non_member_is_rejected() {
+        let pool = roster_db().await;
+        add_member(&pool, "sess-1", "user-a").await;
+        assert!(!is_roster_member(&pool, "sess-1", "stranger").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn membership_does_not_leak_across_sessions() {
+        // The IDOR case this helper exists to prevent: holding a valid cookie
+        // for one device must not authorize acting as a user on another.
+        let pool = roster_db().await;
+        add_member(&pool, "sess-1", "user-a").await;
+        add_member(&pool, "sess-2", "user-b").await;
+        assert!(!is_roster_member(&pool, "sess-1", "user-b").await.unwrap());
+        assert!(!is_roster_member(&pool, "sess-2", "user-a").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn empty_roster_authorizes_nobody() {
+        let pool = roster_db().await;
+        assert!(!is_roster_member(&pool, "sess-1", "user-a").await.unwrap());
     }
 }
