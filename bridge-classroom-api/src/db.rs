@@ -1173,10 +1173,11 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // materializing those on enrollment is Phase 5, and a pending row nothing can
     // resolve would just be a dead row.
     //
-    // `declined` rows are RETAINED rather than deleted: that's what lets a repeat
-    // request be silently swallowed instead of re-notifying someone who already
-    // said no, and it's the groundwork for the "block" question ADR-0005 leaves
-    // open.
+    // `declined` rows are RETAINED rather than deleted, but purely as history —
+    // they do NOT bar a later request from the same sender. Treating one decline
+    // as permanent gets the likely failure mode backwards here: someone declines
+    // an unfamiliar prompt and is then unfriendable forever with no way to undo
+    // it. Blocking is deliberately not implemented at this stage.
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS friend_requests (
