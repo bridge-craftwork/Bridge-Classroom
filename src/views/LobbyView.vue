@@ -26,6 +26,7 @@
     <AssignmentsTab v-else-if="activeTab === 'assignments'" />
     <TeacherExercisesTab v-else-if="activeTab === 'exercises'" />
     <DealLibraryManagerTab v-else-if="activeTab === 'dealLibrary'" />
+    <FriendsTab v-else-if="activeTab === 'friends'" />
     <ConventionCardView v-else-if="activeTab === 'conventionCard'" embedded />
     <AdminLobby v-else-if="activeTab === 'admin'" />
   </div>
@@ -40,6 +41,7 @@ import StudentsTab from '../components/lobby/tabs/StudentsTab.vue'
 import AssignmentsTab from '../components/lobby/tabs/AssignmentsTab.vue'
 import TeacherExercisesTab from '../components/lobby/tabs/TeacherExercisesTab.vue'
 import DealLibraryManagerTab from '../components/lobby/tabs/DealLibraryManagerTab.vue'
+import FriendsTab from '../components/lobby/tabs/FriendsTab.vue'
 import TeacherLobby from '../components/lobby/TeacherLobby.vue'
 import AdminLobby from '../components/lobby/AdminLobby.vue'
 import ConventionCardView from './ConventionCardView.vue'
@@ -59,14 +61,17 @@ const userStore = useUserStore()
 const userRole = computed(() => userStore.currentUser.value?.role || 'student')
 const isViewingAs = computed(() => userStore.isViewingAs.value)
 
+// Friends is visible to every role: ADR-0005's social layer is for all enrolled
+// members, not a teacher tool. Students get it too — for many of them it's the
+// main reason to have an account.
 const visibleTabs = computed(() => {
   if (userRole.value === 'admin') {
-    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'dealLibrary', 'conventionCard', 'admin']
+    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'dealLibrary', 'friends', 'conventionCard', 'admin']
   }
   if (userRole.value === 'teacher') {
-    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'dealLibrary', 'conventionCard']
+    return ['lessons', 'students', 'classrooms', 'assignments', 'exercises', 'dealLibrary', 'friends', 'conventionCard']
   }
-  return ['lessons', 'conventionCard']
+  return ['lessons', 'friends', 'conventionCard']
 })
 
 function defaultTabForRole(role) {
