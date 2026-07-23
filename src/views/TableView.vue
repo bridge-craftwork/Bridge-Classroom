@@ -1,5 +1,11 @@
 <template>
-  <div class="th-page">
+  <!-- ── Local (solo) mode: the practice table drives itself (LocalEngine). It
+       brings its own header/footer; TableView adds no chrome here. "Invite
+       friends" emits `host` → we upgrade in place to a served table. ── -->
+  <UnifiedTable v-if="mode === 'local'" @host="enterServer" />
+
+  <!-- ── Server (hosted) mode: host chrome around the seated served table. ── -->
+  <div v-else class="th-page">
     <nav class="th-nav">
       <a class="th-logo" href="#/"><span class="suit">&spades;</span> Bridge Classroom &middot; Host a Table</a>
       <span v-if="hasSession" class="th-conn" :class="'th-conn-' + connectionStatus">{{ connectionStatus }}</span>
@@ -90,17 +96,26 @@
 </template>
 
 <script setup>
-// TableHostView (#/tables/host) — the single-table, non-teacher "host a table"
-// surface. It reuses the server table-service exactly like the teacher console
-// (the session owner is the see-all controller — see bridge-table-service
-// ws.rs: `is_teacher = sub == owner_sub || role == "teacher"`), but scoped to
-// ONE casual (adhoc) table with none of the multi-table console chrome.
+// TableView (#/table) — the ONE practice/host table (unification Stage B).
+// Mode is chosen by state, not by route:
+//   • local  — the solo practice table (LocalEngine, in-browser bots, no droplet
+//              cost). The default; renders <UnifiedTable> which drives itself.
+//   • server — a hosted table-service session (real seats, invite, multi-human).
+//              Entered on demand: the solo view's "Invite friends" emits `host`,
+//              or `?host=1` (an owner returning to their own table). This file
+//              adds the host chrome (deal source / invite link / test players /
+//              end) around <UnifiedTable server>; the session lifecycle lives in
+//              useHostedTable.
 //
-// Slice 1 (this file): create/resume an adhoc 1-table session, connect as owner,
-// show the table, pick a deal source, and hand out the invite link. Seat
-// drag-and-drop + the host taking a seat to play come in a later slice.
+// The server path reuses the table-service exactly like the teacher console (the
+// session owner is the see-all controller — bridge-table-service ws.rs:
+// `is_teacher = sub == owner_sub || role == "teacher"`), scoped to ONE casual
+// (adhoc) table with none of the multi-table console chrome.
+//
+// The two branches are still two templates here (server chrome vs the solo view);
+// folding them into one engine-driven template is Stage C.
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useHostedTable } from '../composables/useHostedTable.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
@@ -157,9 +172,23 @@ async function onLoadSource(selection) {
   if (ok) showPicker.value = false
 }
 
+// ── Mode: local (solo, LocalEngine, no droplet cost) or server (a hosted
+// table-service session). /table starts LOCAL; hosting is entered on demand —
+// the solo view's "Invite friends" emits `host`, or `?host=1` asks to host
+// straight away (the invite-link owner returning to their own table). We never
+// downgrade server→local, and the swap only fires between hands.
+const route = useRoute()
+const mode = ref(route.query.host ? 'server' : 'local')
+
+function enterServer() {
+  if (mode.value === 'server') return
+  mode.value = 'server'
+  ensureSession() // resume the owner's open session, else create one
+}
+
 onMounted(() => {
   userStore.initialize()
-  ensureSession()
+  if (mode.value === 'server') ensureSession()
 })
 </script>
 

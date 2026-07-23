@@ -5,18 +5,18 @@ import { buildCcPrompt } from '../ccPrompt.js'
 
 describe('detectApp', () => {
   it('maps each mounted surface to its own app id', () => {
-    expect(detectApp('/bidding-practice')).toBe('practice-table') // BiddingPracticeView
-    expect(detectApp('/bidding-practice?pbn=...')).toBe('practice-table') // embedded flow
-    expect(detectApp('/tables/host')).toBe('table-host')
+    expect(detectApp('/table')).toBe('practice-table') // TableView (solo + served)
+    expect(detectApp('/table?pbn=...')).toBe('practice-table') // embedded flow
+    expect(detectApp('/table?host=1')).toBe('practice-table') // enter-server variant
     expect(detectApp('/tables/console/abc')).toBe('console')
     expect(detectApp('/tables/new')).toBe('table-lobby')
     expect(detectApp('/play/CODE')).toBe('table-lobby')
-    expect(detectApp('/table/INVITE')).toBe('table-lobby')
+    expect(detectApp('/table/INVITE')).toBe('table-lobby') // join by code, not the bare table
     expect(detectApp('/convention-card')).toBe('convention-card')
     expect(detectApp('/harness/scene/foo')).toBe('harness')
   })
   it('does NOT conflate the practice table with the a1 catch-all (the #-triage bug)', () => {
-    expect(detectApp('/bidding-practice')).not.toBe('a1')
+    expect(detectApp('/table')).not.toBe('a1')
   })
   it('defaults everything else to a1 (Scenario Mastery / MainLayout catch-all)', () => {
     expect(detectApp('/')).toBe('a1')
@@ -66,14 +66,14 @@ describe('collectEnv', () => {
   const deps = {
     win: { innerWidth: 1440, innerHeight: 900, devicePixelRatio: 2 },
     nav: { platform: 'MacIntel', userAgent: 'Mozilla/5.0 ... Chrome/150.0.0.0 Safari/537.36', language: 'en-US', languages: ['en-US', 'en'] },
-    loc: { hash: '#/tables/host', href: 'http://localhost/#/tables/host' },
+    loc: { hash: '#/table', href: 'http://localhost/#/table' },
     now: new Date('2026-07-10T12:00:00Z')
   }
 
   it('derives app, viewport, browser, localization and a UTC timestamp', () => {
     const env = collectEnv(deps)
-    expect(env.app).toBe('table-host')
-    expect(env.route).toBe('/tables/host')
+    expect(env.app).toBe('practice-table')
+    expect(env.route).toBe('/table')
     expect(env.viewport).toEqual({ w: 1440, h: 900, dpr: 2, zoom: 100 })
     expect(env.platform).toBe('MacIntel') // no userAgentData in deps → legacy fallback
     expect(env.browser).toBe('Chrome 150')

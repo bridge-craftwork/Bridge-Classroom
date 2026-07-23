@@ -713,7 +713,9 @@ import TableDiagnostics from '../components/table/TableDiagnostics.vue'
 // the template auto-unwraps its refs, and namespaced so it can't collide with
 // the solo bindings). See useServerTable.js.
 const props = defineProps({ server: { type: Boolean, default: false } })
-const emit = defineEmits(['exit'])
+// 'exit' — leave a served table (server mode). 'host' — solo asks the parent to
+// upgrade this /table to a served table in place (see inviteFriends).
+const emit = defineEmits(['exit', 'host'])
 const srv = props.server ? reactive(useServerTable()) : null
 
 // ── Config ────────────────────────────────────────────────────────────
@@ -791,6 +793,7 @@ const userName = computed(() => {
   const u = currentUser.value
   return u ? `${u.firstName} ${u.lastName}`.trim() : ''
 })
+const router = useRouter()
 function leaveToMainApp() {
   showSettings.value = false
   router.push('/')
@@ -801,19 +804,21 @@ function leaveToMainApp() {
 userStore.initialize()
 const ownerId = computed(() => currentUser.value?.id || null)
 
-// "Invite friends" — the solo→served conversion (D9). Stash the current deal
-// source and route to the host table, which spins up a server session, loads
-// that source onto it, and hands over the invite link. Requires an account
-// (the server session is owner-scoped).
-const router = useRouter()
+// "Invite friends" — the solo→served conversion (D9). Requires an account (the
+// server session is owner-scoped).
 const handoff = useTableHandoff()
+// Invite → upgrade this same /table view to a served (server-engine) table IN
+// PLACE (no navigation): stash the current deal source and ask the parent
+// TableView to switch to server mode, which spins up the session and applies the
+// handoff on connect. The mode swap only happens at a board boundary, so a live
+// hand isn't interrupted.
 function inviteFriends() {
   if (!ownerId.value) {
     window.alert('Sign in first to host a shared table and invite friends.')
     return
   }
   if (hasSelection.value) handoff.setPending(selection.value)
-  router.push('/tables/host')
+  emit('host')
 }
 
 const showPicker = ref(false)

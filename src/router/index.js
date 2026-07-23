@@ -3,10 +3,9 @@ import MainLayout from '../views/MainLayout.vue'
 import ConventionCardView from '../views/ConventionCardView.vue'
 
 const JoinClassroomView = () => import('../views/JoinClassroomView.vue')
-const BiddingPracticeView = () => import('../views/BiddingPracticeView.vue')
 const TableLobbyView = () => import('../views/TableLobbyView.vue')
 const TeacherConsoleView = () => import('../views/TeacherConsoleView.vue')
-const TableHostView = () => import('../views/TableHostView.vue')
+const TableView = () => import('../views/TableView.vue')
 
 const routes = [
   {
@@ -15,9 +14,12 @@ const routes = [
     component: JoinClassroomView
   },
   {
-    path: '/bidding-practice',
-    name: 'bidding-practice',
-    component: BiddingPracticeView
+    // The unified practice/host table. Starts solo (LocalEngine, no droplet
+    // cost); upgrades to a served table-service session in place when you invite
+    // (or with ?host=1). Replaces the old /bidding-practice + /tables/host split.
+    path: '/table',
+    name: 'table',
+    component: TableView
   },
   {
     path: '/convention-card',
@@ -32,10 +34,11 @@ const routes = [
     component: TableLobbyView
   },
   {
-    // Multiplayer tables: player's evergreen social URL. Unknown codes fall
+    // Join a served table by invite code (social URL). A REQUIRED code, so bare
+    // /table is the unified table above, not the join lobby. Unknown codes fall
     // back to a direct session-id join (keeps #/table/demo working).
-    path: '/table/:inviteCode?',
-    name: 'table',
+    path: '/table/:inviteCode',
+    name: 'table-join',
     component: TableLobbyView
   },
   {
@@ -50,14 +53,6 @@ const routes = [
     path: '/tables/console/:sessionId?',
     name: 'tables-console',
     component: TeacherConsoleView
-  },
-  {
-    // Single-table "host a table" surface for any signed-in user (non-teacher
-    // friendly): one casual table, invite link, deal source — no multi-table
-    // console chrome. The owner is the see-all controller server-side.
-    path: '/tables/host',
-    name: 'tables-host',
-    component: TableHostView
   },
   {
     // Catch-all: the main app layout handles lobby/collection/practice
