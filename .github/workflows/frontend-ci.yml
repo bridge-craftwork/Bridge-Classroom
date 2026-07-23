@@ -1,0 +1,38 @@
+name: Frontend CI
+
+# Guards the Vue app: unit tests + a real production build.
+#
+# Deliberately runs on PRs *and* pushes to main, with no paths filter. The
+# frontend is most of this repo, and `deploy.yml` publishes to both domains on
+# every push to main — so a build that fails here is a build that would have
+# failed mid-deploy. Catching it on the PR is the whole point.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm run test:run
+
+      # The same two commands deploy.yml runs, so this fails here rather than
+      # halfway through publishing. build-site.sh is the shared post-build
+      # restructure — running it means a break in the published *layout* is
+      # caught too, not just a break in the Vite build.
+      - name: Build
+        run: npm run build
+
+      - name: Site layout
+        run: bash scripts/build-site.sh

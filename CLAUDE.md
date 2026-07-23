@@ -87,7 +87,22 @@ If something needs to be shown or hidden, the PBN says so explicitly. The app do
 - **API logs**: `~/Library/Logs/bridge-classroom-api.log`
 - **Tunnel logs**: `~/Library/Logs/cloudflared-tunnel.log`
 - **Service management**: `launchctl list | grep -E "bridge|cloudflare"`
-- **Restart backend** (code-only changes): `launchctl kickstart -k gui/$(id -u)/com.bridgeclassroom.api`
+- **Deploying API changes** — ⚠️ **merging Rust code does NOT deploy it.** Unlike the
+  frontend (which both domains rebuild from `main` on every push), the API is a
+  **release binary** that launchd runs from
+  `bridge-classroom-api/target/release/bridge-classroom-api`, and nothing rebuilds it
+  automatically. A merged-but-unbuilt route 404s in production while looking perfectly
+  fine in the repo and in CI. (This bit on 2026-07-23: `/api/friends` shipped to the
+  frontend, but the running binary was two days old, so the Friends tab showed
+  "request failed (404)".) The deploy is two steps, in this order:
+  ```sh
+  cd bridge-classroom-api && cargo build --release   # 1. rebuild — the step that's easy to forget
+  launchctl kickstart -k gui/$(id -u)/com.bridgeclassroom.api   # 2. restart
+  ```
+  Verify with a route that only exists in the new build — a 404 means step 1 didn't
+  happen or didn't finish. Allow a few seconds after the restart: the tunnel returns
+  502 briefly while the process comes up.
+- **Restart backend** (code-only changes, after rebuilding): `launchctl kickstart -k gui/$(id -u)/com.bridgeclassroom.api`
   - ⚠️ **`kickstart -k` reuses the *cached* plist** — it restarts the process but does **not** re-read `EnvironmentVariables` from disk, and dotenvy's `.env` load does **not** apply under launchd. So after changing any secret/env var (in the plist *or* `.env`), a `kickstart` will silently keep the old/empty value. To pick up env changes you must fully reload the job:
     ```sh
     launchctl bootout   gui/$(id -u)/com.bridgeclassroom.api
