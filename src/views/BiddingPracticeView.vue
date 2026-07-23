@@ -698,7 +698,7 @@ import { useTableHandoff } from '../composables/useTableHandoff.js'
 import { useLocalEngine } from '../composables/engines/localEngine.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
-import { useServerTable } from '../composables/useServerTable.js'
+import { useServerEngine } from '../composables/engines/serverEngine.js'
 import { useAppConfig } from '../composables/useAppConfig.js'
 import { useCardPlayAnalysis } from '../composables/useCardPlayAnalysis.js'
 import { trumpFromContract, computeRemaining } from '../utils/cardplayRules.js'
@@ -716,7 +716,7 @@ const props = defineProps({ server: { type: Boolean, default: false } })
 // 'exit' — leave a served table (server mode). 'host' — solo asks the parent to
 // upgrade this /table to a served table in place (see inviteFriends).
 const emit = defineEmits(['exit', 'host'])
-const srv = props.server ? reactive(useServerTable()) : null
+const srv = props.server ? reactive(useServerEngine()) : null
 
 // ── Config ────────────────────────────────────────────────────────────
 // PBS deal/menu fetching lives in the resolver + pbsScenarios.js; the BBA and
