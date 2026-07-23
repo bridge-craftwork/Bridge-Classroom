@@ -20,6 +20,7 @@ const TAB_LABELS = {
   exercises: 'Exercises',
   assignments: 'Assignments',
   dealLibrary: 'Deal Library',
+  friends: 'Friends',
   conventionCard: 'Convention Card',
   admin: 'Admin'
 }
