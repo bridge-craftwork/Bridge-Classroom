@@ -151,12 +151,115 @@ function parseCardCode(code) {
   return { suit: code[0], rank: code.slice(1) }
 }
 
+// ── RulesBot ───────────────────────────────────────────────────────────
+// The deterministic rule-based cardplay bot (bridge-rulebot), compiled to wasm
+// (src/vendor/bridge-rulebot-wasm) and run entirely IN THE BROWSER — no service,
+// no server resources. Same core the table-service uses server-side, so solo and
+// shared tables share one implementation.
+//
+// Resilient by construction: the rulebot only ever returns a card from the
+// engine-supplied `legalCards`, and on ANY failure (wasm init, malformed
+// context, empty legal set upstream) it degrades to a legal card rather than
+// breaking the hand — mirroring its server-side role as the always-available
+// fallback.
+
+const SUIT_KEY = { spades: 'S', hearts: 'H', diamonds: 'D', clubs: 'C' }
+
+// Lazy, once. `initRuleBot()` fetches + instantiates the wasm on first use so
+// the blob isn't loaded unless someone actually picks RulesBot.
+let ruleBotReady = null
+async function ensureRuleBot() {
+  if (!ruleBotReady) {
+    ruleBotReady = import('../vendor/bridge-rulebot-wasm/bridge_rulebot_wasm.js').then(
+      async (m) => {
+        await m.default() // instantiate the wasm module
+        return m
+      }
+    )
+  }
+  return ruleBotReady
+}
+
+// { spades:[...], ... } → [{ suit:'S', rank:'A' }, ...]; normalize a "10" rank.
+function handObjToCards(hand) {
+  const out = []
+  if (!hand) return out
+  for (const key of Object.keys(SUIT_KEY)) {
+    for (const rank of hand[key] || []) {
+      out.push({ suit: SUIT_KEY[key], rank: rank === '10' ? 'T' : rank })
+    }
+  }
+  return out
+}
+
+// The bot ctx's `bids` may be call strings or objects; the rulebot wants PBN
+// strings ("1S", "Pass", "X"). Normalize defensively — a bid we can't read is
+// dropped, and the worst case is the opening-lead "partner's suit" rule simply
+// not firing (every other rule and the fallbacks are auction-independent).
+function bidsToPbn(bids) {
+  const out = []
+  for (const b of bids || []) {
+    if (typeof b === 'string') out.push(b)
+    else if (b && typeof b.call === 'string') out.push(b.call)
+    else if (b && typeof b.level === 'number' && b.strain) out.push(`${b.level}${b.strain}`)
+  }
+  return out
+}
+
+function normalizeLegal(legalCards) {
+  return (legalCards || []).map((c) => ({ suit: c.suit, rank: c.rank === '10' ? 'T' : c.rank }))
+}
+
+export const RuleBot = {
+  name: 'rules',
+  async chooseOpeningLead(ctx) {
+    return decideRule('choose_opening_lead_json', ctx, false)
+  },
+  async chooseCard(ctx) {
+    return decideRule('choose_card_json', ctx, true)
+  },
+}
+
+async function decideRule(fn, ctx, withDummy) {
+  const legal = normalizeLegal(ctx.legalCards)
+  try {
+    const m = await ensureRuleBot()
+    const dto = {
+      seat: ctx.seat,
+      hand: handObjToCards(ctx.hand),
+      declarer: ctx.declarer,
+      dealer: ctx.dealer,
+      contract: ctx.contract,
+      auction: bidsToPbn(ctx.bids),
+      vulnerable: ctx.vulnerable || 'None',
+      legal,
+    }
+    if (withDummy) {
+      dto.dummy = handObjToCards(ctx.dummy)
+      dto.played = (ctx.played || []).map((p) => ({
+        seat: p.seat,
+        suit: p.suit,
+        rank: p.rank === '10' ? 'T' : p.rank,
+      }))
+    }
+    const out = JSON.parse(m[fn](JSON.stringify(dto), '{}'))
+    return { suit: out.suit, rank: out.rank }
+  } catch (err) {
+    // Never break the hand — fall back to a legal card (the rulebot's own
+    // server-side contract is "never random" only for signal coherence; a
+    // degraded solo turn is better than a stuck table).
+    console.warn('[RuleBot] falling back to a legal card:', err?.message || err)
+    return legal[0] ? { suit: legal[0].suit, rank: legal[0].rank } : pickRandom(ctx.legalCards)
+  }
+}
+
 // ── BotRegistry ────────────────────────────────────────────────────────
 // Central place to look up a bot by name.
 
 const BOTS = {
   random: RandomLegalBot,
   ben: BenBot,
+  rules: RuleBot,
 }
 
 export function registerBot(name, bot) {

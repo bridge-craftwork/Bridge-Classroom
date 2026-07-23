@@ -961,9 +961,10 @@ const {
 // AuctionTable an empty map so it skips the stacked user/BBA rows entirely.
 const shownDivergedBids = computed(() => showBbaCompare.value ? divergedBids.value : {})
 const availableBots = listBots()
-// Display name for a cardplay-bot key. NOTE: only `random`/`ben` exist in the
-// frontend today; `rules` (RulesBot) runs server-side and needs the planned
-// bridge-rulebot-wasm adapter before it can appear here.
+// Display name for a cardplay-bot key. `random`/`ben`/`rules` are all wired in
+// the frontend now — `rules` (RulesBot) runs in-browser via the bridge-rulebot
+// wasm adapter (src/vendor/bridge-rulebot-wasm), the same core the table service
+// uses server-side.
 function botDisplayName(b) {
   return { ben: 'BEN', random: 'Random', rules: 'RulesBot' }[b] || b
 }
@@ -975,10 +976,9 @@ function botDisplayName(b) {
 // mirroring the host table.
 const soloBotSeatName = computed(() =>
   playCardplay.value ? `BBA+${botDisplayName(cardplayBotName.value)}` : 'BBA')
-// Cardplay-bot dropdown options. RulesBot isn't wired into the frontend yet
-// (server-side only; called locally by the table service — a wasm or a BEN-style
-// service would surface it here). Show it DISABLED so it reads as planned, not
-// forgotten. It becomes selectable automatically once registered in cardplayBots.
+// Cardplay-bot dropdown options. All registered bots are selectable; the
+// disabled "coming soon" row only appears if `rules` somehow isn't registered
+// (e.g. the wasm failed to load), so the option never silently vanishes.
 const botOptions = computed(() => {
   const opts = availableBots.map((b) => ({ value: b, label: botDisplayName(b), disabled: false }))
   if (!availableBots.includes('rules')) {
