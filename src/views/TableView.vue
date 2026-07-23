@@ -1,5 +1,11 @@
 <template>
-  <div class="th-page">
+  <!-- ── Local (solo) mode: the practice table drives itself (LocalEngine). It
+       brings its own header/footer; TableView adds no chrome here. "Invite
+       friends" emits `host` → we upgrade in place to a served table. ── -->
+  <UnifiedTable v-if="mode === 'local'" @host="enterServer" />
+
+  <!-- ── Server (hosted) mode: host chrome around the seated served table. ── -->
+  <div v-else class="th-page">
     <nav class="th-nav">
       <a class="th-logo" href="#/"><span class="suit">&spades;</span> Bridge Classroom &middot; Host a Table</a>
       <span v-if="hasSession" class="th-conn" :class="'th-conn-' + connectionStatus">{{ connectionStatus }}</span>
@@ -90,30 +96,32 @@
 </template>
 
 <script setup>
-// TableHostView (#/tables/host) — the single-table, non-teacher "host a table"
-// surface. It reuses the server table-service exactly like the teacher console
-// (the session owner is the see-all controller — see bridge-table-service
-// ws.rs: `is_teacher = sub == owner_sub || role == "teacher"`), but scoped to
-// ONE casual (adhoc) table with none of the multi-table console chrome.
+// TableView (#/table) — the ONE practice/host table (unification Stage B).
+// Mode is chosen by state, not by route:
+//   • local  — the solo practice table (LocalEngine, in-browser bots, no droplet
+//              cost). The default; renders <UnifiedTable> which drives itself.
+//   • server — a hosted table-service session (real seats, invite, multi-human).
+//              Entered on demand: the solo view's "Invite friends" emits `host`,
+//              or `?host=1` (an owner returning to their own table). This file
+//              adds the host chrome (deal source / invite link / test players /
+//              end) around <UnifiedTable server>; the session lifecycle lives in
+//              useHostedTable.
 //
-// Slice 1 (this file): create/resume an adhoc 1-table session, connect as owner,
-// show the table, pick a deal source, and hand out the invite link. Seat
-// drag-and-drop + the host taking a seat to play come in a later slice.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+// The server path reuses the table-service exactly like the teacher console (the
+// session owner is the see-all controller — bridge-table-service ws.rs:
+// `is_teacher = sub == owner_sub || role == "teacher"`), scoped to ONE casual
+// (adhoc) table with none of the multi-table console chrome.
+//
+// The two branches are still two templates here (server chrome vs the solo view);
+// folding them into one engine-driven template is Stage C.
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
-import { useRemoteTable } from '../composables/useRemoteTable.js'
-import { useTeacherConsole } from '../composables/useTeacherConsole.js'
-import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
-import { useTableHandoff } from '../composables/useTableHandoff.js'
+import { useHostedTable } from '../composables/useHostedTable.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import UnifiedTable from './BiddingPracticeView.vue'
-import { API_URL } from '../utils/apiUrl.js'
-import { testStudentName } from '../utils/testStudents.js'
-
-const API_KEY = import.meta.env.VITE_API_KEY || ''
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -143,205 +151,45 @@ function handleSwitchUser() {
   userStore.currentUserId.value = null
   leaveToMainApp()
 }
-const table = useRemoteTable()
-// The console composable is used ONLY to send the host-control frames
-// (load_boards) — they ride the same useTableSocket singleton the seated player
-// connection uses, and the server accepts them from the owner sub. The host is
-// a seated PLAYER (as_player), so there's no lobby/deck feed here (that's the
-// teacher console's see-all path).
-const console_ = useTeacherConsole()
-const { materialize } = useDealSourceResolver()
-const handoff = useTableHandoff()
-
-const { connectionStatus, sessionClosed, dealLoaded } = table
-
-const connected = computed(() => connectionStatus.value === 'connected')
-const sessionId = ref(null)
-const hasSession = computed(() => !!sessionId.value && !sessionClosed.value)
-// Spotlight the Deal source button until a deal is loaded: the table (seats +
-// bots) is up and invitable, but nothing plays until a source is picked.
-const needsDeal = computed(() => connected.value && hasSession.value && !dealLoaded.value)
-const resolving = ref(true)
-const startError = ref('')
-const ending = ref(false) // host clicked "End table" (vs an unexpected close)
-let recoveredOnce = false
+// Session lifecycle lives in useHostedTable (shared with the future unified
+// /table view). This view is now just the host chrome around it.
+const host = useHostedTable({ onExit: () => router.push('/') })
+const {
+  connectionStatus, connected, sessionId, hasSession, needsDeal,
+  resolving, startError, loadError, shareUrl, copied, spawnCount,
+  copyShareUrl, spawnPlayers, ensureSession, endSession, teardown, exit: onExitTable,
+} = host
 
 const pickerAllow = {
   tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
   options: ['fresh'],
 }
 const showPicker = ref(false)
-const loadError = ref('')
 
-// ── Invite link (evergreen host code → /play/:code join URL) ────────────────
-const shareUrl = ref('')
-const copied = ref(false)
-async function fetchHostCode() {
-  if (!currentUser.value) return null
-  try {
-    const res = await fetch(`${API_URL}/users/${currentUser.value.id}/host-code`, {
-      method: 'POST',
-      headers: { 'x-api-key': API_KEY },
-    })
-    const data = await res.json()
-    if (data.code) {
-      shareUrl.value = `${window.location.origin}${window.location.pathname}#/play/${data.code}`
-      return data.code
-    }
-  } catch {
-    /* best-effort; Copy link stays disabled */
-  }
-  return null
-}
-async function copyShareUrl() {
-  if (!shareUrl.value) return
-  try {
-    await navigator.clipboard.writeText(shareUrl.value)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  } catch {
-    /* clipboard unavailable */
-  }
-}
-
-// ── Testing: spawn a few player tabs ────────────────────────────────────────
-// Each opens the invite link with ?student=<name>, which forces a named-guest
-// (player) join — bypassing the owner/teacher recognition that would otherwise
-// send you to the console. These are HUMAN seats you drive manually; bots fill
-// any seats you don't spawn. No `?bot=` — a human tab must not flip the sticky
-// room mode; the room defaults to rules, so unspawned/idle seats get BBA
-// bidding + rulebot cardplay.
-const spawnCount = ref(3)
-function spawnPlayers() {
-  if (!shareUrl.value) return
-  const n = Math.max(1, Math.min(Number(spawnCount.value) || 1, 3))
-  for (let i = 1; i <= n; i++) {
-    const name = encodeURIComponent(testStudentName(i))
-    window.open(`${shareUrl.value}?student=${name}`, `bc-test-player-${i}`)
-  }
-}
-
-// ── Deal source → materialize the whole set onto the table ──────────────────
+// Thin view wrapper: delegate to the composable, close the picker on success.
 async function onLoadSource(selection) {
-  loadError.value = ''
-  try {
-    const { boardsPbn, label } = await materialize(selection)
-    console_.loadBoards(boardsPbn, label)
-    showPicker.value = false
-  } catch (e) {
-    loadError.value = e?.message || 'Could not load that source.'
-  }
+  const { ok } = await host.onLoadSource(selection)
+  if (ok) showPicker.value = false
 }
 
-// ── Session lifecycle ───────────────────────────────────────────────────────
-// Resume the owner's open session if there is one, else create a casual
-// single-table session. The Mac API enforces one open session per owner.
-// `forceCreate` skips the resume (used by the recovery watcher when a resumed
-// session turns out to be gone — e.g. the table-service restarted and dropped
-// its in-memory sessions while the DB still lists it open).
-async function ensureSession({ forceCreate = false } = {}) {
-  if (!currentUser.value) { resolving.value = false; return }
-  resolving.value = true
-  startError.value = ''
-  try {
-    const code = await fetchHostCode() // also populates the invite link
-    let id = null
-    if (!forceCreate && code) {
-      try {
-        const res = await fetch(`${API_URL}/play/${code}`)
-        const data = await res.json()
-        if (data?.session?.id) id = data.session.id
-      } catch { /* no open session → create one */ }
-    }
-    if (!id) id = await createSession()
-    if (!id) throw new Error('Could not start your table.')
-    sessionId.value = id
-    // Join SEATED (as_player) so the host plays their own hand — while still
-    // holding the host-control frames (deal source / seating). First-free seats
-    // the first joiner (the host) at South.
-    table.join({ sessionId: id, userId: currentUser.value.id, asPlayer: true })
-  } catch (e) {
-    startError.value = e?.message || 'Could not set up your table.'
-  } finally {
-    resolving.value = false
-  }
-}
+// ── Mode: local (solo, LocalEngine, no droplet cost) or server (a hosted
+// table-service session). /table starts LOCAL; hosting is entered on demand —
+// the solo view's "Invite friends" emits `host`, or `?host=1` asks to host
+// straight away (the invite-link owner returning to their own table). We never
+// downgrade server→local, and the swap only fires between hands.
+const route = useRoute()
+const mode = ref(route.query.host ? 'server' : 'local')
 
-// A resumed session can be dead on the service (restart drops in-memory
-// sessions; the DB still shows it open) → the join returns unknown_session and
-// useRemoteTable flips sessionClosed. A host always wants a table, so instead of
-// the dead "Session ended" screen, silently start a fresh one (once). An
-// explicit End (ending=true) is left alone.
-watch(sessionClosed, (closed) => {
-  if (!closed || ending.value || recoveredOnce) return
-  recoveredOnce = true
-  resolving.value = true
-  teardown()
-  ensureSession({ forceCreate: true })
-})
-
-// "Invite friends" hand-off from the solo Practice Table: once this session is
-// connected, materialize the deal source the solo table was using onto it (once).
-// A direct visit to /tables/host hands off nothing, so this is a no-op there.
-let handoffApplied = false
-watch(connected, (isConnected) => {
-  if (!isConnected || handoffApplied) return
-  const pending = handoff.takePending()
-  if (!pending) return
-  handoffApplied = true
-  onLoadSource(pending)
-}, { immediate: true })
-
-async function createSession() {
-  const res = await fetch(`${API_URL}/table-sessions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
-    body: JSON.stringify({
-      owner_user_id: currentUser.value.id,
-      kind: 'adhoc',
-      boards_pbn: '',
-      table_count: 1,
-      // Auto-fill: bots hold the empty seats; an arriving human takes the first
-      // free seat (replacing a bot); a 5th+ human kibitzes. The host rearranges
-      // from the table (drag the seat labels / kibitz box).
-      seat_policy: { mode: 'auto', pattern: 'first_free' },
-    }),
-  })
-  if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`)
-  const data = await res.json()
-  return data?.session?.id || null
-}
-
-async function endSession() {
-  if (!window.confirm('End this table for everyone?')) return
-  ending.value = true
-  try {
-    await fetch(
-      `${API_URL}/table-sessions/${sessionId.value}?owner_user_id=${encodeURIComponent(currentUser.value.id)}`,
-      { method: 'DELETE', headers: { 'x-api-key': API_KEY } }
-    )
-  } catch { /* best-effort; the closed event tears down the UI */ }
-  teardown()
-  router.push('/')
-}
-
-function teardown() {
-  console_.detach()
-  table.leave()
-  sessionId.value = null
-}
-
-// TableView's "back to lobby" (shown when the session ends) → home.
-function onExitTable() {
-  teardown()
-  router.push('/')
+function enterServer() {
+  if (mode.value === 'server') return
+  mode.value = 'server'
+  ensureSession() // resume the owner's open session, else create one
 }
 
 onMounted(() => {
   userStore.initialize()
-  ensureSession()
+  if (mode.value === 'server') ensureSession()
 })
-onBeforeUnmount(teardown)
 </script>
 
 <style scoped>
