@@ -107,7 +107,10 @@ async fn main() -> anyhow::Result<()> {
         // Public join-URL resolution (persistent per-user codes → open session)
         .route("/api/play/:host_code", get(routes::resolve_host_code))
         .route("/api/table/:invite_code", get(routes::resolve_invite_code))
-        .route("/api/users/:user_id/host-code", post(routes::generate_host_code))
+        .route(
+            "/api/users/:user_id/host-code",
+            post(routes::generate_host_code),
+        )
         .route(
             "/api/users/:user_id/invite-code",
             post(routes::generate_invite_code),
@@ -118,7 +121,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/recovery/claim-code", post(routes::claim_by_code))
         // Durable session (ADR-0004): who-am-I + sign-out. The cookie is minted
         // on recovery-claim (see recovery.rs); no login endpoint of its own yet.
-        .route("/api/session", get(routes::get_session).delete(routes::delete_session))
+        .route(
+            "/api/session",
+            get(routes::get_session).delete(routes::delete_session),
+        )
         // Session-gated key redelivery (ADR-0004 §3): owner-only; unwraps the
         // session user's own escrowed AES key so lapsed Safari users rehydrate
         // silently instead of via an email round-trip.
@@ -130,7 +136,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/session/attach", post(routes::attach_session))
         // Path B: a student (AES key only) mints a cookie by proving key possession
         // via a challenge–response — no email. challenge issues, claim mints.
-        .route("/api/session/attach/challenge", post(routes::attach_challenge))
+        .route(
+            "/api/session/attach/challenge",
+            post(routes::attach_challenge),
+        )
         .route("/api/session/attach/claim", post(routes::attach_claim))
         // Convention card routes
         .route("/api/cards", get(routes::list_cards))
@@ -159,7 +168,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::leave_classroom),
         )
         // Exercise routes
-        .route("/api/exercises", post(routes::create_exercise).get(routes::list_exercises))
+        .route(
+            "/api/exercises",
+            post(routes::create_exercise).get(routes::list_exercises),
+        )
         .route(
             "/api/exercises/:id",
             get(routes::get_exercise)
@@ -187,7 +199,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::get_club_game).delete(routes::delete_club_game),
         )
         // Assignment routes
-        .route("/api/assignments", post(routes::create_assignment).get(routes::list_assignments))
+        .route(
+            "/api/assignments",
+            post(routes::create_assignment).get(routes::list_assignments),
+        )
         .route(
             "/api/assignments/:id",
             get(routes::get_assignment).delete(routes::delete_assignment),
@@ -203,39 +218,60 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/lesson-mastery", get(routes::get_lesson_mastery))
         // Teacher dashboard routes
         .route("/api/teacher/dashboard", get(routes::teacher_dashboard))
-        .route("/api/teacher/dashboard/clear", post(routes::clear_dashboard_panel))
+        .route(
+            "/api/teacher/dashboard/clear",
+            post(routes::clear_dashboard_panel),
+        )
         // Announcement routes
-        .route("/api/announcements/active", get(routes::get_active_announcement))
-        .route("/api/admin/announcement", post(routes::set_announcement).delete(routes::clear_announcement))
+        .route(
+            "/api/announcements/active",
+            get(routes::get_active_announcement),
+        )
+        .route(
+            "/api/admin/announcement",
+            post(routes::set_announcement).delete(routes::clear_announcement),
+        )
         // Diagnostics routes
-        .route("/api/diagnostics", post(routes::log_diagnostics).get(routes::log_diagnostic_get))
+        .route(
+            "/api/diagnostics",
+            post(routes::log_diagnostics).get(routes::log_diagnostic_get),
+        )
         // Admin routes
         .route("/api/admin/stats", get(routes::admin_stats))
         .route("/api/admin/health", get(routes::admin_health))
         .route("/api/admin/merge-dryrun", get(routes::merge_dry_run))
         .route("/api/admin/merge-accounts", post(routes::merge_accounts))
         .route("/api/account-handoff", get(routes::get_account_handoff))
-        .route("/api/account-handoff/consume", post(routes::consume_account_handoff))
+        .route(
+            "/api/account-handoff/consume",
+            post(routes::consume_account_handoff),
+        )
         .route("/api/admin/users/search", get(routes::admin_search_user))
         .route("/api/admin/users/:id", patch(routes::admin_correct_name))
-        .route("/api/admin/decrypt-observations", post(routes::admin_decrypt_observations))
-        .route("/api/admin/backfill-active-time", post(routes::admin_backfill_active_time))
+        .route(
+            "/api/admin/decrypt-observations",
+            post(routes::admin_decrypt_observations),
+        )
+        .route(
+            "/api/admin/backfill-active-time",
+            post(routes::admin_backfill_active_time),
+        )
         .layer(cors)
         .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(|request: &axum::http::Request<_>| {
-                    let ua = request.headers()
-                        .get(header::USER_AGENT)
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("-");
-                    tracing::info_span!(
-                        "request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                        version = ?request.version(),
-                        user_agent = %ua,
-                    )
-                }),
+            TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+                let ua = request
+                    .headers()
+                    .get(header::USER_AGENT)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-");
+                tracing::info_span!(
+                    "request",
+                    method = %request.method(),
+                    uri = %request.uri(),
+                    version = ?request.version(),
+                    user_agent = %ua,
+                )
+            }),
         )
         .with_state(state);
 
@@ -272,7 +308,14 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
         );
         CorsLayer::new()
             .allow_origin(Any)
-            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
             // Includes the ADR-0003 signed-request headers (x-bc-*) so the
             // browser's CORS preflight for signed admin/teacher calls (e.g. the
             // account-merge GUI) isn't blocked. Without them the POST fails with
@@ -288,15 +331,19 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
             ])
     } else {
         // Specific origins
-        let allowed: Vec<_> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let allowed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
 
         CorsLayer::new()
             .allow_origin(allowed)
             .allow_credentials(true)
-            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
             // Includes the ADR-0003 signed-request headers (x-bc-*) so the
             // browser's CORS preflight for signed admin/teacher calls (e.g. the
             // account-merge GUI) isn't blocked. Without them the POST fails with

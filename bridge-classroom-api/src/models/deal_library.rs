@@ -72,10 +72,16 @@ pub struct UpdateDealLibraryRequest {
     pub name: Option<String>,
     /// Double option: outer `Some` means "change parent", inner value is the
     /// new parent (`None` = move to root).
-    #[serde(default, deserialize_with = "crate::models::deserialize_optional_field")]
+    #[serde(
+        default,
+        deserialize_with = "crate::models::deserialize_optional_field"
+    )]
     pub parent_id: Option<Option<String>>,
     pub payload: Option<String>,
-    #[serde(default, deserialize_with = "crate::models::deserialize_optional_field")]
+    #[serde(
+        default,
+        deserialize_with = "crate::models::deserialize_optional_field"
+    )]
     pub settings: Option<Option<String>>,
     pub sort_order: Option<i64>,
 }

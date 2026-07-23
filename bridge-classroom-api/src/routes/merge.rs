@@ -42,7 +42,10 @@ async fn recover_user_key(state: &AppState, user_id: &str) -> Result<String, Str
             .flatten();
 
     let encrypted = encrypted.ok_or_else(|| {
-        format!("User {} has no recovery_encrypted_key — cannot recover their key", user_id)
+        format!(
+            "User {} has no recovery_encrypted_key — cannot recover their key",
+            user_id
+        )
     })?;
 
     decrypt_for_recovery(&encrypted, recovery_secret)
@@ -207,9 +210,14 @@ pub async fn merge_accounts(
 ) -> Result<Json<MergeResponse>, (StatusCode, String)> {
     // Signed admin request (ADR-0003). The signature binds these exact body
     // bytes, so we verify before parsing them.
-    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), &body).await?;
-    let req: MergeRequest = serde_json::from_slice(&body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid request body: {e}")))?;
+    crate::auth_sig::require_admin_signed(&state, &headers, method.as_str(), uri.path(), &body)
+        .await?;
+    let req: MergeRequest = serde_json::from_slice(&body).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid request body: {e}"),
+        )
+    })?;
 
     let away = req.merge_user_id;
     let keeper = req.keeper_user_id;
@@ -244,11 +252,13 @@ pub async fn merge_accounts(
 
     // Keeper identity for the handoff payload.
     let keeper_row: Option<(String, String, String, String, Option<String>, String)> =
-        sqlx::query_as("SELECT id, first_name, last_name, email, classroom, role FROM users WHERE id = ?")
-            .bind(&keeper)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(err500("keeper lookup"))?;
+        sqlx::query_as(
+            "SELECT id, first_name, last_name, email, classroom, role FROM users WHERE id = ?",
+        )
+        .bind(&keeper)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(err500("keeper lookup"))?;
     let (kid, kfirst, klast, kemail, kclassroom, krole) = match keeper_row {
         Some(r) => r,
         None => return bail(format!("keeper account {} not found", keeper)),
@@ -317,17 +327,32 @@ pub async fn merge_accounts(
     let mut tx = state.db.begin().await.map_err(err500("begin tx"))?;
 
     for (id, enc, iv) in &obs {
-        let plaintext = decrypt_observation(enc, iv, &k_away)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("decrypt obs {}: {}", id, e)))?;
-        let (new_enc, new_iv) = encrypt_observation(&plaintext, &k_keeper)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("re-encrypt obs {}: {}", id, e)))?;
+        let plaintext = decrypt_observation(enc, iv, &k_away).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("decrypt obs {}: {}", id, e),
+            )
+        })?;
+        let (new_enc, new_iv) = encrypt_observation(&plaintext, &k_keeper).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("re-encrypt obs {}: {}", id, e),
+            )
+        })?;
         // Self-verify: the keeper's browser must be able to read what we wrote.
-        let check = decrypt_observation(&new_enc, &new_iv, &k_keeper)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("verify obs {}: {}", id, e)))?;
+        let check = decrypt_observation(&new_enc, &new_iv, &k_keeper).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("verify obs {}: {}", id, e),
+            )
+        })?;
         if check != plaintext {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("self-verify mismatch on obs {} — merge aborted, no changes made", id),
+                format!(
+                    "self-verify mismatch on obs {} — merge aborted, no changes made",
+                    id
+                ),
             ));
         }
         sqlx::query("UPDATE observations SET encrypted_data = ?, iv = ?, user_id = ? WHERE id = ?")
@@ -349,7 +374,11 @@ pub async fn merge_accounts(
         "DELETE FROM recovery_tokens WHERE user_id = ?",
         "DELETE FROM user_convention_cards WHERE user_id = ?",
     ] {
-        sqlx::query(stmt).bind(&away).execute(&mut *tx).await.map_err(err500("cleanup"))?;
+        sqlx::query(stmt)
+            .bind(&away)
+            .execute(&mut *tx)
+            .await
+            .map_err(err500("cleanup"))?;
     }
     // Grants where away is either side are now meaningless (its data is the keeper's).
     sqlx::query("DELETE FROM sharing_grants WHERE grantor_id = ? OR grantee_id = ?")
@@ -411,13 +440,28 @@ pub async fn merge_accounts(
 
     // Post-commit, idempotent: rebuild the keeper's rollups over its now-larger data.
     for (collection_id, subfolder, deal_number) in &affected_boards {
-        if let Err(e) = recompute_board_history(&state.db, &keeper, collection_id, subfolder, *deal_number).await {
-            tracing::error!("merge recompute board {}/{}/{} for {}: {}", collection_id, subfolder, deal_number, keeper, e);
+        if let Err(e) =
+            recompute_board_history(&state.db, &keeper, collection_id, subfolder, *deal_number)
+                .await
+        {
+            tracing::error!(
+                "merge recompute board {}/{}/{} for {}: {}",
+                collection_id,
+                subfolder,
+                deal_number,
+                keeper,
+                e
+            );
         }
     }
     for assignment_id in &affected_assignments {
         if let Err(e) = recompute_assignment_boards(&state.db, &keeper, assignment_id).await {
-            tracing::error!("merge recompute assignment {} for {}: {}", assignment_id, keeper, e);
+            tracing::error!(
+                "merge recompute assignment {} for {}: {}",
+                assignment_id,
+                keeper,
+                e
+            );
         }
     }
     if let Err(e) = recompute_student_summary(&state.db, &keeper).await {
@@ -426,7 +470,9 @@ pub async fn merge_accounts(
 
     tracing::info!(
         "Merged account {} into {} ({} observations moved)",
-        away, keeper, observations_moved
+        away,
+        keeper,
+        observations_moved
     );
 
     Ok(Json(MergeResponse {
@@ -477,7 +523,10 @@ pub async fn get_account_handoff(
     match row {
         Some((encrypted_payload, iv)) => {
             tracing::info!("account-handoff served to device for {}", q.from_user_id);
-            Ok(Json(HandoffResponse { encrypted_payload, iv }))
+            Ok(Json(HandoffResponse {
+                encrypted_payload,
+                iv,
+            }))
         }
         None => Err((StatusCode::NOT_FOUND, "No handoff".to_string())),
     }
@@ -497,11 +546,12 @@ pub async fn consume_account_handoff(
     if !validate_api_key(&headers, &state.config.api_key) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
     }
-    let result = sqlx::query("UPDATE account_handoff SET used = 1 WHERE from_user_id = ? AND used = 0")
-        .bind(&req.from_user_id)
-        .execute(&state.db)
-        .await
-        .map_err(err500("consume handoff"))?;
+    let result =
+        sqlx::query("UPDATE account_handoff SET used = 1 WHERE from_user_id = ? AND used = 0")
+            .bind(&req.from_user_id)
+            .execute(&state.db)
+            .await
+            .map_err(err500("consume handoff"))?;
     if result.rows_affected() > 0 {
         tracing::info!(
             "account-handoff CONSUMED for {} — device switched to the keeper",

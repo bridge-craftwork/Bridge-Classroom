@@ -7,9 +7,9 @@
 //! the account-merge flow to re-encrypt one user's observations under another
 //! user's key, server-side, so the keeper's browser can still decrypt them.
 
-use ring::aead::{self, LessSafeKey, UnboundKey, Nonce, AES_256_GCM, NONCE_LEN};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use ring::aead::{self, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN};
 use ring::rand::{SecureRandom, SystemRandom};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 fn key_from_b64(raw_key_b64: &str) -> Result<LessSafeKey, String> {
     let key_bytes = BASE64
@@ -22,12 +22,16 @@ fn key_from_b64(raw_key_b64: &str) -> Result<LessSafeKey, String> {
 
 /// Encrypt `plaintext` with a raw base64 AES-256 key, producing the frontend's
 /// format: `(encrypted_data = base64(ciphertext||tag), iv = base64(nonce))`.
-pub fn encrypt_observation(plaintext: &[u8], raw_key_b64: &str) -> Result<(String, String), String> {
+pub fn encrypt_observation(
+    plaintext: &[u8],
+    raw_key_b64: &str,
+) -> Result<(String, String), String> {
     let key = key_from_b64(raw_key_b64)?;
 
     let rng = SystemRandom::new();
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rng.fill(&mut nonce_bytes).map_err(|_| "Failed to generate nonce")?;
+    rng.fill(&mut nonce_bytes)
+        .map_err(|_| "Failed to generate nonce")?;
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
     let mut in_out = plaintext.to_vec();

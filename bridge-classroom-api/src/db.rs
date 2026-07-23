@@ -189,47 +189,35 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
     // Create indexes for common queries
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_users_classroom ON users(classroom)"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_users_classroom ON users(classroom)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_viewers_email ON viewers(email)"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_viewers_email ON viewers(email)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_grants_grantor ON sharing_grants(grantor_id)"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_grants_grantor ON sharing_grants(grantor_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_grants_grantee ON sharing_grants(grantee_id)"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_grants_grantee ON sharing_grants(grantee_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_observations_user_id ON observations(user_id)"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_observations_user_id ON observations(user_id)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
     sqlx::query(
         r#"CREATE INDEX IF NOT EXISTS idx_observations_classroom ON observations(classroom)"#,
@@ -596,10 +584,12 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         .await
         .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_exercises_curriculum ON exercises(curriculum_path)"#)
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_exercises_curriculum ON exercises(curriculum_path)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_exercises_visibility ON exercises(visibility)"#)
         .execute(pool)
@@ -698,25 +688,31 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_assignments_classroom ON assignments(classroom_id)"#)
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_assignments_classroom ON assignments(classroom_id)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_assignments_student ON assignments(student_id)"#)
         .execute(pool)
         .await
         .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_assignments_exercise ON assignments(exercise_id)"#)
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_assignments_exercise ON assignments(exercise_id)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_assignments_assigned_by ON assignments(assigned_by)"#)
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_assignments_assigned_by ON assignments(assigned_by)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
     // ---- Announcements table ----
     sqlx::query(
@@ -765,7 +761,13 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // See documentation/adr/. `board_version_token` is the opaque, rotation-
     // canonical PBN stamp BC records but never computes or compares (ADR-0001 §5).
     add_column_if_missing(pool, "observations", "collection_id", "TEXT").await?;
-    add_column_if_missing(pool, "observations", "prerelease", "INTEGER NOT NULL DEFAULT 0").await?;
+    add_column_if_missing(
+        pool,
+        "observations",
+        "prerelease",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
     add_column_if_missing(pool, "observations", "board_version_token", "TEXT").await?;
 
     // One-time backfill of existing rows, classified by the current skill_path
@@ -774,12 +776,11 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // Idempotent — only touches rows not yet classified (collection_id IS NULL),
     // so any rows the write path hasn't tagged yet are healed on the next boot
     // until the frontend supplies real values.
-    let unclassified: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM observations WHERE collection_id IS NULL"#,
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let unclassified: i64 =
+        sqlx::query_scalar(r#"SELECT COUNT(*) FROM observations WHERE collection_id IS NULL"#)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
     if unclassified > 0 {
         sqlx::query(
             r#"
@@ -891,10 +892,28 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // The old `achievement` column is intentionally left in place; the
     // new model replaces it with the (max_stars, wild_achievement) pair,
     // and code stops reading the old column.
-    add_column_if_missing(pool, "board_status", "wilderness", "TEXT NOT NULL DEFAULT 'Tame'").await?;
+    add_column_if_missing(
+        pool,
+        "board_status",
+        "wilderness",
+        "TEXT NOT NULL DEFAULT 'Tame'",
+    )
+    .await?;
     add_column_if_missing(pool, "board_status", "last_error_date", "TEXT").await?;
-    add_column_if_missing(pool, "board_status", "star_count", "INTEGER NOT NULL DEFAULT 0").await?;
-    add_column_if_missing(pool, "board_status", "max_stars", "INTEGER NOT NULL DEFAULT 0").await?;
+    add_column_if_missing(
+        pool,
+        "board_status",
+        "star_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    add_column_if_missing(
+        pool,
+        "board_status",
+        "max_stars",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
     add_column_if_missing(pool, "board_status", "last_star_update", "TEXT").await?;
     add_column_if_missing(pool, "board_status", "wild_achievement", "TEXT").await?;
 
@@ -954,18 +973,22 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     // Indexes for the exercise usage rollup (issue #15): when listing a
     // teacher's exercises we look up assignment / observation / student
     // counts per exercise_id.
-    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_observations_exercise ON observations(exercise_id)"#)
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_observations_exercise ON observations(exercise_id)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
     // §C10: assignment_id is the hot filter for compute_assignment_stats, the
     // duration rollups, recompute_assignment_boards (per board), and the grid
     // query — all previously full-scanning the largest table. Index it.
-    sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_observations_assignment ON observations(assignment_id)"#)
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_observations_assignment ON observations(assignment_id)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
 
     // §C9: create observations_decrypted in migrations so it always exists. It
     // was previously created only as a side effect of the admin decrypt endpoint,
@@ -1327,13 +1350,12 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
 
     // Seed the "2/1 Intermediate" system card if it doesn't exist
     let system_card_id = "system-21-intermediate";
-    let card_exists: bool = sqlx::query_scalar(
-        r#"SELECT COUNT(*) > 0 FROM convention_cards WHERE id = ?"#,
-    )
-    .bind(system_card_id)
-    .fetch_one(pool)
-    .await
-    .unwrap_or(false);
+    let card_exists: bool =
+        sqlx::query_scalar(r#"SELECT COUNT(*) > 0 FROM convention_cards WHERE id = ?"#)
+            .bind(system_card_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
 
     if !card_exists {
         let now = chrono::Utc::now().to_rfc3339();
@@ -1481,8 +1503,14 @@ async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError>
     .await
     .map_err(|e| DbError::Migration(format!("board_status copy: {e}")))?;
 
-    sqlx::query("DROP TABLE board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
-    sqlx::query("ALTER TABLE board_status_new RENAME TO board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("DROP TABLE board_status")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("ALTER TABLE board_status_new RENAME TO board_status")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_board_status_user_subfolder ON board_status(user_id, deal_subfolder)"#).execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
     sqlx::query(
         r#"
@@ -1531,8 +1559,14 @@ async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError>
     .await
     .map_err(|e| DbError::Migration(format!("exercise_boards copy: {e}")))?;
 
-    sqlx::query("DROP TABLE exercise_boards").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
-    sqlx::query("ALTER TABLE exercise_boards_new RENAME TO exercise_boards").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("DROP TABLE exercise_boards")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("ALTER TABLE exercise_boards_new RENAME TO exercise_boards")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_exercise_boards_deal ON exercise_boards(deal_subfolder, deal_number)"#).execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
 
     // ---- assignment_board_status ----
@@ -1573,8 +1607,14 @@ async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError>
     .await
     .map_err(|e| DbError::Migration(format!("assignment_board_status copy: {e}")))?;
 
-    sqlx::query("DROP TABLE assignment_board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
-    sqlx::query("ALTER TABLE assignment_board_status_new RENAME TO assignment_board_status").execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("DROP TABLE assignment_board_status")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query("ALTER TABLE assignment_board_status_new RENAME TO assignment_board_status")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_abs_user_assignment ON assignment_board_status(user_id, assignment_id)"#).execute(&mut *tx).await.map_err(|e| DbError::Migration(e.to_string()))?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -1589,7 +1629,10 @@ async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError>
     tx.commit()
         .await
         .map_err(|e| DbError::Migration(format!("commit collection_pk tx: {e}")))?;
-    tracing::info!("collection_id PK migration complete in {:?}", started.elapsed());
+    tracing::info!(
+        "collection_id PK migration complete in {:?}",
+        started.elapsed()
+    );
     Ok(())
 }
 
@@ -1630,18 +1673,22 @@ async fn run_assignment_status_backfill(pool: &Pool<Sqlite>) -> Result<(), DbErr
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    tracing::info!("assignment backfill: recomputing {} (user, assignment) pairs", pairs.len());
+    tracing::info!(
+        "assignment backfill: recomputing {} (user, assignment) pairs",
+        pairs.len()
+    );
 
     let mut failed = 0_usize;
     for (user_id, assignment_id) in &pairs {
-        if let Err(e) = crate::routes::board_status::recompute_assignment_boards(
-            pool, user_id, assignment_id,
-        )
-        .await
+        if let Err(e) =
+            crate::routes::board_status::recompute_assignment_boards(pool, user_id, assignment_id)
+                .await
         {
             tracing::error!(
                 "assignment backfill: recompute failed for {}/{}: {}",
-                user_id, assignment_id, e
+                user_id,
+                assignment_id,
+                e
             );
             failed += 1;
         }
@@ -1709,13 +1756,20 @@ async fn run_v2_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    tracing::info!("v2 backfill: recomputing {} (user, board) tuples", boards.len());
+    tracing::info!(
+        "v2 backfill: recomputing {} (user, board) tuples",
+        boards.len()
+    );
 
     let mut board_succeeded = 0_usize;
     let mut board_failed = 0_usize;
     for (user_id, collection_id, subfolder, deal_number) in &boards {
         match crate::routes::board_status::recompute_board_history(
-            pool, user_id, collection_id, subfolder, *deal_number,
+            pool,
+            user_id,
+            collection_id,
+            subfolder,
+            *deal_number,
         )
         .await
         {
@@ -1723,7 +1777,11 @@ async fn run_v2_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
             Err(e) => {
                 tracing::error!(
                     "v2 backfill: recompute failed for {}/{}/{}/{}: {}",
-                    user_id, collection_id, subfolder, deal_number, e
+                    user_id,
+                    collection_id,
+                    subfolder,
+                    deal_number,
+                    e
                 );
                 board_failed += 1;
             }
@@ -1731,18 +1789,21 @@ async fn run_v2_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     }
     tracing::info!(
         "v2 backfill: board_status — {} succeeded, {} failed",
-        board_succeeded, board_failed
+        board_succeeded,
+        board_failed
     );
 
     // 2. Build student_summary from the rebuilt board_status.
-    let users_with_obs: Vec<String> = sqlx::query_scalar(
-        r#"SELECT DISTINCT user_id FROM observations"#,
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    let users_with_obs: Vec<String> =
+        sqlx::query_scalar(r#"SELECT DISTINCT user_id FROM observations"#)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
 
-    tracing::info!("v2 backfill: building student_summary for {} users", users_with_obs.len());
+    tracing::info!(
+        "v2 backfill: building student_summary for {} users",
+        users_with_obs.len()
+    );
 
     let mut summary_failed = 0_usize;
     for user_id in &users_with_obs {
@@ -1752,20 +1813,21 @@ async fn run_v2_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         }
     }
     if summary_failed > 0 {
-        tracing::warn!("v2 backfill: {} student_summary rows failed", summary_failed);
+        tracing::warn!(
+            "v2 backfill: {} student_summary rows failed",
+            summary_failed
+        );
     }
 
     // 3. Mark complete so subsequent startups skip Steps 1 & 2.
     let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query(
-        r#"INSERT INTO schema_meta (key, value, completed_at) VALUES (?, ?, ?)"#,
-    )
-    .bind("correctness_v2_backfill")
-    .bind("done")
-    .bind(&now)
-    .execute(pool)
-    .await
-    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(r#"INSERT INTO schema_meta (key, value, completed_at) VALUES (?, ?, ?)"#)
+        .bind("correctness_v2_backfill")
+        .bind("done")
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
 
     tracing::info!(
         "correctness_v2_backfill complete in {:.2}s",

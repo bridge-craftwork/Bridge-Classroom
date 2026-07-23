@@ -5,9 +5,9 @@ use axum::{
 };
 
 use crate::models::{
-    CreateDealLibraryRequest, DealLibraryActionResponse, DealLibraryEntry,
-    DealLibraryEntryDetail, DealLibraryEntryResponse, DealLibraryListResponse, DealLibraryQuery,
-    DeleteDealLibraryQuery, UpdateDealLibraryRequest,
+    CreateDealLibraryRequest, DealLibraryActionResponse, DealLibraryEntry, DealLibraryEntryDetail,
+    DealLibraryEntryResponse, DealLibraryListResponse, DealLibraryQuery, DeleteDealLibraryQuery,
+    UpdateDealLibraryRequest,
 };
 use crate::AppState;
 
@@ -57,14 +57,13 @@ async fn check_creation_quota(
     }
 
     let cutoff = (chrono::Utc::now() - chrono::Duration::seconds(ONE_MONTH_SECS)).to_rfc3339();
-    let last_month: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM deal_library WHERE owner = ? AND created_at >= ?",
-    )
-    .bind(owner)
-    .bind(&cutoff)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let last_month: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM deal_library WHERE owner = ? AND created_at >= ?")
+            .bind(owner)
+            .bind(&cutoff)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if last_month >= ENTRIES_PER_MONTH {
         return Err((
@@ -110,7 +109,12 @@ async fn validate_parent(
     .fetch_optional(pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Parent folder not found".to_string()))?;
+    .ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Parent folder not found".to_string(),
+        )
+    })?;
 
     if p_owner != owner {
         return Err((
@@ -163,7 +167,12 @@ pub async fn create_deal_library_entry(
             ));
         }
         "file" | "link"
-            if req.payload.as_deref().map(str::trim).unwrap_or("").is_empty() =>
+            if req
+                .payload
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty() =>
         {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -183,7 +192,11 @@ pub async fn create_deal_library_entry(
     let now = chrono::Utc::now().to_rfc3339();
     let sort_order = req.sort_order.unwrap_or(0);
     // Folders never carry settings; drop any the client sent along.
-    let settings = if req.kind == "folder" { None } else { req.settings.clone() };
+    let settings = if req.kind == "folder" {
+        None
+    } else {
+        req.settings.clone()
+    };
 
     sqlx::query(
         r#"
@@ -208,7 +221,12 @@ pub async fn create_deal_library_entry(
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    tracing::info!("Deal library entry created: {} ({}) for {}", req.name.trim(), req.kind, req.owner);
+    tracing::info!(
+        "Deal library entry created: {} ({}) for {}",
+        req.name.trim(),
+        req.kind,
+        req.owner
+    );
 
     Ok(Json(DealLibraryEntryResponse {
         success: true,

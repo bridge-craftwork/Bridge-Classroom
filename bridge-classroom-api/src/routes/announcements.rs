@@ -83,7 +83,10 @@ pub async fn set_announcement(
     }
 
     if body.message.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Message cannot be empty".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Message cannot be empty".to_string(),
+        ));
     }
 
     // Deactivate all existing announcements

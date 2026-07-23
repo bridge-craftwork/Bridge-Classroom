@@ -84,21 +84,23 @@ pub async fn mint_table_ticket(
     };
 
     if req.session_id.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "session_id is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "session_id is required".to_string(),
+        ));
     }
 
     let (sub, name, role) = match (&req.user_id, &req.guest_name) {
         (Some(user_id), None) => {
-            let row: Option<(String, String, String)> = sqlx::query_as(
-                "SELECT first_name, last_name, role FROM users WHERE id = ?",
-            )
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("table-ticket user lookup failed: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            })?;
+            let row: Option<(String, String, String)> =
+                sqlx::query_as("SELECT first_name, last_name, role FROM users WHERE id = ?")
+                    .bind(user_id)
+                    .fetch_optional(&state.db)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("table-ticket user lookup failed: {e}");
+                        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                    })?;
             let Some((first, last, db_role)) = row else {
                 return Err((StatusCode::NOT_FOUND, "user not found".to_string()));
             };

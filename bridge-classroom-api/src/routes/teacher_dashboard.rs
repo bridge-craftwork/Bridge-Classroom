@@ -155,15 +155,16 @@ pub async fn teacher_dashboard(
     let teacher_id = &query.teacher_id;
 
     // Fetch cleared-at timestamps for filtering
-    let cleared: Option<ClearedTimestamps> = sqlx::query_as(
-        "SELECT attention_cleared_at, activity_cleared_at FROM users WHERE id = ?",
-    )
-    .bind(teacher_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let cleared: Option<ClearedTimestamps> =
+        sqlx::query_as("SELECT attention_cleared_at, activity_cleared_at FROM users WHERE id = ?")
+            .bind(teacher_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let attention_cleared_at = cleared.as_ref().and_then(|c| c.attention_cleared_at.clone());
+    let attention_cleared_at = cleared
+        .as_ref()
+        .and_then(|c| c.attention_cleared_at.clone());
     let activity_cleared_at = cleared.as_ref().and_then(|c| c.activity_cleared_at.clone());
 
     // 1. Fetch teacher's classrooms with member counts
@@ -226,13 +227,12 @@ pub async fn teacher_dashboard(
 
         for assignment in &assignments {
             // Get board count for this exercise
-            let (total_boards,): (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM exercise_boards WHERE exercise_id = ?",
-            )
-            .bind(&assignment.exercise_id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let (total_boards,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM exercise_boards WHERE exercise_id = ?")
+                    .bind(&assignment.exercise_id)
+                    .fetch_one(&state.db)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
             if total_boards == 0 {
                 continue;

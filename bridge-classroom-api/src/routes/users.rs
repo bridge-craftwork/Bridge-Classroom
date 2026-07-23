@@ -6,7 +6,9 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    models::{CreateUserRequest, CreateUserResponse, SharingGrant, User, UserInfo, UsersListResponse},
+    models::{
+        CreateUserRequest, CreateUserResponse, SharingGrant, User, UserInfo, UsersListResponse,
+    },
     routes::recovery::encrypt_for_recovery,
     AppState,
 };
@@ -30,7 +32,8 @@ pub async fn create_user(
     headers: HeaderMap,
     body: String,
 ) -> Result<(HeaderMap, Json<CreateUserResponse>), (StatusCode, String)> {
-    let (resp, newly_created) = create_user_inner(State(state.clone()), headers.clone(), body).await?;
+    let (resp, newly_created) =
+        create_user_inner(State(state.clone()), headers.clone(), body).await?;
     let mut out = HeaderMap::new();
     if newly_created && resp.0.success {
         out = crate::routes::session::mint_cookie_header(&state, &headers, &resp.0.user_id).await;
@@ -51,8 +54,16 @@ async fn create_user_inner(
     let req: CreateUserRequest = match serde_json::from_str(&body) {
         Ok(r) => r,
         Err(e) => {
-            let preview = if body.len() > 500 { &body[..500] } else { &body };
-            tracing::error!("Failed to deserialize CreateUserRequest: {} | Body: {}", e, preview);
+            let preview = if body.len() > 500 {
+                &body[..500]
+            } else {
+                &body
+            };
+            tracing::error!(
+                "Failed to deserialize CreateUserRequest: {} | Body: {}",
+                e,
+                preview
+            );
             return Err((
                 StatusCode::UNPROCESSABLE_ENTITY,
                 format!("Invalid request body: {}", e),
@@ -68,7 +79,10 @@ async fn create_user_inner(
         return Err((StatusCode::BAD_REQUEST, "email is required".to_string()));
     }
     if req.first_name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "first_name is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "first_name is required".to_string(),
+        ));
     }
     if req.last_name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "last_name is required".to_string()));
@@ -85,27 +99,33 @@ async fn create_user_inner(
         })?;
 
     // Also check if email exists with a different user_id (e.g., user cleared localStorage)
-    let existing_by_email = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = ? AND id != ?")
-        .bind(&req.email)
-        .bind(&req.user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to query user by email {}: {}", req.email, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+    let existing_by_email =
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = ? AND id != ?")
+            .bind(&req.email)
+            .bind(&req.user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to query user by email {}: {}", req.email, e);
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?;
 
     // If email exists with different ID, tell client to use recovery flow
     if let Some(existing_user) = existing_by_email {
         tracing::info!(
             "Email {} already exists with user_id {}, client sent {} - needs recovery",
-            req.email, existing_user.id, req.user_id
+            req.email,
+            existing_user.id,
+            req.user_id
         );
-        return Ok((Json(CreateUserResponse {
-            success: false,
-            user_id: existing_user.id,
-            existing_user: Some(true),
-        }), false));
+        return Ok((
+            Json(CreateUserResponse {
+                success: false,
+                user_id: existing_user.id,
+                existing_user: Some(true),
+            }),
+            false,
+        ));
     }
 
     // Set true only on the genuine new-insert branch below (admission gate).
@@ -142,7 +162,9 @@ async fn create_user_inner(
         if !req.email.eq_ignore_ascii_case(&existing.email) {
             tracing::warn!(
                 "create_user: ignoring email change for existing user {} ({} -> {})",
-                req.user_id, existing.email, req.email
+                req.user_id,
+                existing.email,
+                req.email
             );
         }
 
@@ -164,7 +186,11 @@ async fn create_user_inner(
                 .execute(&state.db)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to update user {} (name-protected, with recovery key): {}", req.user_id, e);
+                    tracing::error!(
+                        "Failed to update user {} (name-protected, with recovery key): {}",
+                        req.user_id,
+                        e
+                    );
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 })?;
             } else {
@@ -182,7 +208,11 @@ async fn create_user_inner(
                 .execute(&state.db)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to update user {} (name-protected): {}", req.user_id, e);
+                    tracing::error!(
+                        "Failed to update user {} (name-protected): {}",
+                        req.user_id,
+                        e
+                    );
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 })?;
             }
@@ -207,7 +237,11 @@ async fn create_user_inner(
                 .execute(&state.db)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to update user {} (with recovery key): {}", req.user_id, e);
+                    tracing::error!(
+                        "Failed to update user {} (with recovery key): {}",
+                        req.user_id,
+                        e
+                    );
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 })?;
             } else {
@@ -234,7 +268,11 @@ async fn create_user_inner(
             }
         }
 
-        tracing::info!("Updated existing user: {} (name_protected: {})", req.user_id, name_protected);
+        tracing::info!(
+            "Updated existing user: {} (name_protected: {})",
+            req.user_id,
+            name_protected
+        );
     } else {
         // Create new user
         newly_created = true;
@@ -263,7 +301,11 @@ async fn create_user_inner(
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
 
-        tracing::info!("Created new user: {} (recovery: {})", user.id, recovery_encrypted_key.is_some());
+        tracing::info!(
+            "Created new user: {} (recovery: {})",
+            user.id,
+            recovery_encrypted_key.is_some()
+        );
 
         // If admin grant is provided, store it (non-fatal — user is already created)
         if let Some(admin_grant) = &req.admin_grant {
@@ -303,11 +345,14 @@ async fn create_user_inner(
         }
     }
 
-    Ok((Json(CreateUserResponse {
-        success: true,
-        user_id: req.user_id,
-        existing_user: None,
-    }), newly_created))
+    Ok((
+        Json(CreateUserResponse {
+            success: true,
+            user_id: req.user_id,
+            existing_user: None,
+        }),
+        newly_created,
+    ))
 }
 
 /// GET /api/users/:user_id
@@ -336,7 +381,7 @@ pub async fn get_user(
 
             // Fetch classroom memberships from join table
             let classroom_ids: Vec<String> = sqlx::query_scalar(
-                "SELECT classroom_id FROM classroom_members WHERE student_id = ?"
+                "SELECT classroom_id FROM classroom_members WHERE student_id = ?",
             )
             .bind(&user_id)
             .fetch_all(&state.db)
@@ -471,7 +516,12 @@ pub async fn admin_correct_name(
 
     let info = UserInfo::from(user);
 
-    tracing::info!("Admin corrected name for user {}: {} {}", user_id, info.first_name, info.last_name);
+    tracing::info!(
+        "Admin corrected name for user {}: {} {}",
+        user_id,
+        info.first_name,
+        info.last_name
+    );
 
     Ok(Json(serde_json::json!({
         "success": true,

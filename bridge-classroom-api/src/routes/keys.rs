@@ -17,18 +17,17 @@ pub async fn get_admin_key(
     State(state): State<AppState>,
 ) -> Result<Json<PublicKeyResponse>, (StatusCode, String)> {
     // Look up the admin viewer
-    let admin: Option<(String, String)> = sqlx::query_as(
-        "SELECT id, public_key FROM viewers WHERE role = 'admin' LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch admin key: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to fetch admin key: {}", e),
-        )
-    })?;
+    let admin: Option<(String, String)> =
+        sqlx::query_as("SELECT id, public_key FROM viewers WHERE role = 'admin' LIMIT 1")
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch admin key: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to fetch admin key: {}", e),
+                )
+            })?;
 
     match admin {
         Some((id, public_key)) => Ok(Json(PublicKeyResponse {
@@ -37,10 +36,7 @@ pub async fn get_admin_key(
         })),
         None => {
             tracing::warn!("Admin viewer not configured");
-            Err((
-                StatusCode::NOT_FOUND,
-                "Admin not configured".to_string(),
-            ))
+            Err((StatusCode::NOT_FOUND, "Admin not configured".to_string()))
         }
     }
 }

@@ -81,16 +81,18 @@ pub async fn create_classroom(
     }
 
     if req.name.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Classroom name is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Classroom name is required".to_string(),
+        ));
     }
 
     // Verify teacher exists and has teacher role
-    let role: Option<String> =
-        sqlx::query_scalar("SELECT role FROM users WHERE id = ?")
-            .bind(&req.teacher_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let role: Option<String> = sqlx::query_scalar("SELECT role FROM users WHERE id = ?")
+        .bind(&req.teacher_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     match role.as_deref() {
         Some("teacher") | Some("admin") => {}
@@ -172,7 +174,10 @@ pub async fn list_classrooms(
     }
 
     let teacher_id = query.teacher_id.ok_or_else(|| {
-        (StatusCode::BAD_REQUEST, "teacher_id is required".to_string())
+        (
+            StatusCode::BAD_REQUEST,
+            "teacher_id is required".to_string(),
+        )
     })?;
 
     let rows = sqlx::query_as::<_, ClassroomWithCount>(
@@ -317,7 +322,10 @@ pub async fn join_classroom(
     }
 
     if req.student_id.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "student_id is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "student_id is required".to_string(),
+        ));
     }
 
     // Look up classroom
@@ -365,7 +373,10 @@ pub async fn join_classroom(
 
     // Use a transaction to create membership and sharing grant atomically
     let mut tx = state.db.begin().await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Transaction failed: {}", e))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Transaction failed: {}", e),
+        )
     })?;
 
     // Insert classroom membership
@@ -410,7 +421,10 @@ pub async fn join_classroom(
     }
 
     tx.commit().await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Commit failed: {}", e))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Commit failed: {}", e),
+        )
     })?;
 
     tracing::info!(
@@ -450,14 +464,13 @@ pub async fn remove_member(
     }
 
     // Delete membership (does NOT revoke sharing grant per spec)
-    let result = sqlx::query(
-        "DELETE FROM classroom_members WHERE classroom_id = ? AND student_id = ?",
-    )
-    .bind(&classroom_id)
-    .bind(&student_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let result =
+        sqlx::query("DELETE FROM classroom_members WHERE classroom_id = ? AND student_id = ?")
+            .bind(&classroom_id)
+            .bind(&student_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
         return Ok(Json(ClassroomActionResponse {
@@ -466,7 +479,11 @@ pub async fn remove_member(
         }));
     }
 
-    tracing::info!("Removed student {} from classroom {}", student_id, classroom_id);
+    tracing::info!(
+        "Removed student {} from classroom {}",
+        student_id,
+        classroom_id
+    );
 
     Ok(Json(ClassroomActionResponse {
         success: true,
@@ -485,14 +502,13 @@ pub async fn leave_classroom(
         return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
     }
 
-    let result = sqlx::query(
-        "DELETE FROM classroom_members WHERE classroom_id = ? AND student_id = ?",
-    )
-    .bind(&classroom_id)
-    .bind(&req.student_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let result =
+        sqlx::query("DELETE FROM classroom_members WHERE classroom_id = ? AND student_id = ?")
+            .bind(&classroom_id)
+            .bind(&req.student_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
         return Ok(Json(ClassroomActionResponse {
