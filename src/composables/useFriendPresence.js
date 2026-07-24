@@ -1,0 +1,158 @@
+// Friend presence (Phase 3) — the client half of the SSE presence transport.
+//
+// One EventSource per tab to `GET /api/presence/stream`, cookie-authorized (an
+// EventSource can't set the `x-api-key` header, and the presence endpoints
+// authorize off the device-session cookie — see routes/presence.rs). The server
+// pushes `{ presence: { <friendId>: <state> } }` — a snapshot on connect, then
+// deltas — which we merge into `presenceByUserId`. A ~30s heartbeat reports OUR
+// state so friends see us; the server sweeps a silent client to `offline`.
+//
+// Module-level singleton (repo composable pattern) so it survives route changes
+// — presence must keep running while we're AT a table (`/table` is a separate
+// top-level route from the lobby; MainLayout unmounts there). Lifecycle is driven
+// from App.vue (always mounted) keyed on the signed-in user.
+//
+// States we REPORT (precedence high→low): invisible · at_table · practicing ·
+// online. `invisible` is the only manual control; the server maps it to
+// `offline` for friends. `at_table`/`practicing` are automatic (table socket
+// open / solo-practice view).
+
+import { ref } from 'vue'
+import { apiFetch, API_URL } from '../utils/apiFetch.js'
+
+const HEARTBEAT_MS = 30000
+const BACKOFF_START_MS = 1000
+const BACKOFF_MAX_MS = 30000
+
+// Friend id → state string ('online'|'at_table'|'practicing'|'offline').
+const presenceByUserId = ref({})
+
+// Our own reported context. `invisible` is user-facing (persisted); the other
+// two are set automatically by the table/solo hooks.
+const invisible = ref(localStorage.getItem('bc.presenceInvisible') === '1')
+const atTable = ref(false)
+const practicing = ref(false)
+
+let userId = null
+let source = null
+let heartbeatTimer = null
+let reconnectTimer = null
+let backoff = BACKOFF_START_MS
+
+function reportedState() {
+  if (invisible.value) return 'invisible'
+  if (atTable.value) return 'at_table'
+  if (practicing.value) return 'practicing'
+  return 'online'
+}
+
+async function heartbeat() {
+  if (!userId) return
+  try {
+    await apiFetch(`${API_URL}/presence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acting_user_id: userId, state: reportedState() }),
+    })
+  } catch {
+    // Soft state — a missed beat just risks a transient sweep to offline, which
+    // the next beat corrects.
+  }
+}
+
+function openStream() {
+  if (!userId || typeof EventSource === 'undefined') return
+  const url = `${API_URL}/presence/stream?acting_user_id=${encodeURIComponent(userId)}`
+  source = new EventSource(url, { withCredentials: true })
+  source.onopen = () => {
+    backoff = BACKOFF_START_MS
+  }
+  source.onmessage = (ev) => {
+    try {
+      const { presence } = JSON.parse(ev.data)
+      if (presence && typeof presence === 'object') {
+        presenceByUserId.value = { ...presenceByUserId.value, ...presence }
+      }
+    } catch {
+      /* ignore a malformed frame */
+    }
+  }
+  source.onerror = () => {
+    // EventSource retries on its own for network blips, but a credentialed
+    // cross-origin failure can leave it permanently CLOSED — so drive our own
+    // capped-backoff reconnect rather than trusting the built-in one.
+    if (source) {
+      source.close()
+      source = null
+    }
+    clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(openStream, backoff)
+    backoff = Math.min(backoff * 2, BACKOFF_MAX_MS)
+  }
+}
+
+// Start (or restart for a new user) the stream + heartbeat. Idempotent per user.
+function start(id) {
+  if (!id) return
+  if (userId === id && source) return
+  stop()
+  userId = id
+  openStream()
+  heartbeat() // announce immediately, don't wait a full interval
+  heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS)
+}
+
+function stop() {
+  if (source) {
+    source.close()
+    source = null
+  }
+  clearInterval(heartbeatTimer)
+  heartbeatTimer = null
+  clearTimeout(reconnectTimer)
+  reconnectTimer = null
+  userId = null
+  backoff = BACKOFF_START_MS
+  presenceByUserId.value = {}
+  atTable.value = false
+  practicing.value = false
+}
+
+// Local-context setters (auto-reported). Each pushes an immediate heartbeat so
+// the change fans out to friends without waiting for the next interval.
+function setAtTable(on) {
+  if (atTable.value === on) return
+  atTable.value = on
+  heartbeat()
+}
+function setPracticing(on) {
+  if (practicing.value === on) return
+  practicing.value = on
+  heartbeat()
+}
+function setInvisible(on) {
+  invisible.value = on
+  try {
+    localStorage.setItem('bc.presenceInvisible', on ? '1' : '0')
+  } catch {
+    /* private mode */
+  }
+  heartbeat()
+}
+
+function presenceFor(id) {
+  return presenceByUserId.value[id] || 'offline'
+}
+
+export function useFriendPresence() {
+  return {
+    presenceByUserId,
+    invisible,
+    start,
+    stop,
+    setAtTable,
+    setPracticing,
+    setInvisible,
+    presenceFor,
+  }
+}

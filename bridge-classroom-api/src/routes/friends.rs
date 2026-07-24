@@ -162,6 +162,24 @@ async fn display_name(state: &AppState, user_id: &str) -> Result<Option<String>,
     Ok(row.map(|(f, l)| format!("{f} {l}").trim().to_string()))
 }
 
+/// The user ids on the other end of every edge touching `user_id` — the
+/// fan-out set for presence (a single indexed scan of both columns). Undirected,
+/// so it unions the two sides of the canonical ordering. Takes the pool directly
+/// (not `AppState`) so the presence fan-out and its tests can call it freely.
+pub async fn friend_ids(db: &sqlx::SqlitePool, user_id: &str) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT CASE WHEN user_a_id = ?1 THEN user_b_id ELSE user_a_id END
+        FROM friendships
+        WHERE user_a_id = ?1 OR user_b_id = ?1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 /// Is there an edge between these two? Order-independent.
 pub async fn are_friends(state: &AppState, x: &str, y: &str) -> Result<bool, sqlx::Error> {
     let (a, b) = canonical_pair(x, y);
@@ -588,6 +606,20 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!((a.as_str(), b.as_str()), ("u-a", "u-b"));
+    }
+
+    #[tokio::test]
+    async fn friend_ids_unions_both_sides_of_the_edge() {
+        // The presence fan-out set: every neighbor, whichever column I'm on.
+        let pool = friends_db().await;
+        insert_edge(&pool, "u-me", "u-x").await.unwrap(); // I'm user_b
+        insert_edge(&pool, "u-a", "u-me").await.unwrap(); // I'm user_b again
+        insert_edge(&pool, "u-me", "u-zz").await.unwrap(); // I'm user_a
+        let mut ids = friend_ids(&pool, "u-me").await.unwrap();
+        ids.sort();
+        assert_eq!(ids, vec!["u-a", "u-x", "u-zz"]);
+        // A stranger with no edges gets an empty fan-out set.
+        assert!(friend_ids(&pool, "u-none").await.unwrap().is_empty());
     }
 
     #[tokio::test]

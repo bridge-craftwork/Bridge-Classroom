@@ -114,10 +114,11 @@
 //
 // The two branches are still two templates here (server chrome vs the solo view);
 // folding them into one engine-driven template is Stage C.
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useHostedTable } from '../composables/useHostedTable.js'
+import { useFriendPresence } from '../composables/useFriendPresence.js'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
@@ -190,6 +191,13 @@ onMounted(() => {
   userStore.initialize()
   if (mode.value === 'server') ensureSession()
 })
+
+// Presence: report `practicing` while this is the solo (local) table. Server mode
+// is covered by the table-socket `at_table` signal (App.vue), so practicing tracks
+// local mode only, and clears when we leave the route.
+const presence = useFriendPresence()
+watch(mode, (m) => presence.setPracticing(m === 'local'), { immediate: true })
+onUnmounted(() => presence.setPracticing(false))
 </script>
 
 <style scoped>
