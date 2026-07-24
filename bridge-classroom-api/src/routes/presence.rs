@@ -258,6 +258,10 @@ pub async fn presence_stream(
 
     // Announce our arrival to friends who are watching.
     fanout(&state, &user).await;
+    // Deliver any pending table invitations that arrived while we were offline /
+    // on another tab, so signing on shows them (buffered into our channel and
+    // yielded right after the snapshot below).
+    crate::routes::invitations::deliver_pending(&state, &user).await;
 
     let guard = ConnGuard {
         state: state.clone(),
