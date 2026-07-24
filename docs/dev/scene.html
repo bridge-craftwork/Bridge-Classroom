@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Scene drill-down — Dev Gallery</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  :root {
+    --ink: var(--color-text-primary, #1a1a1a);
+    --mut: var(--color-text-secondary, #666);
+    --faint: var(--color-text-tertiary, #888);
+    --line: var(--color-border-tertiary, #e0ddd7);
+    --card: #fff; --panel: #f6f5f2; --accent: #1D9E75;
+  }
+  body { background: var(--color-background-tertiary, #ececec); margin: 0;
+         font-family: 'Segoe UI', system-ui, sans-serif; color: var(--ink); }
+  .wrap { max-width: 1700px; margin: 0 auto; padding: 26px 24px 64px; }
+  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .top a.back { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+  .top a.back:hover { text-decoration: underline; }
+  h1 { font-size: 20px; margin: 0; }
+  h1 .surface { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+  .surface.a1 { background: #d8efdc; color: #1f6638; }
+  .surface.b1 { background: #e6e1f5; color: #5b4b9e; }
+  .surface.b2 { background: #fdecc8; color: #8a5a08; }
+  .surface.b3 { background: #dbeafe; color: #1e5a9e; }
+  .surface.server { background: #dbeafe; color: #1e5a9e; }
+  .surface.table { background: #f0ece1; color: #6b6250; }
+  .sub { color: var(--mut); font-size: 13px; margin: 4px 0 18px; }
+
+  .vps { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .vp { flex: 0 0 auto; }
+  .vp .cap { font-size: 12px; color: var(--mut); margin-bottom: 6px; font-weight: 600; }
+  .vp .cap span { color: var(--faint); font-weight: 400; margin-left: 6px; font-family: ui-monospace, Menlo, monospace; }
+  .vp .cap .rep { display: block; font-weight: 400; color: var(--faint); font-family: inherit; margin: 2px 0 0; }
+  .frame { position: relative; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .frame iframe { position: absolute; top: 0; left: 0; border: 0; background: #fff; }
+  .frame .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
+  .miss { color: #c00; padding: 30px 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="back" href="./#scenes">← Dev Gallery</a>
+    <h1 id="title">Scene</h1>
+  </div>
+  <p class="sub">Live full-layout renders — the same scene across every named viewport, straight from the current build (the live twin of the A1 scene gallery's fixture × viewport grid). Each frame is the real app at that viewport, scaled to fit.</p>
+  <div id="vps" class="vps"><div class="miss" style="color:var(--mut)">Loading…</div></div>
+</div>
+
+<script>
+(function () {
+  var HARNESS_SCENE = 'harness/#/harness/scene/';
+  var MAXW = 460, MAXH = 620;
+  // Scene name in the URL fragment (survives static-host / `serve` redirects that
+  // drop a query string). Back-compat: accept ?scene= too.
+  var name = decodeURIComponent((location.hash || '').replace(/^#/, '')) ||
+             (new URLSearchParams(location.search).get('scene') || '');
+
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { mount(e.target); io.unobserve(e.target); } });
+  }, { rootMargin: '400px' }) : null;
+
+  function mount(frame) {
+    if (frame.querySelector('iframe')) return;
+    var f = document.createElement('iframe');
+    f.setAttribute('loading', 'lazy');
+    f.setAttribute('scrolling', 'no');
+    f.setAttribute('title', frame.getAttribute('data-cap') || 'scene');
+    f.style.width = frame.getAttribute('data-vw') + 'px';
+    f.style.height = frame.getAttribute('data-vh') + 'px';
+    f.style.transform = 'scale(' + frame.getAttribute('data-sc') + ')';
+    f.style.transformOrigin = 'top left';
+    f.src = frame.getAttribute('data-src');
+    frame.innerHTML = '';
+    frame.appendChild(f);
+  }
+
+  fetch('components-manifest.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('no manifest'); return r.json(); })
+    .then(function (m) {
+      var scene = (m.scenes || []).find(function (s) { return s.name === name; });
+      var vps = document.getElementById('vps');
+      if (!scene) { vps.innerHTML = '<div class="miss">Unknown scene: ' + (name || '(none)') + '</div>'; return; }
+      var t = document.getElementById('title');
+      t.textContent = scene.label + ' ';
+      var badge = document.createElement('span');
+      badge.className = 'surface ' + scene.surface;
+      badge.textContent = scene.surface;
+      t.appendChild(badge);
+      document.title = scene.label + ' — Scene drill-down';
+
+      vps.innerHTML = '';
+      Object.keys(m.viewports).forEach(function (vpName) {
+        var vp = m.viewports[vpName];
+        var sc = Math.min(MAXW / vp.w, MAXH / vp.h);
+        var pw = Math.round(vp.w * sc), ph = Math.round(vp.h * sc);
+        var src = HARNESS_SCENE + encodeURIComponent(name);
+        var cap = vpName + ' · ' + vp.w + '×' + vp.h;
+        var col = document.createElement('div');
+        col.className = 'vp';
+        col.innerHTML =
+          '<div class="cap">' + vpName + '<span>' + vp.w + '×' + vp.h + '</span>' +
+          (vp.represents ? '<span class="rep">' + vp.represents + '</span>' : '') + '</div>' +
+          '<div class="frame" style="width:' + pw + 'px;height:' + ph + 'px" ' +
+          'data-src="' + src + '" data-vw="' + vp.w + '" data-vh="' + vp.h + '" data-sc="' + sc + '" data-cap="' + cap + '">' +
+          '<div class="ph">' + vpName + '</div></div>';
+        vps.appendChild(col);
+        var frame = col.querySelector('.frame');
+        if (io) io.observe(frame); else mount(frame);
+      });
+    })
+    .catch(function () {
+      document.getElementById('vps').innerHTML =
+        '<div class="miss">No component manifest found. Build the site (<code>npm run build &amp;&amp; bash scripts/build-site.sh</code>).</div>';
+    });
+})();
+</script>
+</body>
+</html>

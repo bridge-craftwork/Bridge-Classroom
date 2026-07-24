@@ -86,6 +86,27 @@
   .comp .stage { background: var(--panel); min-height: 240px; max-height: 320px; overflow: auto; }
   .comp .stage iframe { display: block; width: 100%; height: 300px; border: 0; background: #fff; }
   .comp .stage .ph { color: var(--faint); font-size: 12px; padding: 20px; }
+  /* ── Live scene tiles (scaled full-layout thumbnails) ──────────────────── */
+  .scene-group-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+                       color: var(--faint); margin: 22px 0 12px; display: flex; align-items: center; gap: 10px; }
+  .scene-group-label:first-child { margin-top: 6px; }
+  .scene-group-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .scenes { display: flex; flex-wrap: wrap; gap: 18px; }
+  .scene { box-sizing: border-box; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; flex: 0 0 auto; }
+  .scene .shead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+  .scene .shead .sname { font-size: 14px; font-weight: 600; }
+  .scene .shead .ssurface { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 999px; }
+  .ssurface.a1 { background: #d8efdc; color: #1f6638; }
+  .ssurface.b1 { background: #e6e1f5; color: #5b4b9e; }
+  .ssurface.b2 { background: #fdecc8; color: #8a5a08; }
+  .ssurface.b3 { background: #dbeafe; color: #1e5a9e; }
+  .ssurface.server { background: #dbeafe; color: #1e5a9e; }
+  .ssurface.table { background: #f0ece1; color: #6b6250; }
+  .scene .shead a { color: var(--accent); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+  .scene .shead a:hover { text-decoration: underline; }
+  .scene .thumb { position: relative; overflow: hidden; background: var(--panel); }
+  .scene .thumb iframe { position: absolute; top: 0; left: 0; border: 0; background: #fff; }
+  .scene .thumb .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
   .empty { color: var(--mut); font-size: 14px; padding: 30px 4px; }
   .note { font-size: 12px; color: var(--faint); margin-top: 18px; line-height: 1.5; }
   code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; background: var(--panel); padding: 1px 5px; border-radius: 4px; }
@@ -100,6 +121,7 @@
     <button class="tab" role="tab" id="tab-launcher"   aria-controls="p-launcher"   data-panel="launcher">Launcher</button>
     <button class="tab" role="tab" id="tab-entry"      aria-controls="p-entry"      data-panel="entry">Entry points</button>
     <button class="tab" role="tab" id="tab-components" aria-controls="p-components" data-panel="components">Components</button>
+    <button class="tab" role="tab" id="tab-scenes"     aria-controls="p-scenes"     data-panel="scenes">Scenes</button>
   </div>
 
   <!-- ═══════════════ TAB 1 · LAUNCHER ═══════════════ -->
@@ -221,6 +243,13 @@
     <div class="comps" id="comp-grid"><div class="empty">Loading component manifest…</div></div>
     <p class="note">Rendered through the harness build served at <code>/dev/harness/</code>. If tiles are blank, the harness bundle wasn't produced by <code>build-site.sh</code> (run a full <code>npm run build &amp;&amp; bash scripts/build-site.sh</code>).</p>
   </section>
+
+  <!-- ═══════════════ TAB 4 · SCENES ═══════════════ -->
+  <section class="panel" id="p-scenes" role="tabpanel" aria-labelledby="tab-scenes">
+    <p class="sub" style="margin-top:0">Full-screen app layouts rendered <strong>live</strong> from frozen fixtures (the Tier-2 view scenarios — same source as the A1 scene gallery). Each thumbnail is the scene at laptop-half (the primary teaching case); click <strong>all viewports ↗</strong> to open it across every named viewport in a new tab.</p>
+    <div id="scene-grid"><div class="empty">Loading component manifest…</div></div>
+    <p class="note">Deep layout diagnostics (bounding boxes, allocator ledgers) live in the audit artifact, not here — this tab is for a quick live look.</p>
+  </section>
 </div>
 
 <script>
@@ -310,9 +339,78 @@
     stage.appendChild(f);
   }
 
+  // ── Live scene tiles (scaled full-layout thumbnails, grouped by surface) ───
+  var HARNESS_SCENE = 'harness/#/harness/scene/';
+  var GROUP_LABELS = { a1: 'A1 · Scenario Mastery', b: 'B · Practice tables', table: 'Practice table' };
+  function buildScenes() {
+    var grid = document.getElementById('scene-grid');
+    fetch('components-manifest.json', { cache: 'no-cache' })
+      .then(function (r) { if (!r.ok) throw new Error('no manifest'); return r.json(); })
+      .then(function (m) {
+        var scenes = m.scenes || [];
+        var vpNames = Object.keys(m.viewports || {});
+        if (!scenes.length || !vpNames.length) { grid.innerHTML = '<div class="empty">No scenes in the manifest.</div>'; return; }
+        // Thumbnail viewport = laptop-half (the primary teaching case these scenes
+        // are composed for — it fills, where desktop-wide leaves the A1 column
+        // narrow). Fixed-width cards so the scale matches the container exactly.
+        var DEF = m.viewports['laptop-half'] ? 'laptop-half' : vpNames[0], vp = m.viewports[DEF];
+        var PW = 316, sc = PW / vp.w, PH = Math.round(vp.h * sc);
+        grid.innerHTML = '';
+        var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) { if (e.isIntersecting) { loadScene(e.target); io.unobserve(e.target); } });
+        }, { rootMargin: '300px' }) : null;
+
+        var groups = [];
+        scenes.forEach(function (s) { if (groups.indexOf(s.group) === -1) groups.push(s.group); });
+        groups.forEach(function (g) {
+          var lbl = document.createElement('div');
+          lbl.className = 'scene-group-label';
+          lbl.textContent = GROUP_LABELS[g] || g;
+          grid.appendChild(lbl);
+          var wrap = document.createElement('div');
+          wrap.className = 'scenes';
+          grid.appendChild(wrap);
+          scenes.filter(function (s) { return s.group === g; }).forEach(function (s) {
+            var drill = 'scene.html#' + encodeURIComponent(s.name);
+            var card = document.createElement('div');
+            card.className = 'scene';
+            card.style.width = PW + 'px';
+            card.innerHTML =
+              '<div class="shead"><div><span class="sname">' + s.label + '</span> ' +
+              '<span class="ssurface ' + s.surface + '">' + s.surface + '</span></div>' +
+              '<a href="' + drill + '" target="_blank" rel="noopener">all viewports ↗</a></div>' +
+              '<div class="thumb" style="width:100%;height:' + PH + 'px" ' +
+              'data-src="' + HARNESS_SCENE + encodeURIComponent(s.name) + '" ' +
+              'data-vw="' + vp.w + '" data-vh="' + vp.h + '" data-sc="' + sc + '">' +
+              '<div class="ph">' + DEF + ' · ' + vp.w + '×' + vp.h + '</div></div>';
+            wrap.appendChild(card);
+            var thumb = card.querySelector('.thumb');
+            if (io) io.observe(thumb); else loadScene(thumb);
+          });
+        });
+      })
+      .catch(function () {
+        grid.innerHTML = '<div class="empty">No component manifest found. Build the site (<code>npm run build &amp;&amp; bash scripts/build-site.sh</code>).</div>';
+      });
+  }
+  function loadScene(thumb) {
+    if (thumb.querySelector('iframe')) return;
+    var f = document.createElement('iframe');
+    f.setAttribute('loading', 'lazy');
+    f.setAttribute('scrolling', 'no');
+    f.setAttribute('title', 'live scene');
+    f.style.width = thumb.getAttribute('data-vw') + 'px';
+    f.style.height = thumb.getAttribute('data-vh') + 'px';
+    f.style.transform = 'scale(' + thumb.getAttribute('data-sc') + ')';
+    f.style.transformOrigin = 'top left';
+    f.src = thumb.getAttribute('data-src');
+    thumb.innerHTML = '';
+    thumb.appendChild(f);
+  }
+
   // ── Tabs (hash-linkable) ───────────────────────────────────────────────────
-  var PANELS = ['launcher', 'entry', 'components'];
-  var built = { entry: false, components: false };
+  var PANELS = ['launcher', 'entry', 'components', 'scenes'];
+  var built = { entry: false, components: false, scenes: false };
   function select(panel) {
     if (PANELS.indexOf(panel) === -1) panel = 'launcher';
     document.querySelectorAll('.tab').forEach(function (t) {
@@ -323,6 +421,7 @@
     });
     if (panel === 'entry' && !built.entry) { buildEntry(); built.entry = true; }
     if (panel === 'components' && !built.components) { buildComponents(); built.components = true; }
+    if (panel === 'scenes' && !built.scenes) { buildScenes(); built.scenes = true; }
     if (('#' + panel) !== location.hash) history.replaceState(null, '', '#' + panel);
   }
   document.querySelectorAll('.tab').forEach(function (t) {

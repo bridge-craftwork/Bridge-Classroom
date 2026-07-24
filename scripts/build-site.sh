@@ -91,6 +91,7 @@ echo "build-site.sh: assembling dev gallery → dist/dev/"
 mkdir -p dist/dev
 cp docs/dev/index.html dist/dev/index.html
 cp docs/dev/drill.html dist/dev/drill.html
+cp docs/dev/scene.html dist/dev/scene.html
 [ -d docs/dev/shots ] && cp -r docs/dev/shots dist/dev/shots || mkdir -p dist/dev/shots
 
 if node scripts/harness-manifest.mjs dist/dev/components-manifest.json; then
