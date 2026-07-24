@@ -123,6 +123,20 @@ fn push_delta(friends: &[String], user: &str, visible: PresenceState) {
     }
 }
 
+/// Push a raw JSON frame to every open connection of `user_id` (no-op if they
+/// have none open — they'll pick it up via the pull path). The transport is
+/// shared: presence deltas AND non-presence events (a friend request) ride the
+/// same stream, distinguished by their top-level key on the client.
+pub fn notify(user_id: &str, event: &Value) {
+    let payload = event.to_string();
+    let reg = lock();
+    if let Some(conns) = reg.conns.get(user_id) {
+        for tx in conns.values() {
+            let _ = tx.send(payload.clone());
+        }
+    }
+}
+
 /// Recompute `user`'s friend-visible state and broadcast it to their friends.
 async fn fanout(state: &AppState, user: &str) {
     let friends = match crate::routes::friends::friend_ids(&state.db, user).await {
@@ -398,6 +412,21 @@ mod tests {
         assert_eq!(b_tab1.try_recv().unwrap(), expected);
         assert_eq!(b_tab2.try_recv().unwrap(), expected);
         assert!(stranger.try_recv().is_err(), "stranger gets nothing");
+    }
+
+    #[test]
+    fn notify_delivers_a_raw_frame_to_every_tab_of_the_target_only() {
+        let mut tab1 = register("nt-target");
+        let mut tab2 = register("nt-target");
+        let mut other = register("nt-other");
+        notify(
+            "nt-target",
+            &json!({ "friend_request": { "id": "r1", "from_name": "Rick" } }),
+        );
+        let expected = r#"{"friend_request":{"from_name":"Rick","id":"r1"}}"#;
+        assert_eq!(tab1.try_recv().unwrap(), expected);
+        assert_eq!(tab2.try_recv().unwrap(), expected);
+        assert!(other.try_recv().is_err(), "only the target is notified");
     }
 
     #[test]
