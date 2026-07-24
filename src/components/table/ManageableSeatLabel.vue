@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="menuRoot"
     class="msl"
     :class="{ 'drop-over': dropOver, manage: canManage }"
     :draggable="canManage && isHuman"
@@ -11,12 +12,10 @@
     @click="hasMenu ? toggleMenu() : null"
   >
     <!-- The name IS the drag handle and the menu trigger (no separate button). -->
-    <SeatChip :seat="seat" :name="name" :presence="presence" :card-count="cardCount" :compact="compact" />
+    <SeatChip :seat="seat" :name="name" :presence="presence" :card-count="cardCount" :compact="compact" :reserved="isReserved" />
     <div v-if="menuOpen" class="msl-menu" @click.stop>
       <!-- Add friend: available to ANY player, not just the host — this is the
-           only way to seed a friends list, since there's no user search. Sits
-           above the management items because for most players it's the only
-           thing in the menu. -->
+           only way to seed a friends list, since there's no user search. -->
       <button
         v-if="friendAction"
         class="msl-item msl-friend"
@@ -30,25 +29,7 @@
       <!-- Reserved: held for an invited friend until they join. -->
       <div v-if="isReserved" class="msl-note">Invited — waiting for them to join…</div>
 
-      <!-- Invite a friend onto an open (empty/bot) seat (Phase 4). -->
-      <template v-if="canInvite">
-        <button v-if="!inviteOpen" class="msl-item msl-friend" @click.stop="inviteOpen = true">
-          Invite a friend…
-        </button>
-        <template v-else>
-          <div class="msl-note">Invite to {{ seat }}:</div>
-          <button
-            v-for="f in invitableFriends"
-            :key="f.user_id"
-            class="msl-item"
-            :disabled="inviteBusy"
-            @click="inviteFriend(f)"
-          >{{ f.name }}</button>
-          <div v-if="!invitableFriends.length" class="msl-note">No friends online.</div>
-          <div v-if="inviteError" class="msl-note">{{ inviteError }}</div>
-        </template>
-      </template>
-
+      <!-- Seat management (top). -->
       <template v-if="canManage && isYou">
         <button class="msl-item" @click="act({ from: seat, seat: null })">Stand (leave empty)</button>
         <button class="msl-item" @click="act({ from: seat, seat: null, bot: true })">Seat a bot</button>
@@ -67,6 +48,29 @@
         <button class="msl-item" @click="act({ seat, token: myToken })">Sit here</button>
         <button class="msl-item" @click="act({ from: seat, seat: null })">Make empty</button>
       </template>
+
+      <!-- Reserve an open (empty/bot) seat: hold it for a guest (copies the
+           invite link) or a specific online friend (pushes them an invite). -->
+      <template v-if="canReserve">
+        <div class="msl-sep"></div>
+        <div class="msl-label">Reserve:</div>
+        <button
+          class="msl-item"
+          :class="{ 'msl-muted': !guestsAllowed }"
+          :disabled="!guestsAllowed || inviteBusy"
+          :title="guestsAllowed ? 'Copy an invite link for a guest' : 'Guests are not allowed at this table'"
+          @click="reserveGuest"
+        >Guest</button>
+        <button
+          v-for="f in invitableFriends"
+          :key="f.user_id"
+          class="msl-item"
+          :disabled="inviteBusy"
+          @click="inviteFriend(f)"
+        >{{ f.name }}</button>
+        <div v-if="!invitableFriends.length" class="msl-note">No friends online.</div>
+        <div v-if="inviteError" class="msl-note">{{ inviteError }}</div>
+      </template>
     </div>
   </div>
 </template>
@@ -76,11 +80,12 @@
 // SeatChip for the visual; adds host drag (grab a human label), drop (another
 // label or a kibitzer chip lands here), and a small pulldown (Sit / Remove /
 // Stand). Emits seat-addressed `assign` — the base BridgeTable stays drag-free.
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import SeatChip from '../SeatChip.vue'
 import { useUserStore } from '../../composables/useUserStore.js'
 import { useFriends } from '../../composables/useFriends.js'
 import { useFriendPresence } from '../../composables/useFriendPresence.js'
+import { useAppToast } from '../../composables/useAppToast.js'
 import { apiFetch, API_URL } from '../../utils/apiFetch.js'
 
 // seat/name/presence/cardCount/compact come from SeatPanel; the rest ride in via
@@ -99,6 +104,9 @@ const props = defineProps({
   roster: { type: Array, default: () => [] },
   // Served session id — enables inviting a friend onto this seat (Phase 4).
   sessionId: { type: String, default: null },
+  // Whether a guest (invite-link) join is offered on an open seat. Placeholder
+  // for ADR-0006 `access_mode` (link|friends); defaults true (link tables).
+  guestsAllowed: { type: Boolean, default: true },
   onAssign: { type: Function, default: null },
   onKick: { type: Function, default: null },
 })
@@ -160,15 +168,15 @@ const friendNote = computed(() => {
 
 const friendBusy = ref(false)
 
-// ── Invite a friend onto this seat (Phase 4) ────────────────────────────
-// The host offers this on an open (empty/bot) seat; picking an online friend
-// holds the seat for them and pushes them an invitation (see App.vue's toast).
+// ── Reserve an open seat (Phase 4) ──────────────────────────────────────
+// The host holds an open (empty/bot) seat for a guest (copies the invite link)
+// or a specific online friend (pushes them an invitation → App.vue's toast).
 const presence = useFriendPresence()
-const inviteOpen = ref(false)
+const appToast = useAppToast()
 const inviteBusy = ref(false)
 const inviteError = ref('')
 
-const canInvite = computed(
+const canReserve = computed(
   () => props.canManage && !!props.sessionId && (isEmpty.value || isBot.value),
 )
 // Accounts already at the table (occupants + reservations) — don't re-offer them.
@@ -200,9 +208,33 @@ async function inviteFriend(friend) {
     })
     if (!res.ok) throw new Error(`invite failed (${res.status})`)
     menuOpen.value = false
-    inviteOpen.value = false
+    appToast.notify(`Invited ${friend.name} to seat ${props.seat}.`)
   } catch (e) {
     inviteError.value = 'Could not invite — the seat may be taken.'
+  } finally {
+    inviteBusy.value = false
+  }
+}
+
+// "Guest" reserve: copy the table's invite link so anyone can join via it (the
+// host seats them or they take the open seat). Not a seat-specific hold — guests
+// have no account to reserve for.
+async function reserveGuest() {
+  if (!props.guestsAllowed || !myUserId.value || inviteBusy.value) return
+  inviteBusy.value = true
+  inviteError.value = ''
+  try {
+    const res = await apiFetch(`${API_URL}/users/${myUserId.value}/invite-code`, {
+      method: 'POST',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.code) throw new Error('no invite code')
+    const url = `${window.location.origin}${window.location.pathname}#/table/${data.code}`
+    await navigator.clipboard.writeText(url)
+    menuOpen.value = false
+    appToast.notify('Invite link copied — send it to a guest.')
+  } catch {
+    inviteError.value = 'Could not copy the invite link.'
   } finally {
     inviteBusy.value = false
   }
@@ -224,6 +256,18 @@ function toggleMenu() {
     friends.load(myUserId.value)
   }
 }
+
+// Close the menu when anything outside it is clicked (previously you had to
+// click the name again). Capture phase so it fires before inner stopPropagation.
+const menuRoot = ref(null)
+function onDocPointerDown(e) {
+  if (menuRoot.value && !menuRoot.value.contains(e.target)) menuOpen.value = false
+}
+watch(menuOpen, (open) => {
+  if (open) document.addEventListener('mousedown', onDocPointerDown, true)
+  else document.removeEventListener('mousedown', onDocPointerDown, true)
+})
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocPointerDown, true))
 
 async function addFriend() {
   if (!seatAccountId.value || friendBusy.value) return
@@ -285,4 +329,11 @@ function onDrop(e) {
 .msl-note { padding: 5px 10px; font-size: 12px; color: #6b7280; white-space: nowrap; }
 .msl-danger { color: #c62828; }
 .msl-danger:hover { background: #fdeaea; }
+/* Reserve section: a divider + a small section label above the guest/friends. */
+.msl-sep { height: 1px; background: #eaecef; margin: 4px 6px; }
+.msl-label {
+  padding: 3px 10px 2px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; color: #9aa0a6;
+}
+.msl-muted { color: #b0b4ba; }
 </style>

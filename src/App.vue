@@ -40,6 +40,11 @@
       </template>
     </div>
   </div>
+
+  <!-- Generic transient notices (e.g. "Invite link copied"). -->
+  <div v-if="appMessages.length" class="app-toasts">
+    <div v-for="m in appMessages" :key="m.id" class="app-toast">{{ m.text }}</div>
+  </div>
 </template>
 
 <script setup>
@@ -50,6 +55,7 @@ import { useFriendPresence } from './composables/useFriendPresence.js'
 import { useFriends } from './composables/useFriends.js'
 import { useTableSocket } from './composables/useTableSocket.js'
 import { useInvitationJoin } from './composables/useInvitationJoin.js'
+import { useAppToast } from './composables/useAppToast.js'
 import { apiFetch, API_URL } from './utils/apiFetch.js'
 // Grid-arranger bounding-box diagnostic overlay styles (grid-arranger-spec §5.1),
 // available live in the app — inert unless `data-bounding-boxes` is set on <html>, and
@@ -135,6 +141,9 @@ async function acceptToast(t) {
     busyIds.value = next
   }
 }
+
+// Generic transient notices (App-wide toast surface).
+const { messages: appMessages } = useAppToast()
 
 // ── Table invitations (Phase 4) ────────────────────────────────────────────
 const router = useRouter()
@@ -233,4 +242,26 @@ watch(
 .ft-accept:hover:not(:disabled) { background: #167a5a; }
 .ft-dismiss { background: transparent; color: #cbd5e1; }
 .ft-dismiss:hover { color: #fff; }
+
+/* Generic transient notices — stacked above the friend toasts, same corner. */
+.app-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 78px;
+  transform: translateX(-50%);
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.app-toast {
+  padding: 9px 16px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 13px;
+}
 </style>
