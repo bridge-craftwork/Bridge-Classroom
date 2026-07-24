@@ -64,11 +64,14 @@
         <button
           v-for="f in invitableFriends"
           :key="f.user_id"
-          class="msl-item"
+          class="msl-item msl-friend-row"
+          :class="{ 'msl-muted': !friendOnline(f) }"
           :disabled="inviteBusy"
           @click="inviteFriend(f)"
-        >{{ f.name }}</button>
-        <div v-if="!invitableFriends.length" class="msl-note">No friends online.</div>
+        >
+          <span class="msl-fdot" :class="{ on: friendOnline(f) }"></span>{{ f.name }}
+        </button>
+        <div v-if="!invitableFriends.length" class="msl-note">No friends yet.</div>
         <div v-if="inviteError" class="msl-note">{{ inviteError }}</div>
       </template>
     </div>
@@ -185,12 +188,25 @@ const seatedAccountIds = computed(() => {
   for (const r of props.roster || []) if (r.account_id) ids.add(r.account_id)
   return ids
 })
-const invitableFriends = computed(() =>
-  (friends.friends.value || []).filter(
-    (f) =>
-      presence.presenceFor(f.user_id) !== 'offline' && !seatedAccountIds.value.has(f.user_id),
-  ),
-)
+// All friends not already at the table, ONLINE first (then offline), each group
+// alphabetical. Offline friends are shown (dimmed) so the host sees the whole
+// list; inviting one holds the seat and reaches them if they come online in time.
+const invitableFriends = computed(() => {
+  const online = []
+  const offline = []
+  for (const f of friends.friends.value || []) {
+    if (seatedAccountIds.value.has(f.user_id)) continue
+    if (presence.presenceFor(f.user_id) !== 'offline') online.push(f)
+    else offline.push(f)
+  }
+  const byName = (a, b) => (a.name || '').localeCompare(b.name || '')
+  online.sort(byName)
+  offline.sort(byName)
+  return [...online, ...offline]
+})
+function friendOnline(f) {
+  return presence.presenceFor(f.user_id) !== 'offline'
+}
 
 async function inviteFriend(friend) {
   if (!props.sessionId || !myUserId.value || inviteBusy.value) return
@@ -336,4 +352,11 @@ function onDrop(e) {
   text-transform: uppercase; letter-spacing: 0.04em; color: #9aa0a6;
 }
 .msl-muted { color: #b0b4ba; }
+/* Friend row: a presence dot before the name (green = online, grey = offline). */
+.msl-friend-row { display: flex; align-items: center; gap: 7px; }
+.msl-fdot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #cbd5e1; flex-shrink: 0;
+}
+.msl-fdot.on { background: #1d9e75; }
 </style>

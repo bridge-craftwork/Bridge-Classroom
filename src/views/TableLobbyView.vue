@@ -1,7 +1,18 @@
 <template>
   <div class="tl-page">
     <!-- ── Joined: the live table ─────────────────────────────────── -->
-    <UnifiedTable v-if="mode === 'joined'" server @exit="onExit" />
+    <template v-if="mode === 'joined'">
+      <div class="tl-topbar">
+        <button class="tl-leave" @click="onExit">&lsaquo; Leave table</button>
+        <button
+          v-if="currentUser"
+          class="tl-avatar"
+          :title="userName"
+          @click="showSettings = true"
+        >{{ userInitials }}</button>
+      </div>
+      <UnifiedTable server @exit="onExit" />
+    </template>
 
     <!-- ── Everything else is a centered card ─────────────────────── -->
     <div v-else class="tl-card">
@@ -118,6 +129,16 @@
         </p>
       </template>
     </div>
+
+    <!-- Identity menu (Switch User / edit name) — same panel as the main app;
+         switching or signing out leaves the table and returns to re-authenticate. -->
+    <SettingsPanel
+      :visible="showSettings"
+      @close="showSettings = false"
+      @switchUser="leaveToMainApp"
+      @logout="leaveToMainApp"
+      @become-teacher="leaveToMainApp"
+    />
   </div>
 </template>
 
@@ -138,6 +159,7 @@ import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useRememberedTables } from '../composables/useRememberedTables.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useInvitationJoin } from '../composables/useInvitationJoin.js'
+import SettingsPanel from '../components/SettingsPanel.vue'
 
 const GUEST_NAME_KEY = 'bridgeTableGuestName'
 const WAIT_POLL_MS = 10_000
@@ -339,6 +361,27 @@ function onExit() {
   goPicker()
 }
 
+// ── Identity menu (top-right avatar) ─────────────────────────────────────
+const showSettings = ref(false)
+const userName = computed(() => {
+  const u = currentUser.value
+  return u ? `${u.firstName} ${u.lastName}`.trim() : ''
+})
+const userInitials = computed(() => {
+  const u = currentUser.value
+  if (!u) return '?'
+  return `${(u.firstName || '').charAt(0)}${(u.lastName || '').charAt(0)}`.toUpperCase() || '?'
+})
+// Switching user / signing out must not strand a live seat: leave the table,
+// then hand off to the main app to re-authenticate.
+function leaveToMainApp() {
+  showSettings.value = false
+  table.leave()
+  userStore.stopViewingAs()
+  userStore.currentUserId.value = null
+  router.push('/')
+}
+
 // ── Lifecycle ──────────────────────────────────────────────────────────
 
 watch(() => [route.params.hostCode, route.params.inviteCode], () => {
@@ -364,6 +407,43 @@ onBeforeUnmount(() => {
 .tl-page {
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
+
+/* Slim chrome for the invited/joined player: Leave + identity avatar. */
+.tl-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 20px;
+  border-bottom: 0.5px solid #e2e4e2;
+  background: #fff;
+}
+.tl-leave {
+  border: 1px solid #d5d8d5;
+  background: #fff;
+  color: #444;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.tl-leave:hover { border-color: #999; color: #222; }
+.tl-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, var(--green-mid, #667eea) 0%, var(--green-dark, #764ba2) 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.tl-avatar:hover { transform: scale(1.05); box-shadow: 0 2px 8px rgba(45, 106, 79, 0.4); }
 
 .tl-card {
   max-width: 460px;
