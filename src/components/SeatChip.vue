@@ -2,7 +2,7 @@
   <!-- Seat IDENTITY: who sits here, not what they hold. Renders with or without
        a hand attached — the console tile's resting state ("S  Rick Wilson ●") is
        just a chip. In the table it reproduces the old .seat-label header. -->
-  <div class="seat-chip" :class="{ compact, 'is-turn': turn }">
+  <div class="seat-chip" :class="{ compact, 'is-turn': turn, reserved }">
     <!-- Named occupant (multiplayer): badge + player name above the hand, like
          BBO/Intobridge. No name (A1 / solo / bots) → the plain compass label. -->
     <SeatIndicator
@@ -53,6 +53,9 @@ const props = defineProps({
   // This seat belongs to the viewer (host / your own seat) → the name ladder
   // shows your full name then your first name, and highlights it as "you".
   you: { type: Boolean, default: false },
+  // Held for an invited friend who hasn't joined yet (Phase 4) → a pending
+  // (amber) treatment so it reads as not-yet-seated.
+  reserved: { type: Boolean, default: false },
 })
 
 const label = computed(() => props.name || getSeatName(props.seat))
@@ -88,4 +91,13 @@ const label = computed(() => props.name || getSeatName(props.seat))
 .seat-dot-connected { background: #1d9e75; }
 .seat-dot-disconnected { background: #c0c4c0; }
 .seat-chip.is-turn .seat-name { color: #1565c0; }
+
+/* Pending reservation (invited friend not yet joined): amber, italic. */
+.seat-chip.reserved :deep(.si-name),
+.seat-chip.reserved .seat-name { color: #b45309; font-style: italic; }
+.seat-chip.reserved :deep(.si-badge) {
+  background: #fdebcb;
+  color: #b45309;
+  box-shadow: inset 0 0 0 1px #e6c88a;
+}
 </style>
