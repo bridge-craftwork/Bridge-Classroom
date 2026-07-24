@@ -107,12 +107,23 @@ export function useHostedTable({ onExit } = {}) {
     }
   }
 
+  // The host table honors the SAME "play the hand after bidding" preference as
+  // the solo table (localStorage `bp.playCardplay`), so an in-place solo→served
+  // upgrade — and any later host deal-source load — keeps bidding-only vs
+  // bid-and-play instead of the served default (always play). Read the persisted
+  // key directly: it's the single source of truth the solo Table settings write.
+  function hostBoardMode() {
+    const play =
+      typeof localStorage !== 'undefined' && localStorage.getItem('bp.playCardplay') === '1'
+    return play ? 'bid-and-play' : 'bid-only'
+  }
+
   // ── Deal source → materialize the whole set onto the table ─────────────────
   async function onLoadSource(selection) {
     loadError.value = ''
     try {
       const { boardsPbn, label } = await materialize(selection)
-      console_.loadBoards(boardsPbn, label)
+      console_.loadBoards(boardsPbn, label, hostBoardMode())
       return { ok: true }
     } catch (e) {
       loadError.value = e?.message || 'Could not load that source.'

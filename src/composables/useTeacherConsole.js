@@ -86,9 +86,13 @@ function openBoards(count) {
 // All force EVERY table together. The server replies with lobby/board frames.
 
 // Change the deal source: replace the loaded set (materialized PBN) and its
-// label; resets all tables to board 1.
-function loadBoards(boardsPbn, label) {
-  return socket.send({ t: 'load_boards', boards_pbn: boardsPbn, label })
+// label; resets all tables to board 1. `mode` (optional: 'bid-and-play' |
+// 'bid-only' | 'play-only') carries the "play the hand after bidding" choice —
+// omitted, the server keeps the session's current board mode.
+function loadBoards(boardsPbn, label, mode) {
+  const msg = { t: 'load_boards', boards_pbn: boardsPbn, label }
+  if (mode) msg.mode = mode
+  return socket.send(msg)
 }
 
 // Jump every table to a 1-based board number (Shark "go to").
