@@ -262,7 +262,7 @@ function handlePageUnload() {
 
 // Connect (or switch) to a table session. Exactly one of userId / guestName.
 // `bot` optionally selects the server's bot backend (e.g. 'random').
-async function connect({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false, seat = null }) {
+async function connect({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false, seat = null, ticket: preMinted = null, name = null, role = null }) {
   disconnect()
   const myEpoch = ++epoch
   identity = { sessionId, userId, guestName, bot, asPlayer, seat }
@@ -272,13 +272,21 @@ async function connect({ sessionId, userId = null, guestName = null, bot = null,
   lastError.value = ''
   status.value = 'minting'
   let minted
-  try {
-    minted = await mintTicket(identity)
-  } catch (err) {
-    if (myEpoch !== epoch) return false
-    lastError.value = err.message
-    status.value = err.code === 'not_configured' ? 'unavailable' : 'error'
-    return false
+  if (preMinted) {
+    // Invitation-accept path: the Mac API already minted us a ticket for this
+    // session (whose `sub` matches the seat reservation — ADR-0006 §2), so skip
+    // the mint. A reconnect after this can still re-mint via `identity.userId`
+    // if the ticket is ever rejected.
+    minted = { ticket: preMinted, name, role }
+  } else {
+    try {
+      minted = await mintTicket(identity)
+    } catch (err) {
+      if (myEpoch !== epoch) return false
+      lastError.value = err.message
+      status.value = err.code === 'not_configured' ? 'unavailable' : 'error'
+      return false
+    }
   }
   if (myEpoch !== epoch) return false
   ticket = minted.ticket

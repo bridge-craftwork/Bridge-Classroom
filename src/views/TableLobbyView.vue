@@ -137,6 +137,7 @@ import UnifiedTable from './BiddingPracticeView.vue'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useRememberedTables } from '../composables/useRememberedTables.js'
 import { useUserStore } from '../composables/useUserStore.js'
+import { useInvitationJoin } from '../composables/useInvitationJoin.js'
 
 const GUEST_NAME_KEY = 'bridgeTableGuestName'
 const WAIT_POLL_MS = 10_000
@@ -146,6 +147,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const table = useRemoteTable()
 const remembered = useRememberedTables()
+const invitationJoin = useInvitationJoin()
 
 const { connectionStatus, connectionError } = table
 const currentUser = userStore.currentUser
@@ -214,6 +216,26 @@ async function resolveAndRoute() {
   if (!code.value) {
     mode.value = 'picker'
     refreshPicker()
+    return
+  }
+
+  // Accepted-invitation fast path: we already hold a ticket for this session
+  // (from App.vue's invitation toast — the ticket never rode the URL). Skip code
+  // resolution + identity and join straight into the reserved seat.
+  const invite = invitationJoin.take(code.value)
+  if (invite) {
+    hostName.value = ''
+    sessionInfo.value = { id: code.value, table_count: 1 }
+    mode.value = 'identify'
+    doJoin(
+      {
+        userId: currentUser.value?.id,
+        ticket: invite.ticket,
+        name: invite.name,
+        role: invite.role,
+      },
+      myEpoch,
+    )
     return
   }
 

@@ -27,6 +27,8 @@ const props = defineProps({
   canManage: { type: Boolean, default: false },
   // Roster (token→seats) so a label can resolve an occupant's token for Kick.
   roster: { type: Array, default: () => [] },
+  // Served session id — lets a seat's menu invite a friend onto it (Phase 4).
+  sessionId: { type: String, default: null },
 })
 const emit = defineEmits(['assign', 'kick'])
 
@@ -39,6 +41,7 @@ const labelProps = computed(() => ({
   myToken: props.myToken,
   canManage: props.canManage,
   roster: props.roster,
+  sessionId: props.sessionId,
   onAssign: (p) => emit('assign', p),
   onKick: (token) => emit('kick', token),
 }))

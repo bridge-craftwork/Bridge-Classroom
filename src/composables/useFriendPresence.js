@@ -94,6 +94,23 @@ function openStream() {
         // No server id for a confirmation; key it by who accepted.
         pushToast({ kind: 'confirmed', id: `confirmed:${conf.user_id}`, name: conf.name })
       }
+      // Table invitation (Phase 4): a friend invited us onto a seat.
+      const inv = data.invitation
+      if (inv && inv.id) {
+        pushToast({
+          kind: 'invitation',
+          id: `inv:${inv.id}`,
+          invitationId: inv.id,
+          sessionId: inv.session_id,
+          seat: inv.seat,
+          name: inv.from_name,
+        })
+      }
+      // Softened host notice that an invitee declined.
+      const dec = data.invitation_declined
+      if (dec) {
+        pushToast({ kind: 'declined', id: `declined:${Date.now()}`, name: dec.from_name })
+      }
     } catch {
       /* ignore a malformed frame */
     }

@@ -177,6 +177,27 @@ fn mint(payload: &TicketPayload, secret: &str) -> String {
     format!("{payload_b64}.{sig_b64}")
 }
 
+/// Mint a table ticket for an already-known identity — reused by the invitation
+/// accept flow, which has already resolved the user + role. Returns
+/// `(ticket, exp)`. Same wire format / TTL as the `mint_table_ticket` endpoint.
+pub(crate) fn mint_ticket(
+    secret: &str,
+    sub: &str,
+    name: &str,
+    session_id: &str,
+    role: &str,
+) -> (String, i64) {
+    let exp = chrono::Utc::now().timestamp() + TICKET_TTL_SECONDS;
+    let payload = TicketPayload {
+        sub: sub.to_string(),
+        name: name.to_string(),
+        session_id: session_id.to_string(),
+        role: role.to_string(),
+        exp,
+    };
+    (mint(&payload, secret), exp)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

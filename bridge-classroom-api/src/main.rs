@@ -141,6 +141,19 @@ async fn main() -> anyhow::Result<()> {
         // heartbeat. Cookie-authorized (EventSource can't send x-api-key).
         .route("/api/presence/stream", get(routes::presence_stream))
         .route("/api/presence", post(routes::presence_heartbeat))
+        // Table invitations (Phase 4): host invites a friend onto a seat.
+        .route(
+            "/api/tables/:session_id/invitations",
+            post(routes::create_invitation),
+        )
+        .route(
+            "/api/invitations/:id/accept",
+            post(routes::accept_invitation),
+        )
+        .route(
+            "/api/invitations/:id/decline",
+            post(routes::decline_invitation),
+        )
         // Recovery routes
         .route("/api/recovery/request", post(routes::request_recovery))
         .route("/api/recovery/claim", post(routes::claim_recovery))

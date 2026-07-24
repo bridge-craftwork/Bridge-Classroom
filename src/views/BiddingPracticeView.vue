@@ -119,6 +119,7 @@
             :my-token="srv.myToken"
             :can-manage="srv.canManageSeats"
             :roster="srv.roster"
+            :session-id="srv.sessionId"
             @card-click="srv.onCardClick"
             @assign="srv.onAssignSeat"
             @kick="srv.onKick"

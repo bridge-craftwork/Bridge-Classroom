@@ -17,6 +17,21 @@
           <button class="ft-btn ft-dismiss" @click="dismissToast(t.id)">Dismiss</button>
         </div>
       </template>
+      <template v-else-if="t.kind === 'invitation'">
+        <div class="ft-body"><strong>{{ t.name || 'A friend' }}</strong> invited you to their table.</div>
+        <div class="ft-actions">
+          <button class="ft-btn ft-accept" :disabled="busyIds.has(t.id)" @click="acceptInvitation(t)">
+            {{ busyIds.has(t.id) ? 'Joining…' : 'Join' }}
+          </button>
+          <button class="ft-btn ft-dismiss" @click="declineInvitation(t)">Decline</button>
+        </div>
+      </template>
+      <template v-else-if="t.kind === 'declined'">
+        <div class="ft-body"><strong>{{ t.name || 'Your friend' }}</strong> declined the invitation.</div>
+        <div class="ft-actions">
+          <button class="ft-btn ft-dismiss" @click="dismissToast(t.id)">Dismiss</button>
+        </div>
+      </template>
       <template v-else>
         <div class="ft-body">You're now friends with <strong>{{ t.name || 'someone' }}</strong>.</div>
         <div class="ft-actions">
@@ -29,10 +44,13 @@
 
 <script setup>
 import { defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from './composables/useUserStore.js'
 import { useFriendPresence } from './composables/useFriendPresence.js'
 import { useFriends } from './composables/useFriends.js'
 import { useTableSocket } from './composables/useTableSocket.js'
+import { useInvitationJoin } from './composables/useInvitationJoin.js'
+import { apiFetch, API_URL } from './utils/apiFetch.js'
 // Grid-arranger bounding-box diagnostic overlay styles (grid-arranger-spec §5.1),
 // available live in the app — inert unless `data-bounding-boxes` is set on <html>, and
 // only styles `.grid-table`, so it does nothing on the legacy arrangement.
@@ -86,9 +104,18 @@ watch(
   () => toasts.value.length,
   (n, prev) => {
     if (n <= prev) return
-    if (userStore.currentUserId.value) friends.refresh(userStore.currentUserId.value)
     const latest = toasts.value[toasts.value.length - 1]
-    if (latest && latest.kind === 'confirmed') {
+    // Friend-graph changes should refresh the Friends tab; a table invitation
+    // doesn't touch the friend list, so skip the refresh for it.
+    if (
+      userStore.currentUserId.value &&
+      latest &&
+      (latest.kind === 'request' || latest.kind === 'confirmed')
+    ) {
+      friends.refresh(userStore.currentUserId.value)
+    }
+    // Purely informational toasts auto-dismiss; actionable ones persist.
+    if (latest && (latest.kind === 'confirmed' || latest.kind === 'declined')) {
       setTimeout(() => dismissToast(latest.id), 7000)
     }
   },
@@ -106,6 +133,51 @@ async function acceptToast(t) {
     const next = new Set(busyIds.value)
     next.delete(t.id)
     busyIds.value = next
+  }
+}
+
+// ── Table invitations (Phase 4) ────────────────────────────────────────────
+const router = useRouter()
+const invitationJoin = useInvitationJoin()
+
+async function acceptInvitation(t) {
+  const uid = userStore.currentUserId.value
+  if (!uid || busyIds.value.has(t.id)) return
+  busyIds.value = new Set(busyIds.value).add(t.id)
+  try {
+    const res = await apiFetch(`${API_URL}/invitations/${t.invitationId}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acting_user_id: uid }),
+    })
+    if (!res.ok) throw new Error(`accept failed (${res.status})`)
+    const { session_id, ticket, name, role } = await res.json()
+    // Hand the minted ticket to TableLobbyView (never via URL — ADR-0006 §2) and
+    // navigate; it joins straight into the reserved seat.
+    invitationJoin.set({ sessionId: session_id, ticket, name, role })
+    dismissToast(t.id)
+    router.push(`/table/${session_id}`)
+  } catch {
+    // Leave the toast up so they can retry.
+  } finally {
+    const next = new Set(busyIds.value)
+    next.delete(t.id)
+    busyIds.value = next
+  }
+}
+
+async function declineInvitation(t) {
+  const uid = userStore.currentUserId.value
+  dismissToast(t.id)
+  if (!uid) return
+  try {
+    await apiFetch(`${API_URL}/invitations/${t.invitationId}/decline`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acting_user_id: uid }),
+    })
+  } catch {
+    /* best-effort; the reservation also expires on its own */
   }
 }
 // `at_table` follows the (singleton) table socket: connected while seated at a

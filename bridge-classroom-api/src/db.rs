@@ -1104,6 +1104,39 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Table invitations (friendship Phase 4) ----
+    // A host invites an online friend onto a seat: a reservation is placed on
+    // the table service and a pending invitation persisted here so accept/decline
+    // survive a reload. Ephemeral by nature (the reservation is in-memory on the
+    // service), so no long history is kept — a row is resolved and left as record.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS table_invitations (
+            id           TEXT PRIMARY KEY,
+            session_id   TEXT NOT NULL,
+            seat         TEXT NOT NULL,
+            from_user_id TEXT NOT NULL REFERENCES users(id),
+            to_user_id   TEXT NOT NULL REFERENCES users(id),
+            status       TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','accepted','declined','expired')),
+            created_at   TEXT NOT NULL,
+            expires_at   TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
+    // Hot lookup: a user's pending invitations.
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_table_invitations_to_status
+           ON table_invitations(to_user_id, status)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ---- Guest users ----
     // Shark-style type-a-name guests. One row per minted guest identity so
     // the display name survives the ticket and can be linked to a real

@@ -27,6 +27,28 @@
       </button>
       <div v-else-if="friendNote" class="msl-note">{{ friendNote }}</div>
 
+      <!-- Reserved: held for an invited friend until they join. -->
+      <div v-if="isReserved" class="msl-note">Invited — waiting for them to join…</div>
+
+      <!-- Invite a friend onto an open (empty/bot) seat (Phase 4). -->
+      <template v-if="canInvite">
+        <button v-if="!inviteOpen" class="msl-item msl-friend" @click.stop="inviteOpen = true">
+          Invite a friend…
+        </button>
+        <template v-else>
+          <div class="msl-note">Invite to {{ seat }}:</div>
+          <button
+            v-for="f in invitableFriends"
+            :key="f.user_id"
+            class="msl-item"
+            :disabled="inviteBusy"
+            @click="inviteFriend(f)"
+          >{{ f.name }}</button>
+          <div v-if="!invitableFriends.length" class="msl-note">No friends online.</div>
+          <div v-if="inviteError" class="msl-note">{{ inviteError }}</div>
+        </template>
+      </template>
+
       <template v-if="canManage && isYou">
         <button class="msl-item" @click="act({ from: seat, seat: null })">Stand (leave empty)</button>
         <button class="msl-item" @click="act({ from: seat, seat: null, bot: true })">Seat a bot</button>
@@ -58,6 +80,8 @@ import { ref, computed } from 'vue'
 import SeatChip from '../SeatChip.vue'
 import { useUserStore } from '../../composables/useUserStore.js'
 import { useFriends } from '../../composables/useFriends.js'
+import { useFriendPresence } from '../../composables/useFriendPresence.js'
+import { apiFetch, API_URL } from '../../utils/apiFetch.js'
 
 // seat/name/presence/cardCount/compact come from SeatPanel; the rest ride in via
 // `labelProps` (shared table context + an onAssign callback — no event bubbling
@@ -73,12 +97,16 @@ const props = defineProps({
   canManage: { type: Boolean, default: false },
   myToken: { type: String, default: null },
   roster: { type: Array, default: () => [] },
+  // Served session id — enables inviting a friend onto this seat (Phase 4).
+  sessionId: { type: String, default: null },
   onAssign: { type: Function, default: null },
   onKick: { type: Function, default: null },
 })
 
 const kind = computed(() => props.seats[props.seat]?.kind)
 const isHuman = computed(() => kind.value === 'human')
+const isBot = computed(() => !kind.value || kind.value === 'bot')
+const isReserved = computed(() => kind.value === 'reserved')
 const isEmpty = computed(() => kind.value === 'empty')
 const isYou = computed(() => props.yourSeats.includes(props.seat))
 // The occupant's connection token (for Kick), resolved from the roster by seat.
@@ -131,6 +159,54 @@ const friendNote = computed(() => {
 })
 
 const friendBusy = ref(false)
+
+// ── Invite a friend onto this seat (Phase 4) ────────────────────────────
+// The host offers this on an open (empty/bot) seat; picking an online friend
+// holds the seat for them and pushes them an invitation (see App.vue's toast).
+const presence = useFriendPresence()
+const inviteOpen = ref(false)
+const inviteBusy = ref(false)
+const inviteError = ref('')
+
+const canInvite = computed(
+  () => props.canManage && !!props.sessionId && (isEmpty.value || isBot.value),
+)
+// Accounts already at the table (occupants + reservations) — don't re-offer them.
+const seatedAccountIds = computed(() => {
+  const ids = new Set()
+  for (const r of props.roster || []) if (r.account_id) ids.add(r.account_id)
+  return ids
+})
+const invitableFriends = computed(() =>
+  (friends.friends.value || []).filter(
+    (f) =>
+      presence.presenceFor(f.user_id) !== 'offline' && !seatedAccountIds.value.has(f.user_id),
+  ),
+)
+
+async function inviteFriend(friend) {
+  if (!props.sessionId || !myUserId.value || inviteBusy.value) return
+  inviteBusy.value = true
+  inviteError.value = ''
+  try {
+    const res = await apiFetch(`${API_URL}/tables/${props.sessionId}/invitations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        acting_user_id: myUserId.value,
+        friend_user_id: friend.user_id,
+        seat: props.seat,
+      }),
+    })
+    if (!res.ok) throw new Error(`invite failed (${res.status})`)
+    menuOpen.value = false
+    inviteOpen.value = false
+  } catch (e) {
+    inviteError.value = 'Could not invite — the seat may be taken.'
+  } finally {
+    inviteBusy.value = false
+  }
+}
 
 // The menu is worth opening if it will contain anything.
 const hasMenu = computed(() => props.canManage || friendAction.value || !!friendNote.value)
