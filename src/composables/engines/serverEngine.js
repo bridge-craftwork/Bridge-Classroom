@@ -23,6 +23,7 @@ import { SUIT_SYMBOLS } from '../../utils/cardFormatting.js'
 import { SERVER_CAPABILITIES } from './tableEngine.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
+import { bidderDivergence } from '../../utils/handAnalysis.js'
 
 // Default convention card for the BBA reference auction on a shared table (no
 // scenario context server-side) — mirrors LocalEngine's non-scenario default.
@@ -122,6 +123,55 @@ export function useServerEngine() {
     const token = ++ddToken
     const dd = await getDoubleDummy({ hands: deal, vulnerable: vulnerable.value })
     if (token === ddToken) doubleDummy.value = dd
+  })
+
+  // ── BBA "expected auction" comparison (per-viewer, your-seat divergence) ──
+  // Mirrors the solo table's you-vs-BBA bidding feedback, computed CLIENT-SIDE at
+  // review from the un-redacted deal (nothing to cheat with — the auction is
+  // already locked). Two deliberate scoping choices:
+  //   • PER-VIEWER preference (localStorage, sharing the solo table's key so the
+  //     setting is one preference wherever there's an auction to compare); and
+  //   • PER-SEAT diff — each client compares only ITS OWN seat's calls against
+  //     the BBA reference, so a multi-human table shows each player just their
+  //     own divergences. bidderDivergence + AuctionTable are both built around a
+  //     single "You vs BBA" perspective, so a kibitzer (no seat) sees no overlay.
+  const BBA_COMPARE_KEY = 'bp.cardplayShowBbaCompare'
+  const showBbaCompare = ref(localStorage.getItem(BBA_COMPARE_KEY) !== '0')
+  function toggleBbaCompare() {
+    showBbaCompare.value = !showBbaCompare.value
+    try { localStorage.setItem(BBA_COMPARE_KEY, showBbaCompare.value ? '1' : '0') } catch { /* private mode */ }
+  }
+
+  // The BBA reference auction for the current board, fetched once the auction is
+  // settled (phase play/complete) and the full deal is captured. Tokened like the
+  // DD overlay so a fast next-board can't land a stale reference; reset to null
+  // whenever the board changes so the next settled auction refetches.
+  const expectedAuction = ref(null)
+  let bbaToken = 0
+  const auctionSettled = computed(() => phase.value === 'play' || phase.value === 'complete')
+  watch(() => boardNumber.value, () => { expectedAuction.value = null; bbaToken++ })
+  watch([auctionSettled, fullDeal, showBbaCompare], async ([settled, deal, show]) => {
+    if (!(capabilities.bbaExpectedAuction && settled && deal && show)) return
+    if (expectedAuction.value) return
+    const token = ++bbaToken
+    // No scenario/conventions server-side — getExpectedAuction falls back to the
+    // default convention card (same as the solo table's non-scenario sources).
+    const res = await getExpectedAuction({ hands: deal, dealer: dealer.value, vulnerable: vulnerable.value })
+    if (token === bbaToken) expectedAuction.value = res
+  }, { immediate: true })
+
+  // Per-seat divergence map for AuctionTable ({ idx: { user, bba } }), scoped to
+  // YOUR seat and gated on the preference. bidderDivergence returns { actual, bba };
+  // AuctionTable expects the acting side under `user` (labelled "You"), so remap.
+  // Empty (no overlay) when off, unseated, or the reference isn't ready yet.
+  const divergedBids = computed(() => {
+    if (!showBbaCompare.value || !yourSeat.value) return {}
+    const exp = expectedAuction.value
+    if (!exp?.auction) return {}
+    const diffs = bidderDivergence(auction.value, exp.auction, dealer.value, yourSeat.value)
+    const out = {}
+    for (const [idx, d] of Object.entries(diffs)) out[idx] = { user: d.actual, bba: d.bba }
+    return out
   })
 
   // ── Teacher hand-visibility toggle ─────────────────────────────────────
@@ -395,6 +445,7 @@ export function useServerEngine() {
     canDouble, canRedouble, errorMessage, undoBy,
     // analysis
     capabilities, doubleDummy, ddFinalContract,
+    expectedAuction, divergedBids, showBbaCompare, toggleBbaCompare,
     // derived / display
     showDiagnostics, dealModalOpen, dealSource,
     showAllHands, canToggleHands, canDeal,

@@ -103,7 +103,7 @@
           <SeatControlTable
             arrangement="grid"
             :table-config="tableConfig"
-            :phase="srv.phase === 'play' ? 'play' : 'bidding'"
+            :phase="(srvCenterSlot === 'trick-area' || srvCenterSlot === 'review') ? 'play' : 'bidding'"
             :hero-seat="srv.yourSeat || 'S'"
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
@@ -133,7 +133,7 @@
                   :vulnerable="srv.vulnerable || null"
                   :size="A1_BOARD_SIZE"
                 />
-                <StatusStrip v-if="srv.phase === 'play'" :status="srvStatus" :show-vul="false" />
+                <StatusStrip v-if="srvCenterSlot === 'trick-area' || srvCenterSlot === 'review'" :status="srvStatus" :show-vul="false" />
               </div>
             </template>
 
@@ -161,13 +161,17 @@
               </div>
             </template>
 
-            <!-- NE: completed auction pinned during play (config densities.play.ne). -->
-            <template v-if="srv.dealLoaded && srv.phase === 'play'" #ne>
+            <!-- NE: completed auction pinned through play AND review (config
+                 densities.play.ne). At review it carries the per-seat BBA
+                 comparison (you-vs-BBA), read-only — no toggle on a shared table. -->
+            <template v-if="srv.dealLoaded && (srvCenterSlot === 'trick-area' || srvCenterSlot === 'review')" #ne>
               <AuctionTable
                 :bids="srv.auction"
                 :dealer="srv.dealer || 'N'"
                 :current-bid-index="srv.auction.length"
+                :diverged-bids="srv.divergedBids"
                 :show-turn-indicator="false"
+                :allow-divergence-toggle="false"
               />
             </template>
 
@@ -246,6 +250,19 @@
               Waiting for {{ srv.turnLabel }}…
               <span v-if="srv.botThinking" class="tv-bot-note">(bots can take up to ~20s)</span>
             </div>
+          </div>
+
+          <!-- BBA auction comparison toggle (your-seat you-vs-BBA overlay). A
+               per-viewer table setting; the overlay is scoped to your own seat,
+               so it's shown once you're seated and the auction has settled. -->
+          <div
+            v-if="srv.capabilities.divergence && srv.yourSeat && srv.dealLoaded && (srvCenterSlot === 'trick-area' || srvCenterSlot === 'review')"
+            class="tv-card"
+          >
+            <label class="tv-passbot-row" title="Compare your bids to the BBA expected auction in the auction grid.">
+              <input type="checkbox" :checked="srv.showBbaCompare" @change="srv.toggleBbaCompare()">
+              Show BBA auction comparison
+            </label>
           </div>
 
           <div v-if="srv.dealLoaded && srv.phase === 'complete'" class="tv-card">

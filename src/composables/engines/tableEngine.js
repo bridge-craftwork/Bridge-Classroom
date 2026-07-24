@@ -49,16 +49,18 @@ export const LOCAL_CAPABILITIES = Object.freeze({
 })
 
 /**
- * ServerEngine: real multiplayer. `doubleDummy` is available — computed
- * client-side at board-complete (the server un-redacts the full deal for
- * review, so no cheating), swappable to server-computes-once-and-broadcast
- * later WITHOUT touching the view. The remaining analysis overlays
- * (bbaExpectedAuction, divergence, narrative) are still local-only.
+ * ServerEngine: real multiplayer. `doubleDummy`, `bbaExpectedAuction`, and
+ * `divergence` are all available — computed client-side at board-complete (the
+ * server un-redacts the full deal for review, so no cheating), swappable to
+ * server-computes-once-and-broadcast later WITHOUT touching the view. The BBA
+ * comparison is a per-viewer, YOUR-SEAT overlay (each client diffs only its own
+ * seat's calls against a BBA reference). `narrative` (authored server-side
+ * commentary) is the one analysis overlay still local-only.
  */
 export const SERVER_CAPABILITIES = Object.freeze({
   doubleDummy: true,
-  bbaExpectedAuction: false,
-  divergence: false,
+  bbaExpectedAuction: true,
+  divergence: true,
   narrative: false,
   seats: true,
   invite: true,
