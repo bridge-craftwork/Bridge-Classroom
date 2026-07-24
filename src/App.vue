@@ -2,19 +2,27 @@
   <router-view />
   <component :is="BeetleButton" />
 
-  <!-- Friend-request toasts (app-wide, so they reach you in A1 or at a table —
-       the pull-only Friends tab was invisible to a seated player). -->
-  <div v-if="requestToasts.length" class="friend-toasts">
-    <div v-for="t in requestToasts" :key="t.id" class="friend-toast">
-      <div class="ft-body">
-        <strong>{{ t.from_name || 'Someone' }}</strong> wants to be friends.
-      </div>
-      <div class="ft-actions">
-        <button class="ft-btn ft-accept" :disabled="busyIds.has(t.id)" @click="acceptToast(t)">
-          {{ busyIds.has(t.id) ? 'Accepting…' : 'Accept' }}
-        </button>
-        <button class="ft-btn ft-dismiss" @click="dismissToast(t.id)">Dismiss</button>
-      </div>
+  <!-- Friend toasts (app-wide, so they reach you in A1 or at a table — the
+       pull-only Friends tab was invisible to a seated player). Two kinds: an
+       incoming request (Accept/Dismiss) and a confirmation that someone accepted
+       yours (informational, auto-dismisses). -->
+  <div v-if="toasts.length" class="friend-toasts">
+    <div v-for="t in toasts" :key="t.id" class="friend-toast">
+      <template v-if="t.kind === 'request'">
+        <div class="ft-body"><strong>{{ t.name || 'Someone' }}</strong> wants to be friends.</div>
+        <div class="ft-actions">
+          <button class="ft-btn ft-accept" :disabled="busyIds.has(t.id)" @click="acceptToast(t)">
+            {{ busyIds.has(t.id) ? 'Accepting…' : 'Accept' }}
+          </button>
+          <button class="ft-btn ft-dismiss" @click="dismissToast(t.id)">Dismiss</button>
+        </div>
+      </template>
+      <template v-else>
+        <div class="ft-body">You're now friends with <strong>{{ t.name || 'someone' }}</strong>.</div>
+        <div class="ft-actions">
+          <button class="ft-btn ft-dismiss" @click="dismissToast(t.id)">Dismiss</button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -62,23 +70,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 // so presence — and our own `at_table` state — survives navigation to a table.
 const userStore = useUserStore()
 const presence = useFriendPresence()
-const { requestToasts, dismissToast } = presence
+const { toasts, dismissToast } = presence
 watch(
   () => userStore.currentUserId.value,
   (id) => (id ? presence.start(id) : presence.stop()),
   { immediate: true },
 )
 
-// Incoming friend-request toasts. On arrival, also refresh the friends list so
-// the lobby Friends-tab badge/count reflects it live; Accept goes straight
-// through the existing accept flow.
+// Friend toasts. On any new one, refresh the friends list so the lobby Friends-
+// tab badge/count reflects it live; 'confirmed' toasts are informational, so
+// auto-dismiss them after a few seconds ('request' toasts persist until acted on).
 const friends = useFriends()
 const busyIds = ref(new Set())
 watch(
-  () => requestToasts.value.length,
+  () => toasts.value.length,
   (n, prev) => {
-    if (n > prev && userStore.currentUserId.value) {
-      friends.refresh(userStore.currentUserId.value)
+    if (n <= prev) return
+    if (userStore.currentUserId.value) friends.refresh(userStore.currentUserId.value)
+    const latest = toasts.value[toasts.value.length - 1]
+    if (latest && latest.kind === 'confirmed') {
+      setTimeout(() => dismissToast(latest.id), 7000)
     }
   },
 )

@@ -508,6 +508,21 @@ async fn accept_request_inner(
     .map_err(db_err)?;
 
     tx.commit().await.map_err(db_err)?;
+
+    // Tell the ORIGINAL requester their request was accepted — a live "you're now
+    // friends" toast wherever they are, over the same presence stream as the
+    // incoming-request toast. Fires for BOTH the explicit accept and the
+    // reciprocal auto-accept in create_request (both flow through here). No-op if
+    // they're offline (they'll see the new friend in the Friends tab regardless).
+    let name = display_name(state, accepting_user_id)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    crate::routes::presence::notify(
+        &from_user_id,
+        &json!({ "friend_confirmed": { "user_id": accepting_user_id, "name": name } }),
+    );
     Ok(())
 }
 

@@ -27,10 +27,17 @@ const BACKOFF_MAX_MS = 30000
 // Friend id → state string ('online'|'at_table'|'practicing'|'offline').
 const presenceByUserId = ref({})
 
-// Incoming friend-request events pushed down the same stream — a queue App.vue
-// renders as toasts (the pull-only Friends tab was invisible to a user seated at
-// a table). Each: { id, from_user_id, from_name, created_at }.
-const requestToasts = ref([])
+// Friend events pushed down the same stream — a queue App.vue renders as toasts
+// (the pull-only Friends tab was invisible to a user seated at a table). Two
+// kinds: { kind:'request', id, name, requestId } (Accept/Dismiss) and
+// { kind:'confirmed', id, name } ("you're now friends", informational).
+const toasts = ref([])
+
+function pushToast(t) {
+  if (!t.id || toasts.value.some((x) => x.id === t.id)) return
+  // Cap so a burst (or a reconnect redelivery) can't pile up.
+  toasts.value = [...toasts.value, t].slice(-5)
+}
 
 // Our own reported context. `invisible` is user-facing (persisted); the other
 // two are set automatically by the table/solo hooks.
@@ -78,10 +85,14 @@ function openStream() {
       if (data.presence && typeof data.presence === 'object') {
         presenceByUserId.value = { ...presenceByUserId.value, ...data.presence }
       }
-      const r = data.friend_request
-      if (r && r.id && !requestToasts.value.some((t) => t.id === r.id)) {
-        // Cap the queue so a burst (or a reconnect redelivery) can't pile up.
-        requestToasts.value = [...requestToasts.value, r].slice(-5)
+      const req = data.friend_request
+      if (req && req.id) {
+        pushToast({ kind: 'request', id: req.id, name: req.from_name, requestId: req.id })
+      }
+      const conf = data.friend_confirmed
+      if (conf && conf.user_id) {
+        // No server id for a confirmation; key it by who accepted.
+        pushToast({ kind: 'confirmed', id: `confirmed:${conf.user_id}`, name: conf.name })
       }
     } catch {
       /* ignore a malformed frame */
@@ -124,13 +135,13 @@ function stop() {
   userId = null
   backoff = BACKOFF_START_MS
   presenceByUserId.value = {}
-  requestToasts.value = []
+  toasts.value = []
   atTable.value = false
   practicing.value = false
 }
 
 function dismissToast(id) {
-  requestToasts.value = requestToasts.value.filter((t) => t.id !== id)
+  toasts.value = toasts.value.filter((t) => t.id !== id)
 }
 
 // Local-context setters (auto-reported). Each pushes an immediate heartbeat so
@@ -162,7 +173,7 @@ function presenceFor(id) {
 export function useFriendPresence() {
   return {
     presenceByUserId,
-    requestToasts,
+    toasts,
     dismissToast,
     invisible,
     start,
