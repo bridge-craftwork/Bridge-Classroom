@@ -502,6 +502,7 @@
                   Tricks <strong>NS&nbsp;{{ cardplay.tricksTaken.value.NS }} · EW&nbsp;{{ cardplay.tricksTaken.value.EW }}</strong>
                 </div>
                 <div v-if="cardplay.botLoading.value" class="bp-cardplay-thinking">{{ botName }} thinking&hellip;</div>
+                <div v-if="cardplayLineNote" class="bp-cardplay-line-note">↝ {{ cardplayLineNote }}</div>
                 <div v-if="cardplay.botError.value" class="bp-cardplay-error">⚠ {{ cardplay.botError.value }}</div>
                 <div v-if="cardplay.botStats.value.count > 0" class="bp-cardplay-stats">
                   {{ botName }}: {{ cardplay.botStats.value.count }} call{{ cardplay.botStats.value.count === 1 ? '' : 's' }} ·
@@ -569,6 +570,7 @@
                     (claimed at trick {{ cardplay.claim.value.atTrick }}<span v-if="cardplay.claim.value.overridden">, override</span>)
                   </span>
                 </div>
+                <div v-if="cardplayLineNote" class="bp-cardplay-line-note">↝ {{ cardplayLineNote }}</div>
                 <div v-if="cardplayPhase === 'complete' && cardplay.botStats.value.count > 0" class="bp-cardplay-stats">
                   {{ botName }}: {{ cardplay.botStats.value.count }} calls ·
                   avg {{ fmtMs(cardplay.botStats.value.mean) }} ·
@@ -706,7 +708,7 @@ import PageFooter from '../components/lobby/PageFooter.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import { formatBid, formatCardCode } from '../utils/cardFormatting.js'
-import { getBot, listBots } from '../utils/cardplayBots.js'
+import { getBot, listBots, makeCardplayFirstBot } from '../utils/cardplayBots.js'
 import { warmBen } from '../utils/benClient.js'
 import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
 import { useRouter } from 'vue-router'
@@ -1466,6 +1468,41 @@ watch(() => auctionComplete.value, (isComplete) => {
   })
 })
 
+// Off-the-recorded-line indicator for a deal source that shipped a [Play] line
+// (declarer-play coaching boards). `null` until the play diverges from the line;
+// set once by the composite bot below. Reset on every fresh startPlay.
+const cardplayLineDivergence = ref(null)
+// User-facing note when play has gone off the recorded line. A seat plays one
+// card per trick, so its play-index + 1 is the trick number it diverged at.
+const cardplayLineNote = computed(() => {
+  const d = cardplayLineDivergence.value
+  if (!d) return null
+  return `Off the recorded line from trick ${d.index + 1} — bots now play with ${botName.value}.`
+})
+
+// Build the cardplay bot for a startPlay. When the deal source carries a
+// recorded [Play] line, wrap the selected engine in the CARDPLAY-FIRST composite
+// (follow the line; on divergence/absence delegate to the real bot) so the
+// coached defense stays coherent after the human departs from the model line.
+// A deal with no line is a pure pass-through — the selected bot from move one.
+function buildCardplayBot() {
+  cardplayLineDivergence.value = null
+  let base
+  try { base = getBot(cardplayBotName.value) } catch { base = getBot('random') }
+  const line = currentDeal.value?.playLine
+  const hasLine = line?.bySeat && ['N', 'E', 'S', 'W'].some(s => line.bySeat[s]?.length)
+  if (!hasLine) return base
+  return makeCardplayFirstBot(line.bySeat, base, {
+    onDivergence: (d) => { cardplayLineDivergence.value = d },
+  })
+}
+
+// v1: South declares → user controls S (own hand) + N (dummy). Defenders are
+// bots. Wider scopes (defender / N-declares) are deferred per plan.
+function dummyFor(declarer) {
+  return declarer === 'N' ? 'S' : declarer === 'S' ? 'N' : declarer === 'E' ? 'W' : 'E'
+}
+
 // Enter cardplay when the auction completes if the toggle is on and the
 // contract is South-declared. The engine then drives bots to the first user
 // turn (or to completion if no user seat is active).
@@ -1474,11 +1511,6 @@ watch(() => auctionComplete.value, async (isComplete) => {
   if (!playCardplay.value) return
   if (!cardplayPossible.value) return
   const fc = finalContract.value
-  let bot
-  try { bot = getBot(cardplayBotName.value) } catch { bot = getBot('random') }
-  // v1: South declares → user controls S (own hand) + N (dummy). Defenders
-  // are bots. Wider scopes (defender / N-declares) are deferred per plan.
-  const dummySeat = fc.declarer === 'N' ? 'S' : fc.declarer === 'S' ? 'N' : fc.declarer === 'E' ? 'W' : 'E'
   await engine.startPlay({
     hands: currentDeal.value.hands,
     dealer: currentDeal.value.dealer,
@@ -1486,8 +1518,8 @@ watch(() => auctionComplete.value, async (isComplete) => {
     bids: bids.value.slice(),
     contract: fc.contract,
     declarer: fc.declarer,
-    bot,
-    userSeats: [fc.declarer, dummySeat],
+    bot: buildCardplayBot(),
+    userSeats: [fc.declarer, dummyFor(fc.declarer)],
   })
 })
 
@@ -1579,9 +1611,6 @@ async function restartCardplay() {
   // Re-enter cardplay using the same logic as the auction-complete watcher.
   const fc = finalContract.value
   if (!fc || !cardplayPossible.value) return
-  let bot
-  try { bot = getBot(cardplayBotName.value) } catch { bot = getBot('random') }
-  const dummySeat = fc.declarer === 'N' ? 'S' : fc.declarer === 'S' ? 'N' : fc.declarer === 'E' ? 'W' : 'E'
   await engine.startPlay({
     hands: currentDeal.value.hands,
     dealer: currentDeal.value.dealer,
@@ -1589,8 +1618,8 @@ async function restartCardplay() {
     bids: bids.value.slice(),
     contract: fc.contract,
     declarer: fc.declarer,
-    bot,
-    userSeats: [fc.declarer, dummySeat],
+    bot: buildCardplayBot(),
+    userSeats: [fc.declarer, dummyFor(fc.declarer)],
   })
 }
 
@@ -1738,6 +1767,15 @@ async function restartCardplay() {
   color: #b00;
   background: #fee;
   border: 0.5px solid #fbb;
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin-bottom: 8px;
+}
+.bp-cardplay-line-note {
+  font-size: 11px;
+  color: #8a6d00;
+  background: #fdf6e3;
+  border: 0.5px solid #eadfae;
   border-radius: 4px;
   padding: 4px 6px;
   margin-bottom: 8px;
