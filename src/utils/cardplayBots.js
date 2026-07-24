@@ -93,6 +93,89 @@ export function makeReplayBot(bySeat) {
   }
 }
 
+const SEAT_ORDER = ['N', 'E', 'S', 'W']
+
+// ── CardplayFirstBot (composite: recorded line first, real bot on divergence) ──
+//
+// The cardplay twin of the BBA "expected auction" model: follow the deal
+// source's recorded [Play] line while the actual play still matches it, and the
+// moment the play goes OFF-BOOK — a seat plays something the line didn't record,
+// or the line runs out — hand every remaining decision to a real fallback engine
+// (BEN / RulesBot / random). This generalizes `makeReplayBot`, whose off-line
+// fallback was a dumb `legalCards[0]`: after the human deviates from a coaching
+// board's declarer line, the defenders now keep playing SENSIBLY instead of
+// flailing.
+//
+// On-book detection is STATELESS — recomputed from `ctx.played` every call by
+// comparing each seat's actual cards to its recorded queue — so it stays correct
+// across undo (unlike a one-way "off-book" latch, which an undo couldn't clear).
+// The composite only ever DECIDES for the bot seats it's asked about, but it
+// watches ALL seats' history, so a human declarer's deviation flips the
+// defenders to the real engine even though the bot was never asked to play the
+// human's card. `onDivergence` fires once with the first divergence found.
+export function makeCardplayFirstBot(bySeat, fallbackBot, { onDivergence } = {}) {
+  const q = {
+    N: [...(bySeat?.N || [])],
+    E: [...(bySeat?.E || [])],
+    S: [...(bySeat?.S || [])],
+    W: [...(bySeat?.W || [])],
+  }
+  let announced = false
+
+  // First seat/index where the actual play departs from the recorded line, or
+  // null while still fully on-book. `{ seat, index, expected, actual }`.
+  function divergenceIn(played) {
+    const bySeatPlayed = { N: [], E: [], S: [], W: [] }
+    for (const p of played || []) {
+      if (bySeatPlayed[p.seat]) bySeatPlayed[p.seat].push(p.suit + p.rank)
+    }
+    for (const seat of SEAT_ORDER) {
+      const actual = bySeatPlayed[seat]
+      const rec = q[seat]
+      for (let i = 0; i < actual.length; i++) {
+        if (!rec[i] || actual[i] !== rec[i]) {
+          return { seat, index: i, expected: rec[i] || null, actual: actual[i] }
+        }
+      }
+    }
+    return null
+  }
+
+  // The recorded card for `seat` at its next turn, IF it's still legal; else null.
+  function recordedFor(seat, played, legalCards) {
+    const count = (played || []).filter(p => p.seat === seat).length
+    const code = q[seat] && q[seat][count]
+    if (!code) return null
+    const card = { suit: code[0], rank: code.slice(1) }
+    return legalCards.some(c => c.suit === card.suit && c.rank === card.rank) ? card : null
+  }
+
+  async function decide(ctx, method) {
+    const div = divergenceIn(ctx.played)
+    if (!div) {
+      const card = recordedFor(ctx.seat, ctx.played || [], ctx.legalCards)
+      if (card) return card
+      // On-book so far, but no legal recorded card for THIS seat (line exhausted
+      // or an upstream forced play consumed it) — treat as absence and hand off.
+    } else if (!announced) {
+      announced = true
+      try { onDivergence?.(div) } catch { /* tracking is best-effort */ }
+    }
+    return fallbackBot[method](ctx)
+  }
+
+  return {
+    name: `cardplay-first(${fallbackBot?.name || 'random'})`,
+    async chooseOpeningLead(ctx) { return decide(ctx, 'chooseOpeningLead') },
+    async chooseCard(ctx) { return decide(ctx, 'chooseCard') },
+    // Claim validation (and any future optional hook) rides the fallback engine,
+    // so the composite is a transparent drop-in for whatever bot was selected.
+    validateClaim: fallbackBot?.validateClaim
+      ? (ctx) => fallbackBot.validateClaim(ctx)
+      : undefined,
+  }
+}
+
 // ── BenBot ─────────────────────────────────────────────────────────────
 //
 // BEN-backed bot. Wraps benClient's HTTP API. Slow (~10s per call) and
