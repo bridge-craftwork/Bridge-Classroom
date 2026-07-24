@@ -373,18 +373,34 @@ fn build_labels(env: &Value, is_feature: bool) -> Vec<String> {
     labels
 }
 
+/// The top-of-issue reporter line. Explicit in every case: an anonymous report
+/// (the beetle's default) says so, rather than silently omitting identity, so a
+/// triager can't mistake it for a name that got lost. Rendered as a blockquote
+/// to set it apart from the reporter's own narrative that follows.
+fn reporter_banner(reporter_name: Option<&str>, contact_email: Option<&str>) -> String {
+    let name = reporter_name.map(str::trim).filter(|n| !n.is_empty());
+    let email = contact_email.map(str::trim).filter(|e| !e.is_empty());
+    let line = match (name, email) {
+        (Some(n), Some(e)) => format!("**Reported by:** {n} · {e}"),
+        (Some(n), None) => format!("**Reported by:** {n} _(no contact provided)_"),
+        // No opt-in name but a contact email (contactable without a display name).
+        (None, Some(e)) => format!("**Reported by:** _(no name)_ · {e}"),
+        (None, None) => "🕵️ **Anonymous report** — no name or contact provided.".to_string(),
+    };
+    format!("> {line}\n\n")
+}
+
 fn build_issue_body(b: &BugBody) -> String {
     let mut out = String::new();
+
+    // Reporter banner — ALWAYS present, at the very top, so triage can tell an
+    // anonymous report (the default) apart from one that merely lacks a name.
+    // Email appears only when the reporter opted in to contact; it lives in the
+    // issue body only, never in a committed file (scrubbed elsewhere).
+    out.push_str(&reporter_banner(b.reporter_name, b.contact_email));
+
     out.push_str(b.note);
     out.push_str("\n\n---\n\n");
-
-    // Identity (name and — only if contactable — email; email never committed).
-    if let Some(name) = b.reporter_name.map(str::trim).filter(|n| !n.is_empty()) {
-        out.push_str(&format!("**Reported by:** {name}\n"));
-    }
-    if let Some(email) = b.contact_email.map(str::trim).filter(|e| !e.is_empty()) {
-        out.push_str(&format!("**Contact:** {email}\n"));
-    }
 
     // Environment table — every field a triage axis (searchable).
     out.push_str("\n| Field | Value |\n|---|---|\n");
@@ -658,6 +674,47 @@ mod tests {
         assert!(v["env"].get("contact_email").is_none());
         assert_eq!(v["env"]["app"], "a1");
         assert!(v["list"][0].get("contactEmail").is_none());
+    }
+
+    #[test]
+    fn reporter_banner_is_explicit_in_every_case() {
+        // Anonymous (the default) is stated outright, not silently omitted.
+        let anon = reporter_banner(None, None);
+        assert!(anon.starts_with("> "));
+        assert!(anon.contains("Anonymous report"));
+
+        // Name only.
+        let named = reporter_banner(Some("Terry Lee"), None);
+        assert!(named.contains("**Reported by:** Terry Lee"));
+        assert!(named.contains("no contact provided"));
+
+        // Name + contact email.
+        let full = reporter_banner(Some("Terry Lee"), Some("t@example.com"));
+        assert!(full.contains("**Reported by:** Terry Lee · t@example.com"));
+
+        // Contactable without a display name.
+        let email_only = reporter_banner(None, Some("t@example.com"));
+        assert!(email_only.contains("**Reported by:**"));
+        assert!(email_only.contains("t@example.com"));
+        assert!(!email_only.contains("Anonymous"));
+
+        // Blank/whitespace is treated as absent.
+        assert!(reporter_banner(Some("   "), Some("  ")).contains("Anonymous report"));
+    }
+
+    #[test]
+    fn body_leads_with_reporter_banner_then_note() {
+        let env = json!({ "app": "a1" });
+        let anon = BugBody {
+            note: "hand overlaps",
+            env: &env, layout: &Value::Null, screenshot_url: None,
+            reporter_name: None, contact_email: None,
+            repo: "o/r", bundle_path: "2026/07/x",
+        };
+        let out = build_issue_body(&anon);
+        assert!(out.starts_with("> 🕵️ **Anonymous report**"), "got: {}", &out[..out.len().min(60)]);
+        // Banner precedes the reporter's narrative.
+        assert!(out.find("Anonymous report").unwrap() < out.find("hand overlaps").unwrap());
     }
 
     #[test]
