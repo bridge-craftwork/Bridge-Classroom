@@ -556,10 +556,10 @@ function handleMessage(msg) {
 
 // ── Public actions ─────────────────────────────────────────────────────
 
-async function join({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false, seat = null }) {
+async function join({ sessionId, userId = null, guestName = null, bot = null, asPlayer = false, seat = null, ticket = null, name = null, role = null }) {
   resetTableState()
   if (!unsubscribe) unsubscribe = socket.onMessage(handleMessage)
-  return socket.connect({ sessionId, userId, guestName, bot, asPlayer, seat })
+  return socket.connect({ sessionId, userId, guestName, bot, asPlayer, seat, ticket, name, role })
 }
 
 function leave() {

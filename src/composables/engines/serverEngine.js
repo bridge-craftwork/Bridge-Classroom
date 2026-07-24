@@ -340,6 +340,9 @@ export function useServerEngine() {
       const occ = seats.value[s]
       if (occ && occ.kind === 'human') {
         out[s] = { name: occ.name || 'Player', connected: occ.connected !== false }
+      } else if (occ && occ.kind === 'reserved') {
+        // Held for an invited friend until they join (Phase 4).
+        out[s] = { name: occ.name || 'Invited', reserved: true }
       } else if (occ && occ.kind === 'empty') {
         out[s] = { name: 'Open seat', empty: true }
       } else {
