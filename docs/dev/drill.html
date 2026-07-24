@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Component drill-down — Dev Gallery</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  :root {
+    --ink: var(--color-text-primary, #1a1a1a);
+    --mut: var(--color-text-secondary, #666);
+    --faint: var(--color-text-tertiary, #888);
+    --line: var(--color-border-tertiary, #e0ddd7);
+    --card: #fff; --panel: #f6f5f2; --accent: #1D9E75;
+  }
+  body { background: var(--color-background-tertiary, #ececec); margin: 0;
+         font-family: 'Segoe UI', system-ui, sans-serif; color: var(--ink); }
+  .wrap { max-width: 1600px; margin: 0 auto; padding: 26px 24px 64px; }
+  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .top a.back { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+  .top a.back:hover { text-decoration: underline; }
+  h1 { font-size: 20px; margin: 0; }
+  h1 .cnt { font-size: 13px; color: var(--faint); font-weight: 400; margin-left: 8px; }
+  .sub { color: var(--mut); font-size: 13px; margin: 4px 0 16px; }
+
+  /* Controls */
+  .controls { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; padding: 12px 14px; background: var(--card);
+              border: 1px solid var(--line); border-radius: 10px; margin-bottom: 20px; }
+  .ctl-group { display: flex; align-items: center; gap: 10px; }
+  .ctl-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
+  .ctl-group label { font-size: 12.5px; color: var(--ink); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+  /* Matrix */
+  .row { margin-bottom: 26px; }
+  .row-head { font-size: 14px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: baseline; gap: 8px; }
+  .row-head .file { font: 11px ui-monospace, Menlo, monospace; color: var(--faint); }
+  .cols { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding-bottom: 6px; }
+  .col { flex: 0 0 auto; }
+  .col-head { font-size: 11px; font-weight: 600; color: var(--mut); margin-bottom: 4px; }
+  .col-head span { color: var(--faint); font-weight: 400; margin-left: 5px; font-family: ui-monospace, Menlo, monospace; }
+  .cell { margin-bottom: 12px; }
+  .cell .cap { font: 10px ui-monospace, Menlo, monospace; color: var(--faint); margin-bottom: 3px; }
+  .cell .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .cell iframe { display: block; border: 0; background: #fff; }
+  .cell .ph { color: var(--faint); font-size: 11px; padding: 14px; }
+  .miss { color: #c00; padding: 30px 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="back" href="./#components">← Dev Gallery</a>
+    <h1 id="title">Component<span class="cnt" id="cnt"></span></h1>
+  </div>
+  <p class="sub">Live renders — each cell is the real component at its true container width and design scale, straight from the current build (the live twin of the audit gallery's PNG matrix). Cells mount as you scroll.</p>
+
+  <div class="controls">
+    <div class="ctl-group"><span class="ctl-label">Widths</span><span id="width-ctls"></span></div>
+    <div class="ctl-group"><span class="ctl-label">Scales</span><span id="scale-ctls"></span></div>
+  </div>
+
+  <div id="matrix"><div class="miss" style="color:var(--mut)">Loading…</div></div>
+</div>
+
+<script>
+(function () {
+  var HARNESS = 'harness/#/harness/component/';
+  // Component is passed in the URL FRAGMENT (not a query string): static hosts
+  // (and `npx serve`'s clean-URL 301) can drop a query on redirect, but the
+  // browser reattaches the fragment across redirects. Back-compat: also accept
+  // ?component= if present.
+  var component = decodeURIComponent((location.hash || '').replace(/^#/, '')) ||
+                  (new URLSearchParams(location.search).get('component') || '');
+  document.getElementById('title').firstChild.textContent = component || 'Component';
+
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { mount(e.target); io.unobserve(e.target); } });
+  }, { rootMargin: '400px' }) : null;
+
+  function mount(stage) {
+    if (stage.querySelector('iframe')) return;
+    var f = document.createElement('iframe');
+    f.setAttribute('loading', 'lazy');
+    f.setAttribute('title', stage.getAttribute('data-cap') || 'component');
+    f.style.width = stage.getAttribute('data-w') + 'px';
+    f.style.height = stage.getAttribute('data-h') + 'px';
+    f.src = stage.getAttribute('data-src');
+    stage.innerHTML = '';
+    stage.appendChild(f);
+  }
+
+  fetch('components-manifest.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('no manifest'); return r.json(); })
+    .then(function (m) {
+      var specs = m.components[component];
+      var matrix = document.getElementById('matrix');
+      if (!specs) { matrix.innerHTML = '<div class="miss">Unknown component: ' + (component || '(none)') + '</div>'; return; }
+      document.getElementById('cnt').textContent = specs.length + ' specimens · ' +
+        Object.keys(m.widths).length + ' widths · ' + m.scales.length + ' scales';
+
+      var widthNames = Object.keys(m.widths);         // tile / narrow / panel / drill
+      var selWidths = new Set(widthNames);
+      var selScales = new Set(m.scales.map(String));
+
+      // ── Filter controls ──────────────────────────────────────────────────
+      var wc = document.getElementById('width-ctls');
+      widthNames.forEach(function (w) {
+        var id = 'w-' + w;
+        var lab = document.createElement('label');
+        lab.innerHTML = '<input type="checkbox" id="' + id + '" checked> ' + w + ' <span style="color:var(--faint)">' + m.widths[w] + '</span>';
+        lab.querySelector('input').addEventListener('change', function (e) {
+          if (e.target.checked) selWidths.add(w); else selWidths.delete(w);
+          render();
+        });
+        wc.appendChild(lab);
+      });
+      var sc = document.getElementById('scale-ctls');
+      m.scales.forEach(function (s) {
+        var lab = document.createElement('label');
+        lab.innerHTML = '<input type="checkbox" checked> ' + Number(s).toFixed(2) + '×';
+        lab.querySelector('input').addEventListener('change', function (e) {
+          if (e.target.checked) selScales.add(String(s)); else selScales.delete(String(s));
+          render();
+        });
+        sc.appendChild(lab);
+      });
+
+      // ── Render matrix (rows = specimens, cols = selected widths, stacked scales) ──
+      function render() {
+        matrix.innerHTML = '';
+        var widths = widthNames.filter(function (w) { return selWidths.has(w); });
+        var scales = m.scales.filter(function (s) { return selScales.has(String(s)); });
+        specs.forEach(function (spec) {
+          var row = document.createElement('div');
+          row.className = 'row';
+          var cols = '';
+          widths.forEach(function (w) {
+            var px = m.widths[w];
+            var frameW = px + 34;                 // container px + harness page padding
+            var cells = '';
+            scales.forEach(function (s) {
+              var src = HARNESS + encodeURIComponent(component) + '/' + encodeURIComponent(spec) +
+                        '?w=' + encodeURIComponent(w) + '&scale=' + encodeURIComponent(s);
+              var cap = px + 'px · ' + Number(s).toFixed(2) + '×';
+              var frameH = Math.round(220 * s);
+              cells += '<div class="cell"><div class="cap">' + cap + '</div>' +
+                '<div class="stage" data-src="' + src + '" data-w="' + frameW + '" data-h="' + frameH +
+                '" data-cap="' + cap + '"><div class="ph">' + w + '</div></div></div>';
+            });
+            cols += '<div class="col"><div class="col-head">' + w + '<span>' + px + 'px</span></div>' + cells + '</div>';
+          });
+          row.innerHTML = '<div class="row-head">' + spec + ' <span class="file">' + spec + '.js</span></div>' +
+                          '<div class="cols">' + (cols || '<div class="ph">no widths selected</div>') + '</div>';
+          matrix.appendChild(row);
+        });
+        // Observe (or eagerly mount) every stage.
+        matrix.querySelectorAll('.stage').forEach(function (st) { if (io) io.observe(st); else mount(st); });
+      }
+      render();
+    })
+    .catch(function () {
+      document.getElementById('matrix').innerHTML =
+        '<div class="miss">No component manifest found. Build the site (<code>npm run build &amp;&amp; bash scripts/build-site.sh</code>).</div>';
+    });
+})();
+</script>
+</body>
+</html>

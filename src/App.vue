@@ -1,6 +1,8 @@
 <template>
   <router-view />
-  <component :is="BeetleButton" />
+  <!-- The beetle is app chrome, not a component under test — keep it out of the
+       VITE_HARNESS build so it doesn't float over every live gallery tile. -->
+  <component v-if="!isHarness" :is="BeetleButton" />
 
   <!-- Friend toasts (app-wide, so they reach you in A1 or at a table — the
        pull-only Friends tab was invisible to a seated player). Two kinds: an
@@ -68,6 +70,9 @@ import { initDebugOverlays, toggleDebugOverlays } from './composables/useDebugOv
 // bcLocalReports localStorage flag; see report/flags.js.) Async so the report lib
 // + screenshot rasterizer stay in their own lazily-loaded chunk.
 const BeetleButton = defineAsyncComponent(() => import('./report/BeetleButton.vue'))
+// Statically replaced at build time: '1' only in the harness bundle (the live
+// /dev component gallery), where the floating beetle is visual noise over tiles.
+const isHarness = import.meta.env.VITE_HARNESS === '1'
 
 // Debug-overlay toggle: resolve `?bounding-boxes=1` / stored flag on load (and re-read
 // on hashchange, inside the composable), and allow live toggling with Ctrl+B or Alt+B.

@@ -43,7 +43,7 @@ cp docs/styles.css             dist/styles.css
 cp docs/site.js                dist/site.js
 cp docs/about.html             dist/about.html
 cp docs/privacy.html           dist/privacy.html
-cp docs/dev.html               dist/dev.html   # noindex dev/testing launcher (direct app links)
+# (the noindex dev gallery is assembled under dist/dev/ below — not a flat file)
 cp docs/solo-practice.html     dist/solo-practice.html
 cp docs/classrooms.html        dist/classrooms.html
 cp docs/game-analysis.html     dist/game-analysis.html
@@ -76,6 +76,33 @@ if [ -f "$GAME_ANALYSIS_SRC/index.html" ]; then
   [ -d "$GAME_ANALYSIS_SRC/static" ] && cp -r "$GAME_ANALYSIS_SRC/static" dist/game-analysis/static
 else
   echo "build-site.sh: NOTE game-analysis source not at $GAME_ANALYSIS_SRC — skipping /game-analysis/ (non-fatal)"
+fi
+
+# ── Dev gallery under /dev/ (noindex) ───────────────────────────────────────
+# The tabbed dev hub: launcher + entry-point screenshots + LIVE component
+# library. The Components tab renders real components through a SEPARATE harness
+# bundle (VITE_HARNESS=1) served at /dev/harness/. Built with base=/dev/harness/
+# so its /assets URLs are self-contained (no collision with the main app's).
+#
+# GUARDED / non-fatal (like the game-analysis co-location above): a harness
+# build break must never fail the .com/.org publish — the components tab just
+# goes blank until it's fixed.
+echo "build-site.sh: assembling dev gallery → dist/dev/"
+mkdir -p dist/dev
+cp docs/dev/index.html dist/dev/index.html
+cp docs/dev/drill.html dist/dev/drill.html
+[ -d docs/dev/shots ] && cp -r docs/dev/shots dist/dev/shots || mkdir -p dist/dev/shots
+
+if node scripts/harness-manifest.mjs dist/dev/components-manifest.json; then
+  :
+else
+  echo "build-site.sh: NOTE harness manifest failed — components tab will be empty (non-fatal)"
+fi
+
+if VITE_HARNESS=1 npx vite build --base=/dev/harness/ --outDir dist/dev/harness --emptyOutDir >/tmp/harness-build.log 2>&1; then
+  echo "build-site.sh: dev harness bundle → dist/dev/harness/"
+else
+  echo "build-site.sh: NOTE harness bundle build FAILED — live components tab will be blank (non-fatal). See /tmp/harness-build.log" >&2
 fi
 
 echo "==== build-site.sh: DONE — dist/ ready to publish ===="

@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "harness:gallery": "bash scripts/harness-gallery.sh",
     "a1:gallery": "bash scripts/a1-gallery.sh",
+    "dev:shots": "bash scripts/dev-shots.sh",
     "test:e2e": "playwright test"
   },
   "dependencies": {
