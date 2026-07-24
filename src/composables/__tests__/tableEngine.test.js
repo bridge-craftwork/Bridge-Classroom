@@ -10,11 +10,12 @@ import { deriveSlots } from '../engines/tableSlots.js'
 
 describe('tableEngine capabilities', () => {
   it('server is missing exactly the local-only analysis features (the backlog)', () => {
-    // What the server would need to match the local experience. doubleDummy
-    // is now delivered on the server table too (client-computed at review),
-    // so it's no longer a gap — the backlog is the remaining three overlays.
+    // What the server would need to match the local experience. doubleDummy,
+    // the BBA expected auction, and per-seat divergence are all delivered on the
+    // server table now (client-computed at review), so the only remaining gap is
+    // `narrative` — authored server-side commentary with no client fallback.
     expect(capabilityGaps(LOCAL_CAPABILITIES, SERVER_CAPABILITIES).sort()).toEqual(
-      ['bbaExpectedAuction', 'divergence', 'narrative'].sort(),
+      ['narrative'].sort(),
     )
   })
 
