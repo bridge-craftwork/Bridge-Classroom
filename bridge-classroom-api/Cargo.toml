@@ -9,6 +9,10 @@ authors = ["Rick Wilson"]
 # Web framework
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
+# SSE presence stream (friend presence): async_stream! for the per-connection
+# stream (embeds a drop-guard for cleanup), futures-core for the Stream trait.
+async-stream = "0.3"
+futures-core = "0.3"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

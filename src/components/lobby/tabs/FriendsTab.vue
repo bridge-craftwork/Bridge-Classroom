@@ -61,6 +61,14 @@
           <h3 class="section-title">
             Friends
             <span v-if="friends.length" class="count-pill">{{ friends.length }}</span>
+            <label class="appear-offline" title="When on, your friends see you as offline.">
+              <input
+                type="checkbox"
+                :checked="invisible"
+                @change="setInvisible($event.target.checked)"
+              />
+              Appear offline
+            </label>
           </h3>
 
           <div v-if="!friends.length" class="empty-state">
@@ -76,10 +84,22 @@
           <div v-else>
             <div v-for="f in friends" :key="f.user_id" class="row">
               <div class="row-main">
-                <span class="name">{{ f.name }}</span>
-                <!-- Presence lands in Phase 3; until then everyone reads as
-                     offline, so say nothing rather than imply availability. -->
-                <span class="sub">Friends since {{ formatDate(f.friends_since) }}</span>
+                <span class="name">
+                  <span
+                    class="presence-dot"
+                    :class="'p-' + presenceFor(f.user_id)"
+                    :title="presenceLabel(f.user_id)"
+                  ></span>
+                  {{ f.name }}
+                </span>
+                <span class="sub">
+                  <span
+                    v-if="presenceFor(f.user_id) !== 'offline'"
+                    class="presence-label"
+                    :class="'p-' + presenceFor(f.user_id)"
+                  >{{ presenceLabel(f.user_id) }}</span>
+                  <span v-else>Friends since {{ formatDate(f.friends_since) }}</span>
+                </span>
               </div>
               <div class="row-actions">
                 <button
@@ -135,8 +155,19 @@
 import { ref, onMounted, watch } from 'vue'
 import { useUserStore } from '../../../composables/useUserStore.js'
 import { useFriends } from '../../../composables/useFriends.js'
+import { useFriendPresence } from '../../../composables/useFriendPresence.js'
 
 const userStore = useUserStore()
+// Phase 3 presence: the stream itself is owned by App.vue; here we just read
+// each friend's live state and expose the user's own "appear offline" toggle.
+const { presenceFor, invisible, setInvisible } = useFriendPresence()
+const PRESENCE_LABELS = {
+  online: 'Online',
+  at_table: 'At a table',
+  practicing: 'Practicing',
+  offline: 'Offline',
+}
+const presenceLabel = (id) => PRESENCE_LABELS[presenceFor(id)] || 'Offline'
 const {
   friends,
   incoming,
@@ -272,6 +303,9 @@ function formatDate(iso) {
 }
 
 .name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 15px;
   font-weight: 500;
   color: var(--text-primary, #1f2937);
@@ -281,6 +315,39 @@ function formatDate(iso) {
   font-size: 13px;
   color: var(--text-secondary, #6b7280);
 }
+
+/* Presence: a small status dot next to the name + a colored label in the sub
+   line. Mirrors the seat-connection dot vocabulary (green = live). */
+.presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #cbd5e1; /* offline */
+  box-shadow: 0 0 0 2px #fff;
+}
+.presence-dot.p-online { background: #1d9e75; }
+.presence-dot.p-at_table { background: #2563eb; }
+.presence-dot.p-practicing { background: #d97706; }
+
+.presence-label { font-weight: 600; }
+.presence-label.p-online { color: #1d9e75; }
+.presence-label.p-at_table { color: #2563eb; }
+.presence-label.p-practicing { color: #b45309; }
+
+/* "Appear offline" self-toggle — pushed to the right of the section title. */
+.appear-offline {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+}
+.appear-offline input { cursor: pointer; }
 
 .row-actions {
   display: flex;

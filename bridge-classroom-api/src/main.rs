@@ -61,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
         started_at: Instant::now(),
     };
 
+    // Friend-presence staleness sweep (flips users whose heartbeat has gone
+    // quiet to offline). In-process soft state; nothing to persist.
+    routes::presence::spawn_sweeper(state.clone());
+
     // Build router
     let app = Router::new()
         // Root and health check
@@ -133,6 +137,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/friends/requests/:id/decline",
             post(routes::decline_request),
         )
+        // Friend presence (Phase 3): SSE stream of friends' live state +
+        // heartbeat. Cookie-authorized (EventSource can't send x-api-key).
+        .route("/api/presence/stream", get(routes::presence_stream))
+        .route("/api/presence", post(routes::presence_heartbeat))
         // Recovery routes
         .route("/api/recovery/request", post(routes::request_recovery))
         .route("/api/recovery/claim", post(routes::claim_recovery))

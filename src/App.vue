@@ -4,7 +4,10 @@
 </template>
 
 <script setup>
-import { defineAsyncComponent, onMounted, onUnmounted } from 'vue'
+import { defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
+import { useUserStore } from './composables/useUserStore.js'
+import { useFriendPresence } from './composables/useFriendPresence.js'
+import { useTableSocket } from './composables/useTableSocket.js'
 // Grid-arranger bounding-box diagnostic overlay styles (grid-arranger-spec §5.1),
 // available live in the app — inert unless `data-bounding-boxes` is set on <html>, and
 // only styles `.grid-table`, so it does nothing on the legacy arrangement.
@@ -36,4 +39,24 @@ function onKey(e) {
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => window.removeEventListener('keydown', onKey))
+
+// ── Friend presence (Phase 3) ──────────────────────────────────────────────
+// Driven from the always-mounted root (NOT MainLayout, which unmounts at /table)
+// so presence — and our own `at_table` state — survives navigation to a table.
+const userStore = useUserStore()
+const presence = useFriendPresence()
+watch(
+  () => userStore.currentUserId.value,
+  (id) => (id ? presence.start(id) : presence.stop()),
+  { immediate: true },
+)
+// `at_table` follows the (singleton) table socket: connected while seated at a
+// served table, idle otherwise. Solo practice is a different signal (set by the
+// solo view), so this only tracks the real multiplayer socket.
+const tableSocket = useTableSocket()
+watch(
+  () => tableSocket.status.value,
+  (s) => presence.setAtTable(s === 'connected'),
+  { immediate: true },
+)
 </script>
