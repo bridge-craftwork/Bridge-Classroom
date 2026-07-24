@@ -28,7 +28,9 @@ use crate::routes::session::require_roster_member;
 use crate::AppState;
 
 /// Seat-hold lifetime, kept in step with the table service's reservation TTL.
-const RESERVATION_TTL_SECS: i64 = 150;
+/// A few minutes: enough to cover a host setting up the table while friends sign
+/// on (the BBO/Zoom pattern), short enough that an unclaimed hold frees itself.
+const RESERVATION_TTL_SECS: i64 = 300;
 const SERVICE_CALL_TIMEOUT: Duration = Duration::from_secs(5);
 const SEATS: [&str; 4] = ["N", "E", "S", "W"];
 
@@ -137,6 +139,43 @@ async fn service_cancel(state: &AppState, secret: &str, session_id: &str, seat: 
         .await
     {
         tracing::warn!("reservation cancel failed: {e}");
+    }
+}
+
+/// Push any pending, unexpired invitations for `user_id` down their presence
+/// stream. Called when they CONNECT — so a friend who signs on during a
+/// reservation window sees the invitation without the host re-inviting (the
+/// point of reservations in the BBO/Zoom setup: the host doesn't watch for
+/// sign-ins). Idempotent on the client (toasts dedupe by invitation id).
+pub async fn deliver_pending(state: &AppState, user_id: &str) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let rows: Vec<(String, String, String, String, String)> = match sqlx::query_as(
+        r#"
+        SELECT i.id, i.session_id, i.seat, u.first_name, u.last_name
+        FROM table_invitations i
+        JOIN users u ON u.id = i.from_user_id
+        WHERE i.to_user_id = ?1 AND i.status = 'pending' AND i.expires_at > ?2
+        "#,
+    )
+    .bind(user_id)
+    .bind(&now)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("pending-invitation delivery query failed: {e}");
+            return;
+        }
+    };
+    for (id, session_id, seat, first, last) in rows {
+        let from_name = format!("{first} {last}").trim().to_string();
+        crate::routes::presence::notify(
+            user_id,
+            &json!({
+                "invitation": { "id": id, "session_id": session_id, "seat": seat, "from_name": from_name }
+            }),
+        );
     }
 }
 
