@@ -27,6 +27,11 @@ const BACKOFF_MAX_MS = 30000
 // Friend id → state string ('online'|'at_table'|'practicing'|'offline').
 const presenceByUserId = ref({})
 
+// Incoming friend-request events pushed down the same stream — a queue App.vue
+// renders as toasts (the pull-only Friends tab was invisible to a user seated at
+// a table). Each: { id, from_user_id, from_name, created_at }.
+const requestToasts = ref([])
+
 // Our own reported context. `invisible` is user-facing (persisted); the other
 // two are set automatically by the table/solo hooks.
 const invisible = ref(localStorage.getItem('bc.presenceInvisible') === '1')
@@ -69,9 +74,14 @@ function openStream() {
   }
   source.onmessage = (ev) => {
     try {
-      const { presence } = JSON.parse(ev.data)
-      if (presence && typeof presence === 'object') {
-        presenceByUserId.value = { ...presenceByUserId.value, ...presence }
+      const data = JSON.parse(ev.data)
+      if (data.presence && typeof data.presence === 'object') {
+        presenceByUserId.value = { ...presenceByUserId.value, ...data.presence }
+      }
+      const r = data.friend_request
+      if (r && r.id && !requestToasts.value.some((t) => t.id === r.id)) {
+        // Cap the queue so a burst (or a reconnect redelivery) can't pile up.
+        requestToasts.value = [...requestToasts.value, r].slice(-5)
       }
     } catch {
       /* ignore a malformed frame */
@@ -114,8 +124,13 @@ function stop() {
   userId = null
   backoff = BACKOFF_START_MS
   presenceByUserId.value = {}
+  requestToasts.value = []
   atTable.value = false
   practicing.value = false
+}
+
+function dismissToast(id) {
+  requestToasts.value = requestToasts.value.filter((t) => t.id !== id)
 }
 
 // Local-context setters (auto-reported). Each pushes an immediate heartbeat so
@@ -147,6 +162,8 @@ function presenceFor(id) {
 export function useFriendPresence() {
   return {
     presenceByUserId,
+    requestToasts,
+    dismissToast,
     invisible,
     start,
     stop,

@@ -1,12 +1,29 @@
 <template>
   <router-view />
   <component :is="BeetleButton" />
+
+  <!-- Friend-request toasts (app-wide, so they reach you in A1 or at a table —
+       the pull-only Friends tab was invisible to a seated player). -->
+  <div v-if="requestToasts.length" class="friend-toasts">
+    <div v-for="t in requestToasts" :key="t.id" class="friend-toast">
+      <div class="ft-body">
+        <strong>{{ t.from_name || 'Someone' }}</strong> wants to be friends.
+      </div>
+      <div class="ft-actions">
+        <button class="ft-btn ft-accept" :disabled="busyIds.has(t.id)" @click="acceptToast(t)">
+          {{ busyIds.has(t.id) ? 'Accepting…' : 'Accept' }}
+        </button>
+        <button class="ft-btn ft-dismiss" @click="dismissToast(t.id)">Dismiss</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
+import { defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUserStore } from './composables/useUserStore.js'
 import { useFriendPresence } from './composables/useFriendPresence.js'
+import { useFriends } from './composables/useFriends.js'
 import { useTableSocket } from './composables/useTableSocket.js'
 // Grid-arranger bounding-box diagnostic overlay styles (grid-arranger-spec §5.1),
 // available live in the app — inert unless `data-bounding-boxes` is set on <html>, and
@@ -45,11 +62,41 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 // so presence — and our own `at_table` state — survives navigation to a table.
 const userStore = useUserStore()
 const presence = useFriendPresence()
+const { requestToasts, dismissToast } = presence
 watch(
   () => userStore.currentUserId.value,
   (id) => (id ? presence.start(id) : presence.stop()),
   { immediate: true },
 )
+
+// Incoming friend-request toasts. On arrival, also refresh the friends list so
+// the lobby Friends-tab badge/count reflects it live; Accept goes straight
+// through the existing accept flow.
+const friends = useFriends()
+const busyIds = ref(new Set())
+watch(
+  () => requestToasts.value.length,
+  (n, prev) => {
+    if (n > prev && userStore.currentUserId.value) {
+      friends.refresh(userStore.currentUserId.value)
+    }
+  },
+)
+async function acceptToast(t) {
+  const uid = userStore.currentUserId.value
+  if (!uid || busyIds.value.has(t.id)) return
+  busyIds.value = new Set(busyIds.value).add(t.id)
+  try {
+    await friends.acceptRequest(uid, t.id)
+    dismissToast(t.id)
+  } catch {
+    // Leave the toast up so they can retry or use the Friends tab.
+  } finally {
+    const next = new Set(busyIds.value)
+    next.delete(t.id)
+    busyIds.value = next
+  }
+}
 // `at_table` follows the (singleton) table socket: connected while seated at a
 // served table, idle otherwise. Solo practice is a different signal (set by the
 // solo view), so this only tracks the real multiplayer socket.
@@ -60,3 +107,47 @@ watch(
   { immediate: true },
 )
 </script>
+
+<style scoped>
+/* Fixed toast stack, bottom-centre — clear of the top-right account avatar and
+   the bottom-right beetle. Sits above everything (modals, the table). */
+.friend-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 92vw;
+}
+.friend-toast {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 14px;
+}
+.ft-body { line-height: 1.35; }
+.ft-body strong { font-weight: 600; }
+.ft-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.ft-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ft-btn:disabled { opacity: 0.6; cursor: default; }
+.ft-accept { background: #1d9e75; color: #fff; }
+.ft-accept:hover:not(:disabled) { background: #167a5a; }
+.ft-dismiss { background: transparent; color: #cbd5e1; }
+.ft-dismiss:hover { color: #fff; }
+</style>

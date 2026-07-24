@@ -408,7 +408,29 @@ pub async fn create_request(
     .await;
 
     match insert {
-        Ok(_) => Ok(Json(json!({ "success": true, "status": "sent", "id": id }))),
+        Ok(_) => {
+            // Live-deliver the request down the recipient's presence stream so a
+            // toast can pop wherever they are (A1, a table) — the pull-only
+            // Friends tab was invisible to a seated player (bug 2026-07-24). No-op
+            // if they're not connected; the Friends tab still shows it on next load.
+            let from_name = display_name(&state, &from)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            crate::routes::presence::notify(
+                &to,
+                &json!({
+                    "friend_request": {
+                        "id": id,
+                        "from_user_id": from,
+                        "from_name": from_name,
+                        "created_at": now,
+                    }
+                }),
+            );
+            Ok(Json(json!({ "success": true, "status": "sent", "id": id })))
+        }
         // The partial unique index caught a duplicate pending — treat as sent.
         Err(e) if e.to_string().contains("UNIQUE") => {
             Ok(Json(json!({ "success": true, "status": "sent" })))
