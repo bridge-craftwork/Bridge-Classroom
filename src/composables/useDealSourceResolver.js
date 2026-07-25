@@ -307,6 +307,21 @@ function renumberBoard(pbn, n) {
   return pbn.replace(/\[Board "[^"]*"\]/, `[Board "${n}"]`)
 }
 
+// Board-numbering policy (shared by BOTH the stream path — LocalEngine/solo — and
+// the materialize path — served host/teacher tables — so the number behaves the
+// same everywhere). TRUE = keep each board's own PBN [Board] number; FALSE = use a
+// running 1..N session incrementor.
+//
+// Rule (Rick, 2026-07-24): a SINGLE fixed board-list source (one PBN file / one
+// club session / one scenario) has meaningful, stable board numbers → keep them
+// (replaying a club session shows its real board numbers). Anything that makes the
+// number bounce or be meaningless — a generator (random/script), or a MIX of
+// several sources — uses the incrementor instead.
+export function usePbnBoardNumbers(selection) {
+  const items = selection?.items || []
+  return items.length === 1 && !isGenerator(items[0])
+}
+
 // STATIC: resolve the whole pool NOW into an ordered multi-board PBN.
 // Generators contribute `options.count` boards each (default 1).
 export async function materialize(selection) {
@@ -327,7 +342,13 @@ export async function materialize(selection) {
   }
   if (!boards.length) throw new Error('The selected source produced no boards.')
 
-  const boardsPbn = boards.map((b, i) => renumberBoard(b.pbn, i + 1)).join('\n')
+  // Single fixed source → keep the boards' own PBN numbers (the served table's
+  // parse_boards falls back to 1-based sequence for any untagged board). Generated
+  // or mixed → renumber 1..N so the session board number increments in play order
+  // instead of bouncing between files. Same policy the solo table applies below.
+  const boardsPbn = usePbnBoardNumbers(selection)
+    ? boards.map((b) => b.pbn).join('\n')
+    : boards.map((b, i) => renumberBoard(b.pbn, i + 1)).join('\n')
   return { boardsPbn, count: boards.length, label: describeSelection(selection) }
 }
 

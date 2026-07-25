@@ -25,7 +25,7 @@ import { fetchAuction } from '../../utils/bbaClient.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchScenarioMeta } from '../../utils/pbsScenarios.js'
 import { seatAtIndex, isAuctionOver, lastSuitBid } from '../../utils/handAnalysis.js'
-import { nextBoard as resolverNextBoard, describeSelection } from '../useDealSourceResolver.js'
+import { nextBoard as resolverNextBoard, describeSelection, usePbnBoardNumbers } from '../useDealSourceResolver.js'
 import { useHandAnalysis } from '../useHandAnalysis.js'
 import { useCardPlay } from '../useCardPlay.js'
 import { parsePbnDeals, makeDeal } from '../../utils/pbnDeal.js'
@@ -87,6 +87,20 @@ export function useLocalEngine(config = {}) {
   // Contract + double-dummy overlay (engine-agnostic composable).
   const analysis = useHandAnalysis({ bids, dealer: () => currentDeal.value?.dealer })
   const { finalContract, doubleDummy, loadDoubleDummy } = analysis
+
+  // Displayed board number, applying the shared numbering policy (mirrors the
+  // materialize path for served tables, so solo/host/teacher agree): a single
+  // fixed board-list source keeps the deal's own PBN number; a generator or a mix
+  // uses the running session count (dealsDrawn), so the number increments in play
+  // order instead of sitting fixed (generator) or bouncing (mixed files).
+  // `dealsDrawn` counts NEW boards only — "Restart deal" is resetAuction, not a
+  // redraw — so it is the right session incrementor.
+  const boardNumber = computed(() => {
+    if (!currentDeal.value) return null
+    return usePbnBoardNumbers(selection.value)
+      ? (currentDeal.value.boardNumber || dealsDrawn.value)
+      : dealsDrawn.value
+  })
 
   // ── Derived ───────────────────────────────────────────────────────────
   const auctionComplete = computed(() => currentDeal.value && isAuctionOver(bids.value))
@@ -369,6 +383,7 @@ export function useLocalEngine(config = {}) {
     // board + auction state
     currentDeal,
     dealsDrawn,
+    boardNumber,
     currentScenario,
     currentScenarioLabel,
     dealError,
