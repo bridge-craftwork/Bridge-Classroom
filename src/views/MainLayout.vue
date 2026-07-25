@@ -82,9 +82,10 @@
 
       <!-- Practice interface -->
       <template v-else>
-        <!-- Legacy compass layout (default). Gated on the arrangement axis so a
-             client WITHOUT the grid override renders exactly as before — the inner
-             markup is byte-identical; only this v-if is added (a1 grid-flip 1.6a). -->
+        <!-- Legacy compass layout — now the ESCAPE HATCH, not the default (A1 cut
+             over to grid in production, slice 1.6b). Reached only via
+             `?arrangement=legacy`; renders exactly as it did pre-flip (inner markup
+             byte-identical). Retired entirely in slice 1.7. -->
         <!-- Two-column layout for desktop -->
         <div v-if="arrangement !== 'grid'" class="practice-layout">
           <!-- Left column: Deal info + Bridge table -->
@@ -635,11 +636,12 @@ const practice = useDealPractice()
 // choose-card lessons never touch `cardplay`, so Baker Bridge is unaffected.
 const cardplay = useCardPlay()
 
-// Per-client arrangement axis (a1 grid-flip slice 1.6a). Default 'legacy' — production
-// is untouched; `?arrangement=grid` previews the grid arranger for THIS client only
-// (persisted to localStorage; `?arrangement=legacy` reverts). The bug-report snapshot
-// records which arrangement the reporter was on, and the practice interface renders the
-// grid branch when this is 'grid'.
+// Per-client arrangement axis (a1 grid-flip). Default 'grid' — A1 was cut over to the
+// grid arranger in production (slice 1.6b, 2026-07-15). `?arrangement=legacy` is the
+// per-client escape hatch (persisted to localStorage) until slice 1.7 retires legacy;
+// `?arrangement=grid` reverts to the default. The bug-report snapshot records which
+// arrangement the reporter was on, and the practice interface renders the grid branch
+// when this is 'grid'.
 const { arrangement, arrangementSource } = useArrangement()
 
 // Grid-branch derivations (a1 grid-flip 1.6a). Canonical phase + hero seat for the
