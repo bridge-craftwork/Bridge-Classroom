@@ -430,7 +430,7 @@
               <template #nw>
                 <div class="tv-grid-nw">
                   <BoardIndicator
-                    :board-number="currentDeal.displayNumber || currentDeal.boardNumber || 1"
+                    :board-number="localBoardNumber || 1"
                     :dealer="currentDeal.dealer || null"
                     :vulnerable="currentDeal.vulnerable || null"
                     :size="A1_BOARD_SIZE"
@@ -968,7 +968,7 @@ const engine = useLocalEngine({
 const {
   capabilities, yourSeat, cardplay,
   selection, hasSelection, sourceSummary: poolSummary,
-  currentDeal, dealsDrawn, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
+  currentDeal, dealsDrawn, boardNumber: localBoardNumber, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
   finalContract, doubleDummy,
   auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,

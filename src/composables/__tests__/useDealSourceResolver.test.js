@@ -18,7 +18,7 @@ vi.mock('@/composables/useClubGames.js', () => ({ useClubGames: () => ({ fetchGa
 
 import {
   refBoards, nextBoard, materialize, isGenerator, describeSelection,
-  makeRandomDealPbn, clearResolverCache,
+  makeRandomDealPbn, clearResolverCache, usePbnBoardNumbers,
 } from '../useDealSourceResolver.js'
 import { fetchScenarioDeals, fetchScenarioScript, dealToMinimalPbn } from '@/utils/pbsScenarios.js'
 import { boardToMinimalPbn } from '@/utils/normalizedDeal.js'
@@ -138,6 +138,35 @@ describe('materialize', () => {
   it('generators contribute options.count boards each', async () => {
     const mat = await materialize({ items: [{ kind: 'random' }], options: { count: 3 } })
     expect(mat.count).toBe(3)
+  })
+
+  it('a SINGLE fixed source keeps the boards own PBN numbers (no renumber)', async () => {
+    // One multi-board PBN file numbered 5,6,7 → replaying it should show 5,6,7,
+    // not 1,2,3 (the club-session case).
+    const one = { kind: 'pbn', label: 'Club', text: [5, 6, 7].map(board).join('\n') }
+    const mat = await materialize({ items: [one], options: {} })
+    expect(mat.count).toBe(3)
+    expect(mat.boardsPbn).toMatch(/\[Board "5"\][\s\S]*\[Board "6"\][\s\S]*\[Board "7"\]/)
+  })
+})
+
+describe('usePbnBoardNumbers (single fixed source keeps PBN numbers)', () => {
+  it('single fixed board-list source → true', () => {
+    expect(usePbnBoardNumbers({ items: [pbnRef(1, 'A')] })).toBe(true)
+    expect(usePbnBoardNumbers({ items: [{ kind: 'clubgame', label: 'Tue' }] })).toBe(true)
+    expect(usePbnBoardNumbers({ items: [{ kind: 'scenario', file: 'x', label: 'x' }] })).toBe(true)
+  })
+  it('a generator → false (use the incrementor)', () => {
+    expect(usePbnBoardNumbers({ items: [{ kind: 'random' }] })).toBe(false)
+    expect(usePbnBoardNumbers({ items: [{ kind: 'script', repo: 'pbs', file: 'x' }] })).toBe(false)
+  })
+  it('a mix of sources → false (numbers would bounce)', () => {
+    expect(usePbnBoardNumbers({ items: [pbnRef(1, 'A'), pbnRef(2, 'B')] })).toBe(false)
+    expect(usePbnBoardNumbers({ items: [{ kind: 'scenario', file: 'x' }, { kind: 'random' }] })).toBe(false)
+  })
+  it('empty / missing selection → false', () => {
+    expect(usePbnBoardNumbers({ items: [] })).toBe(false)
+    expect(usePbnBoardNumbers(null)).toBe(false)
   })
 })
 
