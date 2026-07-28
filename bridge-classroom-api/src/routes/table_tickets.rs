@@ -38,6 +38,13 @@ pub struct TicketRequest {
     pub guest_name: Option<String>,
     /// Table session the ticket admits to.
     pub session_id: String,
+    /// Join as a seated PLAYER rather than a controller. A social/table invite
+    /// sets this so a teacher/admin joins a friend's table in a chair (with their
+    /// account identity) instead of as the see-all controller — the table service
+    /// seats a `teacher`-role ticket as see-all, so we downgrade the role to
+    /// `student` here (a downgrade only — can never self-assign a higher role).
+    #[serde(default)]
+    pub as_player: bool,
 }
 
 #[derive(Serialize)]
@@ -104,9 +111,12 @@ pub async fn mint_table_ticket(
             let Some((first, last, db_role)) = row else {
                 return Err((StatusCode::NOT_FOUND, "user not found".to_string()));
             };
-            // Ticket role is derived from the DB, never from the request.
+            // Ticket role is derived from the DB, never from the request (a caller
+            // can't self-assign a higher role). `as_player` is the one exception —
+            // it only DOWNGRADES a teacher/admin to a seated player for a social
+            // invite, so it's safe to honour from the request.
             let role = match db_role.as_str() {
-                "teacher" | "admin" => "teacher",
+                "teacher" | "admin" if !req.as_player => "teacher",
                 _ => "student",
             };
             let name = format!("{first} {last}").trim().to_string();

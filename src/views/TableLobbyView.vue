@@ -327,18 +327,12 @@ function enterIdentify(myEpoch) {
     return
   }
   mode.value = 'identify'
-  if (u) {
-    // Social invite + teacher/admin → join as a NAMED PLAYER: a "guest" ticket
-    // seats them in a chair, whereas their account's teacher-role ticket would
-    // seat them as the see-all controller (no chair), which can't play a
-    // two-person table. Students/guests keep joining with their account.
-    // (Demo already seats teacher tickets as players, so leave it on the account.)
-    if (isTeacher && kind.value === 'table' && sessionInfo.value?.id !== 'demo') {
-      doJoin({ guestName: `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Guest' }, myEpoch)
-    } else {
-      joinAsUser(myEpoch)
-    }
-  }
+  // Social invite (/table) → seat as a PLAYER with your account: the mint
+  // downgrades a teacher/admin ticket to a player role (as_player) so the table
+  // service gives them a chair with their real identity (friend-able), not the
+  // see-all controller. Students are already players (no-op). /play (the teacher's
+  // own class URL) was handled by the console redirect above.
+  if (u) doJoin({ userId: u.id, asPlayer: kind.value === 'table' }, myEpoch)
 }
 
 // ── Joining ────────────────────────────────────────────────────────────
