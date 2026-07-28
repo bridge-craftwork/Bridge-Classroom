@@ -196,16 +196,45 @@ async function captureBoundingBoxesShot() {
   // there's no grid, or when the overlay is already on (the primary shot has it).
   if (!document.querySelector('.grid-table')) return null
   if (document.documentElement.hasAttribute('data-bounding-boxes')) return null
+  let fold = null
   try {
     document.documentElement.setAttribute('data-bounding-boxes', '')
+    fold = addViewportFoldMarker() // draw the "bottom of your screen" line for the capture
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
     return await captureScreenshot().catch(() => null)
   } catch (err) {
     console.warn('[report] bounding-boxes screenshot failed (continuing):', err)
     return null
   } finally {
+    fold?.remove()
     document.documentElement.removeAttribute('data-bounding-boxes') // restore (we set it)
   }
+}
+
+// The screenshot rasterizes the WHOLE page (scrollHeight), so a hand clipped below
+// the fold still appears in the image — which hides the reporter's actual complaint
+// ("clipped at bottom"). Draw a dashed line at the bottom edge of their real viewport,
+// in document coordinates (scrollY + innerHeight), so anything below the line is what
+// they couldn't see. Appended to <body>, absolutely positioned + pointer-events:none so
+// it perturbs nothing; removed immediately after the capture. Boxes shot only.
+function addViewportFoldMarker() {
+  const foldY = Math.round(window.scrollY + window.innerHeight)
+  const width = document.documentElement.scrollWidth
+  const el = document.createElement('div')
+  el.setAttribute('data-viewport-fold', '')
+  el.style.cssText = [
+    'position:absolute', `top:${foldY}px`, 'left:0', `width:${width}px`, 'height:0',
+    'border-top:2px dashed rgba(220,0,0,0.9)', 'z-index:2147483647', 'pointer-events:none',
+  ].join(';')
+  const label = document.createElement('div')
+  label.textContent = `▲ viewport fold — ${window.innerHeight}px tall · anything below was off-screen`
+  label.style.cssText = [
+    'position:absolute', 'left:8px', 'top:-20px', 'padding:2px 8px', 'font:600 12px/1.4 system-ui,sans-serif',
+    'color:#fff', 'background:rgba(220,0,0,0.9)', 'border-radius:0 0 4px 4px', 'white-space:nowrap',
+  ].join(';')
+  el.appendChild(label)
+  document.body.appendChild(el)
+  return el
 }
 
 function closeDialog() {

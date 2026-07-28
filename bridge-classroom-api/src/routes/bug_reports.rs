@@ -54,6 +54,12 @@ pub struct BugReportRequest {
     pub fixture: Value,
     /// Screenshot as base64 (no `data:` prefix). Optional.
     pub screenshot_base64: Option<String>,
+    /// Second screenshot with the bounding-box overlay on (grid layouts), base64,
+    /// no `data:` prefix. Committed as `screenshot-boxes.jpg` and shown under its own
+    /// heading. Absent for non-grid views (the beetle only captures it when a grid is
+    /// on screen).
+    #[serde(default)]
+    pub screenshot_boxes_base64: Option<String>,
     /// Display name when the reporter chose to be named. None ⇒ anonymous.
     pub reporter_name: Option<String>,
     /// Contact email when the reporter opted to be contactable. Appears in the
@@ -132,6 +138,22 @@ pub async fn create_bug_report(
         )
         .await?;
     }
+    if let Some(boxes) = req
+        .screenshot_boxes_base64
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
+        put_file(
+            &client,
+            repo,
+            token,
+            &format!("{bundle_path}/screenshot-boxes.jpg"),
+            &format!("beetle: bounding-box screenshot for {bundle_path}"),
+            boxes, // already base64
+            None,
+        )
+        .await?;
+    }
     let fixture_str = serde_json::to_string_pretty(&req.fixture).unwrap_or_else(|_| "{}".into());
     put_file(
         &client,
@@ -163,6 +185,15 @@ pub async fn create_bug_report(
         .map(|_| {
             format!("https://github.com/{repo}/blob/main/{bundle_path}/screenshot.jpg?raw=true")
         });
+    let boxes_url = req
+        .screenshot_boxes_base64
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .map(|_| {
+            format!(
+                "https://github.com/{repo}/blob/main/{bundle_path}/screenshot-boxes.jpg?raw=true"
+            )
+        });
     let is_feature = req.kind.as_deref() == Some("feature");
     let title = build_title(note, req.reporter_name.as_deref(), is_feature);
     let body = build_issue_body(&BugBody {
@@ -174,6 +205,7 @@ pub async fn create_bug_report(
         repo,
         bundle_path: &bundle_path,
         screenshot_url: shot_url.as_deref(),
+        screenshot_boxes_url: boxes_url.as_deref(),
     });
     let labels = build_labels(&env, is_feature);
 
@@ -336,6 +368,7 @@ struct BugBody<'a> {
     repo: &'a str,
     bundle_path: &'a str,
     screenshot_url: Option<&'a str>,
+    screenshot_boxes_url: Option<&'a str>,
 }
 
 fn build_title(note: &str, reporter_name: Option<&str>, is_feature: bool) -> String {
@@ -411,6 +444,16 @@ fn build_issue_body(b: &BugBody) -> String {
     if let Some(url) = b.screenshot_url {
         out.push_str(&format!(
             "\n**Screenshot** (approximate rendering):\n\n![screenshot]({url})\n"
+        ));
+    }
+
+    // The layout X-ray: the same view re-captured with the arranger's bounding-box
+    // overlay on, plus a dashed line marking the viewport fold — so what fell
+    // off-screen (the reporter's actual complaint on a clipped layout) is visible on
+    // an otherwise full-page render. Only present on grid layouts.
+    if let Some(url) = b.screenshot_boxes_url {
+        out.push_str(&format!(
+            "\n**Screenshot — bounding boxes + viewport fold** (region outlines; dashed line = bottom of the reporter's screen, anything below it was off-screen):\n\n![screenshot-boxes]({url})\n"
         ));
     }
 
@@ -707,7 +750,7 @@ mod tests {
         let env = json!({ "app": "a1" });
         let anon = BugBody {
             note: "hand overlaps",
-            env: &env, layout: &Value::Null, screenshot_url: None,
+            env: &env, layout: &Value::Null, screenshot_url: None, screenshot_boxes_url: None,
             reporter_name: None, contact_email: None,
             repo: "o/r", bundle_path: "2026/07/x",
         };
