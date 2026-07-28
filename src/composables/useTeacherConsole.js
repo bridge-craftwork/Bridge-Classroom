@@ -134,6 +134,11 @@ function setSeatPolicy(policy) {
 function setBotMode(mode) {
   return socket.send({ t: 'set_bot_mode', mode })
 }
+// Flip the board mode LIVE (bid-and-play | bid-only) without re-loading the set —
+// the service applies it mid-hand and resyncs, so board numbers are untouched.
+function setBoardMode(mode) {
+  return socket.send({ t: 'set_board_mode', mode })
+}
 function pauseBots(on) {
   return socket.send({ t: 'pause_bots', on: !!on })
 }
@@ -185,6 +190,7 @@ export function useTeacherConsole() {
     addTables,
     setSeatPolicy,
     setBotMode,
+    setBoardMode,
     pauseBots,
     forceAdvance,
     assignSeat,
