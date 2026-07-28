@@ -78,6 +78,28 @@ export async function collectClientHints(nav = globalThis.navigator) {
   }
 }
 
+/**
+ * The display beyond the viewport: the logical screen size (CSS px), the OS work
+ * area (`avail*` — minus the taskbar/dock), the browser WINDOW frame (`outer*` —
+ * incl. tabs/address bar), and orientation. Together with `viewport` (the inner
+ * content area) and `dpr`, these separate "a small WINDOW on a big display" from
+ * "a genuinely small screen" — the distinction a layout-clip report turns on
+ * (e.g. #38: 859px tall — small window, or small laptop?). Physical resolution is
+ * `logical × dpr`, rendered server-side. Best-effort: null where unexposed.
+ */
+function collectScreen(win = globalThis) {
+  const s = win?.screen
+  return {
+    w: s?.width ?? null,
+    h: s?.height ?? null,
+    availW: s?.availWidth ?? null,
+    availH: s?.availHeight ?? null,
+    outerW: win?.outerWidth ?? null,
+    outerH: win?.outerHeight ?? null,
+    orientation: s?.orientation?.type || null
+  }
+}
+
 /** The browser's resolved IANA timezone (e.g. "America/Los_Angeles"). */
 function resolveTimezone() {
   try {
@@ -144,6 +166,10 @@ export function collectEnv({ win = globalThis, nav = globalThis.navigator, loc =
       dpr: win?.devicePixelRatio != null ? Math.round(win.devicePixelRatio * 100) / 100 : null,
       zoom: estimateZoom(win?.devicePixelRatio)
     },
+    // The display + window frame around the viewport (see collectScreen). Distinct
+    // from `viewport` (the inner content area): screen.h vs viewport.h is what tells
+    // a clipped-layout report apart as "small window" vs "small display".
+    screen: collectScreen(win),
     // `navigator.platform` is a frozen legacy value ("MacIntel" on EVERY Mac,
     // Apple Silicon included) — prefer UA-Client-Hints `platform` ("macOS"),
     // which is accurate. `architecture` (async, filled via collectClientHints:

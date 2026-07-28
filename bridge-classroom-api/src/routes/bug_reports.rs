@@ -505,19 +505,59 @@ fn env_rows(env: &Value) -> Vec<(String, String)> {
         push_scalar(&mut rows, key, env.get(*key));
     }
     // viewport is composite → render it explicitly.
+    let dpr = env
+        .get("viewport")
+        .and_then(|v| v.get("dpr"))
+        .and_then(Value::as_f64);
     if let Some(vp) = env.get("viewport") {
         let w = vp.get("w").and_then(Value::as_i64);
         let h = vp.get("h").and_then(Value::as_i64);
-        let dpr = vp.get("dpr").and_then(Value::as_f64);
         if let (Some(w), Some(h)) = (w, h) {
-            let dpr = dpr.map(|d| format!("@{d}")).unwrap_or_default();
-            rows.push(("viewport".to_string(), format!("{w}×{h}{dpr}")));
+            let dpr_s = dpr.map(|d| format!("@{d}")).unwrap_or_default();
+            // Surface a non-100% browser zoom inline — it shrinks the effective
+            // viewport and is a prime layout-clip cause, so make it jump out (100%
+            // is the norm and stays silent to keep the row clean).
+            let zoom_s = vp
+                .get("zoom")
+                .and_then(Value::as_i64)
+                .filter(|z| *z != 100)
+                .map(|z| format!(" · zoom {z}%"))
+                .unwrap_or_default();
+            rows.push(("viewport".to_string(), format!("{w}×{h}{dpr_s}{zoom_s}")));
+        }
+    }
+    // screen/window is composite too → logical display size, physical resolution
+    // (logical × dpr), OS work area, the browser window frame, and orientation. The
+    // gap between screen.h and viewport.h is the "small window vs small display" tell.
+    if let Some(sc) = env.get("screen") {
+        let g = |k: &str| sc.get(k).and_then(Value::as_i64);
+        if let (Some(w), Some(h)) = (g("w"), g("h")) {
+            let mut parts = vec![format!("{w}×{h}")];
+            if let Some(dpr) = dpr {
+                let pw = (w as f64 * dpr).round() as i64;
+                let ph = (h as f64 * dpr).round() as i64;
+                parts.push(format!("{pw}×{ph} physical"));
+            }
+            if let (Some(aw), Some(ah)) = (g("availW"), g("availH")) {
+                parts.push(format!("avail {aw}×{ah}"));
+            }
+            rows.push(("screen".to_string(), parts.join(" · ")));
+        }
+        if let (Some(ow), Some(oh)) = (g("outerW"), g("outerH")) {
+            rows.push(("window".to_string(), format!("{ow}×{oh}")));
+        }
+        if let Some(o) = sc
+            .get("orientation")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            rows.push(("orientation".to_string(), o.to_string()));
         }
     }
     // Catch-all: any remaining scalar fields not already shown (future-proofing).
     if let Value::Object(map) = env {
         for (k, v) in map {
-            if k == "viewport" || k == "ua" || ENV_ORDER.contains(&k.as_str()) {
+            if k == "viewport" || k == "screen" || k == "ua" || ENV_ORDER.contains(&k.as_str()) {
                 continue;
             }
             push_scalar(&mut rows, k, Some(v));
@@ -800,12 +840,52 @@ mod tests {
 
     #[test]
     fn env_rows_render_viewport() {
-        let env = json!({ "app": "a1", "viewport": { "w": 800, "h": 600, "dpr": 2.0 } });
+        let env = json!({ "app": "a1", "viewport": { "w": 800, "h": 600, "dpr": 2.0, "zoom": 100 } });
         let rows = env_rows(&env);
+        // 100% zoom stays silent (the norm).
         assert!(rows
             .iter()
             .any(|(k, v)| k == "viewport" && v == "800×600@2"));
         assert!(rows.iter().any(|(k, v)| k == "app" && v == "a1"));
+    }
+
+    #[test]
+    fn env_rows_surface_non_default_zoom() {
+        let env = json!({ "viewport": { "w": 800, "h": 600, "dpr": 1.6, "zoom": 80 } });
+        let rows = env_rows(&env);
+        assert!(rows
+            .iter()
+            .any(|(k, v)| k == "viewport" && v == "800×600@1.6 · zoom 80%"));
+    }
+
+    #[test]
+    fn env_rows_render_screen_and_window() {
+        let env = json!({
+            "viewport": { "w": 1672, "h": 859, "dpr": 2.0 },
+            "screen": {
+                "w": 1920, "h": 1080, "availW": 1920, "availH": 1055,
+                "outerW": 1680, "outerH": 1010, "orientation": "landscape-primary"
+            }
+        });
+        let rows = env_rows(&env);
+        let val = |k: &str| rows.iter().find(|(rk, _)| rk == k).map(|(_, v)| v.as_str());
+        // Logical size · physical (logical × dpr) · work area, all on one row.
+        assert_eq!(val("screen"), Some("1920×1080 · 3840×2160 physical · avail 1920×1055"));
+        // The browser window frame is its own row (small window on a big display).
+        assert_eq!(val("window"), Some("1680×1010"));
+        assert_eq!(val("orientation"), Some("landscape-primary"));
+        // Not leaked through the scalar catch-all as raw JSON.
+        assert!(!rows.iter().any(|(_, v)| v.contains('{')));
+    }
+
+    #[test]
+    fn env_rows_screen_survives_missing_fields() {
+        // A runtime that exposes only logical size (no avail/outer/orientation).
+        let env = json!({ "viewport": { "w": 800, "h": 600 }, "screen": { "w": 1280, "h": 800 } });
+        let rows = env_rows(&env);
+        let val = |k: &str| rows.iter().find(|(rk, _)| rk == k).map(|(_, v)| v.as_str());
+        assert_eq!(val("screen"), Some("1280×800")); // no dpr → no physical; no avail
+        assert!(val("window").is_none());
     }
 
     #[test]
