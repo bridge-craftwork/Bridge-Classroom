@@ -80,12 +80,17 @@
 .tc-cause.lucky{background:#d1ecf1;color:#0c5460}
 .tc-note{font-size:8px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 
-.thumb-pbs{background:#F5F0FB;display:flex;flex-direction:column;padding:12px;gap:5px}
-.pbs-bar{height:24px;background:#E8DFFE;border-radius:3px;display:flex;align-items:center;padding:0 8px;gap:5px}
-.pbs-dot{width:7px;height:7px;border-radius:50%;background:#7F77DD}
-.pbs-text{font-size:11px;color:#534AB7;font-weight:500}
-.pbs-hand{font-size:11px;color:var(--color-text-secondary);line-height:1.7}
-.pbs-red{color:#D85A30}
+.thumb-pbs{background:#e9edf2;display:flex;flex-direction:column;padding:8px;gap:2px}
+.pbs-tabs{display:flex;gap:3px}
+.pbs-tab{flex:1;text-align:center;font-size:8px;font-weight:600;padding:2px 0;border-radius:2px;background:#c9c9c9;color:#333}
+.pbs-tab-on{background:#1616d0;color:#fff}
+.pbs-yellow{text-align:center;font-size:9px;font-weight:600;background:#fbf3c9;color:#4a441a;padding:3px;border-radius:2px}
+.pbs-actions{display:flex;gap:3px}
+.pbs-act{flex:1;text-align:center;font-size:7px;font-weight:600;background:#7ed08f;color:#123;padding:3px 1px;border-radius:2px;line-height:1.1}
+.pbs-cat{text-align:center;font-size:8px;font-weight:600;background:#a9d5e0;color:#123;padding:2px;border-radius:2px}
+.pbs-cells{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.pbs-cell{font-size:7.5px;text-align:center;background:#fff;border:0.5px solid #dcdcdc;border-radius:2px;padding:2px 1px;color:#222;line-height:1.1}
+.pbs-cell-dim{color:#aaa}
 
 .thumb-bid{background:#F0F7F4;display:flex;flex-direction:column;padding:10px 12px;gap:4px}
 .bd-row{display:flex;align-items:center;gap:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
@@ -273,17 +278,12 @@
 
       <div class="tile">
         <div class="thumb thumb-pbs">
-          <div class="pbs-bar">
-            <div class="pbs-dot"></div>
-            <span class="pbs-text">BBO Practice Bidding Scenarios</span>
-          </div>
-          <div class="pbs-hand">&#9824; A Q 7 4<br><span class="pbs-red">&#9829; K J 3 &nbsp;&#9830; A 10 6</span><br>&#9827; 9 5 2</div>
-          <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">
-            <span style="font-size:10px;padding:3px 6px;background:#EEEDFE;color:#534AB7;border-radius:3px;font-weight:500">Chrome</span>
-            <span style="font-size:10px;padding:3px 6px;background:#EEEDFE;color:#534AB7;border-radius:3px;font-weight:500">Firefox</span>
-            <span style="font-size:10px;padding:3px 6px;background:#EEEDFE;color:#534AB7;border-radius:3px;font-weight:500">Safari</span>
-            <span style="font-size:10px;padding:3px 6px;background:#EEEDFE;color:#534AB7;border-radius:3px;font-weight:500">Edge</span>
-          </div>
+          <div class="pbs-tabs"><span class="pbs-tab pbs-tab-on">Data</span><span class="pbs-tab">Shortcuts</span></div>
+          <div class="pbs-yellow">Bidding Scenarios</div>
+          <div class="pbs-actions"><span class="pbs-act">Strt Bid Tbl</span><span class="pbs-act">Strt Teach Tbl</span><span class="pbs-act">Auction Compare</span></div>
+          <div class="pbs-cat">Beginners Bidding</div>
+          <div class="pbs-cells"><span class="pbs-cell">What to Open</span><span class="pbs-cell">What to Respond</span><span class="pbs-cell">Opener's Rebid</span><span class="pbs-cell pbs-cell-dim">&#8212;&#8212;&#8212;</span></div>
+          <div class="pbs-cat">Minor Suit Sequences</div>
         </div>
         <div class="tile-body">
           <div class="tile-name">BBO Bidding Scenarios</div>
