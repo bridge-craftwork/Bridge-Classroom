@@ -83,6 +83,27 @@ describe('collectEnv', () => {
     expect(env.timestamp).toBe('2026-07-10T12:00:00.000Z')
   })
 
+  it('captures the screen + window frame around the viewport', () => {
+    const win = {
+      innerWidth: 1440, innerHeight: 900, devicePixelRatio: 2,
+      outerWidth: 1512, outerHeight: 1000,
+      screen: { width: 1920, height: 1080, availWidth: 1920, availHeight: 1055, orientation: { type: 'landscape-primary' } }
+    }
+    const env = collectEnv({ ...deps, win })
+    expect(env.screen).toEqual({
+      w: 1920, h: 1080, availW: 1920, availH: 1055,
+      outerW: 1512, outerH: 1000, orientation: 'landscape-primary'
+    })
+  })
+
+  it('degrades the screen block to nulls when the runtime hides it', () => {
+    // deps.win has no `screen`/`outer*` → every field null, never throws.
+    const env = collectEnv(deps)
+    expect(env.screen).toEqual({
+      w: null, h: null, availW: null, availH: null, outerW: null, outerH: null, orientation: null
+    })
+  })
+
   it('prefers UA-Client-Hints platform over legacy navigator.platform', () => {
     const env = collectEnv({ ...deps, nav: { ...deps.nav, userAgentData: { platform: 'macOS' } } })
     expect(env.platform).toBe('macOS')
