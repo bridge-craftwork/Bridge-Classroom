@@ -51,7 +51,10 @@
 .tp-bar-wrap{height:5px;background:#C7E8DA;border-radius:2px}
 .tp-bar{height:5px;border-radius:2px;background:#1D9E75}
 .tp-dots{display:flex;gap:5px;align-items:center}
-.tp-dot{width:6px;height:6px;border-radius:50%}
+.tp-mastery{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0}
+.tp-dot{width:8px;height:8px;border-radius:50%}
+.tp-legend{display:flex;gap:12px;font-size:9px;color:var(--color-text-secondary);align-items:center}
+.tp-key{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:-1px}
 .tp-hand{font-size:11px;color:var(--color-text-secondary);line-height:1.7}
 .tp-red{color:#D85A30}
 .tp-bid{display:flex;gap:4px;margin-top:2px}
@@ -183,10 +186,13 @@
         <div class="thumb thumb-practice">
           <div class="tp-row"><span class="tp-tag">Baker Bridge</span><span style="font-size:10px;color:#1D9E75">&#10003; Synced</span></div>
           <div class="tp-title">Negative doubles</div>
-          <div class="tp-bar-wrap"><div class="tp-bar" style="width:40%"></div></div>
-          <div class="tp-dots">
-            <div class="tp-dot" style="background:#1D9E75"></div><span style="font-size:10px;color:var(--color-text-secondary)">5 mastered</span>
-            <div class="tp-dot" style="background:#ccc;margin-left:4px"></div><span style="font-size:10px;color:var(--color-text-secondary)">14 untried</span>
+          <div class="tp-mastery" aria-label="Board-by-board mastery">
+            <span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#F5A623"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#F5A623"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#F5A623"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#ccc"></span><span class="tp-dot" style="background:#1D9E75"></span><span class="tp-dot" style="background:#ccc"></span><span class="tp-dot" style="background:#ccc"></span><span class="tp-dot" style="background:#ccc"></span>
+          </div>
+          <div class="tp-legend">
+            <span><i class="tp-key" style="background:#1D9E75"></i>Mastered</span>
+            <span><i class="tp-key" style="background:#F5A623"></i>Learning</span>
+            <span><i class="tp-key" style="background:#ccc"></i>Untried</span>
           </div>
           <div class="tp-hand">&#9824; K10 &nbsp;<span class="tp-red">&#9829; A4 &nbsp;&#9830; KJ106</span> &nbsp;&#9827; KQJ65</div>
           <div class="tp-bid">
@@ -213,7 +219,7 @@
         </div>
         <div class="tile-body">
           <div class="tile-name">Bidding Practice</div>
-          <div class="tile-desc">You sit South against three BBA bots. Pick a topic, bid the deals, get instant feedback.</div>
+          <div class="tile-desc">You sit South against three BBA bots. Pick a topic, bid the deals, play them out, and get instant feedback.</div>
           <div class="tile-tags"><span class="tag tag-amber">Prototype</span><span class="tag tag-purple">BBA-powered</span></div>
         </div>
         </a>
