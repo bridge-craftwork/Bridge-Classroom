@@ -135,6 +135,16 @@
 .coming-soon-overlay{position:absolute;inset:0;background:rgba(255,255,255,0.82);display:flex;align-items:center;justify-content:center;z-index:2}
 .coming-soon-badge{font-size:13px;font-weight:500;padding:6px 14px;border-radius:20px;background:#E6F1FB;color:#185FA5;border:0.5px solid #B5D4F4}
 
+.thumb-console{background:#eef3fb;display:flex;flex-direction:column;padding:12px;gap:6px}
+.con-head{font-size:11px;font-weight:500;color:#2c5aa0}
+.con-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.con-cell{background:#fff;border:0.5px solid #d8e2f0;border-radius:4px;padding:6px 8px;display:flex;flex-direction:column;gap:3px}
+.con-t{font-size:10px;color:#444;font-weight:500}
+.con-status{font-size:8px;font-weight:600;padding:1px 6px;border-radius:10px;width:fit-content}
+.con-play{background:#d4edda;color:#155724}
+.con-bid{background:#fff3cd;color:#856404}
+.con-done{background:#e8e8e8;color:#777}
+.con-foot{font-size:9px;color:#8a93a6}
 .tile-body{padding:14px 16px 16px}
 .tile-name{font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
 .tile-desc{font-size:14px;color:var(--color-text-secondary);line-height:1.5}
@@ -223,7 +233,7 @@
         </div>
         <div class="tile-body">
           <div class="tile-name">Bidding Practice</div>
-          <div class="tile-desc">You sit South against three BBA bots. Pick a topic, bid the deals, play them out, and get instant feedback.</div>
+          <div class="tile-desc">Play against three bots or with friends. Sit South, pick a topic, bid the deals, play them out, and get instant feedback.</div>
           <div class="tile-tags"><span class="tag tag-amber">Prototype</span><span class="tag tag-purple">BBA-powered</span></div>
           <div class="tile-actions"><a class="tbtn tbtn-play" href="/bidding-practice/">Play Now</a><a class="tbtn tbtn-ghost" href="bidding-practice.html">Learn More</a></div>
         </div>
@@ -278,6 +288,24 @@
       <div class="section-line"></div>
     </div>
     <div class="tiles">
+
+      <div class="tile">
+        <div class="thumb thumb-console">
+          <div class="con-head">Class console &#183; 4 tables</div>
+          <div class="con-grid">
+            <div class="con-cell"><span class="con-t">Table 1</span><span class="con-status con-play">playing</span></div>
+            <div class="con-cell"><span class="con-t">Table 2</span><span class="con-status con-bid">bidding</span></div>
+            <div class="con-cell"><span class="con-t">Table 3</span><span class="con-status con-play">playing</span></div>
+            <div class="con-cell"><span class="con-t">Table 4</span><span class="con-status con-done">done</span></div>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Multi-table console</div>
+          <div class="tile-desc">Run a live class session across several tables at once &#8212; seat students, deal the same boards to every table in lockstep, and watch progress in real time.</div>
+          <div class="tile-tags"><span class="tag tag-amber">Prototype</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="/solo-practice-app/#/tables/console">Open console</a></div>
+        </div>
+      </div>
 
       <div class="tile">
         <div class="thumb thumb-class">
