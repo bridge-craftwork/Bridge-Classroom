@@ -156,6 +156,27 @@
 .dash-bars{display:flex;align-items:flex-end;gap:5px;height:56px}
 .dash-bars span{flex:1;background:#1D9E75;border-radius:2px 2px 0 0;opacity:0.85}
 .dash-sub{font-size:9px;color:#8a93a6}
+.thumb-studio{background:#f3f6f9;display:flex;flex-direction:column;padding:12px;gap:6px}
+.stu-bar{display:flex;align-items:center;gap:4px}
+.stu-chip{font-size:8px;padding:2px 6px;border-radius:3px;background:#e4e8ee;color:#667788}
+.stu-chip.stu-on{background:#1D9E75;color:#fff}
+.stu-pdf{margin-left:auto;font-size:8px;font-weight:600;color:#c0392b}
+.stu-page{background:#fff;border:0.5px solid #e0e4ea;border-radius:4px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.stu-row{height:5px;background:#e8ebef;border-radius:2px}
+.stu-card{font-size:11px;color:#333;background:#eef7f3;border:1px dashed #9ecdb9;border-radius:4px;padding:4px 6px}
+.stu-red{color:#D85A30}
+.thumb-stage{background:#f4f2f8;display:flex;flex-direction:column;padding:12px;gap:6px}
+.stg-slide{position:relative;background:#fff;border:0.5px solid #e2e0ea;border-radius:4px;padding:8px 10px;flex:1;overflow:hidden}
+.stg-title{font-size:11px;font-weight:600;color:#4a4470;margin-bottom:6px}
+.stg-row{height:5px;background:#e9e7f0;border-radius:2px;margin-bottom:5px}
+.stg-pop{position:absolute;right:8px;bottom:8px;font-size:10px;line-height:1.3;background:#fff;border:1px solid #b8b0d8;border-radius:5px;box-shadow:0 2px 6px rgba(80,60,140,0.18);padding:4px 7px;color:#333}
+.stg-red{color:#D85A30}
+.stg-cap{font-size:9px;color:#8a83a8}
+.thumb-liblessons{background:#eef4f2;display:flex;flex-direction:column;padding:12px;gap:5px}
+.lll-head{font-size:10px;color:#0F6E56;font-weight:500;margin-bottom:2px}
+.lll-file{display:flex;align-items:center;justify-content:space-between;background:#fff;border:0.5px solid #dbe6e1;border-radius:3px;padding:4px 8px}
+.lll-name{font-size:10px;color:#444;font-family:ui-monospace,Menlo,monospace}
+.lll-ext{font-size:8px;color:#c0392b;font-weight:600}
 .tile-body{padding:14px 16px 16px}
 .tile-name{font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
 .tile-desc{font-size:14px;color:var(--color-text-secondary);line-height:1.5}
@@ -367,6 +388,40 @@
         </div>
       </div>
 
+      <div class="tile">
+        <div class="thumb thumb-stage">
+          <div class="stg-slide">
+            <div class="stg-title">Negative Doubles</div>
+            <div class="stg-row" style="width:82%"></div>
+            <div class="stg-row" style="width:64%"></div>
+            <div class="stg-pop">&#9824; A K 4<br><span class="stg-red">&#9829; Q J 3</span></div>
+          </div>
+          <div class="stg-cap">Mac &middot; iPad &middot; Apple Pencil</div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Lesson Stage</div>
+          <div class="tile-desc">Present PDF lesson collections to your class on Mac or iPad &#8212; Apple Pencil annotation, with pop-out interactive bridge components for lessons authored in Lesson Studio.</div>
+          <div class="tile-tags"><span class="tag tag-gray">Coming soon</span><span class="tag tag-blue">Mac &middot; iPad</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="https://github.com/bridge-craftwork/lesson-stage" target="_blank" rel="noopener">View on GitHub</a></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="thumb thumb-liblessons">
+          <div class="lll-head">bridge-craftwork / lesson-library</div>
+          <div class="lll-file"><span class="lll-name">stayman.pdf</span><span class="lll-ext">PDF</span></div>
+          <div class="lll-file"><span class="lll-name">negative_doubles.pdf</span><span class="lll-ext">PDF</span></div>
+          <div class="lll-file"><span class="lll-name">weak_twos.pdf</span><span class="lll-ext">PDF</span></div>
+          <div class="lll-file"><span class="lll-name">jacoby_transfers.pdf</span><span class="lll-ext">PDF</span></div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Lesson Library</div>
+          <div class="tile-desc">A growing, volunteer-crafted library of bridge lessons &#8212; use them as plain PDFs, or open them in Lesson Studio.</div>
+          <div class="tile-tags"><span class="tag tag-blue">GitHub &#183; community</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="https://github.com/bridge-craftwork/lesson-library" target="_blank" rel="noopener">Browse on GitHub</a></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -376,6 +431,23 @@
       <div class="section-line"></div>
     </div>
     <div class="tiles">
+
+      <div class="tile">
+        <div class="thumb thumb-studio">
+          <div class="stu-bar"><span class="stu-chip">Text</span><span class="stu-chip stu-on">Hand</span><span class="stu-chip">Auction</span><span class="stu-pdf">PDF &#8595;</span></div>
+          <div class="stu-page">
+            <div class="stu-row" style="width:72%"></div>
+            <div class="stu-card">&#9824; K Q 5 &nbsp; <span class="stu-red">&#9829; A J</span> &nbsp; &#9827; Q 9 4</div>
+            <div class="stu-row" style="width:52%"></div>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Lesson Studio</div>
+          <div class="tile-desc">Author bridge lessons with purpose-built, editable bridge components in the layout &#8212; then export to PDF with an interactive component sidecar.</div>
+          <div class="tile-tags"><span class="tag tag-amber">Prototype</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="https://bridge-craftwork.github.io/lesson-studio/" target="_blank" rel="noopener">Play Now</a></div>
+        </div>
+      </div>
 
       <div class="tile">
         <div class="thumb thumb-cur">
