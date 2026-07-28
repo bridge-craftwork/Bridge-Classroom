@@ -92,7 +92,7 @@ function cacheGuestTicket({ sessionId, guestName }, minted) {
   }
 }
 
-async function mintTicket({ sessionId, userId, guestName }) {
+async function mintTicket({ sessionId, userId, guestName, asPlayer = false }) {
   if (userId) {
     // A logged-in user always mints under their user_id. Drop any per-tab
     // guest ticket so a stale guest identity can never resurface in this tab
@@ -102,8 +102,11 @@ async function mintTicket({ sessionId, userId, guestName }) {
     const cached = cachedGuestTicket({ sessionId, guestName })
     if (cached) return cached
   }
+  // `as_player` downgrades a teacher/admin account ticket to a seated player role
+  // (social invites), so they take a chair instead of joining as the see-all
+  // controller. No-op for students/guests (already players).
   const body = userId
-    ? { user_id: userId, session_id: sessionId }
+    ? { user_id: userId, session_id: sessionId, ...(asPlayer ? { as_player: true } : {}) }
     : { guest_name: guestName, session_id: sessionId }
   const res = await apiFetch(`${API_URL}/table-tickets`, {
     method: 'POST',
