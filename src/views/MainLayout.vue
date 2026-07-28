@@ -21,10 +21,13 @@
       <span v-if="showWelcome && !deals.length" class="welcome-greeting">Welcome back, {{ firstName }}</span>
       <div class="header-right">
         <SyncStatus />
-        <button class="progress-btn" @click="showProgress = true" title="View Progress">
+        <!-- Progress + Accomplishments are practice/A1-specific — only in a lesson,
+             not on the lobby (which is the hub for every app). The lobby keeps just
+             the centered greeting + profile avatar, matching the other apps' bar. -->
+        <button v-if="deals.length" class="progress-btn" @click="showProgress = true" title="View Progress">
           Progress
         </button>
-        <button class="accomplishments-btn" @click="showAccomplishments = true" title="View Accomplishments">
+        <button v-if="deals.length" class="accomplishments-btn" @click="showAccomplishments = true" title="View Accomplishments">
           Accomplishments
         </button>
         <button v-if="deals.length && currentCollection" class="lessons-btn" @click="returnToLessons" :title="'Back to ' + getCollection(currentCollection)?.name">
