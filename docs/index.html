@@ -34,13 +34,12 @@
 
 .tiles{display:flex;gap:18px;flex-wrap:wrap}
 
-.tile{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;width:260px;cursor:pointer;transition:border-color 0.15s;position:relative;flex-shrink:0}
+.tile{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;width:260px;transition:border-color 0.15s;position:relative;flex-shrink:0}
 .tile:hover{border-color:var(--color-border-secondary)}
 .tile.featured{border:2px solid #1D9E75}
 .tile.disabled{cursor:default;opacity:0.75}
 .tile.disabled:hover{border-color:var(--color-border-tertiary)}
 
-.tile-link{text-decoration:none;color:inherit;display:block}
 
 .thumb{height:132px;position:relative;overflow:hidden;background:var(--color-background-secondary)}
 
@@ -140,6 +139,13 @@
 .tile-name{font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
 .tile-desc{font-size:14px;color:var(--color-text-secondary);line-height:1.5}
 .tile-tags{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.tile-actions{display:flex;gap:8px;margin-top:12px}
+.tbtn{font-size:13px;font-weight:500;padding:8px 14px;border-radius:var(--border-radius-md);text-decoration:none;text-align:center;transition:background 0.15s,border-color 0.15s;cursor:pointer}
+.tbtn-play{background:#1D9E75;color:#fff;flex:1}
+.tbtn-play:hover{background:#0F6E56}
+.tbtn-ghost{background:transparent;color:#0F6E56;border:1px solid var(--color-border-secondary)}
+.tbtn-ghost:hover{border-color:#1D9E75}
+.tile-actions>.tbtn-ghost:only-child{flex:1}
 .tag{font-size:12px;padding:3px 9px;border-radius:20px;font-weight:500}
 .tag-green{background:#E1F5EE;color:#0F6E56}
 .tag-blue{background:#E6F1FB;color:#185FA5}
@@ -182,7 +188,6 @@
     <div class="tiles">
 
       <div class="tile featured">
-        <a class="tile-link" href="solo-practice.html">
         <div class="thumb thumb-practice">
           <div class="tp-row"><span class="tp-tag">Baker Bridge</span><span style="font-size:10px;color:#1D9E75">&#10003; Synced</span></div>
           <div class="tp-title">Negative doubles</div>
@@ -205,12 +210,11 @@
           <div class="tile-name">Scenario Mastery</div>
           <div class="tile-desc">Practice bidding deals, track mastery, and join your teacher's class.</div>
           <div class="tile-tags"><span class="tag tag-green">Live</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="/solo-practice-app">Play Now</a><a class="tbtn tbtn-ghost" href="solo-practice.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
       <div class="tile">
-        <a class="tile-link" href="bidding-practice.html">
         <div class="thumb thumb-bid">
           <div class="bd-row"><span class="bd-seat">N</span><span class="bd-bid pass">Pass</span><span class="bd-bid">1<span class="bd-red">&#9830;</span></span><span class="bd-bid pass">Pass</span><span class="bd-bid">1<span class="bd-red">&#9829;</span></span></div>
           <div class="bd-row"><span class="bd-seat">E</span><span class="bd-bid pass">Pass</span><span class="bd-bid">2<span class="bd-red">&#9829;</span></span><span class="bd-bid pass">Pass</span><span class="bd-bid">4<span class="bd-red">&#9829;</span></span></div>
@@ -221,12 +225,11 @@
           <div class="tile-name">Bidding Practice</div>
           <div class="tile-desc">You sit South against three BBA bots. Pick a topic, bid the deals, play them out, and get instant feedback.</div>
           <div class="tile-tags"><span class="tag tag-amber">Prototype</span><span class="tag tag-purple">BBA-powered</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="/bidding-practice/">Play Now</a><a class="tbtn tbtn-ghost" href="bidding-practice.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
       <div class="tile">
-        <a class="tile-link" href="bbo-scenarios.html">
         <div class="thumb thumb-pbs">
           <div class="pbs-bar">
             <div class="pbs-dot"></div>
@@ -244,12 +247,11 @@
           <div class="tile-name">BBO Bidding Scenarios</div>
           <div class="tile-desc">Browser extension &#8212; practice bidding on BBO with curated scenario deals.</div>
           <div class="tile-tags"><span class="tag tag-purple">4 browser stores</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="bbo-scenarios.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
       <div class="tile">
-        <a class="tile-link" href="game-analysis.html">
         <div class="thumb thumb-club">
           <div class="tc-row"><span class="tc-pct" style="color:#c0392b">35.7%</span><div class="tc-bar-wrap"><div class="tc-bar red" style="width:36%"></div></div><span class="tc-field">2&#9824;</span><span class="tc-cause unlucky">Unlucky</span><span class="tc-note">opps underbid</span></div>
           <div class="tc-row"><span class="tc-pct" style="color:#c0392b">7.1%</span><div class="tc-bar-wrap"><div class="tc-bar red" style="width:7%"></div></div><span class="tc-field">3NT</span><span class="tc-cause auction">Auction</span><span class="tc-note">S vs NT</span></div>
@@ -263,8 +265,8 @@
           <div class="tile-name">Game Analysis</div>
           <div class="tile-desc">Review your game results board by board.</div>
           <div class="tile-tags"><span class="tag tag-green">Live</span><span class="tag tag-blue">CLI available</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="https://game-analysis.bridge-classroom.com">Play Now</a><a class="tbtn tbtn-ghost" href="game-analysis.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
     </div>
@@ -278,7 +280,6 @@
     <div class="tiles">
 
       <div class="tile">
-        <a class="tile-link" href="classrooms.html">
         <div class="thumb thumb-class">
           <div class="cls-label">My classrooms</div>
           <div class="cls-row"><span class="cls-name">Stoneridge Creek &#8212; Thu</span><span class="cls-prog">12 students</span></div>
@@ -291,12 +292,11 @@
           <div class="tile-name">Classrooms</div>
           <div class="tile-desc">Create classes, invite students, and track their progress. Unlocks in your profile.</div>
           <div class="tile-tags"><span class="tag tag-green">Inside the app</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="classrooms.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
       <div class="tile">
-        <a class="tile-link" href="lesson-materials.html">
         <div class="thumb thumb-res">
           <div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px">Supporting materials</div>
           <div class="res-item"><span style="font-size:10px">&#128196;</span><span class="res-text">Lesson plans</span><span class="res-tag res-gd">Google Drive</span></div>
@@ -308,12 +308,11 @@
           <div class="tile-name">Lesson Materials</div>
           <div class="tile-desc">Lesson plans, handouts, and dealer files matched to the online lessons.</div>
           <div class="tile-tags"><span class="tag tag-amber">Google Drive</span><span class="tag tag-blue">GitHub</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="lesson-materials.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
       <div class="tile">
-        <a class="tile-link" href="teacher-utilities.html">
         <div class="thumb thumb-cli">
           <div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px">Download for Mac &#183; Windows &#183; Linux</div>
           <div class="cli-row"><span class="cli-name">bridge-wrangler</span><span class="cli-dl">Download</span></div>
@@ -325,8 +324,8 @@
           <div class="tile-name">Teacher Utilities</div>
           <div class="tile-desc">Downloadable tools for processing deals, generating hands, and preparing handouts.</div>
           <div class="tile-tags"><span class="tag tag-gray">Mac &#183; Windows &#183; Linux</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="teacher-utilities.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
     </div>
@@ -340,7 +339,6 @@
     <div class="tiles">
 
       <div class="tile">
-        <a class="tile-link" href="hand-curator.html">
         <div class="thumb thumb-cur">
           <div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px">Filter deals</div>
           <div class="cur-filter">
@@ -356,12 +354,11 @@
           <div class="tile-name">Hand Curator</div>
           <div class="tile-desc">Browse, filter, and assemble PBN deals into lesson collections.</div>
           <div class="tile-tags"><span class="tag tag-green">Live</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="/curator">Play Now</a><a class="tbtn tbtn-ghost" href="hand-curator.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
       <div class="tile">
-        <a class="tile-link" href="deal-library.html">
         <div class="thumb thumb-deals">
           <div class="dr-header">ADavidBailey / Practice-Bidding-Scenarios</div>
           <div class="dr-folder"><span style="font-size:10px">&#128193;</span><span class="dr-folder-name">bba-filtered/</span></div>
@@ -374,8 +371,8 @@
           <div class="tile-name">Deal Library</div>
           <div class="tile-desc">Pre-bid PBN files sorted by scenario. Primary input for the Hand Curator.</div>
           <div class="tile-tags"><span class="tag tag-blue">GitHub &#183; David Bailey</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="deal-library.html">Learn More</a></div>
         </div>
-        </a>
       </div>
 
     </div>
