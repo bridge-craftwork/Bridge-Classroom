@@ -311,22 +311,34 @@ function enterIdentify(myEpoch) {
     doJoin({ guestName: forcedStudent.trim() }, myEpoch)
     return
   }
-  // Teachers/admins get the console, not a seat: the table service seats a
-  // teacher-role ticket as the see-all session controller regardless.
-  // Exception: "demo" is the standing dev room, not a session — the service
-  // has no teacher connection (no lobby frames) for it and seats everyone as
-  // a player, so the console would hang at "Connecting…" forever. Teachers
-  // take a seat there like anyone else.
-  if (currentUser.value && sessionInfo.value?.id && sessionInfo.value.id !== 'demo' &&
-      (currentUser.value.role === 'teacher' || currentUser.value.role === 'admin')) {
+  const u = currentUser.value
+  const isTeacher = !!u && (u.role === 'teacher' || u.role === 'admin')
+  // A teacher opening their OWN class URL (/play/:hostCode) gets the console: the
+  // table service seats a teacher-role ticket as the see-all session controller
+  // (no chair), so the console — not a seat — is the right destination there.
+  // A SOCIAL invite (/table/:inviteCode) is a PLAYER invite: the teacher takes a
+  // seat like anyone else and must NOT be bounced to their own console (that was
+  // the bug — a teacher clicking a friend's invite landed on /tables/console).
+  // "demo" is the standing dev room — everyone seats as a player there.
+  if (kind.value === 'play' && isTeacher && sessionInfo.value?.id && sessionInfo.value.id !== 'demo') {
     // The stable console home (no session id) — it resolves the teacher's open
     // session itself, so the address bar stays bookmarkable across sessions.
     router.replace('/tables/console')
     return
   }
   mode.value = 'identify'
-  // Logged-in students join without another click.
-  if (currentUser.value) joinAsUser(myEpoch)
+  if (u) {
+    // Social invite + teacher/admin → join as a NAMED PLAYER: a "guest" ticket
+    // seats them in a chair, whereas their account's teacher-role ticket would
+    // seat them as the see-all controller (no chair), which can't play a
+    // two-person table. Students/guests keep joining with their account.
+    // (Demo already seats teacher tickets as players, so leave it on the account.)
+    if (isTeacher && kind.value === 'table' && sessionInfo.value?.id !== 'demo') {
+      doJoin({ guestName: `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Guest' }, myEpoch)
+    } else {
+      joinAsUser(myEpoch)
+    }
+  }
 }
 
 // ── Joining ────────────────────────────────────────────────────────────
