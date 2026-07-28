@@ -112,10 +112,27 @@ export function useHostedTable({ onExit } = {}) {
   // upgrade — and any later host deal-source load — keeps bidding-only vs
   // bid-and-play instead of the served default (always play). Read the persisted
   // key directly: it's the single source of truth the solo Table settings write.
+  // Live board mode for the host UI, seeded from the solo pref. hostBoardMode()
+  // reads this ref so a fresh deal load uses the host's current choice.
+  const boardMode = ref(
+    typeof localStorage !== 'undefined' && localStorage.getItem('bp.playCardplay') === '1'
+      ? 'bid-and-play'
+      : 'bid-only',
+  )
   function hostBoardMode() {
-    const play =
-      typeof localStorage !== 'undefined' && localStorage.getItem('bp.playCardplay') === '1'
-    return play ? 'bid-and-play' : 'bid-only'
+    return boardMode.value
+  }
+  // Flip the mode LIVE from Table settings: keep the shared solo pref in sync,
+  // then send the frame so the service applies it mid-hand and resyncs seated
+  // players — board numbers are untouched (no re-deal).
+  function setBoardMode(mode) {
+    boardMode.value = mode
+    try {
+      localStorage.setItem('bp.playCardplay', mode === 'bid-and-play' ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+    console_.setBoardMode(mode)
   }
 
   // ── Deal source → materialize the whole set onto the table ─────────────────
@@ -255,6 +272,9 @@ export function useHostedTable({ onExit } = {}) {
     spawnCount,
     copyShareUrl,
     spawnPlayers,
+    // table settings
+    boardMode,
+    setBoardMode,
     // actions
     ensureSession,
     onLoadSource,
