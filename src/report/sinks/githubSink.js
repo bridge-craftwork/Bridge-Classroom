@@ -15,15 +15,19 @@ const API_KEY = import.meta.env.VITE_API_KEY || ''
  * @param {object} args.context        context.json (env + note + display name; NO email)
  * @param {object} args.fixture        fixture.json (stub until Slice 3/4)
  * @param {Blob|null} args.screenshotBlob
+ * @param {Blob|null} [args.screenshotBoxesBlob]  Optional second screenshot with the
+ *   bounding-box overlay on (grid layouts) — the bundle's own layout X-ray. Committed
+ *   as `screenshot-boxes.jpg` and shown under a second heading; absent for non-grid views.
  * @param {string} args.note
  * @param {'bug'|'feature'} [args.kind='bug']  bug report or feature request (title/label)
  * @param {string|null} args.reporterName   display name, or null when anonymous
  * @param {string|null} args.contactEmail   email for the issue body, or null
  * @returns {Promise<{ok:boolean, issueUrl?:string, issueNumber?:number, bundlePath?:string, reason?:string}>}
  */
-export async function fileGithubIssue({ context, fixture, screenshotBlob, note, kind = 'bug', reporterName, contactEmail }) {
+export async function fileGithubIssue({ context, fixture, screenshotBlob, screenshotBoxesBlob = null, note, kind = 'bug', reporterName, contactEmail }) {
   try {
     const screenshot_base64 = screenshotBlob ? await blobToBase64(screenshotBlob) : null
+    const screenshot_boxes_base64 = screenshotBoxesBlob ? await blobToBase64(screenshotBoxesBlob) : null
     const resp = await fetch(`${API_URL}/bug-report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
@@ -33,6 +37,7 @@ export async function fileGithubIssue({ context, fixture, screenshotBlob, note, 
         context,
         fixture,
         screenshot_base64,
+        screenshot_boxes_base64,
         reporter_name: reporterName || null,
         contact_email: contactEmail || null
       })
