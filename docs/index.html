@@ -16,6 +16,9 @@
 <style>
 .page{background:var(--color-background-tertiary);padding:40px 24px 48px}
 
+.site-topbar{display:flex;justify-content:flex-end;align-items:center}
+.site-avatar{width:38px;height:38px;border-radius:50%;background:#1f6a4f;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;text-decoration:none;flex-shrink:0}
+.site-avatar:hover{background:#0F6E56}
 .header{text-align:center;margin-bottom:32px}
 .header-logo{display:flex;align-items:center;justify-content:center;gap:10px;font-size:24px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px}
 .header-logo .suit{color:#1D9E75;font-size:26px}
@@ -212,6 +215,12 @@
 <body>
 
 <div class="page">
+
+<!-- Recognized-user affordance: profile circle top-right (like the apps' top bar).
+     Hidden until the inline script below finds a saved user in localStorage. -->
+<div class="site-topbar">
+  <a class="site-avatar" id="siteAvatar" href="/solo-practice-app" style="display:none"></a>
+</div>
 
 <div class="header">
   <div class="header-logo"><span class="suit">&#9824;</span> Bridge Classroom</div>
@@ -569,6 +578,10 @@ try {
   if (user && user.firstName) {
     document.getElementById('returningName').textContent = user.firstName;
     document.getElementById('welcomeBanner').style.display = 'flex';
+    var av = document.getElementById('siteAvatar');
+    av.textContent = ((user.firstName[0] || '') + (user.lastName ? user.lastName[0] : '')).toUpperCase();
+    av.title = (user.firstName + ' ' + (user.lastName || '')).trim();
+    av.style.display = 'inline-flex';
   }
 } catch(e) {}
 </script>
