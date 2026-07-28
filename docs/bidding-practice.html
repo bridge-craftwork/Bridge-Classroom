@@ -43,6 +43,9 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
 .btn-primary:hover{background:#0F6E56}
 
 .right{padding:28px 24px;background:var(--color-background-secondary);display:flex;flex-direction:column;gap:14px}
+.screenshot{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);background:#fff}
+.screenshot img{display:block;width:100%;height:auto}
+.screenshot-caption{font-size:12px;color:var(--color-text-tertiary);text-align:center;padding:8px}
 .depends{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:14px 16px}
 .depends-label{font-size:11px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px}
 .depends-list{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--color-text-secondary);line-height:1.5}
@@ -67,15 +70,15 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
       <div class="badge">Student tool &middot; web app</div>
       <div class="badge proto">Prototype</div>
     </div>
-    <h1>Bid and play against three BBA bots</h1>
-    <p class="sub">Sit South at a table with three EPBot/BBA partners. Pick a topic from David Bailey's practice scenario library &mdash; Stayman, Jacoby transfers, splinters, weak twos, Smolen, and a hundred more. Bid through real deals with instant feedback when your call differs from the convention card &mdash; then play the contract out against the bots.</p>
+    <h1>Bid and play &mdash; against bots or with friends</h1>
+    <p class="sub">Sit South at a table with three EPBot/BBA partners &mdash; or invite friends onto the empty seats. Pick a topic from David Bailey's practice scenario library (Stayman, Jacoby transfers, splinters, weak twos, Smolen, and a hundred more), bid through real deals with instant feedback when your call differs from the convention card, then play the contract out.</p>
 
     <div class="features">
       <div class="feat">
         <div class="fi"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg></div>
         <div>
-          <h3>One human, three BBA bots</h3>
-          <p>You sit South. North, East, and West are driven by EPBot using a 21GF convention card. The auction runs the way real-life partners and opponents would bid it.</p>
+          <h3>Play against bots, or with friends</h3>
+          <p>You sit South against three EPBot/BBA bots on a 21GF convention card. Want company? Share an invite link and friends take the open seats &mdash; any left empty stay bots.</p>
         </div>
       </div>
       <div class="feat">
@@ -96,7 +99,7 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
         <div class="fi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg></div>
         <div>
           <h3>Stateless &amp; offline-friendly</h3>
-          <p>State lives in your browser. Each deal makes one stateless call to the BBA service for the auction; nothing is stored server-side. Designed to extend to two-person play later.</p>
+          <p>Playing solo, state lives in your browser. Each deal makes one stateless call to the BBA service for the auction; nothing is stored server-side. (Inviting friends upgrades the table to a shared session on demand.)</p>
         </div>
       </div>
     </div>
@@ -115,6 +118,10 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
   </div>
 
   <div class="right">
+    <div class="screenshot">
+      <img src="screenshots/bidding-practice.png" alt="The Bidding Practice table: you sit South against three bots, with an Invite friends button, mid-auction after partner's 1♥ opening">
+      <div class="screenshot-caption">You sit South &mdash; three bots fill the other seats, or invite friends</div>
+    </div>
     <div class="depends">
       <div class="depends-label">Sister services it talks to</div>
       <div class="depends-list">

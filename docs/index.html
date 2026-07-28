@@ -145,6 +145,17 @@
 .con-bid{background:#fff3cd;color:#856404}
 .con-done{background:#e8e8e8;color:#777}
 .con-foot{font-size:9px;color:#8a93a6}
+.thumb-gallery{background:#f4f5f8;display:flex;flex-direction:column;padding:12px;gap:8px}
+.gal-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.gal-tab{font-size:9px;font-weight:500;color:#888;padding:2px 7px;border-radius:10px;background:#e8e9ee}
+.gal-tab.gal-on{background:#1D9E75;color:#fff}
+.gal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.gal-cell{height:30px;background:#fff;border:0.5px solid #e0e2ea;border-radius:4px}
+.thumb-dash{background:#f5f7fa;display:flex;flex-direction:column;padding:12px;gap:8px}
+.dash-head{font-size:11px;font-weight:500;color:#42607f}
+.dash-bars{display:flex;align-items:flex-end;gap:5px;height:56px}
+.dash-bars span{flex:1;background:#1D9E75;border-radius:2px 2px 0 0;opacity:0.85}
+.dash-sub{font-size:9px;color:#8a93a6}
 .tile-body{padding:14px 16px 16px}
 .tile-name{font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
 .tile-desc{font-size:14px;color:var(--color-text-secondary);line-height:1.5}
@@ -284,7 +295,7 @@
 
   <div>
     <div class="section-header">
-      <span class="section-label">Teacher resources</span>
+      <span class="section-label">Teacher Tools</span>
       <div class="section-line"></div>
     </div>
     <div class="tiles">
@@ -400,6 +411,50 @@
           <div class="tile-desc">Pre-bid PBN files sorted by scenario. Primary input for the Hand Curator.</div>
           <div class="tile-tags"><span class="tag tag-blue">GitHub &#183; David Bailey</span></div>
           <div class="tile-actions"><a class="tbtn tbtn-ghost" href="deal-library.html">Learn More</a></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div>
+    <div class="section-header">
+      <span class="section-label">Developer</span>
+      <div class="section-line"></div>
+    </div>
+    <div class="tiles">
+
+      <div class="tile">
+        <div class="thumb thumb-gallery">
+          <div class="gal-tabs"><span class="gal-tab gal-on">Components</span><span class="gal-tab">Scenes</span><span class="gal-tab">Entry points</span></div>
+          <div class="gal-grid">
+            <div class="gal-cell"></div>
+            <div class="gal-cell"></div>
+            <div class="gal-cell"></div>
+            <div class="gal-cell"></div>
+            <div class="gal-cell"></div>
+            <div class="gal-cell"></div>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Dev Gallery</div>
+          <div class="tile-desc">Live component library, entry-point screenshots, and full-screen scene layouts &#8212; the internal design gallery.</div>
+          <div class="tile-tags"><span class="tag tag-gray">Internal</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="/dev/">Open gallery</a></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="thumb thumb-dash">
+          <div class="dash-head">Repo activity &#183; 6 months</div>
+          <div class="dash-bars"><span style="height:40%"></span><span style="height:62%"></span><span style="height:48%"></span><span style="height:78%"></span><span style="height:55%"></span><span style="height:88%"></span><span style="height:70%"></span><span style="height:100%"></span></div>
+          <div class="dash-sub">commits, PRs, and reviews across the bridge repos</div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">BridgeDev Dashboard</div>
+          <div class="tile-desc">Development activity and metrics across the Bridge Classroom repos.</div>
+          <div class="tile-tags"><span class="tag tag-gray">Internal</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="https://harmonic-systems-home.github.io/Vibe-Dashboard/?months=6" target="_blank" rel="noopener">Open dashboard</a></div>
         </div>
       </div>
 
