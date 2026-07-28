@@ -6,16 +6,17 @@
 <title>Bidding Practice - Bridge Classroom</title>
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <script>
-  // Bidding Practice now lives inside the Vue SPA so it shares components
-  // with Solo Practice. Redirect to the SPA route.
-  location.replace('/solo-practice-app/#/bidding-practice');
+  // Bidding Practice now lives inside the unified practice table (/table) inside
+  // the Vue SPA. Redirect to the SPA route (the old #/bidding-practice route was
+  // retired — it now falls through to the lobby).
+  location.replace('/solo-practice-app/#/table');
 </script>
-<noscript><meta http-equiv="refresh" content="0;url=/solo-practice-app/#/bidding-practice"></noscript>
+<noscript><meta http-equiv="refresh" content="0;url=/solo-practice-app/#/table"></noscript>
 </head>
 <body>
 <p style="font-family:sans-serif;padding:24px;color:#666">
   Loading Bidding Practice&hellip; If you are not redirected,
-  <a href="/solo-practice-app/#/bidding-practice">click here</a>.
+  <a href="/solo-practice-app/#/table">click here</a>.
 </p>
 </body>
 </html>
