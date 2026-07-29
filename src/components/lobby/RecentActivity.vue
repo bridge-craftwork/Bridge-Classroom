@@ -24,11 +24,27 @@
 </template>
 
 <script setup>
+import { useAnonymizer } from '../../composables/useAnonymizer.js'
+
 defineProps({
   events: { type: Array, default: () => [] }
 })
 
 defineEmits(['clear'])
+
+const anon = useAnonymizer()
+
+// Prefer the split name fields (issue #334) so anonymization matches the
+// rosters; fall back to the pre-joined student_name for older backends.
+function studentLabel(event) {
+  if (event.student_first_name != null || event.student_last_name != null) {
+    return anon.displayFullName({
+      first_name: event.student_first_name || '',
+      last_name: event.student_last_name || ''
+    })
+  }
+  return event.student_name
+}
 
 function iconFor(type) {
   switch (type) {
@@ -41,9 +57,9 @@ function iconFor(type) {
 function describeEvent(event) {
   switch (event.type) {
     case 'assignment_completed':
-      return `${event.student_name} completed ${event.exercise_name}`
+      return `${studentLabel(event)} completed ${event.exercise_name}`
     case 'student_joined':
-      return `${event.student_name} joined ${event.classroom_name}`
+      return `${studentLabel(event)} joined ${event.classroom_name}`
     default:
       return ''
   }

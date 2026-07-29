@@ -155,6 +155,8 @@ pub async fn create_assignment(
     // `student_name` for individual assignments so the lobby can
     // show it immediately.
     let mut student_name: Option<String> = None;
+    let mut student_first_name: Option<String> = None;
+    let mut student_last_name: Option<String> = None;
     if let Some(sid) = req.student_id.as_deref() {
         let row: Option<(String, String)> =
             sqlx::query_as("SELECT first_name, last_name FROM users WHERE id = ?")
@@ -164,6 +166,8 @@ pub async fn create_assignment(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if let Some((f, l)) = row {
             student_name = Some(format!("{} {}", f, l).trim().to_string());
+            student_first_name = Some(f);
+            student_last_name = Some(l);
         }
     }
     let initial_student_count: i64 = if let Some(cid) = req.classroom_id.as_deref() {
@@ -188,6 +192,8 @@ pub async fn create_assignment(
             classroom_name,
             student_id: req.student_id,
             student_name,
+            student_first_name,
+            student_last_name,
             assigned_by: req.assigned_by,
             assigned_at: now,
             due_at: req.due_at,
@@ -286,6 +292,8 @@ async fn list_student_assignments(
             classroom_name: row.classroom_name,
             student_id: row.student_id,
             student_name: stats.student_name,
+            student_first_name: stats.student_first_name,
+            student_last_name: stats.student_last_name,
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
@@ -357,6 +365,8 @@ async fn list_teacher_assignments(
             classroom_name: row.classroom_name,
             student_id: row.student_id,
             student_name: stats.student_name,
+            student_first_name: stats.student_first_name,
+            student_last_name: stats.student_last_name,
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
@@ -427,6 +437,8 @@ async fn list_classroom_assignments(
             classroom_name: row.classroom_name,
             student_id: row.student_id,
             student_name: stats.student_name,
+            student_first_name: stats.student_first_name,
+            student_last_name: stats.student_last_name,
             assigned_by: row.assigned_by,
             assigned_at: row.assigned_at,
             due_at: row.due_at,
@@ -450,6 +462,8 @@ async fn list_classroom_assignments(
 #[derive(Default)]
 struct AssignmentStats {
     student_name: Option<String>,
+    student_first_name: Option<String>,
+    student_last_name: Option<String>,
     student_count: i64,
     student_count_attempted: i64,
     clean_rates: Vec<f64>,
@@ -493,6 +507,8 @@ async fn compute_assignment_stats(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if let Some((f, l)) = name {
             stats.student_name = Some(format!("{} {}", f, l).trim().to_string());
+            stats.student_first_name = Some(f);
+            stats.student_last_name = Some(l);
         }
     }
 

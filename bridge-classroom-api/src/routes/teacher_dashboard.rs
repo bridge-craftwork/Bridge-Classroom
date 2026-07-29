@@ -76,6 +76,12 @@ pub struct AttentionItem {
     pub classroom_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub student_name: Option<String>,
+    // Split name so the client can anonymize consistently (issue #334). Kept
+    // alongside the pre-joined `student_name` for backward compatibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_first_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_last_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub due_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,6 +100,11 @@ pub struct ActivityEvent {
     pub event_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub student_name: Option<String>,
+    // Split name for client-side anonymization (issue #334).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_first_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_last_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exercise_name: Option<String>,
     pub classroom_name: String,
@@ -309,6 +320,8 @@ pub async fn teacher_dashboard(
                                     "{} {}",
                                     member.first_name, member.last_name
                                 )),
+                                student_first_name: Some(member.first_name.clone()),
+                                student_last_name: Some(member.last_name.clone()),
                                 exercise_name: Some(assignment.exercise_name.clone()),
                                 classroom_name: classroom.name.clone(),
                                 timestamp: ts,
@@ -352,6 +365,8 @@ pub async fn teacher_dashboard(
                             exercise_name: Some(assignment.exercise_name.clone()),
                             classroom_name: classroom.name.clone(),
                             student_name: None,
+                            student_first_name: None,
+                            student_last_name: None,
                             due_at: Some(due_at.clone()),
                             lagging_count: Some(lagging),
                             total_students: Some(students_total),
@@ -413,6 +428,8 @@ pub async fn teacher_dashboard(
                                     "{} {}",
                                     member.first_name, member.last_name
                                 )),
+                                student_first_name: Some(member.first_name.clone()),
+                                student_last_name: Some(member.last_name.clone()),
                                 due_at: None,
                                 lagging_count: None,
                                 total_students: None,
@@ -443,6 +460,8 @@ pub async fn teacher_dashboard(
                     recent_activity.push(ActivityEvent {
                         event_type: "student_joined".to_string(),
                         student_name: Some(format!("{} {}", member.first_name, member.last_name)),
+                        student_first_name: Some(member.first_name.clone()),
+                        student_last_name: Some(member.last_name.clone()),
                         exercise_name: None,
                         classroom_name: classroom.name.clone(),
                         timestamp: member.joined_at.clone(),

@@ -68,7 +68,7 @@
               v-for="s in studentsList"
               :key="s.id"
               :value="s.id"
-            >{{ s.first_name }} {{ s.last_name }}</option>
+            >{{ anon.displayFullName(s) }}</option>
           </select>
         </div>
 
@@ -108,6 +108,7 @@ import { useAssignments } from '../../composables/useAssignments.js'
 import { useClassrooms } from '../../composables/useClassrooms.js'
 import { useTeacherRole } from '../../composables/useTeacherRole.js'
 import { useBackdropClose } from '../../composables/useBackdropClose.js'
+import { useAnonymizer } from '../../composables/useAnonymizer.js'
 
 const props = defineProps({
   preselectedClassroomId: {
@@ -126,6 +127,7 @@ const exercisesStore = useExercises()
 const assignmentsStore = useAssignments()
 const classroomsStore = useClassrooms()
 const teacherRole = useTeacherRole()
+const anon = useAnonymizer()
 
 const selectedExerciseId = ref('')
 const targetType = ref('classroom')

@@ -4,6 +4,7 @@
       v-if="visibleTabs.length > 1"
       :tabs="visibleTabs"
       :active="activeTab"
+      :show-anon-toggle="canAnonymize"
       @update:active="activeTab = $event"
     />
 
@@ -60,6 +61,12 @@ const userStore = useUserStore()
 
 const userRole = computed(() => userStore.currentUser.value?.role || 'student')
 const isViewingAs = computed(() => userStore.isViewingAs.value)
+
+// The global anonymize toggle is a teacher/admin tool. `isViewingAs` means an
+// admin is previewing the app as a student, so hide it there too.
+const canAnonymize = computed(() =>
+  !isViewingAs.value && (userRole.value === 'teacher' || userRole.value === 'admin')
+)
 
 // Friends is visible to every role: ADR-0005's social layer is for all enrolled
 // members, not a teacher tool. Students get it too — for many of them it's the
