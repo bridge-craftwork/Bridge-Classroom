@@ -815,7 +815,8 @@ pub async fn get_assignment(
                o.correct        AS correct,
                o.id             AS observation_id,
                o.timestamp      AS timestamp,
-               bs.wild_achievement AS wild_achievement
+               bs.wild_achievement AS wild_achievement,
+               abs.initial_status  AS initial_status
         FROM observations o
         JOIN (
             SELECT user_id, deal_subfolder, deal_number, MAX(timestamp) AS max_ts
@@ -835,6 +836,15 @@ pub async fn get_assignment(
          AND bs.collection_id  = o.collection_id
          AND bs.deal_subfolder = o.deal_subfolder
          AND bs.deal_number    = o.deal_number
+        -- First-attempt status from the ASSIGNMENT rollup — the "originally
+        -- stumbled" signal the teacher grid marks even after `status` cleans to
+        -- green on a later redo. Assignment-scoped (keyed on assignment_id).
+        LEFT JOIN assignment_board_status abs
+          ON abs.user_id        = o.user_id
+         AND abs.assignment_id  = o.assignment_id
+         AND abs.collection_id  = o.collection_id
+         AND abs.deal_subfolder = o.deal_subfolder
+         AND abs.deal_number    = o.deal_number
         WHERE o.assignment_id = ?
         "#,
     )

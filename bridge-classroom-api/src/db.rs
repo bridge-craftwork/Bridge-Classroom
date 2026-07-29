@@ -877,6 +877,20 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     add_column_if_missing(pool, "assignment_board_status", "first_pass_ms", "INTEGER").await?;
     add_column_if_missing(pool, "assignment_board_status", "total_ms", "INTEGER").await?;
 
+    // The FIRST attempt's §5 status per board (teacher-only forensics). `status`
+    // follows the normal latest-wins/cooldown rules; `initial_status` is frozen at
+    // the first observation so the teacher grid can flag a board the student
+    // originally stumbled on even after a later clean redo cleaned `status` to green.
+    // Backfill (below, schema_meta-gated) re-runs the assignment recompute so
+    // existing rows get it.
+    add_column_if_missing(
+        pool,
+        "assignment_board_status",
+        "initial_status",
+        "TEXT NOT NULL DEFAULT 'not_attempted'",
+    )
+    .await?;
+
     sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_abs_user_assignment ON assignment_board_status(user_id, assignment_id)"#)
         .execute(pool)
         .await
@@ -1783,9 +1797,14 @@ async fn run_collection_pk_migration(pool: &Pool<Sqlite>) -> Result<(), DbError>
 /// `recompute_assignment_boards`'s SELECT was missing it — so every recompute
 /// crashed on the first board with observations, freezing the rollup. Re-run
 /// once now that the SELECT is fixed to un-freeze all stale rollups.
+///
+/// Gate bumped to `_v3` on 2026-07-28: `recompute_assignment_boards` now also
+/// writes `initial_status` (the first attempt's status, for the teacher
+/// stumbled-marker). Existing rows have the column's DEFAULT ('not_attempted');
+/// re-run once to populate it from history.
 async fn run_assignment_status_backfill(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     let already_done: bool = sqlx::query_scalar(
-        r#"SELECT COUNT(*) > 0 FROM schema_meta WHERE key = 'assignment_board_status_backfill_v2'"#,
+        r#"SELECT COUNT(*) > 0 FROM schema_meta WHERE key = 'assignment_board_status_backfill_v3'"#,
     )
     .fetch_one(pool)
     .await
@@ -1836,7 +1855,7 @@ async fn run_assignment_status_backfill(pool: &Pool<Sqlite>) -> Result<(), DbErr
 
     let now = chrono::Utc::now().to_rfc3339();
     sqlx::query(r#"INSERT INTO schema_meta (key, value, completed_at) VALUES (?, ?, ?)"#)
-        .bind("assignment_board_status_backfill_v2")
+        .bind("assignment_board_status_backfill_v3")
         .bind("done")
         .bind(&now)
         .execute(pool)

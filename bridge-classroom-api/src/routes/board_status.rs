@@ -595,16 +595,25 @@ pub async fn recompute_assignment_boards(
         // board was never attempted so the panel can distinguish "no data".
         let mut last_error_date: Option<DateTime<Utc>> = None;
         let mut final_status: &str = "not_attempted";
+        // The FIRST attempt's §5 status — retained so the teacher view can flag a
+        // board the student originally stumbled on, even after a later clean redo
+        // (>1h) resets `final_status` to clean_correct. The student's own view keys
+        // off `final_status` (all-green = as good as they can make it); `initial_status`
+        // is teacher-only forensics. Can't be close_correct (no prior error at i=0) →
+        // one of clean_correct / corrected / failed / not_attempted.
+        let mut initial_status: &str = "not_attempted";
         let mut last_observation_at: Option<String> = None;
         let mut first_pass_ms: Option<i64> = None;
         let mut total_ms: Option<i64> = None;
         for (i, obs) in observations.iter().enumerate() {
             let obs_ts = parse_timestamp(&obs.timestamp);
-            final_status = derive_obs_status_v2(obs, obs_ts, &mut last_error_date);
+            let s = derive_obs_status_v2(obs, obs_ts, &mut last_error_date);
+            final_status = s;
             last_observation_at = Some(obs.timestamp.clone());
             let ms = capped_ms(obs.time_taken_ms);
             if i == 0 {
                 first_pass_ms = Some(ms);
+                initial_status = s;
             }
             total_ms = Some(total_ms.unwrap_or(0) + ms);
         }
@@ -617,6 +626,7 @@ pub async fn recompute_assignment_boards(
             deal_subfolder,
             *deal_number,
             final_status,
+            initial_status,
             last_observation_at.as_deref(),
             first_pass_ms,
             total_ms,
@@ -638,6 +648,7 @@ async fn upsert_assignment_board_status(
     deal_subfolder: &str,
     deal_number: i32,
     status: &str,
+    initial_status: &str,
     last_observation_at: Option<&str>,
     first_pass_ms: Option<i64>,
     total_ms: Option<i64>,
@@ -647,11 +658,12 @@ async fn upsert_assignment_board_status(
         r#"
         INSERT INTO assignment_board_status (
             user_id, assignment_id, collection_id, deal_subfolder, deal_number,
-            status, last_observation_at, updated_at, first_pass_ms, total_ms
+            status, initial_status, last_observation_at, updated_at, first_pass_ms, total_ms
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, assignment_id, collection_id, deal_subfolder, deal_number) DO UPDATE SET
             status              = excluded.status,
+            initial_status      = excluded.initial_status,
             last_observation_at = excluded.last_observation_at,
             updated_at          = excluded.updated_at,
             first_pass_ms       = excluded.first_pass_ms,
@@ -664,6 +676,7 @@ async fn upsert_assignment_board_status(
     .bind(deal_subfolder)
     .bind(deal_number)
     .bind(status)
+    .bind(initial_status)
     .bind(last_observation_at)
     .bind(&now)
     .bind(first_pass_ms)
@@ -760,4 +773,141 @@ async fn upsert_board_status_v2(
     .map_err(|e| format!("Upsert failed: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::SqlitePool;
+
+    /// Minimal schema for exercising `recompute_assignment_boards`: just the four
+    /// tables it reads/writes, with only the columns the recompute touches.
+    async fn setup_pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        for ddl in [
+            "CREATE TABLE assignments (id TEXT PRIMARY KEY, exercise_id TEXT NOT NULL)",
+            "CREATE TABLE exercise_boards (exercise_id TEXT NOT NULL, collection_id TEXT NOT NULL, \
+                deal_subfolder TEXT NOT NULL, deal_number INTEGER NOT NULL)",
+            "CREATE TABLE observations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, \
+                assignment_id TEXT, collection_id TEXT NOT NULL, deal_subfolder TEXT NOT NULL, \
+                deal_number INTEGER NOT NULL, timestamp TEXT NOT NULL, correct INTEGER NOT NULL, \
+                board_result TEXT, wilderness TEXT, prerelease INTEGER NOT NULL DEFAULT 0, \
+                time_taken_ms INTEGER)",
+            "CREATE TABLE assignment_board_status (user_id TEXT NOT NULL, assignment_id TEXT NOT NULL, \
+                collection_id TEXT NOT NULL DEFAULT 'baker-bridge', deal_subfolder TEXT NOT NULL, \
+                deal_number INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'not_attempted', \
+                initial_status TEXT NOT NULL DEFAULT 'not_attempted', last_observation_at TEXT, \
+                updated_at TEXT NOT NULL, first_pass_ms INTEGER, total_ms INTEGER, \
+                PRIMARY KEY (user_id, assignment_id, collection_id, deal_subfolder, deal_number))",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+        sqlx::query("INSERT INTO assignments (id, exercise_id) VALUES ('a1', 'ex1')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool
+    }
+
+    async fn add_board(pool: &SqlitePool, subfolder: &str, num: i32) {
+        sqlx::query(
+            "INSERT INTO exercise_boards (exercise_id, collection_id, deal_subfolder, deal_number) \
+             VALUES ('ex1', 'baker-bridge', ?, ?)",
+        )
+        .bind(subfolder)
+        .bind(num)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    async fn add_obs(pool: &SqlitePool, id: &str, subfolder: &str, num: i32, ts: &str, result: &str) {
+        let correct = if result == "failed" { 0 } else { 1 };
+        sqlx::query(
+            "INSERT INTO observations (id, user_id, assignment_id, collection_id, deal_subfolder, \
+             deal_number, timestamp, correct, board_result, wilderness, prerelease, time_taken_ms) \
+             VALUES (?, 'u1', 'a1', 'baker-bridge', ?, ?, ?, ?, ?, 'Tame', 0, 1000)",
+        )
+        .bind(id)
+        .bind(subfolder)
+        .bind(num)
+        .bind(ts)
+        .bind(correct)
+        .bind(result)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    async fn read_status(pool: &SqlitePool, subfolder: &str, num: i32) -> (String, String) {
+        sqlx::query_as(
+            "SELECT status, initial_status FROM assignment_board_status \
+             WHERE user_id='u1' AND assignment_id='a1' AND deal_subfolder=? AND deal_number=?",
+        )
+        .bind(subfolder)
+        .bind(num)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    // The report that motivated this: a board first CORRECTED, then cleanly
+    // redone >1h later. `status` follows the cooldown → clean_correct (student
+    // sees green), but `initial_status` retains the first-attempt stumble so the
+    // teacher grid can mark it.
+    #[tokio::test]
+    async fn initial_status_retains_first_stumble_after_late_clean_redo() {
+        let pool = setup_pool().await;
+        add_board(&pool, "NMF", 7).await;
+        add_obs(&pool, "o1", "NMF", 7, "2026-07-27T01:39:48Z", "corrected").await;
+        add_obs(&pool, "o2", "NMF", 7, "2026-07-27T16:27:30Z", "correct").await; // ~14h later
+
+        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+
+        let (status, initial) = read_status(&pool, "NMF", 7).await;
+        assert_eq!(status, "clean_correct"); // >1h gap → student sees green
+        assert_eq!(initial, "corrected"); // teacher still sees the original stumble
+    }
+
+    #[tokio::test]
+    async fn initial_status_matches_status_for_clean_first_try() {
+        let pool = setup_pool().await;
+        add_board(&pool, "NMF", 6).await;
+        add_obs(&pool, "o1", "NMF", 6, "2026-07-27T01:33:14Z", "correct").await;
+
+        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+
+        let (status, initial) = read_status(&pool, "NMF", 6).await;
+        assert_eq!(status, "clean_correct");
+        assert_eq!(initial, "clean_correct"); // nailed first try → no stumble marker
+    }
+
+    // A redo WITHIN the hour already surfaces as close_correct (orange) today;
+    // initial_status agrees, and status stays orange — no regression.
+    #[tokio::test]
+    async fn within_cooldown_redo_stays_close_correct() {
+        let pool = setup_pool().await;
+        add_board(&pool, "NMF", 8).await;
+        add_obs(&pool, "o1", "NMF", 8, "2026-07-27T01:39:48Z", "corrected").await;
+        add_obs(&pool, "o2", "NMF", 8, "2026-07-27T01:49:48Z", "correct").await; // 10 min later
+
+        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+
+        let (status, initial) = read_status(&pool, "NMF", 8).await;
+        assert_eq!(status, "close_correct");
+        assert_eq!(initial, "corrected");
+    }
+
+    // A board in the exercise the student never touched → not_attempted for both.
+    #[tokio::test]
+    async fn untouched_board_is_not_attempted() {
+        let pool = setup_pool().await;
+        add_board(&pool, "NMF", 9).await;
+
+        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+
+        let (status, initial) = read_status(&pool, "NMF", 9).await;
+        assert_eq!(status, "not_attempted");
+        assert_eq!(initial, "not_attempted");
+    }
 }
