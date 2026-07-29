@@ -20,6 +20,16 @@ use crate::AppState;
 const MAX_CODE_ATTEMPTS: u32 = 5;
 const CODE_RATE_LIMIT_SECS: u64 = 900; // 15 minutes
 
+/// Grace window after a recovery code/token is FIRST used, during which the same
+/// code/token still claims successfully. Lets a student who recovers on one
+/// device (e.g. types the code on their phone) re-use the same code on another
+/// (e.g. their laptop) without it reading as "Invalid or expired code." Measured
+/// from first use and bounded, so a used code is not valid indefinitely. Layered
+/// on latest-only supersession (each new request deletes prior tokens), the 24h
+/// expiry, and the 5-attempts/15min limiter — a small, deliberate relaxation for
+/// the classroom cross-device flow.
+const CLAIM_REUSE_GRACE_SECS: i64 = 3600; // 1 hour
+
 /// In-memory rate limiter for recovery code attempts
 /// Key: email (lowercase), Value: (window_start, attempt_count)
 static CODE_RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, (Instant, u32)>>> =
@@ -549,7 +559,9 @@ async fn claim_recovery_inner(
     }
 
     let token_hash = hash_token(&req.token);
-    let now = chrono::Utc::now().to_rfc3339();
+    let now_dt = chrono::Utc::now();
+    let now = now_dt.to_rfc3339();
+    let reuse_cutoff = (now_dt - chrono::Duration::seconds(CLAIM_REUSE_GRACE_SECS)).to_rfc3339();
     tracing::info!(
         "Looking for valid token with hash: {}...",
         &token_hash.chars().take(16).collect::<String>()
@@ -559,12 +571,14 @@ async fn claim_recovery_inner(
     let token_record = sqlx::query_as::<_, (String, String)>(
         r#"
         SELECT id, user_id FROM recovery_tokens
-        WHERE user_id = ? AND token_hash = ? AND used = 0 AND expires_at > ?
+        WHERE user_id = ? AND token_hash = ? AND expires_at > ?
+          AND (used = 0 OR used_at > ?)
         "#,
     )
     .bind(&req.user_id)
     .bind(&token_hash)
     .bind(&now)
+    .bind(&reuse_cutoff)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -584,22 +598,18 @@ async fn claim_recovery_inner(
         }
     };
 
-    // Mark token as used — atomically (§S4). The `AND used = 0` guard plus the
-    // rows_affected check closes a TOCTOU where two concurrent claims of the same
-    // token could both pass the SELECT above and both succeed.
-    let marked = sqlx::query("UPDATE recovery_tokens SET used = 1 WHERE id = ? AND used = 0")
+    // Mark used and stamp used_at on FIRST use only (COALESCE preserves the
+    // original first-use time). §S4: the SELECT above already gated validity
+    // (unused, or used within CLAIM_REUSE_GRACE_SECS), so repeat/concurrent
+    // claims inside that grace window are intentionally allowed — the old
+    // single-winner `used = 0` guard is dropped on purpose so a second-device
+    // claim of the same code/link succeeds instead of failing as "expired."
+    sqlx::query("UPDATE recovery_tokens SET used = 1, used_at = COALESCE(used_at, ?) WHERE id = ?")
+        .bind(&now)
         .bind(&token_id)
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    if marked.rows_affected() == 0 {
-        tracing::warn!("Recovery token {} was already claimed (race)", token_id);
-        return Ok(Json(RecoveryClaimResponse {
-            success: false,
-            user: None,
-            error: Some("This recovery link has expired or was already used. Please request a new recovery email.".to_string()),
-        }));
-    }
 
     // Get user data with recovery key
     let user = sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String)>(
@@ -780,17 +790,21 @@ async fn claim_by_code_inner(
 
     // Find valid token with matching code hash
     let code_hash = hash_token(&code);
-    let now_str = chrono::Utc::now().to_rfc3339();
+    let now_dt = chrono::Utc::now();
+    let now_str = now_dt.to_rfc3339();
+    let reuse_cutoff = (now_dt - chrono::Duration::seconds(CLAIM_REUSE_GRACE_SECS)).to_rfc3339();
 
     let token_record = sqlx::query_as::<_, (String,)>(
         r#"
         SELECT id FROM recovery_tokens
-        WHERE user_id = ? AND recovery_code_hash = ? AND used = 0 AND expires_at > ?
+        WHERE user_id = ? AND recovery_code_hash = ? AND expires_at > ?
+          AND (used = 0 OR used_at > ?)
         "#,
     )
     .bind(&user_id)
     .bind(&code_hash)
     .bind(&now_str)
+    .bind(&reuse_cutoff)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -812,22 +826,18 @@ async fn claim_by_code_inner(
         }
     };
 
-    // Mark token as used — atomically (§S4). The `AND used = 0` guard plus the
-    // rows_affected check closes a TOCTOU where two concurrent claims of the same
-    // token could both pass the SELECT above and both succeed.
-    let marked = sqlx::query("UPDATE recovery_tokens SET used = 1 WHERE id = ? AND used = 0")
+    // Mark used and stamp used_at on FIRST use only (COALESCE preserves the
+    // original first-use time). §S4: the SELECT above already gated validity
+    // (unused, or used within CLAIM_REUSE_GRACE_SECS), so repeat/concurrent
+    // claims inside that grace window are intentionally allowed — the old
+    // single-winner `used = 0` guard is dropped on purpose so a second-device
+    // claim of the same code/link succeeds instead of failing as "expired."
+    sqlx::query("UPDATE recovery_tokens SET used = 1, used_at = COALESCE(used_at, ?) WHERE id = ?")
+        .bind(&now_str)
         .bind(&token_id)
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    if marked.rows_affected() == 0 {
-        tracing::warn!("Recovery token {} was already claimed (race)", token_id);
-        return Ok(Json(RecoveryClaimResponse {
-            success: false,
-            user: None,
-            error: Some("This recovery link has expired or was already used. Please request a new recovery email.".to_string()),
-        }));
-    }
 
     // Get user data with recovery key
     let user = sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<String>, String)>(
