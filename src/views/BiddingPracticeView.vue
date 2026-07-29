@@ -59,15 +59,11 @@
           >
             Undo
           </button>
-          <button
+          <DealSourceButton
             v-if="srv.canDeal"
-            class="tv-btn"
             :disabled="srv.connectionStatus !== 'connected'"
-            title="Choose where deals come from: random, a bidding scenario, or pasted PBN"
-            @click="srv.dealModalOpen = true"
-          >
-            Deal source…
-          </button>
+            @open="srv.dealModalOpen = true"
+          />
           <button
             v-if="srv.canDeal"
             class="tv-btn tv-btn-primary"
@@ -359,14 +355,12 @@
             </template>
           </div>
           <div class="bp-scenario-actions">
-            <button
+            <DealSourceButton
               v-if="!EMBEDDED"
-              class="bp-btn"
-              :class="!currentDeal ? 'bp-btn-primary bp-btn-attn' : ''"
+              :attention="!currentDeal"
               :disabled="drawing"
-              title="Choose where deals come from"
-              @click="showPicker = true"
-            >Deal source&hellip;</button>
+              @open="showPicker = true"
+            />
             <button
               v-if="!EMBEDDED"
               class="bp-btn"
@@ -596,19 +590,20 @@
           </div>
 
           <!-- Deal controls (VCR-style) below the table: undo / restart / next.
-               (The SW grid corner is 'none' in the table config, so these live
-               here rather than in the arranger.) -->
-          <div class="bp-deal-controls">
-            <button class="bp-vcr-btn" @click="undo" :disabled="!canUndo" title="Undo — steps back to your last decision (bid or card)">
-              <span class="bp-vcr-ico">⏪</span> Undo
-            </button>
-            <button class="bp-vcr-btn" @click="resetAuction" :disabled="!currentDeal || auctionLoading" title="Restart this deal from the top">
-              <span class="bp-vcr-ico">⏮</span> Restart deal
-            </button>
-            <button v-if="!EMBEDDED" class="bp-vcr-btn" @click="newDeal" :disabled="!currentDeal || auctionLoading || drawing || !hasSelection" title="Deal the next board">
-              <span class="bp-vcr-ico">⏭</span> Next deal
-            </button>
-          </div>
+               Shared component (DealControls.vue) so the harness scenes render the
+               SAME markup — this row is the first relocation candidate (below the
+               table today → NW next), and the shared file is what keeps the move
+               to a one-liner. Still outside the arranger for now. -->
+          <DealControls
+            class="bp-deal-controls"
+            :can-undo="canUndo"
+            :can-restart="!!currentDeal && !auctionLoading"
+            :can-next="!!currentDeal && !auctionLoading && !drawing && hasSelection"
+            :show-next="!EMBEDDED"
+            @undo="undo"
+            @restart="resetAuction"
+            @next="newDeal"
+          />
         </template>
           </template>
         </TableShell>
@@ -695,6 +690,8 @@ import BridgeTable from '../components/BridgeTable.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import TableShell from '../components/table/TableShell.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
+import DealControls from '../components/table/DealControls.vue'
+import DealSourceButton from '../components/table/DealSourceButton.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -1871,22 +1868,8 @@ async function restartCardplay() {
 .bp-cardplay-result .bp-down { color: #d32f2f; font-weight: 600; }
 
 /* Stage states */
-/* Priming state — placeholder hand + spotlighted Deal source button. */
-.bp-btn-attn {
-  background: #1D9E75;
-  color: #fff;
-  border-color: #1D9E75;
-  animation: bp-attn-pulse 1.8s ease-out infinite;
-}
-.bp-btn-attn:hover { background: #167a5a; border-color: #167a5a; }
-@keyframes bp-attn-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.45); }
-  70%  { box-shadow: 0 0 0 10px rgba(29, 158, 117, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bp-btn-attn { animation: none; }
-}
+/* (The priming spotlight moved into DealSourceButton.vue as .dsb-attn, pulse
+   and reduced-motion guard included.) */
 
 /* No-deal empty table (identity-only BridgeTable). Match the live table width. */
 .bp-empty-table { width: 100%; max-width: 1400px; margin: 0 auto; }
@@ -1997,22 +1980,10 @@ async function restartCardplay() {
 .bp-review-hint { color: #999; font-style: italic; }
 
 /* Deal-control buttons (VCR-style) — a centred row below the table. */
-.bp-deal-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.bp-vcr-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  background: #fff;
-  font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.bp-vcr-btn:hover:not(:disabled) { border-color: #888; }
-.bp-vcr-btn:disabled { opacity: 0.45; cursor: default; }
-.bp-vcr-ico { font-size: 12px; }
+/* Button styling now lives in DealControls.vue (scoped). Only the row's PLACEMENT
+   in this shell stays here — which is exactly the part that goes away when the row
+   moves into the NW grid region. */
+.bp-deal-controls { margin-top: 12px; }
 .bp-btn:disabled {
   opacity: 0.45;
   cursor: default;

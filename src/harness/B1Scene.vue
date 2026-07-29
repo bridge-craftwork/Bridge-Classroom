@@ -2,15 +2,34 @@
   <!-- B1 (Practice Table — local / solo) faithful composition. Renders the REAL
        B1 layout from a frozen fixture: the same grid arranger B1 uses
        (BridgeTable arrangement='grid' + table.tableConfig.js) with all four seats
-       named (seatChips:'always' + occupants) — the seat-semantics divergence from
-       A1 (which shows only the deal's hero/dummy). Chrome (nav + scenario bar +
+       named as live occupants, plus the shell around it (nav, scenario bar, right
        rail) reproduces B1's shell so the whole surface can be compared to A1/B2/B3.
-       Harness-only; no engine/BBA (that stalls locally) — the fixture is the state. -->
+
+       SHELL FIDELITY (2026-07-29 audit). The grid is real — real components, real
+       config, real arranger — but everything OUTSIDE it is hand-copied from
+       BiddingPracticeView and therefore drifts silently. The audit found the whole
+       review block and the deal-controls row missing, which is why the gallery
+       under-reported exactly the controls we're planning to relocate. Two rules to
+       keep it honest from here:
+         1. Relocation candidates render through the SHARED component the live view
+            uses (DealControls, DealSourceButton) — not a copy. A move then lands in
+            both places at once.
+         2. Anything knowingly NOT modelled is named here rather than left silent.
+            Currently excluded: the modal overlays (deal-source picker, Table
+            settings, scenario chat) and the dev beetle. Modals cover the layout, so
+            rendering them in a layout gallery hides the thing under review; they
+            want their own scenes if they ever need layout work. -->
   <div class="b1-app">
     <nav class="b1-nav">
       <span class="b1-logo"><span class="suit">&spades;</span> Bridge Classroom &middot; Bidding Practice</span>
       <span class="b1-user">{{ heroInitials }}</span>
     </nav>
+
+    <!-- Error box — above the scenario bar in the live #notes slot. -->
+    <div v-if="f.dealError" class="b1-error-box">
+      {{ f.dealError }}
+      <div v-if="f.dealErrorHint" class="b1-error-hint">{{ f.dealErrorHint }}</div>
+    </div>
 
     <div class="b1-scenario-bar">
       <div class="b1-scenario-info">
@@ -18,7 +37,7 @@
         <div class="b1-scenario-meta">CC &middot; NS: {{ f.systemNS || 'Basic-Bridge' }} &middot; EW: {{ f.systemEW || 'Basic-Bridge' }}</div>
       </div>
       <div class="b1-scenario-actions">
-        <button class="b1-btn" type="button">Deal source&hellip;</button>
+        <DealSourceButton :attention="!f.hands" />
         <button class="b1-btn" type="button">Invite friends&hellip;</button>
         <button class="b1-btn" type="button">Description</button>
         <button class="b1-btn" type="button">&#9881; Table settings</button>
@@ -27,6 +46,12 @@
 
     <div class="b1-table-wrap">
       <div class="b1-frame">
+        <!-- Review banner — the "you gave away N tricks" strip above the table. -->
+        <div v-if="f.inspect" class="b1-review-banner">
+          {{ f.inspect.label }}
+          <span v-if="f.inspect.cost > 0" class="b1-review-bad">gave away {{ f.inspect.cost }} trick<span v-if="f.inspect.cost > 1">s</span></span>
+        </div>
+
         <BridgeTable
           arrangement="grid"
           :table-config="tableConfig"
@@ -40,11 +65,11 @@
           :played-cards="f.playedCards || null"
           :hide-played-cards="phase === 'play'"
         >
-          <!-- CENTER: live auction (bidding) / trick (play) — via slots.center. -->
+          <!-- CENTER: live auction (bidding) / trick (play + review). -->
           <template v-if="center === 'auction'" #center>
             <AuctionTable v-bind="auctionProps" :show-turn-indicator="true" />
           </template>
-          <template v-else-if="center === 'trick-area'" #center>
+          <template v-else-if="center === 'trick-area' || center === 'review'" #center>
             <TrickArea
               :current-trick="f.currentTrick || { plays: [] }"
               :last-finished-trick="f.lastFinishedTrick || null"
@@ -54,7 +79,9 @@
             />
           </template>
 
-          <!-- NW: board · dealer · vul glyph (+ StatusStrip in play). -->
+          <!-- NW: board · dealer · vul glyph (+ StatusStrip once out of bidding).
+               This is the corner the deal controls are moving INTO — the reserve is
+               currently the board glyph's extent alone (STATUS_RESERVE). -->
           <template #nw>
             <div class="b1-nw">
               <BoardIndicator
@@ -67,7 +94,9 @@
             </div>
           </template>
 
-          <!-- NE: completed auction pinned during play. -->
+          <!-- NE: completed auction pinned through play AND review (matching the
+               live view's `trick-area || review` gate — the scene previously pinned
+               it in play only, so review lost the reference auction). -->
           <template v-if="pinnedAuction" #ne>
             <AuctionTable v-bind="auctionProps" :show-turn-indicator="false" />
           </template>
@@ -77,17 +106,68 @@
             <BiddingBox :last-bid="f.lastBid || null" :can-double="!!f.canDouble" :can-redouble="!!f.canRedouble" />
           </template>
         </BridgeTable>
+
+        <!-- Deal controls (VCR) — BELOW the table, outside the arranger. The live
+             view renders this same component; relocating it into #nw is a one-line
+             move in both files. -->
+        <DealControls
+          class="b1-deal-controls"
+          :can-undo="phase !== 'bidding' || (f.bids || []).length > 0"
+          can-restart
+          can-next
+        />
       </div>
 
-      <!-- Right rail: cardplay controls in play; empty in bidding (matches B1,
-           where the auction + box live in the grid and the rail is bare). -->
+      <!-- Right rail: cardplay controls in play, the contract/result block in
+           review; empty in bidding (the auction + box live in the grid). -->
       <aside v-if="phase !== 'bidding'" class="b1-rail">
-        <div class="b1-rail-card">
+        <div v-if="phase === 'play'" class="b1-rail-card">
           <h3>Cardplay</h3>
-          <div class="b1-rail-note">Tricks NS&nbsp;{{ (f.tricksTaken || {}).NS ?? 0 }} · EW&nbsp;{{ (f.tricksTaken || {}).EW ?? 0 }}</div>
+          <div class="b1-rail-note">Tricks <strong>NS&nbsp;{{ tricks.NS }} · EW&nbsp;{{ tricks.EW }}</strong></div>
+          <div v-if="f.lineNote" class="b1-line-note">↝ {{ f.lineNote }}</div>
+          <div v-if="f.botStats" class="b1-stats">
+            Bot: {{ f.botStats.count }} calls · avg {{ fmtMs(f.botStats.mean) }} · max {{ fmtMs(f.botStats.max) }}
+          </div>
+          <div class="b1-rail-actions">
+            <button class="b1-btn" type="button">Claim&hellip;</button>
+            <button class="b1-btn" type="button">Restart cardplay</button>
+          </div>
+        </div>
+
+        <!-- Review: contract + result + DD + the deal-level actions. -->
+        <div v-if="phase === 'review'" class="b1-rail-card">
+          <div class="b1-contract-line">{{ f.contract }} by {{ seatName(f.declarer) }}</div>
+          <div class="b1-contract-meta">{{ f.summary }}</div>
+          <div v-if="f.result" class="b1-result">
+            You took <strong>{{ f.result.took }}</strong> trick{{ f.result.took === 1 ? '' : 's' }}
+            <span v-if="f.result.needed != null">
+              · needed {{ f.result.needed }} to make
+              <span :class="f.result.made ? 'b1-made' : 'b1-down'">— {{ f.result.made ? 'made' : 'down ' + (f.result.needed - f.result.took) }}</span>
+            </span>
+          </div>
+          <div v-if="f.lineNote" class="b1-line-note">↝ {{ f.lineNote }}</div>
+          <div v-if="f.botStats" class="b1-stats">
+            Bot: {{ f.botStats.count }} calls · avg {{ fmtMs(f.botStats.mean) }} ·
+            max {{ fmtMs(f.botStats.max) }} · total {{ fmtMs(f.botStats.total) }}
+          </div>
+          <DoubleDummyTable
+            v-if="f.ddtricks"
+            :ddtricks="f.ddtricks"
+            :final-contract="{ contract: f.contract, declarer: f.declarer }"
+            :diverged="!!f.divergence"
+          />
+          <div class="b1-rail-actions">
+            <button class="b1-btn b1-btn-primary" type="button">Next deal &rarr;</button>
+            <button class="b1-btn" type="button">Replay this deal</button>
+          </div>
         </div>
       </aside>
     </div>
+
+    <footer class="b1-footer">
+      <span>Bridge Classroom · Free educational tool · Provided as-is</span>
+      <span class="b1-footer-links">Discord · GitHub</span>
+    </footer>
   </div>
 </template>
 
@@ -99,6 +179,9 @@ import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
+import DoubleDummyTable from '../components/DoubleDummyTable.vue'
+import DealControls from '../components/table/DealControls.vue'
+import DealSourceButton from '../components/table/DealSourceButton.vue'
 import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
@@ -122,13 +205,23 @@ const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext: compute
 const action = slots.action
 const center = slots.center
 
-const pinnedAuction = computed(() => phase.value === 'play' && (f.value.bids || []).length > 0)
+// Pinned through play AND review — matches the live view's gate. (Was play-only,
+// which silently dropped the reference auction from every review scene.)
+const pinnedAuction = computed(
+  () => (phase.value === 'play' || phase.value === 'review') && (f.value.bids || []).length > 0,
+)
 const auctionProps = computed(() => ({
   bids: f.value.bids || [],
   dealer: f.value.dealer || 'N',
   currentBidIndex: (f.value.bids || []).length,
   meanings: f.value.meanings || [],
+  divergedBids: f.value.divergedBids || [],
 }))
+
+const tricks = computed(() => f.value.tricksTaken || { NS: 0, EW: 0 })
+const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
+const seatName = (s) => SEAT_NAMES[s] || s
+const fmtMs = (ms) => (ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`)
 
 const heroInitials = computed(() => {
   const name = (f.value.occupants?.[f.value.seat || 'S']?.name) || f.value.heroName || 'You'
@@ -142,6 +235,8 @@ const heroInitials = computed(() => {
   background: #f5f5f3;
   font-family: 'DM Sans', system-ui, sans-serif;
   color: #1a2420;
+  display: flex;
+  flex-direction: column;
 }
 .b1-nav {
   display: flex; align-items: center; justify-content: space-between;
@@ -153,17 +248,23 @@ const heroInitials = computed(() => {
   width: 34px; height: 34px; border-radius: 50%; background: #1f6a4f; color: #fff;
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
 }
+.b1-error-box {
+  margin: 16px 16px 0; padding: 10px 14px; border-radius: 10px;
+  background: #fdecea; border: 1px solid #f5c6c2; color: #8a2018; font-size: 13px;
+}
+.b1-error-hint { margin-top: 4px; font-size: 12px; color: #a4544c; }
 .b1-scenario-bar {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
   margin: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e6e8e3; border-radius: 12px;
 }
 .b1-scenario-name { font-weight: 600; font-size: 15px; }
 .b1-scenario-meta { font-size: 12px; color: #6a726c; margin-top: 2px; }
-.b1-scenario-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.b1-scenario-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
 .b1-btn {
   font: 600 13px 'DM Sans', system-ui, sans-serif; padding: 7px 12px;
   border: 1px solid #cfd6ce; border-radius: 8px; background: #f7f9f6; color: #33403a; cursor: default; white-space: nowrap;
 }
+.b1-btn-primary { background: #1D9E75; border-color: #1D9E75; color: #fff; }
 .b1-table-wrap {
   display: flex; gap: 16px; align-items: flex-start; margin: 0 16px 16px;
 }
@@ -171,9 +272,29 @@ const heroInitials = computed(() => {
   flex: 1 1 auto; min-width: 0;
   background: #fff; border: 1px solid #e6e8e3; border-radius: 14px; padding: 8px;
 }
+.b1-review-banner {
+  margin: 0 0 8px; padding: 6px 10px; border-radius: 8px;
+  background: #f2f6f3; font-size: 12px; color: #445;
+}
+.b1-review-bad { color: #d32f2f; font-weight: 600; margin-left: 6px; }
 .b1-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-.b1-rail { flex: 0 0 300px; }
+.b1-deal-controls { margin-top: 12px; }
+.b1-rail { flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px; }
 .b1-rail-card { background: #fff; border: 1px solid #e6e8e3; border-radius: 12px; padding: 12px 14px; }
 .b1-rail-card h3 { margin: 0 0 6px; font-size: 13px; }
 .b1-rail-note { font-size: 12px; color: #6a726c; }
+.b1-contract-line { font-weight: 700; font-size: 15px; }
+.b1-contract-meta { font-size: 12px; color: #6a726c; margin-top: 2px; }
+.b1-result { font-size: 13px; margin-top: 8px; }
+.b1-made { color: #1D9E75; font-weight: 600; }
+.b1-down { color: #d32f2f; font-weight: 600; }
+.b1-line-note { font-size: 12px; color: #55605a; margin-top: 6px; font-style: italic; }
+.b1-stats { font-size: 11px; color: #8a938d; margin-top: 6px; }
+.b1-rail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.b1-footer {
+  margin-top: auto; display: flex; justify-content: space-between;
+  padding: 14px 20px; border-top: 1px solid #e6e8e3;
+  font-size: 12px; color: #8a938d;
+}
+.b1-footer-links { color: #6a726c; }
 </style>

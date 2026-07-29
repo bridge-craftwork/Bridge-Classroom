@@ -14,13 +14,16 @@
         <span class="bsrv-conn">connected</span>
         <span class="bsrv-user">{{ heroInitials }}</span>
       </nav>
+      <!-- Row 1 — SESSION chrome, owned by TableView (.th-controls), outside the
+           TableShell entirely. Host-only by construction. -->
       <div class="bsrv-hoststrip">
-        <button class="bsrv-btn" type="button">Deal source&hellip;</button>
+        <DealSourceButton />
         <div class="bsrv-invite">
           <button class="bsrv-btn bsrv-btn-primary" type="button">Copy invite link</button>
           <input class="bsrv-invite-url" readonly :value="inviteUrl">
         </div>
         <button class="bsrv-btn" type="button">&#129514; Test players</button>
+        <button class="bsrv-btn" type="button">&#9881; Table settings</button>
         <button class="bsrv-btn bsrv-btn-danger" type="button">End table</button>
       </div>
     </template>
@@ -31,6 +34,36 @@
       <span class="bsrv-title">{{ f.scenario || "Rick's table" }}</span>
       <span class="bsrv-user">{{ heroInitials }}</span>
     </nav>
+
+    <!-- Row 2 — the TableShell HEADER, inside the shell and present for both roles.
+         B2 therefore carries TWO control rows live (this plus the session strip
+         above); the scene modelled only the strip until the 2026-07-29 audit. -->
+    <div class="bsrv-shellhead">
+      <div class="bsrv-head-left">
+        <span class="bsrv-shell-title">{{ f.scenario || "Rick's table" }}</span>
+        <span class="bsrv-tag">Board {{ f.board ?? 1 }}</span>
+        <StatusStrip :status="status" />
+        <span class="bsrv-tag bsrv-tag-bots">bots: BBA+RulesBot</span>
+        <button v-if="canManage" class="bsrv-tag bsrv-tag-toggle" type="button">Show all hands</button>
+      </div>
+      <div class="bsrv-head-right">
+        <!-- Host-only transport. The guest (B3) gets none of it — the same
+             owner-vs-guest split that makes the NW reserve context-dependent. -->
+        <template v-if="canManage">
+          <button class="bsrv-btn" type="button">Pause bots</button>
+          <button class="bsrv-btn" type="button">Undo</button>
+          <DealSourceButton />
+          <button class="bsrv-btn bsrv-btn-primary" type="button">Next deal</button>
+          <button v-if="f.canHostAdvance" class="bsrv-btn bsrv-btn-primary" type="button">Next deal &rarr;</button>
+        </template>
+      </div>
+    </div>
+
+    <!-- Notes strip: kibitz / paused cues. -->
+    <div v-if="!f.yourSeats?.length || f.pausedSeat" class="bsrv-notes">
+      <p v-if="!f.yourSeats?.length" class="bsrv-note">You're watching this table — take a seat to play.</p>
+      <p v-if="f.pausedSeat" class="bsrv-note">Bots paused at {{ seatName(f.pausedSeat) }}.</p>
+    </div>
 
     <div class="bsrv-table-wrap">
       <div class="bsrv-frame">
@@ -88,6 +121,71 @@
           </template>
         </SeatControlTable>
       </div>
+
+      <!-- ── The RAIL. Absent from this scene until 2026-07-29, which is why the
+           gallery under-reported the server table so badly: this column holds most
+           of the controls that are candidates to move into the grid, and several of
+           them are host-only — the split that drives the context-dependent NW
+           reserve. Card order matches the live server branch. -->
+      <aside class="bsrv-rail">
+        <div v-if="f.ddtricks" class="bsrv-card">
+          <h3>Double dummy</h3>
+          <DoubleDummyTable
+            :ddtricks="f.ddtricks"
+            :final-contract="{ contract: f.contract || '', declarer: f.declarer || null }"
+            :diverged="!!f.divergence"
+          />
+        </div>
+
+        <!-- Turn cue: your bid (bidding) / your play (play) / waiting on someone. -->
+        <div v-if="phase === 'bidding' && yourTurn" class="bsrv-card">
+          <h3>Your bid</h3>
+          <div class="bsrv-line bsrv-turn">Your call — use the bidding box.</div>
+        </div>
+        <div v-else-if="phase === 'bidding'" class="bsrv-card bsrv-waiting">
+          <div class="bsrv-line">Waiting for {{ seatName(f.nextSeat) }}&hellip;</div>
+        </div>
+
+        <div v-if="phase === 'play'" class="bsrv-card">
+          <h3>Play</h3>
+          <div class="bsrv-line">Tricks <strong>NS&nbsp;{{ tricks.NS }} · EW&nbsp;{{ tricks.EW }}</strong></div>
+          <div v-if="yourTurn" class="bsrv-line bsrv-turn">Your turn — play a card.</div>
+          <div v-else class="bsrv-line">
+            Waiting for {{ seatName(f.nextSeat) }}&hellip;
+            <span class="bsrv-bot-note">(bots can take up to ~20s)</span>
+          </div>
+        </div>
+
+        <div v-if="kibitzers.length || canManage" class="bsrv-card">
+          <h3>Kibitzers</h3>
+          <div class="bsrv-line">{{ kibitzers.length ? kibitzers.join(', ') : 'None watching' }}</div>
+        </div>
+
+        <!-- Host-only. -->
+        <div v-if="canManage" class="bsrv-card">
+          <h3>PassBot</h3>
+          <div class="bsrv-line">
+            {{ passBotSeats.length ? passBotSeats.map(seatName).join(', ') + ' auto-pass' : 'Off' }}
+          </div>
+        </div>
+
+        <!-- Review: divergence (read-only on a shared table, #304) + result. -->
+        <div v-if="phase === 'review' && f.divergence" class="bsrv-card">
+          <h3>Bidding vs BBA</h3>
+          <div class="bsrv-line">Your auction diverged from BBA's — see the pinned auction.</div>
+        </div>
+
+        <div v-if="phase === 'review'" class="bsrv-card">
+          <h3>Result</h3>
+          <div class="bsrv-line" v-html="f.resultBanner || (f.contract + ' by ' + seatName(f.declarer))"></div>
+          <div class="bsrv-line">
+            <button class="bsrv-btn" type="button">{{ f.iAmReady ? 'Ready ✓' : 'Ready for next board' }}</button>
+          </div>
+          <div v-if="readySeats.length" class="bsrv-line bsrv-ready">
+            Ready: {{ readySeats.map(seatName).join(', ') }}
+          </div>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
@@ -100,6 +198,8 @@ import TrickArea from '../components/TrickArea.vue'
 import BiddingBox from '../components/BiddingBox.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
+import DoubleDummyTable from '../components/DoubleDummyTable.vue'
+import DealSourceButton from '../components/table/DealSourceButton.vue'
 import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
@@ -126,18 +226,33 @@ const slots = useTableSlots({ phase, wantsCall, hasCardplay, hasContext: compute
 const action = slots.action
 const center = slots.center
 
-const pinnedAuction = computed(() => phase.value === 'play' && (f.value.bids || []).length > 0)
+// Pinned through play AND review — matches the live server branch's
+// `trick-area || review` gate. (Was play-only, which dropped the reference auction
+// from every review scene, and review is where the BBA divergence marks show.)
+const pinnedAuction = computed(
+  () => (phase.value === 'play' || phase.value === 'review') && (f.value.bids || []).length > 0,
+)
 const auctionProps = computed(() => ({
   bids: f.value.bids || [],
   dealer: f.value.dealer || 'N',
   currentBidIndex: (f.value.bids || []).length,
   meanings: f.value.meanings || [],
+  divergedBids: f.value.divergedBids || [],
 }))
 
 const heroInitials = computed(() => {
   const name = (f.value.occupants?.[f.value.seat || 'S']?.name) || f.value.heroName || 'You'
   return name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
 })
+
+// ── Rail state (2026-07-29: the rail was entirely absent from this scene) ──
+const tricks = computed(() => f.value.tricksTaken || { NS: 0, EW: 0 })
+const kibitzers = computed(() => f.value.kibitzers || [])
+const passBotSeats = computed(() => f.value.passBotSeats || [])
+const readySeats = computed(() => f.value.readySeats || [])
+const yourTurn = computed(() => !!f.value.clickableSeat && f.value.clickableSeat === (f.value.seat || 'S'))
+const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
+const seatName = (s) => SEAT_NAMES[s] || s
 </script>
 
 <style scoped>
@@ -182,10 +297,38 @@ const heroInitials = computed(() => {
 }
 .bsrv-btn-primary { background: #1f6a4f; border-color: #1f6a4f; color: #fff; }
 .bsrv-btn-danger { color: #a12; border-color: #e3b8b8; background: #fbeeee; }
-.bsrv-table-wrap { display: flex; align-items: flex-start; margin: 0 16px 16px; }
+.bsrv-table-wrap { display: flex; gap: 16px; align-items: flex-start; margin: 0 16px 16px; }
 .bsrv-frame {
   flex: 1 1 auto; min-width: 0;
   background: #fff; border: 1px solid #e6e8e3; border-radius: 14px; padding: 8px;
 }
 .bsrv-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+
+/* Shell header (row 2) — the TableShell's own header, inside the shell. */
+.bsrv-shellhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin: 12px 16px 0; padding: 10px 14px;
+  background: #fff; border: 1px solid #e6e8e3; border-radius: 12px;
+}
+.bsrv-head-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bsrv-head-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bsrv-shell-title { font-weight: 700; font-size: 15px; }
+.bsrv-tag {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  background: #eef2ee; color: #4a554e; border: 1px solid #e0e6e0; white-space: nowrap;
+}
+.bsrv-tag-bots { background: #eaf4ef; color: #1f6a4f; }
+.bsrv-tag-toggle { cursor: default; }
+.bsrv-notes { margin: 8px 16px 0; }
+.bsrv-note { margin: 0 0 4px; font-size: 12px; color: #6a726c; }
+
+/* Rail — the column that was missing entirely before 2026-07-29. */
+.bsrv-rail { flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px; }
+.bsrv-card { background: #fff; border: 1px solid #e6e8e3; border-radius: 12px; padding: 12px 14px; }
+.bsrv-card h3 { margin: 0 0 6px; font-size: 13px; }
+.bsrv-line { font-size: 12px; color: #6a726c; margin-top: 4px; }
+.bsrv-turn { color: #1f6a4f; font-weight: 600; }
+.bsrv-waiting { opacity: 0.85; }
+.bsrv-bot-note { color: #8a938d; }
+.bsrv-ready { color: #1f6a4f; }
 </style>
