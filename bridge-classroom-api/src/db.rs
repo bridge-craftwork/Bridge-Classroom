@@ -416,6 +416,25 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         tracing::info!("Added recovery_code_hash column to recovery_tokens table");
     }
 
+    // Add used_at column to recovery_tokens if it doesn't exist. Records when a
+    // token/code was FIRST claimed, so the claim paths can honor a short reuse
+    // grace window (same code works on a 2nd device) instead of hard-failing the
+    // instant it's used once.
+    let has_used_at_column: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM pragma_table_info('recovery_tokens') WHERE name = 'used_at'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_used_at_column {
+        sqlx::query(r#"ALTER TABLE recovery_tokens ADD COLUMN used_at TEXT"#)
+            .execute(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
+        tracing::info!("Added used_at column to recovery_tokens table");
+    }
+
     // Convention cards table - stores card definitions
     // owner_id is NULL for system cards (templates/samples)
     sqlx::query(
