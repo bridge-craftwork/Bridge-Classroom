@@ -44,10 +44,22 @@ fi
 
 # Keep only the N most recent files matching the backup glob in a directory.
 # keep=0 means retain everything (used for the annual tier).
+#
+# NUL-delimited, and errors are NOT discarded. Both matter, and the previous
+# version got both wrong: it piped `ls -t` into a bare `xargs rm -f 2>/dev/null`,
+# so on the Google Drive root — whose path contains spaces ("My Drive",
+# "Bridge Classroom") — xargs split every path into fragments, `rm -f` ignored
+# the resulting ENOENTs, the redirect hid them, and the function still exited 0.
+# The Drive tier silently never pruned: 161 dailies spanning Feb–Jul 2026 (1.7 GB)
+# where 14 were intended, discovered 2026-07-29. The local root has no spaces in
+# its path, which is exactly why it looked fine for six months.
 prune_tier() {
   local dir="$1" keep="$2"
   [ "$keep" -gt 0 ] || return 0
-  ls -t "${dir}"/bridge_classroom_backup_*.db 2>/dev/null | tail -n +$((keep + 1)) | xargs rm -f 2>/dev/null
+  ls -t "${dir}"/bridge_classroom_backup_*.db 2>/dev/null \
+    | tail -n +$((keep + 1)) \
+    | tr '\n' '\0' \
+    | xargs -0 rm -f
 }
 
 # Copy today's snapshot into a tier iff that period isn't represented yet,
