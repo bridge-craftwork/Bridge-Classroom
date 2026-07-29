@@ -86,6 +86,27 @@ If something needs to be shown or hidden, the PBN says so explicitly. The app do
   - Logs: `~/Library/Logs/bridge-classroom-backup.log`
 - **API logs**: `~/Library/Logs/bridge-classroom-api.log`
 - **Tunnel logs**: `~/Library/Logs/cloudflared-tunnel.log`
+- **Log rotation**: nightly at 3:15AM via `com.bridgeclassroom.logrotate`
+  (`bridge-classroom-api/scripts/rotate-logs.sh`). Rotates the API + tunnel logs to
+  `<log>.YYYYMMDD.gz`, keeps **14 days**, skips files under 1MB.
+  - Added 2026-07-29 because **nothing pruned these files**: the API log had reached
+    **322MB spanning Feb 5 → Jul 29** — six months of per-request lines carrying full
+    User-Agents and ~130 distinct email addresses (the `/api/diagnostics` **GET** path
+    puts the email in the query string, so it lands in the URI). A retention problem,
+    not just a disk one.
+  - **It copies and truncates rather than renaming, deliberately.** launchd opens
+    `StandardOutPath` itself and holds that descriptor for the life of the process, so
+    renaming the file would leave the API writing into the *moved* inode — rotation
+    would look fine while the live log silently stopped growing. Truncating in place
+    keeps the descriptor valid (launchd opens `O_APPEND`, so the next write lands at
+    offset 0 — verified, the file does not go sparse). The tradeoff is a narrow race:
+    lines written between the copy and the truncate are lost. Fine for a debug log.
+  - Same change dropped the **default log level from `debug` to `info`** (`main.rs`),
+    which is what actually stops the growth: at `debug`, `tower_http` emitted a line
+    per request with the full URI and User-Agent. At `info` those vanish, but a
+    WARN/ERROR still prints **inside its request span** — so the URI and UA are there
+    exactly when something failed. `RUST_LOG=bridge_classroom_api=debug,tower_http=debug`
+    restores the firehose locally.
 - **Service management**: `launchctl list | grep -E "bridge|cloudflare"`
 - **Deploying API changes** — ⚠️ **merging Rust code does NOT deploy it.** Unlike the
   frontend (which both domains rebuild from `main` on every push), the API is a
