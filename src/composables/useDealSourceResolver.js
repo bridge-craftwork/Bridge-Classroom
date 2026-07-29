@@ -11,7 +11,11 @@
 // list; generators (random/script) yield a fresh board each draw. The pool is
 // the ordered concatenation of each set-ref's boards plus one slot per
 // generator; sequential (default) walks it with a per-pool cursor, random
-// draws uniformly.
+// draws WITHOUT replacement via a per-pool shuffle-bag — every board is dealt
+// once before any repeat, then the bag reshuffles (avoiding a seam repeat).
+// (The old random branch drew with replacement, so small curated pools —
+// ~30 boards — repeated within a session via the birthday paradox; see
+// bridge-classroom-bug-artifacts#36.)
 
 import { ref } from 'vue'
 import {
@@ -30,6 +34,7 @@ import { useClubGames } from './useClubGames.js'
 const boardCache = ref({}) // cacheKey(ref) -> { pbn, label }[]   (set-refs only)
 const scriptCache = ref({}) // pbs file -> raw .dlr text
 const cursors = ref({}) // poolSignature -> next sequential index (unbounded; read mod len)
+const bags = ref({}) // poolSignature -> { len, order: number[] (remaining, popped from end), last: number|null }
 
 const GENERATOR_KINDS = new Set(['random', 'script'])
 export function isGenerator(r) {
@@ -274,6 +279,37 @@ async function buildPool(items) {
   return pool
 }
 
+// Fisher-Yates shuffle of [0, len).
+function shuffledIndices(len) {
+  const a = Array.from({ length: len }, (_, i) => i)
+  for (let i = len - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+// Draw one index WITHOUT replacement from a per-signature shuffle-bag: every
+// index is dealt once before the bag refills, so a finite pool never repeats a
+// board until the whole pool has been seen. On refill we avoid a "seam" repeat
+// (the last board of the old bag being the first of the new one). The bag is
+// rebuilt if the pool length changed under it (e.g. a source resolved differently).
+function drawFromBag(sig, len) {
+  let bag = bags.value[sig]
+  if (!bag || bag.len !== len) bag = { len, order: [], last: null }
+  if (bag.order.length === 0) {
+    const order = shuffledIndices(len)
+    // We pop from the end, so order[len-1] is the next draw; keep it != last.
+    if (len > 1 && bag.last != null && order[len - 1] === bag.last) {
+      ;[order[len - 1], order[0]] = [order[0], order[len - 1]]
+    }
+    bag = { len, order, last: bag.last }
+  }
+  const idx = bag.order.pop()
+  bags.value = { ...bags.value, [sig]: { len, order: bag.order, last: idx } }
+  return idx
+}
+
 // STREAM: draw one board from the whole pool.
 export async function nextBoard(selection) {
   const items = selection?.items || []
@@ -286,7 +322,7 @@ export async function nextBoard(selection) {
 
   let idx
   if (drawOrder === 'random') {
-    idx = Math.floor(Math.random() * pool.length)
+    idx = drawFromBag(poolSignature(items, drawOrder), pool.length)
   } else {
     const sig = poolSignature(items, drawOrder)
     idx = (cursors.value[sig] || 0) % pool.length
@@ -357,6 +393,7 @@ export function clearResolverCache() {
   boardCache.value = {}
   scriptCache.value = {}
   cursors.value = {}
+  bags.value = {}
 }
 
 export function useDealSourceResolver() {
