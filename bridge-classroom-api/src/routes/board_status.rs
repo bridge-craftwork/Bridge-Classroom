@@ -821,7 +821,14 @@ mod tests {
         .unwrap();
     }
 
-    async fn add_obs(pool: &SqlitePool, id: &str, subfolder: &str, num: i32, ts: &str, result: &str) {
+    async fn add_obs(
+        pool: &SqlitePool,
+        id: &str,
+        subfolder: &str,
+        num: i32,
+        ts: &str,
+        result: &str,
+    ) {
         let correct = if result == "failed" { 0 } else { 1 };
         sqlx::query(
             "INSERT INTO observations (id, user_id, assignment_id, collection_id, deal_subfolder, \
@@ -862,7 +869,9 @@ mod tests {
         add_obs(&pool, "o1", "NMF", 7, "2026-07-27T01:39:48Z", "corrected").await;
         add_obs(&pool, "o2", "NMF", 7, "2026-07-27T16:27:30Z", "correct").await; // ~14h later
 
-        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+        recompute_assignment_boards(&pool, "u1", "a1")
+            .await
+            .unwrap();
 
         let (status, initial) = read_status(&pool, "NMF", 7).await;
         assert_eq!(status, "clean_correct"); // >1h gap → student sees green
@@ -875,7 +884,9 @@ mod tests {
         add_board(&pool, "NMF", 6).await;
         add_obs(&pool, "o1", "NMF", 6, "2026-07-27T01:33:14Z", "correct").await;
 
-        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+        recompute_assignment_boards(&pool, "u1", "a1")
+            .await
+            .unwrap();
 
         let (status, initial) = read_status(&pool, "NMF", 6).await;
         assert_eq!(status, "clean_correct");
@@ -891,7 +902,9 @@ mod tests {
         add_obs(&pool, "o1", "NMF", 8, "2026-07-27T01:39:48Z", "corrected").await;
         add_obs(&pool, "o2", "NMF", 8, "2026-07-27T01:49:48Z", "correct").await; // 10 min later
 
-        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+        recompute_assignment_boards(&pool, "u1", "a1")
+            .await
+            .unwrap();
 
         let (status, initial) = read_status(&pool, "NMF", 8).await;
         assert_eq!(status, "close_correct");
@@ -904,7 +917,9 @@ mod tests {
         let pool = setup_pool().await;
         add_board(&pool, "NMF", 9).await;
 
-        recompute_assignment_boards(&pool, "u1", "a1").await.unwrap();
+        recompute_assignment_boards(&pool, "u1", "a1")
+            .await
+            .unwrap();
 
         let (status, initial) = read_status(&pool, "NMF", 9).await;
         assert_eq!(status, "not_attempted");
