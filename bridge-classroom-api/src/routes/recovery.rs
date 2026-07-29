@@ -242,7 +242,6 @@ async fn send_recovery_email(
     from_email: &str,
     to_email: &str,
     first_name: &str,
-    recovery_url: &str,
     recovery_code: &str,
 ) -> Result<(), String> {
     let client = Client::new();
@@ -255,8 +254,6 @@ async fn send_recovery_email(
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
         .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .button {{ display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
-        .button:hover {{ background-color: #1d4ed8; }}
         .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 14px; color: #666; }}
     </style>
 </head>
@@ -264,13 +261,11 @@ async fn send_recovery_email(
     <div class="container">
         <h2>Account Recovery</h2>
         <p>Hi {first_name},</p>
-        <p>You requested to recover your Bridge Classroom account. Click the button below to restore your practice history:</p>
-        <a href="{recovery_url}" class="button" style="display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Restore My Account</a>
+        <p>You requested to recover your Bridge Classroom account. Enter this code in the app to restore your practice history:</p>
         <div style="text-align: center; margin: 24px 0; padding: 20px; background: #f0f4ff; border-radius: 8px;">
-            <p style="margin: 0 0 8px 0; font-size: 14px; color: #666;">Or enter this code in the app:</p>
             <p style="margin: 0; font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #1a237e; font-family: monospace;">{recovery_code}</p>
         </div>
-        <p><strong>This link and code expire in 24 hours.</strong></p>
+        <p><strong>This code expires in 24 hours.</strong></p>
         <div class="footer">
             <p>If you didn't request this, you can safely ignore this email.</p>
             <p>— Bridge Classroom</p>
@@ -279,7 +274,6 @@ async fn send_recovery_email(
 </body>
 </html>"#,
         first_name = first_name,
-        recovery_url = recovery_url,
         recovery_code = recovery_code,
     );
 
@@ -450,7 +444,6 @@ pub async fn request_recovery(
             &state.config.from_email,
             &req.email,
             &first_name,
-            &recovery_url,
             &recovery_code,
         )
         .await
@@ -491,10 +484,10 @@ pub async fn request_recovery(
     }
 
     let message = if email_sent {
-        format!("Recovery link sent to {}. Check your email.", req.email)
+        format!("Recovery code sent to {}. Check your email.", req.email)
     } else {
         format!(
-            "Account found for {}. Email delivery failed - please contact your teacher for a recovery link.",
+            "Account found for {}. Email delivery failed - please contact your teacher for a recovery code.",
             req.email
         )
     };
