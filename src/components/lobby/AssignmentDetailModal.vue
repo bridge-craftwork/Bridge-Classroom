@@ -412,11 +412,13 @@ async function openCell(student, cell, event) {
   // cleaned up on a later redo (>1h gap), flagged by the corner dot.
   let decrypted = null
   if (cell.status === 'close_correct' || showStumbleDot(cell)) {
+    // Scope to THIS assignment + board and take the earliest erroring play — the
+    // original stumble — rather than the clean latest replay.
     decrypted = await teacherRole.findAndDecryptErroringObservation(
       student.student_id,
       cell.deal_subfolder,
       cell.deal_number,
-      rawTs,
+      props.assignmentId,
     )
   }
   if (!decrypted) {
