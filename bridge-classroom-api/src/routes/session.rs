@@ -71,13 +71,6 @@ pub fn hash_session_token(token: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
-    headers
-        .get(name)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-}
-
 /// Coarse device class from the User-Agent, for distinct-device metrics.
 /// Deliberately rough — this is a signal, not fingerprinting.
 fn coarse_platform(ua: &str) -> String {
@@ -98,10 +91,46 @@ fn coarse_platform(ua: &str) -> String {
     .to_string()
 }
 
+/// Coarse browser class from the User-Agent. Five buckets, not a fingerprint —
+/// the point is answering platform-specific questions ("is this only hitting
+/// Safari users?"), which `coarse_platform` can't: Safari and Chrome on the same
+/// Mac are both `mac`. That distinction is what ADR-0004 exists for — ITP is a
+/// Safari behavior — so it's worth its own column.
+///
+/// Order matters. Edge and Opera both carry `Chrome/` in their UA, and Chrome
+/// carries `Safari/`, so the most specific token has to be tested first.
+///
+/// **Caveat for iOS analysis:** on iPhone/iPad every browser is WebKit
+/// underneath, so `chrome` there is Chrome's shell over Safari's engine and gets
+/// Safari's storage behavior. Read this column together with `platform`: a
+/// browser split is only meaningful on `mac` / `windows`.
+fn coarse_browser(ua: &str) -> String {
+    let ua = ua.to_lowercase();
+    if ua.contains("edg/") || ua.contains("edgios/") || ua.contains("edga/") {
+        "edge"
+    } else if ua.contains("opr/") || ua.contains("opera") {
+        "other"
+    } else if ua.contains("crios/") || ua.contains("chrome/") {
+        "chrome"
+    } else if ua.contains("fxios/") || ua.contains("firefox/") {
+        "firefox"
+    } else if ua.contains("safari/") {
+        "safari"
+    } else {
+        "other"
+    }
+    .to_string()
+}
+
 /// Create a new **device session** with `user_id` as its first roster member and
-/// active user (ADR-0004 §3a). Captures coarse device info (`CF-Connecting-IP` is
-/// the real client behind the CF tunnel). Returns the RAW token for the cookie;
-/// only its hash is persisted.
+/// active user (ADR-0004 §3a). Stamps a coarse device class only. Returns the RAW
+/// token for the cookie; only its hash is persisted.
+///
+/// **No client IP or raw User-Agent is stored** (2026-07-29). Both were written at
+/// creation and never read — nothing in the crate SELECTs them, and there is no
+/// device-list UI or anomaly check to justify keeping a client IP for the 180-day
+/// session lifetime. The UA is read here only to derive `platform` and is then
+/// discarded.
 pub async fn create_session(
     db: &SqlitePool,
     user_id: &str,
@@ -113,14 +142,16 @@ pub async fn create_session(
     let now_s = now.to_rfc3339();
     let expires = now + chrono::Duration::seconds(SESSION_MAX_AGE_SECS);
 
-    let ip = header_str(headers, "cf-connecting-ip");
-    let user_agent = header_str(headers, "user-agent");
-    let platform = user_agent.as_deref().map(coarse_platform);
+    // Read the UA once to derive the two coarse classes, then let it go — the raw
+    // string is never stored.
+    let ua = headers.get("user-agent").and_then(|v| v.to_str().ok());
+    let platform = ua.map(coarse_platform);
+    let browser = ua.map(coarse_browser);
 
     sqlx::query(
         r#"
-        INSERT INTO sessions (id, user_id, active_user_id, created_at, expires_at, revoked_at, ip, user_agent, platform)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        INSERT INTO sessions (id, user_id, active_user_id, created_at, expires_at, revoked_at, platform, browser)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
         "#,
     )
     .bind(&id)
@@ -128,9 +159,8 @@ pub async fn create_session(
     .bind(user_id)
     .bind(&now_s)
     .bind(expires.to_rfc3339())
-    .bind(ip)
-    .bind(user_agent)
     .bind(platform)
+    .bind(browser)
     .execute(db)
     .await?;
 
@@ -989,6 +1019,96 @@ mod tests {
         assert_eq!(parse_session_cookie(&h, true).as_deref(), Some("xyz"));
         // Wrong name for the secure flag → not found.
         assert_eq!(parse_session_cookie(&h, false), None);
+    }
+
+    // ---- Session creation stores no client IP / raw User-Agent ----
+
+    /// Real migrated schema (in-memory), so this test fails if `create_session`'s
+    /// INSERT and the `sessions` DDL ever disagree.
+    async fn migrated_db() -> SqlitePool {
+        crate::db::init_db("sqlite::memory:").await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn sessions_table_has_no_ip_or_user_agent_column() {
+        let pool = migrated_db().await;
+        let cols: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(!cols.iter().any(|c| c == "ip"), "cols: {cols:?}");
+        assert!(!cols.iter().any(|c| c == "user_agent"), "cols: {cols:?}");
+        assert!(cols.iter().any(|c| c == "platform"), "cols: {cols:?}");
+    }
+
+    #[tokio::test]
+    async fn create_session_stamps_only_the_coarse_classes() {
+        let pool = migrated_db().await;
+        let mut h = HeaderMap::new();
+        h.insert("cf-connecting-ip", "203.0.113.7".parse().unwrap());
+        h.insert(
+            header::USER_AGENT,
+            "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) Safari/605.1.15"
+                .parse()
+                .unwrap(),
+        );
+
+        let token = create_session(&pool, "user-1", &h).await.unwrap();
+        let id = hash_session_token(&token);
+
+        let (platform, browser): (Option<String>, Option<String>) =
+            sqlx::query_as("SELECT platform, browser FROM sessions WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(platform.as_deref(), Some("ipad"));
+        assert_eq!(browser.as_deref(), Some("safari"));
+
+        // Nothing anywhere in the row echoes the IP or the raw UA.
+        let row: Vec<Option<String>> = sqlx::query_scalar(
+            "SELECT id || '|' || user_id || '|' || COALESCE(platform,'') || '|' \
+             || COALESCE(browser,'') FROM sessions WHERE id = ?",
+        )
+        .bind(&id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let joined = row.into_iter().flatten().collect::<String>();
+        assert!(!joined.contains("203.0.113.7"));
+        assert!(!joined.contains("Mozilla"));
+        assert!(!joined.contains("605.1.15"));
+    }
+
+    /// The ordering traps: Edge and Opera both carry `Chrome/`, and Chrome carries
+    /// `Safari/`. A naive substring check mislabels three of these five.
+    #[test]
+    fn browser_buckets_survive_the_overlapping_ua_tokens() {
+        let cases = [
+            ("Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15", "safari"),
+            ("Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36", "chrome"),
+            ("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0", "edge"),
+            ("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36 OPR/112.0.0.0", "other"),
+            ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15) Gecko/20100101 Firefox/127.0", "firefox"),
+            // iOS shells — labelled by shell, but all WebKit underneath (see the
+            // caveat on `coarse_browser`; read with `platform`).
+            ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) CriOS/126.0 Mobile/15E148 Safari/604.1", "chrome"),
+            ("Mozilla/5.0 (iPad; CPU OS 17_5) FxiOS/127.0 Mobile/15E148 Safari/605.1.15", "firefox"),
+        ];
+        for (ua, want) in cases {
+            assert_eq!(coarse_browser(ua), want, "UA: {ua}");
+        }
+    }
+
+    #[test]
+    fn platform_and_browser_are_independent_axes() {
+        // Same OS, different browser — the split `platform` alone can't express,
+        // and the whole reason `browser` exists (ITP is Safari-specific).
+        let safari_mac = "Mozilla/5.0 (Macintosh) Version/17.5 Safari/605.1.15";
+        let chrome_mac = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36";
+        assert_eq!(coarse_platform(safari_mac), coarse_platform(chrome_mac));
+        assert_ne!(coarse_browser(safari_mac), coarse_browser(chrome_mac));
     }
 
     // ---- Roster membership (the authorization predicate) ----

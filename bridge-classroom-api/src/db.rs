@@ -304,9 +304,13 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
 
     // Durable per-user sessions (ADR-0004). `id` is sha256(token) hex — the raw
     // token lives only in the cookie, so a DB read can't reconstruct a usable
-    // session (mirrors recovery_tokens). `revoked_at IS NULL` = active. The
-    // device columns exist for real distinct-user/device metrics at session
-    // creation (something the current stateless model can't measure).
+    // session (mirrors recovery_tokens). `revoked_at IS NULL` = active.
+    // `platform` ("ipad"/"mac"/…) and `browser` ("safari"/"chrome"/…) are coarse
+    // classes derived from the User-Agent at session creation: enough for real
+    // distinct-device metrics and for the platform-specific questions ADR-0004
+    // exists to answer ("are Safari sessions dying earlier than Chrome ones?"),
+    // without storing anything fingerprintable. Deliberately NO `ip` /
+    // `user_agent` — see the privacy-cleanup migration below.
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS sessions (
@@ -315,9 +319,8 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
             created_at  TEXT NOT NULL,
             expires_at  TEXT NOT NULL,
             revoked_at  TEXT,
-            ip          TEXT,
-            user_agent  TEXT,
-            platform    TEXT
+            platform    TEXT,
+            browser     TEXT
         )
         "#,
     )
@@ -367,6 +370,76 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
             .execute(pool)
             .await
             .map_err(|e| DbError::Migration(e.to_string()))?;
+    }
+
+    // sessions.browser — coarse browser class, added alongside the privacy cleanup
+    // below. `platform` alone can't separate Safari from Chrome on the same Mac,
+    // which is exactly the axis ITP questions turn on. Guarded ALTER: prod already
+    // has the sessions table.
+    let has_browser: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM pragma_table_info('sessions') WHERE name = 'browser'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_browser {
+        sqlx::query(r#"ALTER TABLE sessions ADD COLUMN browser TEXT"#)
+            .execute(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
+    }
+
+    // Privacy cleanup (2026-07-29): `sessions.ip` and `sessions.user_agent` were
+    // stamped at creation and NEVER read — no device-list UI, no anomaly check,
+    // nothing in the crate SELECTs them. Retaining a client IP for the 180-day
+    // session lifetime is personal data with no use, so the columns go; the coarse
+    // `platform` class is kept for distinct-device metrics. NULL the values FIRST
+    // so the data is destroyed even where DROP COLUMN is unavailable, then drop.
+    // (Column names are fixed literals, not caller input — safe to interpolate.)
+    let mut purged_any = false;
+    for col in ["ip", "user_agent"] {
+        let present: bool = sqlx::query_scalar(
+            r#"SELECT COUNT(*) > 0 FROM pragma_table_info('sessions') WHERE name = ?"#,
+        )
+        .bind(col)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+        if !present {
+            continue;
+        }
+
+        sqlx::query(&format!("UPDATE sessions SET {col} = NULL"))
+            .execute(pool)
+            .await
+            .map_err(|e| DbError::Migration(e.to_string()))?;
+        purged_any = true;
+
+        match sqlx::query(&format!("ALTER TABLE sessions DROP COLUMN {col}"))
+            .execute(pool)
+            .await
+        {
+            Ok(_) => tracing::info!("Dropped sessions.{col} (privacy cleanup)"),
+            // Pre-3.35 SQLite has no DROP COLUMN. The values are already NULLed, so
+            // the data is gone either way — leave the empty column, don't fail boot.
+            Err(e) => {
+                tracing::warn!("Could not drop sessions.{col} ({e}); values cleared instead")
+            }
+        }
+    }
+
+    // Dropping/NULLing only frees the pages — the old IP and User-Agent bytes stay
+    // legible in the file until it's rewritten. VACUUM once, on the single boot that
+    // performs the purge, so the values are actually gone rather than merely
+    // unreachable. (Not on later boots: the loop finds no columns and skips.)
+    if purged_any {
+        match sqlx::query("VACUUM").execute(pool).await {
+            Ok(_) => tracing::info!("VACUUMed after session privacy purge"),
+            Err(e) => tracing::warn!(
+                "VACUUM after session privacy purge failed ({e}); \
+                 values are unreachable but may persist in freed pages"
+            ),
+        }
     }
 
     // users.last_visit — independent analytics metric, bumped on authenticated activity.

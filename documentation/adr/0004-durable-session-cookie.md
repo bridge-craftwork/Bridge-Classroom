@@ -95,8 +95,43 @@ Set-Cookie: __Host-bc_session=<opaque-random-id>;
 ### 2. Server session state
 
 A new `sessions` table: `id` (the cookie value), `user_id`, `created_at`,
-`expires_at`, `revoked_at`, plus device/platform columns stamped at creation. New
-surface:
+`expires_at`, `revoked_at`, plus coarse `platform` and `browser` classes stamped at
+creation. New surface:
+
+> **Revised 2026-07-29 — no client IP or raw User-Agent is stored.** As originally
+> built, session creation also stamped `ip` (`CF-Connecting-IP`) and the full
+> `user_agent`. Both were **write-only**: nothing in the crate ever `SELECT`ed
+> them, and none of the three uses that would justify them — a device list
+> ("sign out your other devices"), suspicious-session detection, or incident
+> forensics — was ever built. Retaining a client IP for the 180-day session
+> lifetime is personal data under GDPR held for no purpose, and it forced the
+> privacy policy to disclose a collection we got nothing from. Both columns are
+> now dropped, with a guarded one-time migration in [`db.rs`](../../bridge-classroom-api/src/db.rs)
+> that NULLs the values first (so the data dies even where `DROP COLUMN` is
+> unavailable) and `VACUUM`s afterwards (so the bytes leave the file rather than
+> merely becoming unreachable). `platform` is kept — it's a coarse class derived
+> in memory from the UA and then discarded, which is all a future device list
+> would need. If distinct-device *security* features are ever built, capture the
+> minimum they need at that point, with a stated retention window.
+>
+> **What replaced it — a coarse `browser` class.** The raw UA was the only place
+> browser identity lived in this table, and browser identity is not incidental
+> here: **ITP is a Safari behavior, and this ADR exists because of it.**
+> `platform` can't express that split — Safari and Chrome on the same Mac are both
+> `mac`. So `browser` (`safari`/`chrome`/`firefox`/`edge`/`other`) is now derived
+> in memory beside `platform` and the UA discarded. Five buckets are not a
+> fingerprint, and unlike the write-only raw string they are *queryable*: "are
+> Safari sessions dying earlier than Chrome ones?" is now answerable — the
+> population-level check the single-device Safari cookie test (2026-07-21)
+> couldn't give. **Caveat:** on iOS every browser is WebKit, so `chrome` on `ipad`
+> still gets Safari's storage behavior — a browser split is only meaningful on
+> `mac`/`windows`. **No backfill is possible** (the UA is gone, by design), so
+> `browser` is NULL for sessions created before the deploy and the series starts
+> from there.
+>
+> Full-UA capture is retained where it earns its keep and isn't a 180-day
+> retention: the request tracing span, `/api/diagnostics` client error reports,
+> and beetle bug bundles.
 
 - **`GET /api/session`** — restore identity: returns the **roster** (member `user_id`,
   name, email) and `active_user_id`, **no key material**. Called on load before the
