@@ -32,11 +32,18 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
+    // Initialize tracing. Default is `info`, not `debug`: at debug, tower_http
+    // emits a line per request carrying the full URI and User-Agent, which grew
+    // the production log to 322 MB spanning six months — including ~130 email
+    // addresses that /api/diagnostics passes in its query string. At info those
+    // per-request lines are gone, but a WARN/ERROR still prints inside its
+    // request span, so the URI and User-Agent are there exactly when something
+    // failed and we need them. `RUST_LOG=bridge_classroom_api=debug,tower_http=debug`
+    // restores the firehose for local debugging.
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "bridge_classroom_api=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "bridge_classroom_api=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
