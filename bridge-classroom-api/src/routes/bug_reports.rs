@@ -790,12 +790,21 @@ mod tests {
         let env = json!({ "app": "a1" });
         let anon = BugBody {
             note: "hand overlaps",
-            env: &env, layout: &Value::Null, screenshot_url: None, screenshot_boxes_url: None,
-            reporter_name: None, contact_email: None,
-            repo: "o/r", bundle_path: "2026/07/x",
+            env: &env,
+            layout: &Value::Null,
+            screenshot_url: None,
+            screenshot_boxes_url: None,
+            reporter_name: None,
+            contact_email: None,
+            repo: "o/r",
+            bundle_path: "2026/07/x",
         };
         let out = build_issue_body(&anon);
-        assert!(out.starts_with("> 🕵️ **Anonymous report**"), "got: {}", &out[..out.len().min(60)]);
+        assert!(
+            out.starts_with("> 🕵️ **Anonymous report**"),
+            "got: {}",
+            &out[..out.len().min(60)]
+        );
         // Banner precedes the reporter's narrative.
         assert!(out.find("Anonymous report").unwrap() < out.find("hand overlaps").unwrap());
     }
@@ -840,7 +849,8 @@ mod tests {
 
     #[test]
     fn env_rows_render_viewport() {
-        let env = json!({ "app": "a1", "viewport": { "w": 800, "h": 600, "dpr": 2.0, "zoom": 100 } });
+        let env =
+            json!({ "app": "a1", "viewport": { "w": 800, "h": 600, "dpr": 2.0, "zoom": 100 } });
         let rows = env_rows(&env);
         // 100% zoom stays silent (the norm).
         assert!(rows
@@ -870,7 +880,10 @@ mod tests {
         let rows = env_rows(&env);
         let val = |k: &str| rows.iter().find(|(rk, _)| rk == k).map(|(_, v)| v.as_str());
         // Logical size · physical (logical × dpr) · work area, all on one row.
-        assert_eq!(val("screen"), Some("1920×1080 · 3840×2160 physical · avail 1920×1055"));
+        assert_eq!(
+            val("screen"),
+            Some("1920×1080 · 3840×2160 physical · avail 1920×1055")
+        );
         // The browser window frame is its own row (small window on a big display).
         assert_eq!(val("window"), Some("1680×1010"));
         assert_eq!(val("orientation"), Some("landscape-primary"));
