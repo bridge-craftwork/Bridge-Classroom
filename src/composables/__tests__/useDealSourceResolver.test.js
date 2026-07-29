@@ -97,6 +97,27 @@ describe('nextBoard', () => {
     expect([...seen].every((l) => ['A', 'B'].includes(l))).toBe(true)
   })
 
+  it('random draws WITHOUT replacement: every board once per cycle, no repeats within a cycle', async () => {
+    // 30 distinct boards, mirroring the curated PBS pool size (bug-artifacts#36).
+    const items = [{ kind: 'pbn', label: 'P', text: Array.from({ length: 30 }, (_, i) => board(i + 1)).join('\n') }]
+    const sel = { items, options: { drawOrder: 'random' } }
+    const first = []
+    for (let i = 0; i < 30; i++) first.push((await nextBoard(sel)).pbn)
+    // A full cycle visits all 30 distinct boards exactly once.
+    expect(new Set(first).size).toBe(30)
+  })
+
+  it('random never repeats the previous board across many draws (incl. the reshuffle seam)', async () => {
+    const items = [{ kind: 'pbn', label: 'P', text: Array.from({ length: 30 }, (_, i) => board(i + 1)).join('\n') }]
+    const sel = { items, options: { drawOrder: 'random' } }
+    let prev = null
+    for (let i = 0; i < 200; i++) {
+      const cur = (await nextBoard(sel)).pbn
+      expect(cur).not.toBe(prev) // no immediate repeat, ever
+      prev = cur
+    }
+  })
+
   it('throws on an empty selection', async () => {
     await expect(nextBoard({ items: [] })).rejects.toThrow(/no deal source/i)
   })
