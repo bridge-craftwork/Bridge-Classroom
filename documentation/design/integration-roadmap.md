@@ -4,7 +4,9 @@
 **Status:** Proposed
 **Companion to:** `rendering-harness-plan.md` (rules of engagement, harness mechanics,
 annotation architecture — all still binding)
-**Last updated:** 2026-07-11
+**Sub-track:** `table-view-unification-plan.md` (solo↔host convergence — a Phase 2/3
+concern that ran ahead on its own; **now complete but for a CSS fold**)
+**Last updated:** 2026-07-29
 
 > **Revision (2026-07-08):** review deltas applied after repo fact-check — server-path
 > fixture driver added to Phase 0 (the referee for Phase 3); `wantsCall` promoted to a
@@ -51,26 +53,59 @@ annotation architecture — all still binding)
 > (board/vul/status) → NW, completed auction pinned → NE (play/review), narrative
 > floated right. Kicked off gallery-first: the three A1 states modeled as fixtures
 > in a **separate** A1 gallery (#159) — see Phase 1.
+>
+> **Update (2026-07-29, reconciliation against the code).** The doc had drifted 18
+> days. Re-measured every ratchet and grepped every phase marker; corrections are
+> applied in place below and summarized in *Where we are*. The headline: **the
+> visible work kept shipping while the contract layer stalled.** A1 got its
+> look-and-feel win (the grid flip is now the production default) *without* the slot
+> plumbing Phase 1 exists to install, so 1.1–1.3 are still owed on a surface that has
+> already visibly changed — the opposite of the intended order. **ContextPanel has
+> been "next" since 2026-07-11 and is still harness-only (0× in production).** The
+> solo↔host unification sub-track, meanwhile, ran to completion on its own.
 
 ## Where we are
+
+*(Status block re-verified against the code 2026-07-29. Counts are live greps, not
+carried-forward numbers.)*
 
 - **Shipped:** 9 redesigned components (BridgeTable, SeatPanel, SeatChip,
   HandDisplay, AuctionTable, BiddingBox, TrickArea, **StatusStrip, ContextPanel**),
   pixel-identical/spec'd from frozen specimens; two-tier harness (specimens + view
   scenarios); `useTableSlots` (center/action/**status/context**) + `useTableStatus`
   + the **server-path fixture driver** driving harness scenes only. **Phase 0 complete.**
-- **In progress — Phase 2 (BiddingPracticeView, local path):** the local path
-  already rides `localEngine` + `useTableSlots` for center/action, and the
-  **status region has shipped** on both the local (#101) and server-header (#102)
-  Practice Tables (StatusStrip, 3× in the view). What remains in Phase 2:
-  **ContextPanel** (context region — not yet wired, 0×), the **instantiation
-  collapse** (still **4×** AuctionTable / 4× BiddingBox → 2×), and the `.bp-*`
-  deletion (2.3).
-- **Not started (but Phase 1 is next):** contract adoption in production —
-  **MainLayout / Scenario Mastery** (Phase 1, the released app) now runs **NEXT**
-  under the A1-first reorder (🟡 kicked off gallery-first, #159), then
-  BiddingPracticeView's **server path** (Phase 3), and the **Teacher console**
-  (Phase 4). These surfaces still wire components directly.
+  ⚠️ "Shipped" here means **built and specimen-verified**, not **adopted in
+  production** — `ContextPanel` is still 0× outside `src/harness/`.
+- **Phase 1 (A1 / MainLayout) — 🟡 visibly landed, structurally not started.** The
+  **grid flip cut over to production** (`DEFAULT_ARRANGEMENT = 'grid'`, slice 1.6b,
+  2026-07-15) and **StatusStrip is live** in the grid branch — that covers 1.4's
+  intent. But **1.1–1.3 never happened**: `MainLayout.vue` does not import
+  `useTableSlots`, binds no slot objects, and still instantiates **4× AuctionTable /
+  3× BridgeTable / 2× BiddingBox**, with the entire legacy branch alive behind
+  `?arrangement=legacy`. 1.5 (commentary → ContextPanel) not started. So the released
+  app changed its appearance *before* it got the contract — accept that and re-plan
+  1.1–1.3 as pure-plumbing slices under the now-shipped grid composition.
+- **Phase 2 (BiddingPracticeView, local path) — 🟡 partial.** StatusStrip ✅ (#101/#102,
+  3× in the view). **2.1 partial**: BiddingBox forks collapsed **4× → 2×**, but
+  **AuctionTable is still 4×**, so the max fork factor is unchanged at 4×.
+  **ContextPanel ⬜** (0×). **2.3 ⬜** (`.bp-*` 209 → **200**; 198 of those in
+  `BiddingPracticeView.vue`).
+- **Phase 3 (server path) — ⬜ not started, and 3.1's ratchet moved backwards.**
+  `srv.*` outside `serverEngine` is **170** against a start of 96. This is an
+  **artifact, not a regression**: the unification sub-track's Stage C1 deleted
+  `useServerTable.js` and folded it into `ServerEngine`, so the view now binds
+  `srv.*` directly where it used to go through a composable. The metric as written
+  no longer measures what it was meant to — see the ratchet dashboard note.
+- **Phase 4 (Teacher console) — built, but not out of this roadmap's parts.**
+  `TeacherConsoleView.vue` (802 lines) ships and renders `MiniTable` + `UnifiedTable`.
+  **`ConsoleTile` and `TeacherActionBar` were never created** (no references outside a
+  comment in `useTableStatus.js`). Phase 4 is therefore *functionally* satisfied by
+  bespoke markup — exactly what 4.4 says to retire. Decide whether to build the
+  planned components or fold `MiniTable` into the roadmap as the de-facto ConsoleTile.
+- **Solo↔host unification sub-track — ✅ essentially complete.** One `/table` route
+  (#299), `ServerEngine` fold (#301), bidding-only on both sides, feature parity
+  closed (#303/#304/#305). Only the `tv-*`/`bp-*` CSS fold remains — which is the
+  same work as this roadmap's **2.3 + 3.4**. See `table-view-unification-plan.md`.
 - **Gallery clipping debt:** cleared in Phase 0.1 (BridgeTable/AuctionTable/SeatPanel/
   HandDisplay), all via ResizeObserver / `min()` — never `container-type` (see the
   constraint in Component work · Row A; hotfix #88 is why).
@@ -261,11 +296,18 @@ a real first home: the status region shipped on the Practice Tables (#101/#102)
 independent of the reorder, so A1 debuts on already-exercised StatusStrip/slots.
 The `wantsCall` mapping is unchanged.
 
-1.1 Auction region → `slots` binding. Pixel-identical.
-1.2 Action region → `slots.action`, using the spike's chosen `wantsCall` shape. Pixel-identical.
-1.3 Center region → `slots.center` (kills the two `isDeclarerPlay` BridgeTable branches). Pixel-identical.
-1.4 StatusStrip lands; DealInfo + old indicators removed same slice. **Visible change.**
-1.5 Commentary extraction → ContextPanel (feedback panel + inline commentary + step controls). Pixel-near; small visible deltas acceptable, named in PR.
+**Status 2026-07-29 — the grid flip overtook the slice order.** A1's *visible*
+change shipped ahead of its plumbing: `?arrangement=grid` went from dark (1.6a) to
+the **production default** (1.6b, 2026-07-15), and StatusStrip rides the grid `#nw`
+region today. Consequence: the pixel-identical baseline for 1.1–1.3 is now **the
+grid branch**, not the pre-flip render. Re-plan them against that, and treat
+retiring the `?arrangement=legacy` branch as the natural terminal slice.
+
+1.1 Auction region → `slots` binding. Pixel-identical. — ⬜ **not started** (`MainLayout.vue` doesn't import `useTableSlots`; AuctionTable still 4×).
+1.2 Action region → `slots.action`, using the spike's chosen `wantsCall` shape. Pixel-identical. — ⬜ **not started** (no `wantsCall` in the view; still `v-if="hasBidPrompt"`, BiddingBox 2×).
+1.3 Center region → `slots.center` (kills the two `isDeclarerPlay` BridgeTable branches). Pixel-identical. — ⬜ **not started** (BridgeTable 3× — the legacy/grid split added a third).
+1.4 StatusStrip lands; DealInfo + old indicators removed same slice. **Visible change.** — ✅ **effectively done** via the grid flip: `StatusStrip` renders in the grid `#nw` region ([MainLayout.vue:369](../../src/views/MainLayout.vue#L369)). Not shipped as a standalone 1.4 slice, so the "old indicators removed same slice" discipline was carried by the flip instead.
+1.5 Commentary extraction → ContextPanel (feedback panel + inline commentary + step controls). Pixel-near; small visible deltas acceptable, named in PR. — ⬜ **not started.** ContextPanel remains 0× in production.
 
 ### Phase 2 — BiddingPracticeView, local path — 🟡 IN PROGRESS
 
@@ -274,11 +316,22 @@ are already adopted here via `localEngine` + `useTableSlots`, so this phase adds
 **status/context** slots and collapses instantiations. The status region already
 shipped early (#101/#102) — see the 🟡 status markers below.)*
 
-2.1 Local-bidding + local-review instantiations collapse onto slots (4× → 3×, then 2×). Pixel-identical. Fork-factor + `.bp-*` ratchets drop with each. — ⬜ **not started** (still 4× AuctionTable / 4× BiddingBox).
+2.1 Local-bidding + local-review instantiations collapse onto slots (4× → 3×, then 2×). Pixel-identical. Fork-factor + `.bp-*` ratchets drop with each. — 🟡 **partial (2026-07-29): BiddingBox 4× → 2×; AuctionTable still 4×.** Max fork factor therefore unchanged at 4×, so the headline ratchet hasn't moved — AuctionTable is the whole remaining job here.
 2.2 StatusStrip + ContextPanel on local path; old chips removed. **Visible change.** — 🟡 **partial: StatusStrip ✅ shipped** (#101 local, #102 server header); **ContextPanel ⬜** (context region not yet wired, 0× in the view).
-2.3 Delete `.bp-*` component-internal rules. — ⬜ **not started.** **Any rule that survives the audit as legitimate shell layout is renamed into `.shell-*`, not kept** — so the ratchet reads `.bp-* → 0` (grep-checkable; no "shell-layout-only" judgment call, and the rename forces a one-by-one audit of every survivor). Pixel-identical (gallery is canonical — divergences resolve toward the gallery, each named in the PR).
+2.3 Delete `.bp-*` component-internal rules. — ⬜ **not started** (209 → **200**; 198 in `BiddingPracticeView.vue`). **Do this jointly with 3.4** — the unification sub-track's Stage D is the same fold, and both namespaces live in the same file. **Any rule that survives the audit as legitimate shell layout is renamed into `.shell-*`, not kept** — so the ratchet reads `.bp-* → 0` (grep-checkable; no "shell-layout-only" judgment call, and the rename forces a one-by-one audit of every survivor). Pixel-identical (gallery is canonical — divergences resolve toward the gallery, each named in the PR).
 
 ### Phase 3 — BiddingPracticeView, server path
+
+**Status 2026-07-29 — partly overtaken by the unification sub-track, and the 3.1
+ratchet now reads backwards.** Stage C1 of `table-view-unification-plan.md` deleted
+`useServerTable.js` and folded it into `ServerEngine` (#301) — real progress toward
+3.1's *goal* (one server object owning the contract). But the view now binds `srv.*`
+**directly** instead of through a composable, so the count went **96 → 170**. Read
+that as a re-baseline, not a regression: 3.1's remaining work is mapping those
+bindings onto the engine contract so the view stops naming `srv` at all. Stage **C2
+(merging the two template branches) is deferred by Rick**, which means 3.2's
+collapse-to-1× is blocked on a decision that has been made *against* it for now —
+3.2 should not be scheduled until C2 is revisited.
 
 3.1 serverEngine maps `srv.*` onto the engine contract internally. `srv.*` outside serverEngine → 0. Pixel-identical **+ contract tests (Invariant 7), including an asymmetric fixture** (different contracts by seat, rotated deal) so seat-mapping errors can't hide behind symmetry.
 3.2 Server-bidding + server-review instantiations collapse onto the same slots (→ **1× total**, phase-driven — **2× is not done**). Pixel-identical.
@@ -287,6 +340,14 @@ shipped early (#101/#102) — see the 🟡 status markers below.)*
 3.4 Delete `.tv-*` internals (survivors renamed to `.shell-*`, per 2.3's rule → `.tv-* → 0`). Terminal state: one template, two engines, shell CSS = layout only.
 
 ### Phase 4 — Teacher console
+
+**Status 2026-07-29 — the console shipped without this phase.**
+`TeacherConsoleView.vue` (802 lines) is live and renders **`MiniTable` +
+`UnifiedTable`**; **`ConsoleTile` and `TeacherActionBar` were never built.** So 4.3's
+outcome exists via bespoke markup — the thing 4.4 is written to retire. Before
+scheduling 4.1–4.2, decide: build the planned components, or **promote `MiniTable`
+to the de-facto ConsoleTile** and rewrite this phase around it (likely cheaper, and
+it keeps the divergence-tint work (4.2) as the only genuinely new piece).
 
 4.1 ConsoleTile in gallery: BridgeTable@tile composition + fixture `classroom-4tables-one-diverged`. Gallery-only.
 4.2 Divergence producer + edge tints, driven in gallery. Gallery-only.
@@ -392,11 +453,44 @@ pulled forward** as a starvation response (existing machinery, no new design).
 
 ## Ratchet dashboard (update per PR)
 
-| Metric | Start | Target |
-|---|---|---|
-| `srv.*` outside serverEngine | 96 | 0 (end of 3.1) |
-| `.bp-*` | 209 | 0 — survivors renamed `.shell-*` (end of 2.3) |
-| `.tv-*` | 142 | 0 — survivors renamed `.shell-*` (end of 3.4) |
-| BiddingPracticeView max fork factor | 4× | 1× (end of 3.2) |
-| BiddingPracticeView total instantiations | 13 | ~5 |
-| Views reading engine state directly | 3 surfaces | 0 — slots only |
+*Measured 2026-07-29 by grep over `src/`.*
+
+| Metric | Start | **Now (07-29)** | Target |
+|---|---|---|---|
+| `srv.*` outside serverEngine | 96 | **170** ⚠️ | 0 (end of 3.1) |
+| `.bp-*` | 209 | **200** | 0 — survivors renamed `.shell-*` (end of 2.3) |
+| `.tv-*` | 142 | **129** | 0 — survivors renamed `.shell-*` (end of 3.4) |
+| BiddingPracticeView max fork factor | 4× | **4×** (AuctionTable; BiddingBox now 2×) | 1× (end of 3.2) |
+| BiddingPracticeView total instantiations | 13 | **11** | ~5 |
+| Views reading engine state directly | 3 surfaces | **3** | 0 — slots only |
+
+**⚠️ The `srv.*` ratchet is broken as defined and must be re-based, not chased.**
+It rose because Stage C1 (#301) deleted `useServerTable.js` and folded it into
+`ServerEngine` — a move *toward* the goal that mechanically increases direct `srv.*`
+bindings in the view. The honest metric is "**identifiers the view reads that aren't
+slot objects**"; re-define it at the top of 3.1 rather than treating 170 as a
+failure. Every other ratchet has drifted down slowly (the CSS ones only because dead
+rules were deleted alongside other work, not because 2.3/3.4 ran).
+
+**Reading the dashboard as a whole:** five of six metrics are within ~10% of their
+starting values 18 days on. That is the quantitative form of the headline — the
+contract layer has not been worked. The visible wins of the last three weeks (grid
+flip, one `/table` route, parity closure) were all *around* this apparatus rather
+than through it.
+
+## Suggested next moves (2026-07-29, not a decision)
+
+Recorded so the next session doesn't re-derive them. In rough value order:
+
+1. **ContextPanel into production** (2.2 on the local table, then 1.5 on A1). It's
+   been built and specimen-verified since Phase 0 and blocks in-app chat; it is the
+   longest-standing piece of finished-but-unadopted work.
+2. **The CSS fold** — 2.3 + 3.4 + unification Stage D as **one** job (all three name
+   the same file). Mechanical, unblocks nothing but stops every table style fix from
+   needing to be applied twice.
+3. **Re-plan 1.1–1.3 against the grid branch** and retire `?arrangement=legacy`. The
+   flip already spent A1's visible-change budget; the plumbing slices are now pure
+   pixel-identical work with a stable target.
+4. **Re-base the `srv.*` ratchet** before any Phase 3 work (see above).
+5. **Decide Phase 4's shape** — `MiniTable`-as-ConsoleTile vs. building the planned
+   components.

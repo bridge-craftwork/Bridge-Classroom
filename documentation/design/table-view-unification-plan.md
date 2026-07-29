@@ -4,6 +4,26 @@ Converge `/bidding-practice` (solo) and `/tables/host` (multiplayer) so they loo
 the same everywhere except where they *functionally* differ. Alpha; iterate online
 via the beetle. Each slice below is independently shippable and beetle-verifiable.
 
+> ## Status — 2026-07-29 (verified against code, not checkmarks)
+>
+> **This plan is effectively complete. One cosmetic item is open.**
+>
+> | | |
+> |---|---|
+> | Slices 1, 2a, 2b, 2d, 2e | ✅ done (2c cancelled) |
+> | Slice 3 — bidding-only, **both** sides | ✅ done (was "half done"; the backend flag landed after) |
+> | Stage A — `useHostedTable` | ✅ #299 |
+> | Stage B — one `/table` route | ✅ #299 — `/bidding-practice` + `/tables/host` deleted |
+> | Stage C1 — `useServerTable` → `ServerEngine` | ✅ #301 — `useServerTable.js` gone |
+> | Stage C2 — merge the two templates | ⛔ deferred (Rick's call), unchanged |
+> | Stage D — **fold `tv-*`/`bp-*` → `ts-*`** | ⬜ **the only open work** |
+> | Feature-parity backlog (3 items) | ✅ all closed (#303, #304, #305) |
+>
+> The 2026-07-23 revision below understated this: it was written *hours before*
+> #304/#305 closed parity items 1–2, and the `bridge-table-service` bidding-only
+> flag it reported as missing now exists (`BoardMode::BidOnly`). Both sections are
+> corrected in place.
+
 ## Current state
 
 Both routes resolve to **one component**, `BiddingPracticeView.vue` (aliased
@@ -202,11 +222,18 @@ never downgrade; never swap mid-hand (only at a board boundary).
 ### Prior-slice status (verified 2026-07-23, not just checkmarks)
 
 - Slices **1, 2a, 2b, 2d, 2e** ✅ done; **2c** cancelled.
-- Slice **3 (bidding-only) is HALF done**: the solo `playCardplay` toggle works;
-  the **table-service flag does not exist** (grep for it in `bridge-table-service`
-  is empty). In the collapse, the toggle is **capability-gated** — shown for
-  LocalEngine, hidden for ServerEngine until the backend flag lands. Server-side
-  bidding-only is a deferred follow-up, not a blocker.
+- Slice **3 (bidding-only) — ✅ NOW DONE BOTH SIDES (re-verified 2026-07-29).**
+  *(The 07-23 entry said "HALF done — the table-service flag does not exist";
+  that was true when written and stopped being true days later.)* The solo
+  `playCardplay` toggle works, and the backend flag **now exists**:
+  `rooms::BoardMode::BidOnly` in `bridge-table-service`, with `bots.rs:173`
+  gating bot cardplay on it and `sessions.rs:545` supporting a **live** mode
+  change mid-session. Front-end side: **#306** carries the solo preference
+  (`localStorage bp.playCardplay`) into the served table through
+  `useHostedTable.onLoadSource` → `load_boards(mode)`, so an in-place
+  solo→served upgrade keeps the choice; **#331** puts the live board-mode
+  control in the hosted table's Table settings. Nothing is capability-hidden
+  any more.
 
 ### Staged sequence (URL-first, so invite-testing hits the target URL early)
 
@@ -232,31 +259,48 @@ lands the desired URL without also doing the ~80-binding template merge.
   chrome into one template trades two clean branches for one `v-if`-heavy one, for
   a debatable readability win against real risk. Revisit only if the duplication
   causes a bug.
-- **D — Cleanup (remaining):** fold `tv-*`/`bp-*` → `ts-*` (old Slice 4), and the
-  **table-service bidding-only flag** (old Slice 3 server half — the `playCardplay`
-  toggle works solo, but `bridge-table-service` has no `bidding_only`/`play_after_bid`
-  flag; needs a Rust change + a wire field, then gate the toggle on the server too).
+- **D — Cleanup. Narrowed 2026-07-29: one item left, and it's cosmetic.**
+  - ✅ **Table-service bidding-only flag — DONE** (old Slice 3 server half). See the
+    prior-slice status above: `BoardMode::BidOnly` + #306 + #331.
+  - ⬜ **Fold `tv-*`/`bp-*` → `ts-*`** (old Slice 4) — **the only open work in this
+    plan.** Measured 2026-07-29: `bp-*` **198** occurrences and `tv-*` **126** in
+    `BiddingPracticeView.vue` (200 / 129 repo-wide), against `ts-*` **20**, all of
+    which live in `TableShell.vue`. So the shared shell owns almost no CSS yet —
+    the namespaces were never folded, only fronted. Per the parent roadmap's rule
+    (integration-roadmap 2.3/3.4): survivors that are legitimate shell layout get
+    **renamed** into the shared namespace rather than kept, so the ratchet reads
+    `bp-* → 0` and `tv-* → 0` grep-checkably.
+  - Note the interaction with **C2 (deferred)**: the two template branches are what
+    keep two namespaces plausible. Folding the CSS while the branches stand is still
+    worth doing (it's where every table style fix has to be applied twice today), but
+    expect the fold to surface the duplication C2 chose to live with.
 
 ## Feature parity — private (LocalEngine) vs shared (ServerEngine)
 
-Surveyed 2026-07-23. The differences are mostly **uncoupled-prototyping debt, not
+Surveyed 2026-07-23. The differences were mostly **uncoupled-prototyping debt, not
 principled** (Rick: "BBA tracking / RulesBot / bidding+cardplay are nice in either
-instance"). Backlog to close, most-valuable first:
+instance").
 
-1. **BBA divergence tracking on the shared table** — the core bidding-*practice*
-   feedback (you-vs-BBA) exists only in solo. Mostly **frontend**: `ServerEngine`
-   already implements `getExpectedAuction` (kept in the C1 fold), `bidderDivergence`
-   in `handAnalysis.js` is seat-aware, `AuctionTable` already renders
-   `:diverged-bids` — flip the `divergence`/`bbaExpectedAuction` capability flags and
-   wire a review-time per-seat comparison into the served rail. No backend.
-2. **Deal-source cardplay first, bot on divergence** — a **composite cardplay bot**:
-   follow the deal source's recorded `[Play]` line (parsed by `pbnParser.js` →
-   `playLine.bySeat`) while the play matches it; on divergence-or-absence hand off to
-   the selected engine (BEN/RulesBot/…). Generalizes the existing `makeReplayBot`
-   (whose fallback is a dumb `legalCards[0]`) with a real-bot fallback + divergence
-   tracking, wired into the **private table** (only A1 uses `playLine` today) and the
-   **shared table** (`bots.rs`, Rust). Mirrors the BBA bidding model. **NOTE:** A1 is
-   NOT a consumer — it *forces* the line (told-when-wrong, right answer forced), a
+> **✅ BACKLOG CLOSED — re-verified 2026-07-29.** All three items shipped. Items 1
+> and 2 landed within hours of this survey being written (#304, #305), so the list
+> below was already stale when committed. Kept for the rationale, not as open work.
+
+1. **BBA divergence tracking on the shared table — ✅ DONE (#304,** `feat(table):
+   BBA divergence tracking on the shared table + setting toggle`**).** The core
+   bidding-*practice* feedback (you-vs-BBA) used to exist only in solo. As predicted,
+   it was **frontend-only**: `ServerEngine` already implemented `getExpectedAuction`
+   (kept in the C1 fold), `bidderDivergence` in `handAnalysis.js` is seat-aware, and
+   `AuctionTable` already rendered `:diverged-bids` — so this was flipping the
+   `divergence`/`bbaExpectedAuction` capability flags and wiring the review-time
+   per-seat comparison into the served rail. No backend.
+2. **Deal-source cardplay first, bot on divergence — ✅ DONE (#305,** `feat(cardplay):
+   cardplay-first composite bot (recorded line, real bot on divergence)`**).** The
+   **composite cardplay bot**: follow the deal source's recorded `[Play]` line (parsed
+   by `pbnParser.js` → `playLine.bySeat`) while the play matches it; on
+   divergence-or-absence hand off to the selected engine (BEN/RulesBot/…). Generalizes
+   the old `makeReplayBot` (whose fallback was a dumb `legalCards[0]`) with a real-bot
+   fallback + divergence tracking. Mirrors the BBA bidding model. **NOTE:** A1 is NOT
+   a consumer — it *forces* the line (told-when-wrong, right answer forced), a
    different paradigm.
 3. **RulesBot in cardplay — ✅ DONE for both.** Private table now runs it in-browser
    via `bridge-rulebot-wasm` (PR #303); the shared table already runs the same core
