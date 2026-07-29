@@ -66,7 +66,7 @@ If something needs to be shown or hidden, the PBN says so explicitly. The app do
 - **Backend API**: Rust server running locally on Mac at port 3000
 - **Tunnel**: Cloudflare Tunnel routes https://api.bridge-classroom.com → localhost:3000
 - **LiveKit**: `wss://livekit.bridge-classroom.com` on DigitalOcean droplet (Caddy + Docker at `/opt/livekit/`)
-- **Recovery emails**: Sent from `noreply@mail.bridge-craftwork.com` via Resend (migrated from .com 2026-04-30 due to deliverability issues)
+- **Recovery emails**: Sent from `noreply@mail.bridge-classroom.org` via Resend (this is the live `FROM_EMAIL` in the plist / `config.rs` default — an earlier note said `mail.bridge-craftwork.com`, which is stale; verify against `config.rs`/plist before quoting). As of 2026-07-28 (PRs #335/#336) the email is **6-digit code only — the magic link was removed** (Yahoo/AOL silently filtered the button-link phishing shape post-acceptance, and the link/code shared one single-use token row so clicking the link on a phone consumed the code on the laptop). The token + token-claim endpoint + break-glass console dump are retained, and a **1h reuse grace** (`recovery_tokens.used_at` + `CLAIM_REUSE_GRACE_SECS`) now lets the same code claim on a second device within an hour.
 - **DNS security**: bridge-craftwork.com has SPF, DKIM (via Resend), DMARC (`p=none`) configured in Cloudflare. bridge-classroom.com SPF/DKIM/DMARC retained but no longer used for sending.
 - **Database**: SQLite at `bridge-classroom-api/data/bridge_classroom.db`
 - **Database backups**: Nightly at 2AM Pacific via `com.bridgeclassroom.backup` launchd job
