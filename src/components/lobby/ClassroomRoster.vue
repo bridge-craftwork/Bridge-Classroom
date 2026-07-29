@@ -20,8 +20,8 @@
       </thead>
       <tbody>
         <tr v-for="member in members" :key="member.student_id">
-          <td class="member-name">{{ member.first_name }} {{ member.last_name }}</td>
-          <td class="member-email">{{ member.email }}</td>
+          <td class="member-name">{{ anon.displayFullName(member) }}</td>
+          <td class="member-email">{{ anon.displayEmail(member.email) }}</td>
           <td class="member-date">{{ formatDate(member.joined_at) }}</td>
           <td class="member-action">
             <button
@@ -40,10 +40,13 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useAnonymizer } from '../../composables/useAnonymizer.js'
 
 const props = defineProps({
   members: { type: Array, required: true }
 })
+
+const anon = useAnonymizer()
 
 const emit = defineEmits(['remove-member'])
 
@@ -59,7 +62,7 @@ function formatDate(isoString) {
 }
 
 function confirmRemove(member) {
-  const name = `${member.first_name} ${member.last_name}`
+  const name = anon.displayFullName(member)
   if (confirm(`Remove ${name} from this classroom?`)) {
     removing.value = member.student_id
     emit('remove-member', member.student_id)

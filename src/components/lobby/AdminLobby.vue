@@ -79,8 +79,8 @@
             class="new-user-row"
             @click="selectNewUser(u)"
           >
-            <span class="nu-name">{{ u.first_name }} {{ u.last_name }}</span>
-            <span class="nu-email">{{ u.email }}</span>
+            <span class="nu-name">{{ anon.displayFullName(u) }}</span>
+            <span class="nu-email">{{ anon.displayEmail(u.email) }}</span>
             <span class="nu-when">{{ joinedAgo(u.created_at) }}</span>
           </button>
         </div>
@@ -125,8 +125,8 @@
             :class="{ selected: selectedUser && selectedUser.id === user.id }"
             @click="selectUser(user)"
           >
-            <span class="result-name">{{ user.first_name }} {{ user.last_name }}</span>
-            <span class="result-email">{{ user.email }}</span>
+            <span class="result-name">{{ anon.displayFullName(user) }}</span>
+            <span class="result-email">{{ anon.displayEmail(user.email) }}</span>
             <span v-if="user.name_corrected_at" class="corrected-badge">corrected</span>
             <button
               class="view-as-btn"
@@ -184,8 +184,8 @@
                   class="search-result-item" :class="{ selected: mergeOther && mergeOther.id === u.id }"
                   @click="pickMergeOther(u)"
                 >
-                  <span class="result-name">{{ u.first_name }} {{ u.last_name }}</span>
-                  <span class="result-email">{{ u.email }}</span>
+                  <span class="result-name">{{ anon.displayFullName(u) }}</span>
+                  <span class="result-email">{{ anon.displayEmail(u.email) }}</span>
                 </div>
               </div>
 
@@ -254,12 +254,18 @@ import AdminStatsRow from './AdminStatsRow.vue'
 import PopularLessons from './PopularLessons.vue'
 import DatabasePanel from './DatabasePanel.vue'
 import SystemHealth from './SystemHealth.vue'
+import { useAnonymizer } from '../../composables/useAnonymizer.js'
 
 
 const admin = useAdminDashboard()
 const ann = useAnnouncement()
 const userStore = useUserStore()
 const teacherRole = useTeacherRole()
+// Anonymizes the browsable user lists for screenshots (issue #334). NOTE: the
+// edit-form inputs and the merge-confirmation panel deliberately stay on REAL
+// data — the edit inputs write back to the record, and merges must distinguish
+// accounts by their real email to be safe.
+const anon = useAnonymizer()
 
 // Signing credentials for privileged (admin) requests (ADR-0003). Throws a
 // friendly error if the current user has no teacher signing key on this device.

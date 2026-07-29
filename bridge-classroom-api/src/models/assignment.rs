@@ -65,6 +65,13 @@ pub struct AssignmentInfo {
     /// classroom assignments.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub student_name: Option<String>,
+    /// Split name for individual assignments, so the client can anonymize
+    /// consistently with the rosters (issue #334). Kept alongside the
+    /// pre-joined `student_name`. Null for classroom assignments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_first_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub student_last_name: Option<String>,
     pub assigned_by: String,
     pub assigned_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -98,9 +98,11 @@ import { useAssignments } from '../../../composables/useAssignments.js'
 import AssignmentCreateModal from '../AssignmentCreateModal.vue'
 import AssignmentDetailModal from '../AssignmentDetailModal.vue'
 import AssignmentStatChips from '../AssignmentStatChips.vue'
+import { useAnonymizer } from '../../../composables/useAnonymizer.js'
 
 const userStore = useUserStore()
 const assignmentStore = useAssignments()
+const anon = useAnonymizer()
 
 const showAssignModal = ref(false)
 const selectedAssignmentId = ref(null)
@@ -143,7 +145,16 @@ async function toggleClosed(a) {
 // the row). Per the screenshot in issue #7, an empty subtitle line on
 // individual assignments is a regression worth fixing.
 function assignmentSubtitle(a) {
-  return a.classroom_name || a.student_name || ''
+  if (a.classroom_name) return a.classroom_name
+  // Individual assignment: anonymize the targeted student's name when anon mode
+  // is on (issue #334). Prefer split fields; fall back to student_name.
+  if (a.student_first_name != null || a.student_last_name != null) {
+    return anon.displayFullName({
+      first_name: a.student_first_name || '',
+      last_name: a.student_last_name || ''
+    })
+  }
+  return a.student_name || ''
 }
 
 // Parse date-only strings (YYYY-MM-DD) as LOCAL dates, not UTC. `new Date('2026-06-15')`

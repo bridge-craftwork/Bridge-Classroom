@@ -22,11 +22,28 @@
 </template>
 
 <script setup>
+import { useAnonymizer } from '../../composables/useAnonymizer.js'
+
 defineProps({
   items: { type: Array, default: () => [] }
 })
 
 defineEmits(['clear'])
+
+const anon = useAnonymizer()
+
+// The dashboard endpoint sends split names (student_first_name/last_name) so we
+// can anonymize consistently with the rosters; fall back to the pre-joined
+// student_name if talking to an older backend build.
+function studentLabel(item) {
+  if (item.student_first_name != null || item.student_last_name != null) {
+    return anon.displayFullName({
+      first_name: item.student_first_name || '',
+      last_name: item.student_last_name || ''
+    })
+  }
+  return item.student_name
+}
 
 function iconFor(type) {
   switch (type) {
@@ -44,7 +61,7 @@ function describeItem(item) {
       return `${item.exercise_name} due ${dayStr} \u2014 ${item.lagging_count} of ${item.total_students} students haven't finished`
     }
     case 'low_score':
-      return `${item.student_name} scored ${item.accuracy_pct}% on ${item.exercise_name} in ${item.classroom_name}`
+      return `${studentLabel(item)} scored ${item.accuracy_pct}% on ${item.exercise_name} in ${item.classroom_name}`
     default:
       return ''
   }

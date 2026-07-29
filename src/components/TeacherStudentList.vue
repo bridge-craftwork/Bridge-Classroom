@@ -8,9 +8,6 @@
           <option v-for="c in classrooms.teacherClassrooms.value" :key="c.id" :value="c.id">{{ c.name }}</option>
           <option value="none">No Classroom</option>
         </select>
-        <button class="anon-btn" :class="{ active: anon.isAnonymized.value }" @click="anon.toggleAnonymize()">
-          {{ anon.isAnonymized.value ? 'Clear' : 'Anon' }}
-        </button>
         <button class="secondary-btn" @click="refresh">Refresh</button>
         <button v-if="!embedded" class="secondary-btn" @click="$emit('close')">Back</button>
       </div>
@@ -515,33 +512,6 @@ function initials(student) {
 .filter-select:focus {
   outline: none;
   border-color: #667eea;
-}
-
-.anon-btn {
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  background: white;
-  color: #666;
-  border: 1px solid #ddd;
-  transition: all 0.2s;
-}
-
-.anon-btn.active {
-  background: #fff3e0;
-  color: #e65100;
-  border-color: #ffcc80;
-}
-
-.anon-btn:hover {
-  background: #f5f5f5;
-  color: #333;
-}
-
-.anon-btn.active:hover {
-  background: #ffe0b2;
 }
 
 .secondary-btn {

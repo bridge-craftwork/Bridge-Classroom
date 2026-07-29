@@ -60,7 +60,7 @@
               </thead>
               <tbody>
                 <tr v-for="row in rows" :key="row.student.student_id">
-                  <td class="col-name">{{ row.student.first_name }} {{ row.student.last_name }}</td>
+                  <td class="col-name">{{ anon.displayFullName(row.student) }}</td>
                   <td
                     v-for="b in orderedBoards" :key="boardKey(b)"
                     class="col-board cell"
@@ -77,7 +77,7 @@
                         class="cell-paw" :tier="row.byBoard[boardKey(b)].wild_achievement" /><span
                         v-if="showStumbleDot(row.byBoard[boardKey(b)])"
                         class="cell-stumble-dot" aria-hidden="true" /></button>
-                    <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
+                    <span v-else class="cell-empty" :title="`Not attempted by ${anon.displayName(row.student).firstName}`">·</span>
                   </td>
                   <td class="col-score">
                     <span class="score-text">{{ row.cleanCount }}/{{ row.attemptedCount }}</span>
@@ -167,6 +167,7 @@ import { useTeacherRole } from '../../composables/useTeacherRole.js'
 import { STATUS_COLORS } from '../../utils/studentProgressData.js'
 import { formatDurationMs } from '../../utils/formatDuration.js'
 import ObservationPopupManager from '../ObservationPopupManager.vue'
+import { useAnonymizer } from '../../composables/useAnonymizer.js'
 
 const props = defineProps({
   assignmentId: { type: String, required: true }
@@ -176,6 +177,7 @@ defineEmits(['close'])
 
 const assignments = useAssignments()
 const teacherRole = useTeacherRole()
+const anon = useAnonymizer()
 const loading = ref(true)
 const error = ref(null)
 const popupManager = ref(null)
@@ -384,7 +386,7 @@ function cellTooltip(student, board, cell) {
   const stumble = showStumbleDot(cell)
     ? ` · ⚠ originally ${cell.initial_status === 'failed' ? 'failed' : 'corrected'}, cleaned on redo`
     : ''
-  return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status}${wild}${stumble} · ${ts}`
+  return `${anon.displayFullName(student)} · ${boardTooltip(board)} · ${status}${wild}${stumble} · ${ts}`
 }
 
 async function openCell(student, cell, event) {
@@ -435,7 +437,7 @@ async function openCell(student, cell, event) {
     // Most common cause: the student hasn't granted observation
     // viewing to this teacher (no decryption key path). Surface it
     // so the click doesn't appear to do nothing.
-    cellError.value = `Could not load this observation. ${student.first_name} may not have granted viewing access yet.`
+    cellError.value = `Could not load this observation. ${anon.displayName(student).firstName} may not have granted viewing access yet.`
     console.warn('Observation decryption failed — fetched observations did not include the cell, or no decryption grant')
   }
 }

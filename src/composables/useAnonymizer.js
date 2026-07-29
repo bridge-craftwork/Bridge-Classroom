@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 const STORAGE_KEY = 'bridge-classroom-anon-mode'
 const SALT = 'BridgeClassroom-Anon'
+const REDACTED = '*** redacted ***'
 
 // Same name arrays as BBA-Server IpAnonymizer.cs
 const FIRST_NAMES = [
@@ -104,11 +105,20 @@ export function useAnonymizer() {
     return (first + last).toUpperCase() || '?'
   }
 
+  // Emails are redacted rather than substituted — there's no plausible fake
+  // address that reads as "hidden on purpose," and the whole point is
+  // presentation/screenshot safety, not a consistent alias.
+  function displayEmail(email) {
+    if (!isAnonymized.value) return email
+    return REDACTED
+  }
+
   return {
     isAnonymized,
     toggleAnonymize,
     displayName,
     displayFullName,
-    displayInitials
+    displayInitials,
+    displayEmail
   }
 }
