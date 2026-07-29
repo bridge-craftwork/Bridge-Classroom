@@ -135,6 +135,13 @@ pub struct AssignmentGridCell {
     pub deal_number: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// The FIRST attempt's status for this board (from the assignment rollup),
+    /// frozen regardless of later replays. Teacher-only: lets the grid flag a
+    /// board the student originally stumbled on ('corrected'/'failed') even when
+    /// the current `status` has since cleaned to green. None when the rollup has
+    /// no row yet (pre-backfill) or the board was never attempted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_status: Option<String>,
     pub correct: bool,
     pub observation_id: String,
     pub timestamp: String,

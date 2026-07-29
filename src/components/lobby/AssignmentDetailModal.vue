@@ -74,7 +74,9 @@
                       @click="openCell(row.student, row.byBoard[boardKey(b)], $event)"
                     >{{ cellGlyph(row.byBoard[boardKey(b)].status) }}<PawIcon
                         v-if="isWildMastery(row.byBoard[boardKey(b)])"
-                        class="cell-paw" :tier="row.byBoard[boardKey(b)].wild_achievement" /></button>
+                        class="cell-paw" :tier="row.byBoard[boardKey(b)].wild_achievement" /><span
+                        v-if="showStumbleDot(row.byBoard[boardKey(b)])"
+                        class="cell-stumble-dot" aria-hidden="true" /></button>
                     <span v-else class="cell-empty" :title="`Not attempted by ${row.student.first_name}`">·</span>
                   </td>
                   <td class="col-score">
@@ -143,6 +145,7 @@
               <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('corrected') }"></span>Corrected / close</span>
               <span class="legend-item"><span class="legend-dot" :style="{ backgroundColor: cellColor('failed') }"></span>Failed</span>
               <span class="legend-item"><span class="legend-dot legend-empty">·</span>Not attempted</span>
+              <span class="legend-item"><span class="legend-stumble-swatch"><span class="legend-dot" :style="{ backgroundColor: cellColor('clean_correct') }"></span><span class="legend-stumble-dot"></span></span>Cleaned on redo</span>
               <span class="legend-item"><PawIcon class="legend-paw-icon" />Wild mastery</span>
             </span>
           </div>
@@ -358,11 +361,30 @@ function isWildMastery(cell) {
   return !!(cell && cell.wild_achievement)
 }
 
+// Did the FIRST attempt stumble (corrected or failed)? `initial_status` is frozen
+// at the first observation by the backend, so this stays true even after a later
+// clean redo cleaned the current `status` to green.
+function stumbledInitially(cell) {
+  return cell && (cell.initial_status === 'corrected' || cell.initial_status === 'failed')
+}
+
+// Show the "originally stumbled" corner dot only when the CURRENT status is clean
+// (green) — i.e. the stumble is otherwise hidden. On a still-orange/red cell the
+// problem is already visible in the colour, so the dot would be redundant.
+function showStumbleDot(cell) {
+  return stumbledInitially(cell) && cell.status === 'clean_correct'
+}
+
 function cellTooltip(student, board, cell) {
   const status = cell.status || 'unknown'
   const ts = formatTimestamp(cell.timestamp)
   const wild = cell && cell.wild_achievement ? ` · 🐾 ${cell.wild_achievement} wild mastery` : ''
-  return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status}${wild} · ${ts}`
+  // Surface the hidden first-attempt stumble (green now, but originally corrected/
+  // failed) so the teacher knows to click through to the earlier error.
+  const stumble = showStumbleDot(cell)
+    ? ` · ⚠ originally ${cell.initial_status === 'failed' ? 'failed' : 'corrected'}, cleaned on redo`
+    : ''
+  return `${student.first_name} ${student.last_name} · ${boardTooltip(board)} · ${status}${wild}${stumble} · ${ts}`
 }
 
 async function openCell(student, cell, event) {
@@ -383,12 +405,13 @@ async function openCell(student, cell, event) {
   await teacherRole.fetchStudentObservations(student.student_id)
 
   const rawTs = new Date(cell.timestamp).getTime()
-  // For a close_correct (double-tilde ≈) cell the latest observation is a clean
-  // replay — the mistake lives in an earlier, separate observation. Open that
-  // erroring observation so the teacher sees where the student went wrong,
-  // matching the single-tilde (corrected) case where the error is in-line.
+  // When the latest observation is a clean replay but an earlier attempt erred,
+  // open that ERRORING observation so the teacher sees where the student went
+  // wrong. Two cases: a close_correct (≈) redo within the hour, AND — the case
+  // this feature adds — a now-green board the student stumbled on first and
+  // cleaned up on a later redo (>1h gap), flagged by the corner dot.
   let decrypted = null
-  if (cell.status === 'close_correct') {
+  if (cell.status === 'close_correct' || showStumbleDot(cell)) {
     decrypted = await teacherRole.findAndDecryptErroringObservation(
       student.student_id,
       cell.deal_subfolder,
@@ -733,6 +756,21 @@ onMounted(async () => {
   box-shadow: 0 0 0 2px #10b981;
 }
 
+/* "Originally stumbled" marker: a subtle orange dot in the bottom-right of an
+   otherwise-green cell — the board was corrected/failed on the first attempt and
+   only cleaned up on a later redo. Bottom-right so it never collides with the
+   top-right wild-mastery paw. Orange ties it to the corrected/close semantics. */
+.cell-stumble-dot {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
 .cell-paw {
   position: absolute;
   top: -6px;
@@ -826,6 +864,23 @@ onMounted(async () => {
   height: 10px;
   border-radius: 3px;
   display: inline-block;
+}
+
+/* Legend swatch mirroring a green cell with the orange "cleaned on redo" dot. */
+.legend-stumble-swatch {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+.legend-stumble-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
 }
 
 .legend-empty {
