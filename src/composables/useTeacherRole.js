@@ -409,18 +409,26 @@ async function findAndDecryptObservation(studentUserId, timestamp, dealNumber, c
  *   from a different collection sharing this subfolder (permissive when null).
  * @returns {Promise<Object|null>}
  */
-async function findAndDecryptErroringObservation(studentUserId, dealSubfolder, dealNumber, beforeMs, collectionId = null) {
+// Find where the student first went wrong on a board, so the teacher can drill
+// past a clean latest replay to the actual mistake. Scoped to the assignment (so
+// an unrelated ad-hoc attempt of the same board isn't picked up) and to the board.
+// "Erred" = failed OR corrected — a `corrected` play is `correct === true` (the
+// student fixed it in-line) yet still contains the mistake, so a plain `!correct`
+// filter misses it (the bug: a >1h clean redo of a corrected board drilled into a
+// success). Returns the EARLIEST such play — the original stumble.
+async function findAndDecryptErroringObservation(studentUserId, dealSubfolder, dealNumber, assignmentId = null, collectionId = null) {
   const rawObs = studentRawObservations.value[studentUserId] || []
   let best = null
-  let bestTs = -Infinity
+  let bestTs = Infinity
   for (const o of rawObs) {
     if (o.deal_number !== dealNumber) continue
     if (dealSubfolder && o.deal_subfolder !== dealSubfolder) continue
+    if (assignmentId && o.assignment_id !== assignmentId) continue
     if (collectionId && o.collection_id && o.collection_id !== collectionId) continue
-    if (o.correct) continue // only erroring plays
+    const erred = !o.correct || o.board_result === 'corrected' || o.board_result === 'failed'
+    if (!erred) continue
     const ts = new Date(o.timestamp).getTime()
-    if (ts >= beforeMs) continue
-    if (ts > bestTs) { bestTs = ts; best = o }
+    if (ts < bestTs) { bestTs = ts; best = o } // earliest error = the first stumble
   }
   if (!best) return null
   return decryptStudentObservation(studentUserId, best)
