@@ -40,6 +40,9 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
 .tool-use{font-size:11px;color:var(--color-text-secondary);line-height:1.5;display:flex;gap:7px;align-items:flex-start}
 .tool-use:before{content:"\2192";color:var(--color-text-tertiary);flex-shrink:0;font-size:10px;margin-top:1px}
 .tool-foot{padding:8px 14px;border-top:0.5px solid var(--color-border-tertiary);display:flex;gap:8px;background:var(--color-background-secondary);align-items:center}
+.web-btn{font-size:11px;font-weight:500;padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid #1D9E75;color:#fff;background:#1D9E75;cursor:pointer;display:flex;align-items:center;gap:5px;text-decoration:none}
+.web-btn:hover{background:#178A66;border-color:#178A66}
+.web-btn svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2}
 .dl-btn{font-size:11px;font-weight:500;padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);background:var(--color-background-primary);cursor:pointer;display:flex;align-items:center;gap:5px;text-decoration:none}
 .dl-btn:hover{border-color:var(--color-text-secondary);color:var(--color-text-primary)}
 .dl-btn svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2}
@@ -94,7 +97,7 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
           <div class="tool-icon" style="background:#E1F5EE"><svg viewBox="0 0 24 24" stroke="#1D9E75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
           <div>
             <div class="tool-name">PDF Handouts <span class="tool-code">pdf-handouts</span></div>
-            <div class="tool-desc">Assemble class handouts from multiple PDFs and add your class name, date, and page numbers in one step.</div>
+            <div class="tool-desc">Assemble class handouts from multiple PDFs and add your class name, date, and page numbers in one step — now in your browser, no install needed.</div>
           </div>
         </div>
         <div class="tool-uses">
@@ -104,6 +107,7 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
           <div class="tool-use">Smart date expressions — "next tuesday" fills in the right date automatically</div>
         </div>
         <div class="tool-foot">
+          <a class="web-btn" href="https://bridge-craftwork.github.io/pdf-handouts/" target="_blank"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Open web app</a>
           <a class="dl-btn" href="https://github.com/bridge-craftwork/pdf-handouts/releases/latest" target="_blank"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Mac</a>
           <a class="dl-btn" href="https://github.com/bridge-craftwork/pdf-handouts/releases/latest" target="_blank"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Windows</a>
           <a class="dl-btn" href="https://github.com/bridge-craftwork/pdf-handouts/releases/latest" target="_blank"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Linux</a>
