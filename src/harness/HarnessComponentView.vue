@@ -9,7 +9,15 @@
       :style="{ width: widthPx + 'px', '--table-scale': scale }"
       :data-harness-ready="ready ? '' : null"
     >
-      <component :is="comp" v-bind="entry.props" @card-click="onCardClick" />
+      <!-- Specimens are prop files, but the SHELL parts (ScenarioBar, RailCard) are
+           frames whose whole point is what goes inside them — with props alone they
+           render as empty boxes. `slots` lets a specimen supply illustrative content
+           as static markup. Dev-only harness, static strings from our own repo, so
+           v-html is safe here in a way it wouldn't be on a product surface. -->
+      <component :is="comp" v-bind="entry.props" @card-click="onCardClick">
+        <template v-if="entry.slots && entry.slots.default" #default><span v-html="entry.slots.default" /></template>
+        <template v-if="entry.slots && entry.slots.actions" #actions><span v-html="entry.slots.actions" /></template>
+      </component>
     </div>
   </div>
 </template>

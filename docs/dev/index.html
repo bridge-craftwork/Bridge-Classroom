@@ -122,6 +122,7 @@
     <button class="tab" role="tab" id="tab-launcher"   aria-controls="p-launcher"   data-panel="launcher">Launcher</button>
     <button class="tab" role="tab" id="tab-entry"      aria-controls="p-entry"      data-panel="entry">Entry points</button>
     <button class="tab" role="tab" id="tab-components" aria-controls="p-components" data-panel="components">Components</button>
+    <button class="tab" role="tab" id="tab-shell"      aria-controls="p-shell"      data-panel="shell">Shell parts</button>
     <button class="tab" role="tab" id="tab-scenes"     aria-controls="p-scenes"     data-panel="scenes">Scenes</button>
   </div>
 
@@ -246,6 +247,16 @@
   </section>
 
   <!-- ═══════════════ TAB 4 · SCENES ═══════════════ -->
+  <!-- ═════════ TAB 4b · SHELL PARTS ═══════════════ -->
+  <section class="panel" id="p-shell" role="tabpanel" aria-labelledby="tab-shell">
+    <p class="lede">The chrome <em>around</em> the table — the scenario bar, the rail-card
+    frame, and the control clusters that live in the grid corners. One or two specimens
+    each: enough to give every piece a name and a picture. These were ad-hoc markup
+    duplicated across two view branches and hand-copied again into each scene, which is
+    exactly how they drifted; extracting them is what makes them nameable here.</p>
+    <div class="comps" id="shell-grid"><div class="empty">Loading component manifest…</div></div>
+  </section>
+
   <section class="panel" id="p-scenes" role="tabpanel" aria-labelledby="tab-scenes">
     <p class="sub" style="margin-top:0">Full-screen app layouts rendered <strong>live</strong> from frozen fixtures (the Tier-2 view scenarios — same source as the A1 scene gallery). Each thumbnail is the scene at laptop-half (the primary teaching case); click <strong>all viewports ↗</strong> to open it across every named viewport in a new tab.</p>
     <div id="scene-grid"><div class="empty">Loading component manifest…</div></div>
@@ -296,8 +307,10 @@
 
   // ── Live component tiles (from the manifest) ───────────────────────────────
   var HARNESS = 'harness/#/harness/component/';
-  function buildComponents() {
-    var grid = document.getElementById('comp-grid');
+  // Two tabs share one renderer: Components shows the table components, Shell parts
+  // shows the chrome around them. `m.shell` names the split (from registry.js).
+  function buildComponents(gridId, wantShell) {
+    var grid = document.getElementById(gridId || 'comp-grid');
     fetch('components-manifest.json', { cache: 'no-cache' })
       .then(function (r) { if (!r.ok) throw new Error('no manifest'); return r.json(); })
       .then(function (m) {
@@ -308,7 +321,12 @@
           });
         }, { rootMargin: '300px' }) : null;
 
-        Object.keys(m.components).forEach(function (name) {
+        var shell = m.shell || [];
+        var names = Object.keys(m.components).filter(function (n) {
+          return wantShell ? shell.indexOf(n) !== -1 : shell.indexOf(n) === -1;
+        });
+        if (!names.length) { grid.innerHTML = '<div class="empty">Nothing in this group yet.</div>'; return; }
+        names.forEach(function (name) {
           var specs = m.components[name];
           var def = specs[0];
           var drill = 'drill.html#' + encodeURIComponent(name);
@@ -410,8 +428,8 @@
   }
 
   // ── Tabs (hash-linkable) ───────────────────────────────────────────────────
-  var PANELS = ['launcher', 'entry', 'components', 'scenes'];
-  var built = { entry: false, components: false, scenes: false };
+  var PANELS = ['launcher', 'entry', 'components', 'shell', 'scenes'];
+  var built = { entry: false, components: false, shell: false, scenes: false };
   function select(panel) {
     if (PANELS.indexOf(panel) === -1) panel = 'launcher';
     document.querySelectorAll('.tab').forEach(function (t) {
@@ -422,6 +440,7 @@
     });
     if (panel === 'entry' && !built.entry) { buildEntry(); built.entry = true; }
     if (panel === 'components' && !built.components) { buildComponents(); built.components = true; }
+    if (panel === 'shell' && !built.shell) { buildComponents('shell-grid', true); built.shell = true; }
     if (panel === 'scenes' && !built.scenes) { buildScenes(); built.scenes = true; }
     if (('#' + panel) !== location.hash) history.replaceState(null, '', '#' + panel);
   }

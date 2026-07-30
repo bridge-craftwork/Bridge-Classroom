@@ -54,6 +54,19 @@ const ordered = [
 const components = {}
 for (const c of ordered) components[c] = specimensByComponent[c]
 
+// Which of those are SHELL parts (the chrome around the table) rather than table
+// components. Parsed from registry.js the same way the order is, so the list lives
+// in one place. The dev gallery renders them as their own tab.
+function shellList() {
+  try {
+    const src = fs.readFileSync(path.join(ROOT, 'src/harness/registry.js'), 'utf8')
+    const m = src.match(/export const SHELL_COMPONENTS\s*=\s*\[([^\]]*)\]/)
+    if (!m) return []
+    return m[1].split(',').map((x) => x.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  } catch { return [] }
+}
+const shell = shellList().filter((c) => components[c])
+
 // ── Scenes (Tier-2 fixtures) — a1 group first (the released app), then table ──
 // Import each fixture for its label/surface (sibling-only imports resolve in
 // node, same as a1-gallery.mjs). Fall back to the bare name if an import fails.
@@ -87,8 +100,8 @@ const scenes = [
   ...(await collectScenes('src/harness/fixtures-c', 'c')),
 ]
 
-const manifest = { components, widths, scales, scenes, viewports }
+const manifest = { components, shell, widths, scales, scenes, viewports }
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
 fs.writeFileSync(OUT, JSON.stringify(manifest, null, 2))
 const total = Object.values(components).reduce((n, s) => n + s.length, 0)
-console.log(`harness-manifest → ${path.relative(ROOT, OUT)} (${ordered.length} components, ${total} specimens, ${scenes.length} scenes)`)
+console.log(`harness-manifest → ${path.relative(ROOT, OUT)} (${ordered.length} components incl. ${shell.length} shell, ${total} specimens, ${scenes.length} scenes)`)
