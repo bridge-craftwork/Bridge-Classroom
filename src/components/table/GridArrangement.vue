@@ -660,7 +660,13 @@ function scheduleHeightFit() {
 // rest (centre, status, gaps) is fixed height, so the fit is a one-step solve.
 function applyHeightFit() {
   const el = root.value
-  if (!el || heightPass >= 2) return
+  // Pass budget. Two was enough while the fit had ONE lever (shrink the seats). The
+  // beta rule spends in ORDER — centre's discretionary growth first, then the seats —
+  // so it needs a pass for each step plus one to settle, or it stops half-applied with
+  // the centre corrected and the stage still overflowing (which is what two passes did:
+  // ratio fixed, South back off-screen).
+  const maxPasses = arrangement.value === 'beta' ? 3 : 2
+  if (!el || heightPass >= maxPasses) return
   const rect = el.getBoundingClientRect()
   const heightBudget = window.innerHeight - rect.top - HEIGHT_BOTTOM_MARGIN
   const gridH = Math.round(rect.height)
@@ -703,10 +709,29 @@ function applyHeightFit() {
     const centerH = el.querySelector('[data-region="center"]')?.getBoundingClientRect().height || 0
     const centerExcess = Math.max(0, centerH - (rowMax[1] || 0))
     if (centerExcess > 0) {
-      const scalableH = seatRowsH + centerExcess
-      const k = (heightBudget - (gridH - scalableH)) / scalableH
-      target = Math.max(floor.value, Math.min(seatScale, seatScale * k))
-      centerTarget = Math.max(floor.value, Math.min(centerScale, centerScale * k))
+      // PRIORITY, not a shared multiplier (2026-07-30, Rick: "center shouldn't be twice
+      // as big as the hands. Maybe we need a balance goal?").
+      //
+      // The first cut scaled the centre and the seats by ONE factor, which preserves
+      // whatever ratio they arrived with — so a stage that was already 2:1 stayed 2:1,
+      // just smaller. The reported case: centre 1.54x against hands 0.76x, both pinned
+      // at their height ceilings.
+      //
+      // The rule instead is an ORDER OF SPENDING: the centre's growth ABOVE its natural
+      // size is discretionary — it exists to use up spare room — while the hands going
+      // BELOW natural is a real cost to the reader. So give up all of the former before
+      // any of the latter. No magic ratio: on a roomy screen the centre still grows to
+      // its 1.8 cap, because nothing is starved and the rule never fires.
+      if (centerScale > 1.01) {
+        centerTarget = 1
+        target = seatScale // hands untouched this pass
+      } else {
+        // Centre already at natural — the remaining overflow has to come from the seats,
+        // which is the pre-existing solve.
+        const scalableH = seatRowsH + centerExcess
+        const k = (heightBudget - (gridH - scalableH)) / scalableH
+        target = Math.max(floor.value, Math.min(seatScale, seatScale * k))
+      }
     }
   }
 
