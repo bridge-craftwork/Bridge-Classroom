@@ -348,16 +348,36 @@ Two stacking causes:
    corner stays pinned. Right for the bidding box (fixed-width widget); wrong for the DD
    table, which is that corner's occupant at review.
 
-**Decision needed:** does the corner track the seats at review, or does the DD table get
-its own cap distinct from the action relationship? Note the same relationship makes the
-height fit model the corner as flat-then-proportional (`kind: 'action'` in
-`solveHeightFit`), so a change here has a counterpart there.
+**DECIDED 2026-07-30 (Rick): the DD table gets its own cap, tracking the seats.**
+NOT YET BUILT — it lives in the shared arranger and wants its own pass. What it
+involves:
 
-### 6.2 Auction box cramped with compare on (#49)
+- `caps.se: 'seats'` resolves to `min(1, seatScale)` in `gridArranger.js`. A second
+  relationship (ceiling = `seatScale`, without the 1.0 clamp) is needed, selected at
+  REVIEW, where that corner's occupant is the DD table rather than the bidding box.
+  The natural seam is `GridArrangement.capsWithHeight` — already the one place caps
+  are adjusted before `arrangeGrid`.
+- Its counterpart in `solveHeightFit`: the corner is `kind: 'action'`
+  (flat-then-proportional — it does not shrink until the seats drop below 1.0). A
+  seats-TRACKING corner should be proportional throughout, like a seat.
+- **Check the occupancy half FIRST** (`areaOccupied('se')` = `hasRegion(area) &&
+  !!slots[area]`) against David's REVIEW bundle. The cap change does nothing if SE
+  never reaches the ledger, and the reported symptom was exactly that: no `se` entry
+  in the ledger while `rendered` carried `se: 222×166`.
+
+### 6.2 Auction box cramped with compare on (#49) — **SHIPPED**
+
+Measured rather than estimated (AuctionTable specimens at `--table-scale: 1`): a
+plain round row is 43.5–44.5px, a row carrying a stacked cell 70.2–76.2px →
+`stackedRoundExtraPx: 32`. The count is supplied by the SHELL (the only party that
+knows its own divergences), per ROUND rather than per cell.
+
+<details><summary>Original 6.2 note</summary>
 
 With BBA compare enabled each cell stacks four lines (`● YOU / call / ○ BBA / call`)
 inside a cell sized for one. `auctionReservePx()` provisions a *normal* auction, so
 compare mode systematically under-reserves. Reserve should be compare-aware.
+</details>
 
 ---
 
