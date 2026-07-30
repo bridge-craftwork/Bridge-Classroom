@@ -381,7 +381,23 @@ compare mode systematically under-reserves. Reserve should be compare-aware.
 
 ---
 
-## Phase 7 — BBA compare correctness (½ day)
+## Phase 7 — BBA compare correctness — **SHIPPED**
+
+**7.1 confirmed, not suspected.** Queried the live BBA service: it returns `"7NT"`,
+while the served table's auction holds the PBN/wire form `"7N"` — so EVERY notrump
+bid by your own seat was a guaranteed false divergence. Solo was never affected
+(BiddingBox also says `1NT`). Normalised inside `bidderDivergence`, not at the call
+site, so a future caller can't reintroduce it.
+
+**7.2 shipped per-call (Rick's call).** The catch worth remembering: dropping the
+`auctionSettled` gate is not the whole change. A from-scratch BBA reference is only
+positionally meaningful UP TO AND INCLUDING your first divergence — after that its
+calls assume BBA's line rather than the auction that happened, so live comparison
+would invent disagreements that compound. The served path now does what solo's
+`onUserBid` always did: record the hit, RE-REQUEST with the actual auction as the
+prefix, continue. Hence `firstNewDivergence` returning one at a time.
+
+<details><summary>Original Phase 7 notes</summary>
 
 ### 7.1 False divergence (#52)
 
@@ -392,6 +408,7 @@ rendered as a divergence. Suspect a textual rather than semantic comparison (`1N
 ### 7.2 Divergence appears only at the end of the auction (#50)
 
 Companion to 7.1: the compare populates retrospectively instead of per-call.
+</details>
 
 ---
 
