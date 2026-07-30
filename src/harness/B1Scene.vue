@@ -55,6 +55,7 @@
         <BridgeTable
           arrangement="grid"
           :table-config="tableConfig"
+          :region-reserves="regionReserves"
           :phase="phase"
           :hero-seat="f.seat || 'S'"
           :hands="f.hands"
@@ -91,6 +92,12 @@
                 :size="A1_BOARD_SIZE"
               />
               <StatusStrip v-if="phase !== 'bidding'" :status="status" :show-vul="false" />
+              <DealControls
+                can-restart
+                can-next
+                :show-restart-cardplay="phase === 'review'"
+                can-restart-cardplay
+              />
             </div>
           </template>
 
@@ -101,21 +108,32 @@
             <AuctionTable v-bind="auctionProps" :show-turn-indicator="false" />
           </template>
 
-          <!-- SE: bidding box for the whole auction (dropped in play). -->
-          <template v-if="action === 'bidding-box'" #se>
-            <BiddingBox :last-bid="f.lastBid || null" :can-double="!!f.canDouble" :can-redouble="!!f.canRedouble" />
+          <!-- SE — the action corner: bidding box + Undo, Undo/Claim during play,
+               the double-dummy table at review (2026-07-29 relocation). -->
+          <template v-if="seSlot" #se>
+            <div class="b1-se-stack">
+              <BiddingBox
+                v-if="seSlot === 'bidding'"
+                :last-bid="f.lastBid || null"
+                :can-double="!!f.canDouble"
+                :can-redouble="!!f.canRedouble"
+              />
+              <DoubleDummyTable
+                v-else-if="seSlot === 'double-dummy'"
+                :ddtricks="f.ddtricks"
+                :final-contract="{ contract: f.contract, declarer: f.declarer }"
+                :diverged="!!f.divergence"
+              />
+              <ActionCluster
+                v-if="seSlot !== 'double-dummy'"
+                can-undo
+                :show-claim="seSlot === 'cardplay'"
+                can-claim
+                :bot-status="seSlot === 'cardplay' && f.lineNote ? '↝ ' + f.lineNote : null"
+              />
+            </div>
           </template>
         </BridgeTable>
-
-        <!-- Deal controls (VCR) — BELOW the table, outside the arranger. The live
-             view renders this same component; relocating it into #nw is a one-line
-             move in both files. -->
-        <DealControls
-          class="b1-deal-controls"
-          :can-undo="phase !== 'bidding' || (f.bids || []).length > 0"
-          can-restart
-          can-next
-        />
       </div>
 
       <!-- Right rail: cardplay controls in play, the contract/result block in
@@ -128,10 +146,7 @@
           <div v-if="f.botStats" class="b1-stats">
             Bot: {{ f.botStats.count }} calls · avg {{ fmtMs(f.botStats.mean) }} · max {{ fmtMs(f.botStats.max) }}
           </div>
-          <div class="b1-rail-actions">
-            <button class="b1-btn" type="button">Claim&hellip;</button>
-            <button class="b1-btn" type="button">Restart cardplay</button>
-          </div>
+          <!-- (Claim moved to the SE action cluster; Restart cardplay to NW.) -->
         </div>
 
         <!-- Review: contract + result + DD + the deal-level actions. -->
@@ -150,12 +165,7 @@
             Bot: {{ f.botStats.count }} calls · avg {{ fmtMs(f.botStats.mean) }} ·
             max {{ fmtMs(f.botStats.max) }} · total {{ fmtMs(f.botStats.total) }}
           </div>
-          <DoubleDummyTable
-            v-if="f.ddtricks"
-            :ddtricks="f.ddtricks"
-            :final-contract="{ contract: f.contract, declarer: f.declarer }"
-            :diverged="!!f.divergence"
-          />
+          <!-- (Double dummy moved to the SE grid corner at review.) -->
           <div class="b1-rail-actions">
             <button class="b1-btn b1-btn-primary" type="button">Next deal &rarr;</button>
             <button class="b1-btn" type="button">Replay this deal</button>
@@ -182,6 +192,10 @@ import BoardIndicator from '../components/BoardIndicator.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import DealControls from '../components/table/DealControls.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
+import ActionCluster from '../components/table/ActionCluster.vue'
+import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
+import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
+import { boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
@@ -217,6 +231,26 @@ const auctionProps = computed(() => ({
   meanings: f.value.meanings || [],
   divergedBids: f.value.divergedBids || [],
 }))
+
+// SE corner content + the reserves the shell owes the arranger — mirrors the live
+// view's `seSlot` / `localRegionReserves` so the gallery provisions the corner the
+// same way production does.
+const seSlot = computed(() => {
+  if (phase.value === 'bidding') return 'bidding'
+  if (phase.value === 'play') return 'cardplay'
+  return f.value.ddtricks ? 'double-dummy' : null
+})
+const regionReserves = computed(() => {
+  const nw = Math.max(
+    Math.round(boardIndicatorExtentPx(A1_BOARD_SIZE)),
+    dealControlsReservePx({ showRestartCardplay: phase.value === 'review' }),
+  )
+  let se = 0
+  if (seSlot.value === 'bidding') se = Math.max(biddingBoxReservePx(), actionClusterReservePx({ showUndo: true }))
+  else if (seSlot.value === 'cardplay') se = actionClusterReservePx({ showUndo: true, showClaim: true })
+  else if (seSlot.value === 'double-dummy') se = doubleDummyReservePx()
+  return se > 0 ? { nw, se } : { nw }
+})
 
 const tricks = computed(() => f.value.tricksTaken || { NS: 0, EW: 0 })
 const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
@@ -278,7 +312,7 @@ const heroInitials = computed(() => {
 }
 .b1-review-bad { color: #d32f2f; font-weight: 600; margin-left: 6px; }
 .b1-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-.b1-deal-controls { margin-top: 12px; }
+.b1-se-stack { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .b1-rail { flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px; }
 .b1-rail-card { background: #fff; border: 1px solid #e6e8e3; border-radius: 12px; padding: 12px 14px; }
 .b1-rail-card h3 { margin: 0 0 6px; font-size: 13px; }

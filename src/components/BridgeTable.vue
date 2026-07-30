@@ -15,6 +15,7 @@
     :inspectable="inspectable"
     :hide-played-cards="hidePlayedCards"
     :config="tableConfig"
+    :region-reserves="regionReserves"
     :phase="phase"
     :hero-seat="heroSeat"
     :hero-name="heroName"
@@ -227,6 +228,13 @@ const props = defineProps({
     default: 'legacy'
   },
   tableConfig: {
+    type: Object,
+    default: null
+  },
+  // Grid-only: per-region width-reserve overrides ({ nw: 240, se: 300 }) for corners
+  // holding a shell-composed CLUSTER whose membership varies by viewer. Pass-through
+  // to GridArrangement — see the prop's rationale there. Null = role-derived defaults.
+  regionReserves: {
     type: Object,
     default: null
   },
