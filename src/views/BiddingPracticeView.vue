@@ -492,7 +492,7 @@
                   :bids="bids"
                   :dealer="currentDeal.dealer"
                   :current-bid-index="bids.length"
-                  :wrong-bid-indices="wrongIndicesArray"
+                  :wrong-bid-indices="shownWrongIndices"
                   :show-turn-indicator="!auctionComplete"
                   :meanings="meanings"
                   :diverged-bids="shownDivergedBids"
@@ -506,7 +506,7 @@
                   :bids="bids"
                   :dealer="currentDeal.dealer"
                   :current-bid-index="bids.length"
-                  :wrong-bid-indices="wrongIndicesArray"
+                  :wrong-bid-indices="shownWrongIndices"
                   :meanings="meanings"
                   :diverged-bids="shownDivergedBids"
                   :show-turn-indicator="false"
@@ -608,7 +608,7 @@
                     by {{ finalContract.declarer }}
                   </span>
                 </div>
-                <div class="bp-contract-meta">{{ summary }}</div>
+                <div class="bp-contract-meta">{{ shownSummary }}</div>
 
                 <div v-if="cardplayPhase === 'complete' && cardplayResult" class="bp-cardplay-result">
                   You took <strong>{{ cardplayResult.took }}</strong> trick{{ cardplayResult.took === 1 ? '' : 's' }}
@@ -1021,7 +1021,20 @@ const {
 } = engine
 // Gate the BBA "expected auction" comparison on the user setting: when off, hand
 // AuctionTable an empty map so it skips the stacked user/BBA rows entirely.
+// EVERY BBA-comparison surface honours the one setting (2026-07-29 bug report:
+// the rail said "1 of your bids differed from the BBA — see the divergent cells
+// above" while the cells showed nothing, because only the stacked cells were gated).
+// There are three surfaces and they must agree:
+//   1. the stacked ●/○ cells   → shownDivergedBids
+//   2. the RED diverged cell   → shownWrongIndices (drives AuctionTable's wrong-bid)
+//   3. the rail sentence       → shownSummary
+// With the comparison off the user has opted out of BBA feedback entirely, so all
+// three go quiet rather than leaving a marker pointing at a hidden explanation.
 const shownDivergedBids = computed(() => showBbaCompare.value ? divergedBids.value : {})
+const shownWrongIndices = computed(() => showBbaCompare.value ? wrongIndicesArray.value : [])
+// `summary` is wholly a BBA statement — either "N of your bids differed…" or "You
+// matched the BBA all the way through" — so it's suppressed as a unit, not edited.
+const shownSummary = computed(() => showBbaCompare.value ? summary.value : '')
 const availableBots = listBots()
 // Display name for a cardplay-bot key. `random`/`ben`/`rules` are all wired in
 // the frontend now — `rules` (RulesBot) runs in-browser via the bridge-rulebot

@@ -40,6 +40,7 @@
         <DealSourceButton :attention="!f.hands" />
         <button class="b1-btn" type="button">Invite friends&hellip;</button>
         <button class="b1-btn" type="button">Description</button>
+        <span class="b1-actions-spacer"></span>
         <button class="b1-btn" type="button">&#9881; Table settings</button>
       </div>
     </div>
@@ -95,7 +96,7 @@
               <DealControls
                 can-restart
                 can-next
-                :show-restart-cardplay="phase === 'review'"
+                :show-restart-cardplay="cardplayCompleted"
                 can-restart-cardplay
               />
             </div>
@@ -241,6 +242,13 @@ const auctionProps = computed(() => ({
 // SE corner content + the reserves the shell owes the arranger — mirrors the live
 // view's `seSlot` / `localRegionReserves` so the gallery provisions the corner the
 // same way production does.
+// Production gates Restart-cardplay on `cardplayPhase === 'complete'`, not on the
+// phase being review: a BIDDING-ONLY deal reaches review having never played, and
+// must not offer to replay a cardplay that never happened. A fixture signals it by
+// carrying trick data.
+const cardplayCompleted = computed(
+  () => phase.value === 'review' && !!(f.value.tricksTaken?.NS || f.value.tricksTaken?.EW),
+)
 const seSlot = computed(() => {
   if (phase.value === 'bidding') return 'bidding'
   if (phase.value === 'play') return 'cardplay'
@@ -293,13 +301,21 @@ const heroInitials = computed(() => {
   background: #fdecea; border: 1px solid #f5c6c2; color: #8a2018; font-size: 13px;
 }
 .b1-error-hint { margin-top: 4px; font-size: 12px; color: #a4544c; }
+/* Mirrors production's .bp-scenario-bar exactly: a COLUMN with the action row on
+   top (`order: -1`) and the deal-source info full-width beneath — not the info-left /
+   buttons-right ROW this scene originally guessed. Production chose the column so the
+   info line gets full width instead of being squeezed beside a non-wrapping button
+   row; copying the markup without the CSS intent is what produced the mismatch in the
+   2026-07-29 bug report. */
 .b1-scenario-bar {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  margin: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e6e8e3; border-radius: 12px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  margin: 16px; padding: 10px 14px; background: #fff; border: 1px solid #e6e8e3; border-radius: 12px;
 }
+.b1-actions-spacer { flex: 1 1 auto; }
 .b1-scenario-name { font-weight: 600; font-size: 15px; }
 .b1-scenario-meta { font-size: 12px; color: #6a726c; margin-top: 2px; }
-.b1-scenario-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+.b1-scenario-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; order: -1; }
+.b1-scenario-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
 .b1-btn {
   font: 600 13px 'DM Sans', system-ui, sans-serif; padding: 7px 12px;
   border: 1px solid #cfd6ce; border-radius: 8px; background: #f7f9f6; color: #33403a; cursor: default; white-space: nowrap;
