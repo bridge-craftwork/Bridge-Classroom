@@ -22,6 +22,7 @@ import { useDealSourceResolver } from './useDealSourceResolver.js'
 import { useTableHandoff } from './useTableHandoff.js'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
+import { buildInviteUrl } from '../utils/inviteUrl.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 
@@ -74,7 +75,7 @@ export function useHostedTable({ onExit } = {}) {
       })
       const data = await res.json()
       if (data.code) {
-        shareUrl.value = `${window.location.origin}${window.location.pathname}#/table/${data.code}`
+        shareUrl.value = buildInviteUrl(`#/table/${data.code}`)
         return data.code
       }
     } catch {

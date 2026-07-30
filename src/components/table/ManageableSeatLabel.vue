@@ -90,6 +90,7 @@ import { useFriends } from '../../composables/useFriends.js'
 import { useFriendPresence } from '../../composables/useFriendPresence.js'
 import { useAppToast } from '../../composables/useAppToast.js'
 import { apiFetch, API_URL } from '../../utils/apiFetch.js'
+import { buildInviteUrl } from '../../utils/inviteUrl.js'
 
 // seat/name/presence/cardCount/compact come from SeatPanel; the rest ride in via
 // `labelProps` (shared table context + an onAssign callback — no event bubbling
@@ -245,7 +246,7 @@ async function reserveGuest() {
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok || !data.code) throw new Error('no invite code')
-    const url = `${window.location.origin}${window.location.pathname}#/table/${data.code}`
+    const url = buildInviteUrl(`#/table/${data.code}`)
     await navigator.clipboard.writeText(url)
     menuOpen.value = false
     appToast.notify('Invite link copied — send it to a guest.')
