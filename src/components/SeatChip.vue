@@ -13,12 +13,9 @@
       :you="you"
       align="start"
       :connected="presence === 'connected' ? true : presence === 'disconnected' ? false : null"
-    >
-      <span v-if="cardCount != null" class="seat-count">{{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}</span>
-    </SeatIndicator>
+    />
     <template v-else>
       <span class="seat-name">{{ label }}</span>
-      <span v-if="cardCount != null" class="seat-count">{{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}</span>
       <span
         v-if="presence"
         class="seat-dot"
@@ -26,6 +23,20 @@
         :title="presence === 'connected' ? 'connected' : 'disconnected'"
       ></span>
     </template>
+
+    <!-- Cards-left on its OWN ROW, never beside the name (2026-07-30 report).
+         It used to ride in SeatIndicator's adorn slot, which is `flex: 0 0 auto`
+         and is SUBTRACTED from the name's budget in measureAvail() — so "4 cards"
+         (~70px at 1.3×) came straight out of the name ladder and pushed
+         "BBA+RulesBot" down to "BB…". Real player names would fare worse.
+
+         A second row costs no width at all, and these chips have vertical room
+         going spare: the hidden-hand chips render ~85px tall in a band sized for
+         a full 266px hand. Rick's call, and the right trade — the identity is
+         what you read constantly, the count only occasionally. -->
+    <div v-if="cardCount != null" class="seat-count" :class="{ 'seat-count-named': name }">
+      {{ cardCount }} card{{ cardCount === 1 ? '' : 's' }}
+    </div>
   </div>
 </template>
 
@@ -78,7 +89,14 @@ const label = computed(() => props.name || getSeatName(props.seat))
   font-size: calc(12px * var(--table-scale));
   font-weight: 500;
   color: #666;
-  margin-left: calc(8px * var(--table-scale));
+  line-height: 1.2;
+  margin-top: calc(2px * var(--table-scale));
+}
+/* Line up under the NAME rather than under the badge, so the two rows read as
+   one block. The indent is the badge width + the indicator's column gap. */
+.seat-count-named {
+  text-align: left;
+  padding-left: calc(30px * var(--table-scale));
 }
 .seat-dot {
   display: inline-block;
