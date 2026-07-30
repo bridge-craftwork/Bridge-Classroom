@@ -15,8 +15,15 @@
     <transition name="beetle-fade">
       <div v-if="fieldKitOpen" class="beetle-kit" @pointerdown.stop>
         <div class="bk-title">Field kit</div>
-        <button class="bk-item" role="checkbox" :aria-checked="arrangement === 'grid'" @click="kitToggleArrangement">
-          <span class="bk-box" :class="{ on: arrangement === 'grid' }">{{ arrangement === 'grid' ? '✓' : '' }}</span> Beta Preview
+        <!-- Checked === BETA IS ON. This was bound to `arrangement === 'grid'`, which
+             was right when grid ITSELF was the preview — and silently inverted the
+             moment grid became the default (A1 flip). It then survived the addition of
+             the real 'beta' channel, so the kit showed a ticked "Beta Preview" while
+             the arranger was running the default, and a reporter filed three bundles
+             believing they were on the preview. A control that lies about state is
+             worse than no control. -->
+        <button class="bk-item" role="checkbox" :aria-checked="arrangement === 'beta'" @click="kitToggleArrangement">
+          <span class="bk-box" :class="{ on: arrangement === 'beta' }">{{ arrangement === 'beta' ? '✓' : '' }}</span> Beta Preview
         </button>
         <button class="bk-item" role="checkbox" :aria-checked="overlaysEnabled" @click="kitToggleOverlay">
           <span class="bk-box" :class="{ on: overlaysEnabled }">{{ overlaysEnabled ? '✓' : '' }}</span> Debug Overlay
@@ -121,12 +128,12 @@ function closeFieldKitOutside() { closeFieldKit() }
 function kitToggleOverlay() {
   toggleOverlays()
 }
-// Cycle the preview channel: grid (production) → beta (arranger preview) → legacy.
-// Beta is the A/B channel, so it sits next to the default rather than behind legacy.
+// A CHECKBOX has two states, so this toggles beta ↔ grid rather than cycling through
+// legacy. The three-way cycle it replaced could strand you on legacy — a third state
+// the control had no way to show — and made "untick and re-tick" land somewhere
+// different each time. Legacy stays reachable by URL (?arrangement=legacy).
 function kitToggleArrangement() {
-  const order = ['grid', 'beta', 'legacy']
-  const i = order.indexOf(arrangement.value)
-  setArrangement(order[(i + 1) % order.length])
+  setArrangement(arrangement.value === 'beta' ? 'grid' : 'beta')
 }
 async function kitCopySnapshot() {
   const enrich = captureReportContext()
