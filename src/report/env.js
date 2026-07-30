@@ -1,3 +1,4 @@
+import { ARRANGEMENT_STORAGE_KEY, DEFAULT_ARRANGEMENT, normalizeArrangement, readArrangementParam } from '../utils/arrangement.js'
 // Environment block for a bug report (spec §5). Every field is a triage axis.
 //
 // Slice 0 collects only what's readable generically from the browser + route —
@@ -149,12 +150,31 @@ export function estimateZoom(dpr) {
  * @param {Location} [deps.loc]
  * @param {Date} [deps.now]
  */
+// Resolve the arrangement the same way useArrangement does — query param wins, else
+// the persisted override, else the default — without importing the composable.
+function readArrangementChannel(loc) {
+  try {
+    const fromParam = readArrangementParam(loc)
+    if (fromParam) return fromParam
+    const stored = globalThis.localStorage?.getItem(ARRANGEMENT_STORAGE_KEY)
+    return normalizeArrangement(stored) || DEFAULT_ARRANGEMENT
+  } catch { return DEFAULT_ARRANGEMENT }
+}
+
 export function collectEnv({ win = globalThis, nav = globalThis.navigator, loc = globalThis.location, now = new Date() } = {}) {
   const hashPath = (loc?.hash || '').replace(/^#/, '') || '/'
   return {
     app: detectApp(hashPath),
     version: appVersion(),
     commit: appCommit(),
+    // The per-client PREVIEW CHANNEL, on every surface. Previously only A1 recorded it
+    // (captureA1Snapshot), so a table report came back with `arrangement: null` — and
+    // once the axis started changing ARRANGER behaviour (2026-07-30, ?arrangement=beta)
+    // that made A/B reports unreadable: a capture showing the default layout is
+    // indistinguishable from one where the preview simply wasn't on. Read from storage
+    // rather than the composable so this stays dependency-free and works pre-mount.
+    // A1's own richer {value, source} snapshot still overrides this via enrich.env.
+    arrangement: readArrangementChannel(loc),
     url: loc?.href || null,
     route: hashPath,
     viewport: {
