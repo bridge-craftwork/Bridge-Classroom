@@ -100,11 +100,15 @@
       </template>
 
       <template #table>
+          <!-- Phase: pass the engine phase THROUGH, review included (srv.phase reports
+               'complete' for review, so only that one name is mapped). It used to be
+               collapsed to a bidding/play ternary — see the solo branch for why that
+               reserved auction-growth height on a finished auction. -->
           <SeatControlTable
             arrangement="grid"
             :table-config="tableConfig"
             :region-reserves="srvRegionReserves"
-            :phase="(srvCenterSlot === 'trick-area' || srvCenterSlot === 'review') ? 'play' : 'bidding'"
+            :phase="srv.phase === 'complete' ? 'review' : srv.phase"
             :hero-seat="srv.yourSeat || 'S'"
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
@@ -432,11 +436,26 @@
                arranger. The embed is just this table in a narrower frame — the
                shell collapses the rail below the table at embed widths. -->
           <div class="bp-table-wrap">
+            <!-- Phase: pass the ENGINE phase through, review included. It used to be
+                 collapsed to a two-way bidding/play ternary, which meant a BIDDING-ONLY
+                 review (auction finished, hand never played → hasCardplay false →
+                 centerSlot null) fell through to 'bidding', so the stage reserved AUCTION
+                 GROWTH height for an auction that was already over (2026-07-29 beetle
+                 report). The arranger already handles 'review' properly — shrinkWrapRows
+                 collapses the rows to content, deliberately WITHOUT the bottom-pack
+                 margins and growth reserve that play gets — so passing it through is both
+                 the fix and what the harness scenes already did.
+
+                 Centre CONTENT is unchanged and stays decided by the slot, per Rick
+                 (2026-07-29): a bidding-only review KEEPS the auction centre-stage,
+                 because that is where it sat during the auction and there is no reason to
+                 move it; a played review moves it to NE, because the centre was holding
+                 the cardplay. -->
             <BridgeTable
               arrangement="grid"
               :table-config="tableConfig"
               :region-reserves="localRegionReserves"
-              :phase="(localCenterSlot === 'trick-area' || localCenterSlot === 'review') ? 'play' : 'bidding'"
+              :phase="enginePhase"
               :hero-seat="yourSeat"
               :hands="visibleHands"
               :hidden-seats="hiddenSeats"
