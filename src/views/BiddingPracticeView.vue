@@ -99,6 +99,7 @@
           <SeatControlTable
             arrangement="grid"
             :table-config="tableConfig"
+            :region-reserves="srvRegionReserves"
             :phase="(srvCenterSlot === 'trick-area' || srvCenterSlot === 'review') ? 'play' : 'bidding'"
             :hero-seat="srv.yourSeat || 'S'"
             :hands="srv.displayHands"
@@ -120,7 +121,11 @@
             @assign="srv.onAssignSeat"
             @kick="srv.onKick"
           >
-            <!-- NW: board status (a1-style BoardIndicator glyph + StatusStrip). -->
+            <!-- NW: board status + the deal transport, same components and same
+                 corner as the solo table (2026-07-29 relocation). The transport is
+                 OWNER-ONLY here — `srv.canDeal` is false for an invited player, so
+                 B3's corner renders the glyph alone and reserves nothing for
+                 buttons that seat never gets. -->
             <template #nw>
               <div class="tv-grid-nw">
                 <BoardIndicator
@@ -131,6 +136,13 @@
                   :size="A1_BOARD_SIZE"
                 />
                 <StatusStrip v-if="srvCenterSlot === 'trick-area' || srvCenterSlot === 'review'" :status="srvStatus" :show-vul="false" />
+                <DealControls
+                  v-if="srv.canDeal || srv.canHostAdvance"
+                  :show-restart="false"
+                  :show-next="srv.canDeal || srv.canHostAdvance"
+                  :can-next="srv.connectionStatus === 'connected' && !srv.dealSource.dealing"
+                  @next="srv.canHostAdvance ? srv.onHostNextDeal() : srv.onNextDeal()"
+                />
               </div>
             </template>
 
@@ -172,27 +184,41 @@
               />
             </template>
 
-            <!-- SE: bidding box for the whole auction (seated players) — stays
-                 visible but DISABLED off-turn, mirroring the solo table. -->
-            <template v-if="srv.yourSeat && srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode !== 'play-only'" #se>
-              <BiddingBox
-                :last-bid="srv.lastSuitBid"
-                :can-double="srv.canDouble"
-                :can-redouble="srv.canRedouble"
-                :disabled="srvActionSlot !== 'bidding-box'"
-                @bid="srv.onBid"
-              />
+            <!-- SE — the action corner, mirroring the solo table (2026-07-29):
+                 bidding box with Undo underneath, then the double-dummy table at
+                 review. Undo is host-gated (the served Undo rewinds shared state),
+                 so a guest sees the box alone. No Claim on a served table — claiming
+                 is a solo-cardplay affordance today. -->
+            <template v-if="srvSeSlot" #se>
+              <div class="tv-se-stack">
+                <BiddingBox
+                  v-if="srvSeSlot === 'bidding'"
+                  :last-bid="srv.lastSuitBid"
+                  :can-double="srv.canDouble"
+                  :can-redouble="srv.canRedouble"
+                  :disabled="srvActionSlot !== 'bidding-box'"
+                  @bid="srv.onBid"
+                />
+                <DoubleDummyTable
+                  v-else-if="srvSeSlot === 'double-dummy'"
+                  :ddtricks="srv.doubleDummy"
+                  :final-contract="srv.ddFinalContract"
+                />
+                <ActionCluster
+                  v-if="srvSeSlot !== 'double-dummy' && srv.canManageSeats"
+                  :can-undo="srv.seq !== 0 && srv.connectionStatus === 'connected' && (srv.hasHumanSeat || srv.botsPaused)"
+                  :bot-status="srv.botThinking ? 'Bot thinking… (up to ~20s)' : null"
+                  @undo="srv.onUndo"
+                />
+              </div>
             </template>
           </SeatControlTable>
       </template>
 
       <template #rail>
-          <!-- Auction + bidding box now live in the grid (centre/NE, and SE). The rail
-               keeps the host controls + the off-turn waiting cues. -->
-          <div v-if="srv.capabilities.doubleDummy" class="tv-card">
-            <h3>Double dummy</h3>
-            <DoubleDummyTable :ddtricks="srv.doubleDummy" :final-contract="srv.ddFinalContract" />
-          </div>
+          <!-- Auction + bidding box live in the grid (centre/NE, and SE); the
+               double-dummy table joined them in SE at review (2026-07-29), so the
+               rail keeps only the host controls + the off-turn waiting cues. -->
 
           <div v-if="srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode === 'play-only'" class="tv-card tv-waiting">
             Play-only board — the auction is bid automatically…
@@ -404,6 +430,7 @@
             <BridgeTable
               arrangement="grid"
               :table-config="tableConfig"
+              :region-reserves="localRegionReserves"
               :phase="(localCenterSlot === 'trick-area' || localCenterSlot === 'review') ? 'play' : 'bidding'"
               :hero-seat="yourSeat"
               :hands="visibleHands"
@@ -420,7 +447,9 @@
               @card-click="onCardClick"
               @card-inspect="onCardInspect"
             >
-              <!-- NW: board status (a1-style BoardIndicator glyph + StatusStrip). -->
+              <!-- NW: board status (BoardIndicator glyph + StatusStrip) and, under
+                   it, the deal transport — relocated here 2026-07-29 because the
+                   board number already lives in this corner. -->
               <template #nw>
                 <div class="tv-grid-nw">
                   <BoardIndicator
@@ -430,6 +459,16 @@
                     :size="A1_BOARD_SIZE"
                   />
                   <StatusStrip v-if="localCenterSlot === 'trick-area' || localCenterSlot === 'review'" :status="localStatus" :show-vul="false" />
+                  <DealControls
+                    :can-restart="!!currentDeal && !auctionLoading"
+                    :show-next="!EMBEDDED"
+                    :can-next="!!currentDeal && !auctionLoading && !drawing && hasSelection"
+                    :show-restart-cardplay="cardplayPhase === 'complete'"
+                    :can-restart-cardplay="!cardplay.botLoading.value"
+                    @restart="resetAuction"
+                    @next="newDeal"
+                    @restart-cardplay="restartCardplay"
+                  />
                 </div>
               </template>
               <!-- CENTER: live auction (bidding) / trick (play). -->
@@ -469,17 +508,69 @@
                   :allow-divergence-toggle="false"
                 />
               </template>
-              <!-- SE: bidding box for the whole auction — stays visible but
-                   DISABLED off-turn / while computing, so the layout doesn't
-                   collapse to a rail "waiting" message. -->
-              <template v-if="!auctionComplete" #se>
-                <BiddingBox
-                  :last-bid="lastNonPassNonDouble"
-                  :can-double="canDouble"
-                  :can-redouble="canRedouble"
-                  :disabled="localActionSlot !== 'bidding-box' || auctionLoading"
-                  @bid="onUserBid"
-                />
+              <!-- SE — the action corner, which GridArrangement rides on the hero's
+                   bottom. Three states (2026-07-29 relocation):
+                     bidding  → BiddingBox, with Undo underneath it
+                     cardplay → Undo + Claim side by side (the old rail panel's job)
+                     review   → the double-dummy table
+                   The claim FORM renders under the cluster while open — it's a
+                   transient sub-mode of the Claim button, so it belongs where the
+                   button is, not back in the rail. -->
+              <template v-if="seSlot" #se>
+                <div class="bp-se-stack">
+                  <BiddingBox
+                    v-if="seSlot === 'bidding'"
+                    :last-bid="lastNonPassNonDouble"
+                    :can-double="canDouble"
+                    :can-redouble="canRedouble"
+                    :disabled="localActionSlot !== 'bidding-box' || auctionLoading"
+                    @bid="onUserBid"
+                  />
+                  <DoubleDummyTable
+                    v-else-if="seSlot === 'double-dummy'"
+                    :ddtricks="doubleDummy"
+                    :final-contract="finalContract"
+                    :diverged="hadDivergence"
+                  />
+
+                  <ActionCluster
+                    v-if="seSlot !== 'double-dummy'"
+                    :can-undo="canUndo"
+                    :show-claim="seSlot === 'cardplay' && !claimFormOpen"
+                    :can-claim="!cardplay.botLoading.value && cardplay.remainingTricks.value !== 0"
+                    :bot-status="cardplay.botLoading.value ? botName + ' thinking…' : (cardplayLineNote ? '↝ ' + cardplayLineNote : null)"
+                    :bot-error="cardplay.botError.value || null"
+                    @undo="undo"
+                    @claim="openClaimForm"
+                  />
+
+                  <div v-if="claimFormOpen" class="bp-claim-form">
+                    <div class="bp-claim-prompt">Claim how many of the {{ cardplay.remainingTricks.value }} remaining?</div>
+                    <div class="bp-claim-buttons">
+                      <button
+                        v-for="n in claimOptions"
+                        :key="n"
+                        class="bp-claim-btn"
+                        :disabled="claimValidating"
+                        @click="confirmClaim(n)"
+                      >{{ n }}</button>
+                    </div>
+                    <div v-if="claimValidating" class="bp-claim-validating">
+                      {{ botName }} checking claim&hellip;
+                    </div>
+                    <div v-if="claimRejection" class="bp-claim-rejection">
+                      <div class="bp-claim-rejection-msg">
+                        <strong>{{ botName }} rejected the claim of {{ claimRejection.tricks }} trick{{ claimRejection.tricks === 1 ? '' : 's' }}.</strong>
+                        <span v-if="claimRejection.message">{{ claimRejection.message }}</span>
+                      </div>
+                      <div class="bp-claim-rejection-actions">
+                        <button class="bp-btn bp-claim-override" @click="overrideClaim">Override &amp; claim anyway</button>
+                        <button class="bp-btn" @click="claimRejection = null">Try a different count</button>
+                      </div>
+                    </div>
+                    <button v-if="!claimValidating" class="bp-btn bp-claim-cancel" @click="cancelClaim">Cancel</button>
+                  </div>
+                </div>
               </template>
 
             </BridgeTable>
@@ -491,53 +582,11 @@
                 Computing&hellip;
               </div>
 
-              <div v-if="cardplayPhase === 'playing'" class="bp-card bp-cardplay-card">
-                <h3>Cardplay</h3>
-                <div class="bp-cardplay-status">
-                  Tricks <strong>NS&nbsp;{{ cardplay.tricksTaken.value.NS }} · EW&nbsp;{{ cardplay.tricksTaken.value.EW }}</strong>
-                </div>
-                <div v-if="cardplay.botLoading.value" class="bp-cardplay-thinking">{{ botName }} thinking&hellip;</div>
-                <div v-if="cardplayLineNote" class="bp-cardplay-line-note">↝ {{ cardplayLineNote }}</div>
-                <div v-if="cardplay.botError.value" class="bp-cardplay-error">⚠ {{ cardplay.botError.value }}</div>
-                <div v-if="cardplay.botStats.value.count > 0" class="bp-cardplay-stats">
-                  {{ botName }}: {{ cardplay.botStats.value.count }} call{{ cardplay.botStats.value.count === 1 ? '' : 's' }} ·
-                  last {{ fmtMs(cardplay.botStats.value.last) }} ·
-                  avg {{ fmtMs(cardplay.botStats.value.mean) }} ·
-                  max {{ fmtMs(cardplay.botStats.value.max) }}
-                </div>
-                <!-- Claim flow: button opens an inline picker. v1 trusts the
-                     claim; future enhancement is DD validation via libdds. -->
-                <div v-if="!claimFormOpen" class="bp-cardplay-actions">
-                  <button class="bp-btn" @click="openClaimForm" :disabled="cardplay.botLoading.value || cardplay.remainingTricks.value === 0">Claim&hellip;</button>
-                  <button class="bp-btn" @click="restartCardplay" :disabled="cardplay.botLoading.value">Restart cardplay</button>
-                </div>
-                <div v-else class="bp-claim-form">
-                  <div class="bp-claim-prompt">Claim how many of the {{ cardplay.remainingTricks.value }} remaining?</div>
-                  <div class="bp-claim-buttons">
-                    <button
-                      v-for="n in claimOptions"
-                      :key="n"
-                      class="bp-claim-btn"
-                      :disabled="claimValidating"
-                      @click="confirmClaim(n)"
-                    >{{ n }}</button>
-                  </div>
-                  <div v-if="claimValidating" class="bp-claim-validating">
-                    {{ botName }} checking claim&hellip;
-                  </div>
-                  <div v-if="claimRejection" class="bp-claim-rejection">
-                    <div class="bp-claim-rejection-msg">
-                      <strong>{{ botName }} rejected the claim of {{ claimRejection.tricks }} trick{{ claimRejection.tricks === 1 ? '' : 's' }}.</strong>
-                      <span v-if="claimRejection.message">{{ claimRejection.message }}</span>
-                    </div>
-                    <div class="bp-claim-rejection-actions">
-                      <button class="bp-btn bp-claim-override" @click="overrideClaim">Override &amp; claim anyway</button>
-                      <button class="bp-btn" @click="claimRejection = null">Try a different count</button>
-                    </div>
-                  </div>
-                  <button v-if="!claimValidating" class="bp-btn bp-claim-cancel" @click="cancelClaim">Cancel</button>
-                </div>
-              </div>
+              <!-- (The Cardplay panel that lived here was REMOVED 2026-07-29 — its
+                   contents moved into the grid: tricks are already in the NW
+                   StatusStrip, Claim + the claim form + bot thinking/errors went to
+                   the SE action cluster, and Restart cardplay went to NW under
+                   Restart deal once the play is complete.) -->
 
               <div v-if="cardplayPhase === 'unsupported'" class="bp-card bp-cardplay-notice">
                 Cardplay is currently only supported when South is declarer.
@@ -573,37 +622,24 @@
                   total {{ fmtMs(cardplay.botStats.value.total) }}
                 </div>
 
-                <DoubleDummyTable
-                  v-if="capabilities.doubleDummy"
-                  :ddtricks="doubleDummy"
-                  :final-contract="finalContract"
-                  :diverged="hadDivergence"
-                />
+                <!-- (Double dummy moved to the SE grid corner at review, 2026-07-29.) -->
 
-                <div class="bp-contract-actions">
-                  <button v-if="EMBEDDED" class="bp-btn bp-btn-primary" @click="done">Done</button>
-                  <button v-else class="bp-btn bp-btn-primary" @click="newDeal">Next deal &rarr;</button>
-                  <button class="bp-btn" @click="resetAuction">Replay this deal</button>
+                <!-- "Next deal" and "Replay this deal" were REMOVED here 2026-07-29:
+                     NW now carries Next deal and Restart deal, and showing the same
+                     two actions twice on one screen is worse than showing them once.
+                     "Done" stays — it's the embedded widget's hand-back to Game
+                     Analysis, has no NW equivalent, and is the only action that
+                     surface needs. -->
+                <div v-if="EMBEDDED" class="bp-contract-actions">
+                  <button class="bp-btn bp-btn-primary" @click="done">Done</button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Deal controls (VCR-style) below the table: undo / restart / next.
-               Shared component (DealControls.vue) so the harness scenes render the
-               SAME markup — this row is the first relocation candidate (below the
-               table today → NW next), and the shared file is what keeps the move
-               to a one-liner. Still outside the arranger for now. -->
-          <DealControls
-            class="bp-deal-controls"
-            :can-undo="canUndo"
-            :can-restart="!!currentDeal && !auctionLoading"
-            :can-next="!!currentDeal && !auctionLoading && !drawing && hasSelection"
-            :show-next="!EMBEDDED"
-            @undo="undo"
-            @restart="resetAuction"
-            @next="newDeal"
-          />
+          <!-- (The deal transport that used to sit here moved INTO the grid at
+               2026-07-29: Restart/Next/Restart-cardplay → NW under the board glyph,
+               Undo → the SE action cluster under the bidding box.) -->
         </template>
           </template>
         </TableShell>
@@ -692,12 +728,15 @@ import TableShell from '../components/table/TableShell.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
 import DealControls from '../components/table/DealControls.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
+import ActionCluster from '../components/table/ActionCluster.vue'
+import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
+import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
-import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
+import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
 import DockablePanel from '../components/DockablePanel.vue'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
@@ -1346,6 +1385,35 @@ const { center: localCenterSlot, action: localActionSlot, status: localStatusSlo
   // chat is a popup — so the context slot lands with MainLayout/server, not here.
 })
 
+// What the SE (action) corner holds — bidding box, the cardplay action cluster, or
+// the double-dummy table at review (2026-07-29 relocation). Null collapses the
+// corner, which the arranger's occupancy model already handles.
+const seSlot = computed(() => {
+  if (!auctionComplete.value) return 'bidding'
+  if (cardplayPhase.value === 'playing') return 'cardplay'
+  if (capabilities.value?.doubleDummy && doubleDummy.value) return 'double-dummy'
+  return null
+})
+
+// Corner reserves. The arranger derives a region's width from its ROLE, which can't
+// know that NW now also holds the deal transport or that SE swaps a bidding box for
+// a DD table — nor that a viewer without the transport should reserve nothing for
+// it. So the shell, which placed the content, supplies the number.
+const localRegionReserves = computed(() => {
+  const nwTransport = dealControlsReservePx({
+    showRestart: true,
+    showNext: !EMBEDDED,
+    showRestartCardplay: cardplayPhase.value === 'complete',
+  })
+  // NW stacks the glyph above the transport, so the column is the WIDER of the two.
+  const nw = Math.max(Math.round(boardIndicatorExtentPx(A1_BOARD_SIZE)), nwTransport)
+  let se = 0
+  if (seSlot.value === 'bidding') se = Math.max(biddingBoxReservePx(), actionClusterReservePx({ showUndo: true }))
+  else if (seSlot.value === 'cardplay') se = actionClusterReservePx({ showUndo: true, showClaim: true })
+  else if (seSlot.value === 'double-dummy') se = doubleDummyReservePx()
+  return se > 0 ? { nw, se } : { nw }
+})
+
 // Phase-aware status (Phase 2, status region): one StatusStrip replaces the
 // scattered dealer/vul chips and adds contract-relative tricks during play.
 const { status: localStatus } = useTableStatus({
@@ -1370,6 +1438,34 @@ const srvSlots = props.server
 const srvCenterSlot = srvSlots ? srvSlots.center : null
 const srvActionSlot = srvSlots ? srvSlots.action : null
 const srvStatusSlot = srvSlots ? srvSlots.status : null
+
+// SE (action corner) content on the served table — same three-state model as the
+// solo path, so the two branches place the identical components in the identical
+// corner. Bidding needs a seat; DD at review needs the capability.
+const srvSeSlot = computed(() => {
+  if (!srv) return null
+  if (srv.yourSeat && srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode !== 'play-only') return 'bidding'
+  if (srvCenterSlot?.value === 'review' && srv.capabilities?.doubleDummy && srv.doubleDummy) return 'double-dummy'
+  return null
+})
+
+// Corner reserves, server path. The owner/guest asymmetry is the whole reason this
+// prop exists: `canDeal`/`canManageSeats` are false for an invited player, so B3
+// reserves nothing in NW for a transport it never renders.
+const srvRegionReserves = computed(() => {
+  if (!srv) return null
+  const nwTransport = dealControlsReservePx({
+    showRestart: false,
+    showNext: !!(srv.canDeal || srv.canHostAdvance),
+    showRestartCardplay: false,
+  })
+  const nw = Math.max(Math.round(boardIndicatorExtentPx(A1_BOARD_SIZE)), nwTransport)
+  const undo = srv.canManageSeats ? actionClusterReservePx({ showUndo: true }) : 0
+  let se = 0
+  if (srvSeSlot.value === 'bidding') se = Math.max(biddingBoxReservePx(), undo)
+  else if (srvSeSlot.value === 'double-dummy') se = doubleDummyReservePx()
+  return se > 0 ? { nw, se } : { nw }
+})
 
 // Phase-aware status for the server header (Phase 2 status region, server path).
 // srv is a reactive() unwrap, so wrap its fields as computeds for useTableStatus.
@@ -2105,6 +2201,9 @@ async function restartCardplay() {
 .tv-passbot-row { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
 /* NW grid region: BoardIndicator glyph + StatusStrip stacked (mirrors a1's #nw). */
 .tv-grid-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+/* SE action corner: the box (or DD table) with the action cluster stacked beneath.
+   Both branches use the same stack so the two tables place the cluster identically. */
+.tv-se-stack, .bp-se-stack { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .tv-center-wait { text-align: center; }
 .tv-center-title { font-weight: 700; color: #24435a; font-size: 14px; }
 .tv-center-sub { font-size: 11.5px; color: #8a97a3; margin-top: 3px; max-width: 180px; }

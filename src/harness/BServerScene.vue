@@ -70,6 +70,7 @@
         <SeatControlTable
           arrangement="grid"
           :table-config="tableConfig"
+          :region-reserves="regionReserves"
           :phase="phase"
           :hero-seat="f.seat || 'S'"
           :hands="f.hands"
@@ -96,6 +97,9 @@
                 :size="A1_BOARD_SIZE"
               />
               <StatusStrip v-if="phase !== 'bidding'" :status="status" :show-vul="false" />
+              <!-- Owner-only transport. B3 (guest) renders the glyph alone — and
+                   reserves nothing for buttons it never shows. -->
+              <DealControls v-if="canManage" :show-restart="false" can-next />
             </div>
           </template>
 
@@ -116,8 +120,24 @@
             <AuctionTable v-bind="auctionProps" :show-turn-indicator="false" />
           </template>
 
-          <template v-if="action === 'bidding-box'" #se>
-            <BiddingBox :last-bid="f.lastBid || null" :can-double="!!f.canDouble" :can-redouble="!!f.canRedouble" />
+          <!-- SE — action corner: box + host Undo, DD table at review. No Claim on
+               a served table (solo-cardplay affordance today). -->
+          <template v-if="seSlot" #se>
+            <div class="bsrv-se-stack">
+              <BiddingBox
+                v-if="seSlot === 'bidding'"
+                :last-bid="f.lastBid || null"
+                :can-double="!!f.canDouble"
+                :can-redouble="!!f.canRedouble"
+              />
+              <DoubleDummyTable
+                v-else-if="seSlot === 'double-dummy'"
+                :ddtricks="f.ddtricks"
+                :final-contract="{ contract: f.contract || '', declarer: f.declarer || null }"
+                :diverged="!!f.divergence"
+              />
+              <ActionCluster v-if="seSlot !== 'double-dummy' && canManage" can-undo />
+            </div>
           </template>
         </SeatControlTable>
       </div>
@@ -128,7 +148,7 @@
            them are host-only — the split that drives the context-dependent NW
            reserve. Card order matches the live server branch. -->
       <aside class="bsrv-rail">
-        <div v-if="f.ddtricks" class="bsrv-card">
+        <div v-if="f.ddtricks && phase !== 'review'" class="bsrv-card">
           <h3>Double dummy</h3>
           <DoubleDummyTable
             :ddtricks="f.ddtricks"
@@ -200,6 +220,11 @@ import StatusStrip from '../components/StatusStrip.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
+import DealControls from '../components/table/DealControls.vue'
+import ActionCluster from '../components/table/ActionCluster.vue'
+import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
+import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
+import { boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
@@ -243,6 +268,24 @@ const auctionProps = computed(() => ({
 const heroInitials = computed(() => {
   const name = (f.value.occupants?.[f.value.seat || 'S']?.name) || f.value.heroName || 'You'
   return name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+})
+
+// SE corner content + shell-owed reserves — mirrors the live server branch.
+const seSlot = computed(() => {
+  if (phase.value === 'bidding') return 'bidding'
+  if (phase.value === 'review' && f.value.ddtricks) return 'double-dummy'
+  return null
+})
+const regionReserves = computed(() => {
+  const nw = Math.max(
+    Math.round(boardIndicatorExtentPx(A1_BOARD_SIZE)),
+    canManage.value ? dealControlsReservePx({ showRestart: false }) : 0,
+  )
+  const undo = canManage.value ? actionClusterReservePx({ showUndo: true }) : 0
+  let se = 0
+  if (seSlot.value === 'bidding') se = Math.max(biddingBoxReservePx(), undo)
+  else if (seSlot.value === 'double-dummy') se = doubleDummyReservePx()
+  return se > 0 ? { nw, se } : { nw }
 })
 
 // ── Rail state (2026-07-29: the rail was entirely absent from this scene) ──
@@ -302,6 +345,7 @@ const seatName = (s) => SEAT_NAMES[s] || s
   flex: 1 1 auto; min-width: 0;
   background: #fff; border: 1px solid #e6e8e3; border-radius: 14px; padding: 8px;
 }
+.bsrv-se-stack { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .bsrv-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
 /* Shell header (row 2) — the TableShell's own header, inside the shell. */

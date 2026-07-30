@@ -104,6 +104,24 @@ const props = defineProps({
   inspectable: { type: Boolean, default: false },
   hidePlayedCards: { type: Boolean, default: false },
   config: { type: Object, required: true },
+  // Per-region width-reserve overrides in CSS px at 1.0×: { nw: 240, se: 300 }.
+  //
+  // Why this exists (2026-07-29). A region's reserve is normally derived from its
+  // ROLE — 'auction-ref' asks AuctionTable, 'action' asks BiddingBox, 'status' is the
+  // board glyph's extent. That works while a region holds exactly the thing its role
+  // names. It stops working the moment a corner holds a CLUSTER whose membership the
+  // arranger can't predict: NW gained the deal transport, SE gained Undo/Claim under
+  // the box and the double-dummy table at review, and — the case no single component
+  // metric can express — WHICH of those render depends on the viewer. A table owner
+  // sees the transport; an invited player (B3) does not, and the corner must not
+  // reserve width for controls that seat never gets.
+  //
+  // So the SHELL, which is the only party that knows what it's placing, may hand the
+  // arranger the number. Occupancy already works this way (a corner is occupied iff
+  // its role is configured AND the shell provided the slot); this closes the gap by
+  // letting the same decision carry its width. Unset regions fall through to the
+  // role-derived default, so every existing caller — A1 included — is byte-identical.
+  regionReserves: { type: Object, default: null },
   phase: { type: String, default: 'bidding' },
   heroSeat: { type: String, default: 'S' },
   heroName: { type: String, default: null },
@@ -502,6 +520,12 @@ const COL_OF = { nw: 0, w: 0, sw: 0, n: 1, center: 1, s: 1, ne: 2, e: 2, se: 2 }
 // exports metrics). Center is phase-driven: the auction during bidding, the
 // trick area during play.
 function regionReserve(area) {
+  // A shell-supplied override wins for the peripheral regions — it is the only
+  // party that knows which members of a corner CLUSTER it actually rendered (see
+  // the `regionReserves` prop). Center stays arranger-owned: it's the stage, its
+  // content is the phase, and no shell should be able to starve it.
+  const override = area !== 'center' ? props.regionReserves?.[area] : null
+  if (typeof override === 'number' && override > 0) return override
   // Center is phase-driven: auction during bidding AND review (review hosts the
   // completed auction + result, NE freed — densities ruling); trick area in play.
   if (area === 'center') return props.phase === 'play' ? TRICK_RESERVE : auctionReservePx()
