@@ -265,9 +265,44 @@ bridge-content complaints in the *app* repo. Hide the button unless the source i
 repository-backed (carries a collection id and a board identity). Needs 3.1's
 `dealSource.board`.
 
-### 5.3 Claim button (#42, #55 — filed twice)
+### 5.3 Claim button (#42, #55 — filed twice) — **DIAGNOSED, not yet built**
 
-Costing David repeatedly. Check whether it's missing on the served path only.
+Answered: it is missing on the served path **by construction**, not by accident.
+`BiddingPracticeView` says so in a comment at the SE corner — *"No Claim on a
+served table — claiming is a solo-cardplay affordance today"* — and the table
+service has **no claim concept at all** (`grep -i claim src/` in
+bridge-table-service returns only "reclaims seat" matches).
+
+So this is not a wiring fix. Claiming on a shared table is a table-service
+feature: a `claim` message, a validation policy (the solo table asks the cardplay
+bot to sanity-check, then offers "override & claim anyway"), a way for the other
+humans to accept or dispute it, and the trick-award bookkeeping. Estimate it as
+service work plus a client surface, not as an afternoon.
+
+That it was filed **twice** is the signal worth acting on: the affordance's
+absence reads as a bug every time, because the solo table has it. If the feature
+is not imminent, the cheap intermediate is to say so at the table rather than
+leave a silent gap.
+
+### 5.4 DD errors not visible (#56) — **DIAGNOSED, not yet built**
+
+`showDdErrors: true` in his settings, nothing rendered — because the overlay is
+gated on `cardplayPhase`, the **solo** cardplay module's phase, which never
+leaves its idle state on a served table (the server drives the play, not
+`useCardPlay`). The setting is real and persisted; the overlay simply has no
+served-path equivalent.
+
+The blocker underneath is data, not gating: double-dummy cardplay analysis needs
+the **full ordered play line**, and `useRemoteTable` does not keep one — it holds
+`currentTrick` and `lastFinishedTrick` only. So this needs either client-side
+accumulation of `card_played` events (plus the play history in the snapshot, for
+rejoin) or a server-side history. Then the existing `/dd/play` analysis and the
+in-place recolour can be reused as-is.
+
+Until then the setting would be misleading on a served table — checked, and doing
+nothing. The new served Table settings modal (§5.1) deliberately does **not**
+carry it: it exposes only what actually works there (deal rotation, PassBot, the
+BBA comparison). The solo modal keeps it, where it does work.
 
 ### 5.4 DD errors not visible (#56)
 

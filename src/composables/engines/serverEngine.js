@@ -41,10 +41,24 @@ export function useServerEngine() {
   // "Next deal" repeats the sticky source.
   const dealModalOpen = ref(false)
   const dealSource = useDealSource()
+  // Table settings live on the served header now, not the rail (roadmap
+  // 2026-07-30 §5.1) — the served table simply had no settings modal, which is
+  // why per-table controls ended up as rail cards in the first place.
+  const settingsOpen = ref(false)
+
+  // "Rotate deals randomly" — deal the same board to a random rotation of the
+  // seats. This behaviour already existed on the served path but was reachable
+  // ONLY by hand-setting localStorage: there was no control anywhere (#48 asked
+  // for one). Note the key differs from the solo table's `bp.rotateDeals`; they
+  // are deliberately separate preferences, one per surface.
+  const ROTATE_KEY = 'bridgeTableRotateDeals'
+  const rotateDeals = ref(localStorage.getItem(ROTATE_KEY) === '1')
+  watch(rotateDeals, (v) => {
+    try { localStorage.setItem(ROTATE_KEY, v ? '1' : '0') } catch { /* private mode */ }
+  })
 
   function onNextDeal() {
-    const rotate =
-      localStorage.getItem('bridgeTableRotateDeals') === '1' ? Math.floor(Math.random() * 4) : 0
+    const rotate = rotateDeals.value ? Math.floor(Math.random() * 4) : 0
     dealSource.nextDeal(rotate)
   }
 
@@ -458,7 +472,7 @@ export function useServerEngine() {
     capabilities, doubleDummy, ddFinalContract,
     expectedAuction, divergedBids, showBbaCompare, toggleBbaCompare,
     // derived / display
-    showDiagnostics, dealModalOpen, dealSource,
+    showDiagnostics, dealModalOpen, dealSource, settingsOpen, rotateDeals,
     showAllHands, canToggleHands, canDeal,
     displayHands, myTurnToBid, displayHiddenSeats,
     connectionLabel, tableTitle, contractHtml, declarerTricks, boardPlayed,
