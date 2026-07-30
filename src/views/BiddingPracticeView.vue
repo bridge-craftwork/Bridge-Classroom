@@ -205,6 +205,7 @@
                 />
                 <DoubleDummyTable
                   v-else-if="srvSeSlot === 'double-dummy'"
+                  compact
                   :ddtricks="srv.doubleDummy"
                   :final-contract="srv.ddFinalContract"
                 />
@@ -532,6 +533,7 @@
                   />
                   <DoubleDummyTable
                     v-else-if="seSlot === 'double-dummy'"
+                    compact
                     :ddtricks="doubleDummy"
                     :final-contract="finalContract"
                     :diverged="hadDivergence"

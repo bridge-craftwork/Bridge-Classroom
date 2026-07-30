@@ -19,13 +19,13 @@
     <div v-if="showUndo || showClaim" class="ac-buttons">
       <button
         v-if="showUndo"
-        class="ac-btn"
+        class="ac-btn ac-btn-text"
         type="button"
         :disabled="!canUndo"
         title="Undo — steps back to your last decision (bid or card)"
         aria-label="Undo — steps back to your last decision (bid or card)"
         @click="emit('undo')"
-      >⏪</button>
+      ><span class="ac-ico">⏪</span> Undo</button>
       <button
         v-if="showClaim"
         class="ac-btn ac-btn-text"
@@ -56,8 +56,11 @@ const emit = defineEmits(['undo', 'claim'])
    exact by construction rather than an estimate of label width. */
 .ac-cluster { display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .ac-buttons { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
-/* Undo is an ICON (same VCR family as the NW transport, same 32px unit); Claim keeps
-   its word — rare, consequential, no obvious glyph. Sizes mirror CLUSTER_UNIT. */
+/* Both keep their words here. SE is sized by the bidding box (~222px), so a text
+   Undo costs the corner nothing (Rick, 2026-07-29: "the undo button should retain its
+   text — there is lots of width available there"). Only the NW transport is
+   icon-only, because NW is the corner where width is genuinely scarce. Sizes mirror
+   CLUSTER_UNIT. */
 .ac-btn {
   display: inline-flex;
   align-items: center;
@@ -73,7 +76,8 @@ const emit = defineEmits(['undo', 'claim'])
   cursor: pointer;
   white-space: nowrap;
 }
-.ac-btn-text { width: auto; min-width: 78px; padding: 0 10px; font-size: 13px; }
+.ac-btn-text { width: auto; min-width: 78px; padding: 0 10px; font-size: 13px; gap: 6px; }
+.ac-ico { font-size: 12px; }
 .ac-btn:hover:not(:disabled) { border-color: #888; }
 .ac-btn:disabled { opacity: 0.45; cursor: default; }
 .ac-status { font-size: 11px; color: #6a726c; text-align: center; }

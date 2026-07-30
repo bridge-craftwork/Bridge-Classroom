@@ -70,7 +70,7 @@
           arrangement="grid"
           :table-config="tableConfig"
           :region-reserves="regionReserves"
-          :phase="phase"
+          :phase="arrangerPhase"
           :hero-seat="f.seat || 'S'"
           :hands="f.hands"
           :hidden-seats="f.hiddenSeats || []"
@@ -131,6 +131,7 @@
               />
               <DoubleDummyTable
                 v-else-if="seSlot === 'double-dummy'"
+                compact
                 :ddtricks="f.ddtricks"
                 :final-contract="{ contract: f.contract || '', declarer: f.declarer || null }"
                 :diverged="!!f.divergence"
@@ -235,6 +236,14 @@ const phase = computed(() => f.value.phase || 'bidding')
 const role = computed(() => (f.value.surface === 'b2' ? 'host' : 'player'))
 const canManage = computed(() => f.value.canManage ?? (role.value === 'host'))
 const inviteUrl = computed(() => f.value.inviteUrl || 'https://bridge-classroom.org/table/BRG-8F2K')
+
+// Pass the engine phase THROUGH, 'review' included. Tempting to map review→'play'
+// (production does), but the arranger already knows 'review': `shrinkWrapRows`
+// collapses its rows to content while deliberately NOT giving it the bottom-pack
+// corner margins and growth reserve that play gets. Mapping it to 'play' would take
+// those on for no reason — and measurably changes nothing about the row gaps, which
+// come from the top row being sized by the NE auction, not from row-sizing mode.
+const arrangerPhase = computed(() => phase.value)
 
 const { status } = useTableStatus({
   phase,

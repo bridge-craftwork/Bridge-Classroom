@@ -49,23 +49,25 @@ export function dealControlsMaxWidthPx() {
 }
 
 /**
- * SE action cluster width (px, 1.0×). Undo (icon) and Claim (text) sit side by side.
+ * SE action cluster width (px, 1.0×). Undo and Claim sit side by side, both labelled.
  */
 export function actionClusterReservePx({ showUndo = true, showClaim = false } = {}) {
+  // Both are TEXT buttons: SE is sized by the bidding box, so words are free here.
   const parts = []
-  if (showUndo) parts.push(CLUSTER_UNIT.iconBtnPx)
+  if (showUndo) parts.push(CLUSTER_UNIT.textBtnPx)
   if (showClaim) parts.push(CLUSTER_UNIT.textBtnPx)
   if (!parts.length) return 0
   return parts.reduce((a, b) => a + b, 0) + (parts.length - 1) * CLUSTER_UNIT.gapPx
 }
 
-// DoubleDummyTable's natural width (px, 1.0×). MEASURED, not derived: the first cut
-// computed 201 from guessed cell widths and the real table lays out at 205, so the
-// corner was under-provisioned and the arranger compressed it. Re-measured in the
-// harness (offsetWidth, untransformed) at 205 across b1-review and b2-review; the
-// +6 is a one-cell tolerance so a font tweak doesn't silently re-starve the corner.
-// If DoubleDummyTable ever exports its own metric, delete this and import that.
-export const DD_MEASURED_PX = 205
+// DoubleDummyTable's natural width (px, 1.0×) in its CORNER (compact) form.
+// MEASURED, not derived — the first cut computed 201 from guessed cell widths, the
+// real table laid out at 205, and the corner was under-provisioned. Then the compact
+// density (2026-07-29) squeezed the per-cell padding from 10px a side to 4px and the
+// type from 13px to 11px, taking the table from 205 → 120: the air was ~40% of it.
+// Re-measured in the harness with offsetWidth (untransformed); +6 is a one-cell
+// tolerance so a font tweak doesn't silently re-starve the corner.
+export const DD_COMPACT_MEASURED_PX = 120
 export function doubleDummyReservePx() {
-  return DD_MEASURED_PX + 6
+  return DD_COMPACT_MEASURED_PX + 6
 }

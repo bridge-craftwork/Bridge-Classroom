@@ -105,7 +105,7 @@
             arrangement="grid"
             :table-config="tableConfig"
             :region-reserves="regionReserves"
-            :phase="phase"
+            :phase="arrangerPhase"
             :hero-seat="f.seat || 'S'"
             :hands="f.hands"
             :hidden-seats="f.hiddenSeats || []"
@@ -152,6 +152,7 @@
                  double-dummy table at review. The emptiest the action corner gets. -->
             <template v-if="seSlot === 'double-dummy'" #se>
               <DoubleDummyTable
+                compact
                 :ddtricks="f.ddtricks"
                 :final-contract="{ contract: f.contract || '', declarer: f.declarer || null }"
               />
@@ -211,6 +212,14 @@ const tableName = (id) => tables.value.find((t) => t.table_id === id)?.name || i
 
 // Drill-in
 const phase = computed(() => f.value.phase || 'bidding')
+// Pass the engine phase THROUGH, 'review' included. Tempting to map review→'play'
+// (production does), but the arranger already knows 'review': `shrinkWrapRows`
+// collapses its rows to content while deliberately NOT giving it the bottom-pack
+// corner margins and growth reserve that play gets. Mapping it to 'play' would take
+// those on for no reason — and measurably changes nothing about the row gaps, which
+// come from the top row being sized by the NE auction, not from row-sizing mode.
+const arrangerPhase = computed(() => phase.value)
+
 const { status } = useTableStatus({
   phase,
   dealer: computed(() => f.value.dealer),

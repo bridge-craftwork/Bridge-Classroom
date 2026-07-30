@@ -45,17 +45,24 @@ describe('actionClusterReservePx (SE actions)', () => {
     expect(actionClusterReservePx({ showUndo: false, showClaim: false })).toBe(0)
   })
 
-  it('grows horizontally — Undo (icon) and Claim (text) sit side by side', () => {
+  it('grows horizontally — Undo and Claim sit side by side, both labelled', () => {
     const undo = actionClusterReservePx({ showUndo: true })
     const both = actionClusterReservePx({ showUndo: true, showClaim: true })
-    expect(undo).toBe(CLUSTER_UNIT.iconBtnPx)
-    expect(both).toBe(CLUSTER_UNIT.iconBtnPx + CLUSTER_UNIT.textBtnPx + CLUSTER_UNIT.gapPx)
+    expect(undo).toBe(CLUSTER_UNIT.textBtnPx)
+    expect(both).toBe(2 * CLUSTER_UNIT.textBtnPx + CLUSTER_UNIT.gapPx)
     expect(both).toBeGreaterThan(undo)
   })
 })
 
 describe('doubleDummyReservePx (SE at review)', () => {
-  it('is wider than the action cluster — the reason SE needs a per-phase reserve', () => {
-    expect(doubleDummyReservePx()).toBeGreaterThan(actionClusterReservePx({ showUndo: true, showClaim: true }))
+  // Was: "is wider than the action cluster". That stopped being true once the compact
+  // density squeezed the table from 205 → 120 — it is now NARROWER than Undo+Claim.
+  // Which is the point: the corner's width is set by whichever occupant is widest in
+  // that phase, so the reserve has to be per-phase either way, just not always by DD.
+  it('is small enough to sit beside a hand — the compact form, not the full table', () => {
+    expect(doubleDummyReservePx()).toBeLessThan(actionClusterReservePx({ showUndo: true, showClaim: true }))
+    // The pre-compaction table was 205 + tolerance; anything near that means the
+    // corner form regressed back to the full-padding table.
+    expect(doubleDummyReservePx()).toBeLessThan(160)
   })
 })
