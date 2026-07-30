@@ -725,7 +725,13 @@ const { status: gridStatus } = useTableStatus({
   tricks: computed(() => (isDeclarerPlay.value ? cardplay.tricksTaken.value : { NS: 0, EW: 0 })),
   // Only a declarer-play lesson is actually played to a result; a bidding or
   // defence walkthrough would otherwise derive one from its zeroed tricks.
-  played: isDeclarerPlay,
+  //
+  // Wrapped in a computed, NOT passed as the bare ref: `isDeclarerPlay` is
+  // declared ~400 lines BELOW this call, so naming it here evaluates it inside
+  // setup(), in its temporal dead zone, and MainLayout throws before it mounts.
+  // The sibling `tricks` reads the same binding safely only because a computed
+  // callback defers the read until after setup has finished.
+  played: computed(() => isDeclarerPlay.value),
 })
 
 // --- Coaching feedback fade (branch: coaching-feedback-fade) ----------------
