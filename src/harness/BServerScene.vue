@@ -201,12 +201,6 @@
 
         <RailCard v-if="phase === 'review'" title="Result">
           <div class="bsrv-line" v-html="f.resultBanner || (f.contract + ' by ' + seatName(f.declarer))"></div>
-          <div class="bsrv-line">
-            <button class="bsrv-btn" type="button">{{ f.iAmReady ? 'Ready ✓' : 'Ready for next board' }}</button>
-          </div>
-          <div v-if="readySeats.length" class="bsrv-line bsrv-ready">
-            Ready: {{ readySeats.map(seatName).join(', ') }}
-          </div>
         </RailCard>
       </aside>
     </div>
@@ -321,7 +315,6 @@ const tricks = computed(() => f.value.tricksTaken || { NS: 0, EW: 0 })
 const kibitzers = computed(() => f.value.kibitzers || [])
 const chatMessages = computed(() => f.value.chat || [])
 const passBotSeats = computed(() => f.value.passBotSeats || [])
-const readySeats = computed(() => f.value.readySeats || [])
 const yourTurn = computed(() => !!f.value.clickableSeat && f.value.clickableSeat === (f.value.seat || 'S'))
 const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
 const seatName = (s) => SEAT_NAMES[s] || s
@@ -410,7 +403,6 @@ const seatName = (s) => SEAT_NAMES[s] || s
 .bsrv-turn { color: #1f6a4f; font-weight: 600; }
 .bsrv-waiting { opacity: 0.85; }
 .bsrv-bot-note { color: #8a938d; }
-.bsrv-ready { color: #1f6a4f; }
 /* Stacked (portrait / narrow): companion goes UNDER the table, full width, and its
    cards flow in a row rather than a single tall column. These MUST come after the
    base .bsrv-table-wrap / .bsrv-rail rules — same specificity, so source order decides, and

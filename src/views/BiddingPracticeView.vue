@@ -78,15 +78,13 @@
           >
             Next deal
           </button>
-          <button
-            v-if="srv.canHostAdvance"
-            class="tv-btn tv-btn-primary"
-            :disabled="srv.connectionStatus !== 'connected'"
-            title="Move everyone to the next board now (host)"
-            @click="srv.onHostNextDeal"
-          >
-            Next deal →
-          </button>
+          <!-- The host's next-board affordance is the NW transport ⏭ alone
+               (roadmap 2026-07-30 §1.2, Rick's ruling). It routes to the same
+               onHostNextDeal and is already host-gated, so a second header
+               button only reproduced #45's "three different buttons". The
+               "Next deal" button above stays: it is the DEMO room's draw-from-
+               a-source action, paired with its own picker, not a session
+               advance. -->
       </template>
 
       <template #notes>
@@ -300,31 +298,21 @@
           <RailCard v-if="srv.dealLoaded && srv.phase === 'complete'" title="Result">
             <div class="tv-status-line tv-result-line">
               <span v-if="srv.resultBanner" v-html="srv.resultBanner"></span>
-              <template v-else-if="srv.contract">
+              <template v-else-if="srv.contract && srv.boardPlayed">
                 <span v-html="srv.contractHtml"></span> by {{ srv.declarer }} —
                 declarer took {{ srv.declarerTricks }} trick{{ srv.declarerTricks === 1 ? '' : 's' }}.
               </template>
+              <!-- Bid-only: complete, but nothing was played. Say so rather than
+                   reporting the zeroed trick counts as if it had been. -->
+              <template v-else-if="srv.contract">
+                <span v-html="srv.contractHtml"></span> by {{ srv.declarer }} —
+                bid-only board, no play.
+              </template>
               <template v-else>Passed out.</template>
             </div>
-            <div class="tv-status-line">
+            <div v-if="srv.boardPlayed" class="tv-status-line">
               Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
             </div>
-
-            <template v-if="srv.sessionId && srv.yourSeat">
-              <button
-                class="tv-btn tv-btn-primary tv-ready-btn"
-                :disabled="srv.iAmReady || srv.connectionStatus !== 'connected'"
-                @click="srv.onReady"
-              >
-                {{ srv.iAmReady ? 'Ready ✓' : 'Ready for next board' }}
-              </button>
-              <div v-if="srv.readySeats.length" class="tv-status-line tv-ready-line">
-                Ready: {{ srv.readyNames }}
-              </div>
-              <div v-if="srv.iAmReady" class="tv-status-line tv-ready-wait">
-                Waiting for the others — or for the teacher to open the next board.
-              </div>
-            </template>
           </RailCard>
       </template>
 
@@ -1505,6 +1493,9 @@ const { status: localStatus } = useTableStatus({
       : null
   }),
   tricks: computed(() => cardplay.tricksTaken.value || { NS: 0, EW: 0 }),
+  // Solo boards reach 'review' two ways: played out, or a bidding-only deck
+  // where cardplay never ran. Only the first has a made/down result.
+  played: computed(() => cardplay.isActive.value || cardplay.playComplete.value),
 })
 const srvSlots = props.server
   ? useTableSlots({
@@ -1554,6 +1545,8 @@ const srvStatus = srv
       vulnerable: computed(() => srv.vulnerable),
       contract: computed(() => srv.contract || null),
       tricks: computed(() => srv.tricksTaken || { NS: 0, EW: 0 }),
+      // The served path that produced "Down 9" — see ServerEngine.boardPlayed.
+      played: computed(() => srv.boardPlayed),
     }).status
   : null
 const botName = computed(() => {
@@ -2288,9 +2281,6 @@ async function restartCardplay() {
 .tv-your-turn { color: #1d9e75; font-weight: 600; }
 .tv-bot-note { color: #999; font-size: 12px; }
 .tv-result-line { font-weight: 600; }
-.tv-ready-btn { margin-top: 8px; width: 100%; }
-.tv-ready-line { color: #1d9e75; }
-.tv-ready-wait { color: #888; font-style: italic; }
 .tv-toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: #333; color: #fff; padding: 10px 18px; border-radius: 8px;

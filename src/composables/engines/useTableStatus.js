@@ -33,12 +33,27 @@ export function sideOf(seat) {
  * @param {string} vulnerable            'None' | 'NS' | 'EW' | 'All' | 'Both'
  * @param {{text, declarer}|null} contract
  * @param {{NS, EW}|{ns, ew}} tricks
+ * @param {boolean} played               were cards actually played on this board?
  * @returns status: { phase, dealer, vul, contract, declarer, declaringSide,
  *   tricks: { ns, ew, target }, result } — result is null until the target is
- *   known (play/review with a contract): { need, made, delta } where delta is
+ *   known AND the hand was played: { need, made, delta } where delta is
  *   over/undertricks (+1, -2, 0 = exactly made).
+ *
+ * `played` DEFAULTS TO FALSE, deliberately. A contract plus a declaring side is
+ * not enough to compute made/down — on a bid-only board nothing was played, so
+ * `won = 0` and a 3NT contract derives `0 - 9 = -9` → "Down 9". The arithmetic
+ * was always right; the premise was missing (roadmap 2026-07-30 §2.1, the
+ * cycle's most-reproduced defect — three separate captures). A caller that
+ * can't say whether the hand was played gets `result: null`, which is the same
+ * null returned before a contract is known, so every consumer's "no result yet"
+ * path already handles it.
+ *
+ * StatusStrip's `showResult` prop remains, but it is now a PRESENTATION choice
+ * ("don't show the result here"), not the thing standing between a bid-only
+ * board and a fabricated result — it defaulted to true, so every consumer that
+ * forgot it rendered nonsense.
  */
-export function deriveStatus({ phase, dealer, vulnerable, contract, tricks }) {
+export function deriveStatus({ phase, dealer, vulnerable, contract, tricks, played = false }) {
   const parsed = contract ? parseContract(contract.text) : null
   const declarer = contract?.declarer || null
   const declaringSide = sideOf(declarer)
@@ -48,7 +63,7 @@ export function deriveStatus({ phase, dealer, vulnerable, contract, tricks }) {
   const ew = tricks?.EW ?? tricks?.ew ?? 0
 
   let result = null
-  if (target != null && declaringSide) {
+  if (played && target != null && declaringSide) {
     const won = declaringSide === 'NS' ? ns : ew
     result = { need: target, made: won >= target, delta: won - target }
   }
@@ -67,7 +82,7 @@ export function deriveStatus({ phase, dealer, vulnerable, contract, tricks }) {
 
 /**
  * Reactive wrapper. `src` is refs/computeds { phase, dealer, vulnerable,
- * contract, tricks }. Returns a single `status` computed.
+ * contract, tricks, played }. Returns a single `status` computed.
  */
 export function useTableStatus(src) {
   return {
@@ -78,6 +93,7 @@ export function useTableStatus(src) {
         vulnerable: src.vulnerable?.value,
         contract: src.contract?.value,
         tricks: src.tricks?.value,
+        played: !!src.played?.value,
       }),
     ),
   }

@@ -65,6 +65,11 @@ const props = defineProps({
   density: { type: String, default: 'full' },
   // Hidden seat: no holding shown; the chip carries a card count instead.
   hidden: { type: Boolean, default: false },
+  // Canonical engine phase ('bidding' | 'play' | 'review'), when the host knows
+  // it. The card count is phase-dependent (see chipCardCount); null = not told,
+  // which keeps the count — the pre-grid BridgeTable compass doesn't thread a
+  // phase, and silently blanking its counts would be the worse failure.
+  phase: { type: String, default: null },
   // Optional replacement for the SeatChip label (a drag/drop variant injects an
   // interactive label). null → the plain SeatChip. `labelProps` are extra props
   // merged in (context + callbacks); the base never inspects them.
@@ -85,6 +90,14 @@ const showHolding = computed(() => !props.hidden && props.density !== 'chip' && 
 // The chip carries a card count whenever the holding isn't shown but a hand exists.
 const chipCardCount = computed(() => {
   if (!props.hand || (!props.hidden && props.density !== 'chip')) return null
+  // During the auction nobody has played a card, so every unseen hand reads
+  // "13 cards" — true, constant, and telling the reader nothing (roadmap
+  // 2026-07-30 §2.2). The count earns its place once cards start leaving hands.
+  //
+  // Suppress on the PHASE, never on `n === 13`: at trick one a defender legitimately
+  // still holds 13, and that reading is informative precisely because its
+  // neighbours are already down to 12.
+  if (props.phase === 'bidding') return null
   const n = ['spades', 'hearts', 'diamonds', 'clubs'].reduce((t, s) => t + (props.hand[s]?.length || 0), 0)
   // An undealt-for-display seat (empty {} hand) reads 0 — suppress it rather than
   // render "0 cards" (grid-arranger fix 3). A real hidden hand still counts.

@@ -57,7 +57,6 @@
               <td>
                 <span :class="seatClass(d)">{{ seatStatus(d) }}</span>
               </td>
-              <td class="diag-seat-extra">{{ readySeats.includes(d) ? 'ready' : '' }}</td>
             </tr>
           </tbody>
         </table>
@@ -118,7 +117,6 @@ const {
   currentTrick,
   tricksTaken,
   seats,
-  readySeats,
   boardsOpen,
   handCounts,
   legalCards,
@@ -206,7 +204,6 @@ async function copyState() {
     tricks: tricksTaken.value,
     currentTrick: { leader: currentTrick.leader, plays: currentTrick.plays },
     seats: seats.value,
-    readySeats: readySeats.value,
     boardsOpen: boardsOpen.value,
     handCounts: handCounts.value,
     legalCards: legalCards.value,
@@ -327,9 +324,6 @@ async function copyState() {
 }
 .diag-seat-bot {
   color: #8fa1b3;
-}
-.diag-seat-extra {
-  color: #e8c268;
 }
 .diag-log {
   margin-top: 10px;

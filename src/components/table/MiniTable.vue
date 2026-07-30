@@ -11,13 +11,13 @@
           <span v-html="suitHtml(t.contract.text)"></span> by {{ t.contract.declarer }}
         </span>
         <span v-else class="mt-chip" :class="'mt-phase-' + t.phase">{{ t.phase }}</span>
-        <span v-if="t.phase !== 'bidding'" class="mt-chip">NS {{ t.tricks.ns }} · EW {{ t.tricks.ew }}</span>
+        <span v-if="t.phase !== 'bidding' && !t.result?.bid_only" class="mt-chip">NS {{ t.tricks.ns }} · EW {{ t.tricks.ew }}</span>
       </template>
       <span v-else class="mt-chip mt-chip-nodeal">no deal</span>
       <span class="mt-head-spacer"></span>
       <button
         class="mt-icon"
-        title="Move this table to its next board now, skipping the ready check"
+        title="Move this table to its next board now"
         @click="$emit('advance')"
       >⏭</button>
     </div>
@@ -28,7 +28,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('N') }">
           <span class="mt-seat">N{{ isOnTurn('N') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('N')" @click="$emit('seat-click', 'N')">
-            {{ playerName('N') }}<span v-if="isHuman('N')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.N.connected }"></span><span v-if="t.ready.includes('N')" class="mt-ready">✓</span>
+            {{ playerName('N') }}<span v-if="isHuman('N')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.N.connected }"></span>
           </button>
         </div>
         <div class="mt-cards" v-html="handHtml('N')"></div>
@@ -38,7 +38,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('W') }">
           <span class="mt-seat">W{{ isOnTurn('W') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('W')" @click="$emit('seat-click', 'W')">
-            {{ playerName('W') }}<span v-if="isHuman('W')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.W.connected }"></span><span v-if="t.ready.includes('W')" class="mt-ready">✓</span>
+            {{ playerName('W') }}<span v-if="isHuman('W')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.W.connected }"></span>
           </button>
         </div>
         <div class="mt-cards mt-cards-side" v-html="handHtmlSide('W')"></div>
@@ -53,8 +53,9 @@
         </template>
         <div v-else-if="t.phase === 'play'" class="mt-center-note">{{ t.next_to_act }} to lead</div>
         <div v-else-if="t.phase === 'complete'" class="mt-center-note mt-center-result">
-          <template v-if="t.result && t.result.contract">
-            {{ t.result.contract.made ? 'Made' : 'Down' }}<br />
+          <template v-if="t.result?.bid_only">bid only<br />no play</template>
+          <template v-else-if="t.result && t.result.contract">
+            {{ resultWord }}<br />
             {{ t.result.contract.declarer_tricks }} tricks
           </template>
           <template v-else>Passed<br />out</template>
@@ -66,7 +67,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('E') }">
           <span class="mt-seat">E{{ isOnTurn('E') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('E')" @click="$emit('seat-click', 'E')">
-            {{ playerName('E') }}<span v-if="isHuman('E')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.E.connected }"></span><span v-if="t.ready.includes('E')" class="mt-ready">✓</span>
+            {{ playerName('E') }}<span v-if="isHuman('E')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.E.connected }"></span>
           </button>
         </div>
         <div class="mt-cards mt-cards-side" v-html="handHtmlSide('E')"></div>
@@ -76,7 +77,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('S') }">
           <span class="mt-seat">S{{ isOnTurn('S') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('S')" @click="$emit('seat-click', 'S')">
-            {{ playerName('S') }}<span v-if="isHuman('S')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.S.connected }"></span><span v-if="t.ready.includes('S')" class="mt-ready">✓</span>
+            {{ playerName('S') }}<span v-if="isHuman('S')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.S.connected }"></span>
           </button>
         </div>
         <div class="mt-cards" v-html="handHtml('S')"></div>
@@ -122,6 +123,15 @@ const props = defineProps({
   loaded: { type: Boolean, default: true },
 })
 defineEmits(['kibitz', 'advance', 'seat-click'])
+
+// `result.contract.made` is a RELATIVE figure from the service (0 = made
+// exactly, +N overtricks, -N down), so the obvious `made ? 'Made' : 'Down'`
+// read a contract made exactly — the commonest result there is — as "Down".
+const resultWord = computed(() => {
+  const made = props.t.result?.contract?.made
+  if (typeof made !== 'number') return ''
+  return made < 0 ? `Down ${-made}` : made === 0 ? 'Made' : `Made +${made}`
+})
 
 function isHuman(seat) {
   return props.t.seats?.[seat]?.kind === 'human'
@@ -291,7 +301,6 @@ const lastCallCol = computed(() => {
   background: #2fa572; margin-left: 3px; vertical-align: middle;
 }
 .mt-dot-off { background: #d33; }
-.mt-ready { color: #2fa572; font-weight: 700; margin-left: 2px; }
 .mt-cards {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px; letter-spacing: 0.02em; white-space: nowrap;

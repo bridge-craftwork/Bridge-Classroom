@@ -56,7 +56,6 @@ export default {
       S: { kind: 'human', name: 'Rick', connected: true },
       W: { kind: 'empty' },
     },
-    readySeats: [],
     boardsOpen: null,
     boardComplete: null,
     sessionClosed: false,

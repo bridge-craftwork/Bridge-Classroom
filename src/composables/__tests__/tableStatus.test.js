@@ -45,6 +45,7 @@ describe('deriveStatus', () => {
       vulnerable: 'NS',
       contract: { text: '4H', declarer: 'S' },
       tricks: { NS: 7, EW: 3 },
+      played: true,
     })
     expect(s.declaringSide).toBe('NS')
     expect(s.tricks.target).toBe(10)
@@ -58,6 +59,7 @@ describe('deriveStatus', () => {
       phase: 'review',
       contract: { text: '4H', declarer: 'S' },
       tricks: { NS: 11, EW: 2 },
+      played: true,
     })
     expect(s.result).toEqual({ need: 10, made: true, delta: 1 })
   })
@@ -67,9 +69,46 @@ describe('deriveStatus', () => {
       phase: 'review',
       contract: { text: '3NT', declarer: 'E' },
       tricks: { NS: 6, EW: 7 }, // EW declares, needs 9, has 7
+      played: true,
     })
     expect(s.declaringSide).toBe('EW')
     expect(s.result).toEqual({ need: 9, made: false, delta: -2 })
+  })
+
+  // Roadmap 2026-07-30 §2.1 — the cycle's most-reproduced defect (three
+  // separate captures). A bid-only board reaches review with a contract and a
+  // declaring side but ZERO tricks played; deriving made/down from that gives
+  // "Down 9" on a 3NT. The premise, not the arithmetic, was missing.
+  it('bid-only board: a contract without play yields no result', () => {
+    const bidOnly = {
+      phase: 'review',
+      dealer: 'N',
+      vulnerable: 'None',
+      contract: { text: '3NT', declarer: 'S' },
+      tricks: { NS: 0, EW: 0 },
+    }
+    // The board was never played: no result, however complete it looks.
+    expect(deriveStatus({ ...bidOnly, played: false }).result).toBeNull()
+    // Everything else still derives — only the result is withheld.
+    const s = deriveStatus({ ...bidOnly, played: false })
+    expect(s.contract).toBe('3NT')
+    expect(s.declaringSide).toBe('NS')
+    expect(s.tricks.target).toBe(9)
+    // Same state, actually played out = passed out at trick 0 is impossible,
+    // but the arithmetic that produced "Down 9" is still there when it's true.
+    expect(deriveStatus({ ...bidOnly, played: true }).result)
+      .toEqual({ need: 9, made: false, delta: -9 })
+  })
+
+  // `played` defaults to false so a caller that cannot vouch for the premise
+  // gets the already-handled "no result yet" null rather than a fabricated one.
+  it('omitting `played` withholds the result rather than inventing one', () => {
+    const s = deriveStatus({
+      phase: 'review',
+      contract: { text: '4S', declarer: 'N' },
+      tricks: { NS: 10, EW: 3 },
+    })
+    expect(s.result).toBeNull()
   })
 
   it('doubling does not change the target', () => {
