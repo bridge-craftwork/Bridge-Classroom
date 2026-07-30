@@ -70,6 +70,19 @@
             @open="srv.dealModalOpen = true"
           />
           <button
+            class="tv-btn"
+            title="Table setup + display options"
+            @click="srv.settingsOpen = true"
+          >&#9881; Table settings</button>
+          <!-- Content defects only, and only when we can name the owning repo —
+               see reportableDeal. -->
+          <button
+            v-if="reportableDeal"
+            class="tv-btn"
+            title="Report a problem with this deal to the people who wrote it"
+            @click="openReportProblem"
+          >Report a Problem</button>
+          <button
             v-if="srv.canDeal"
             class="tv-btn tv-btn-primary"
             :disabled="srv.connectionStatus !== 'connected' || srv.dealSource.dealing"
@@ -254,20 +267,6 @@
             <KibitzBox :kibitzers="srv.kibitzers" :can-manage="srv.canManageSeats" @assign="srv.onAssignSeat" />
           </RailCard>
 
-          <!-- PassBot: make a side's bots always pass (BBO-style bidding
-               practice). Cardplay still uses the room's cardplay bot. -->
-          <RailCard v-if="srv.canManageSeats" title="PassBot" class="tv-passbot">
-            <div class="tv-passbot-hint">Bots on a “pass” side never bid (cardplay unaffected).</div>
-            <label class="tv-passbot-row">
-              <input type="checkbox" :checked="srv.passSides.includes('NS')" @change="srv.togglePassSide('NS')">
-              N/S always pass
-            </label>
-            <label class="tv-passbot-row">
-              <input type="checkbox" :checked="srv.passSides.includes('EW')" @change="srv.togglePassSide('EW')">
-              E/W always pass
-            </label>
-          </RailCard>
-
           <RailCard v-if="srv.dealLoaded && srv.phase === 'play'" title="Play">
             <div class="tv-status-line">
               Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
@@ -281,18 +280,6 @@
               Waiting for {{ srv.turnLabel }}…
               <span v-if="srv.botThinking" class="tv-bot-note">(bots can take up to ~20s)</span>
             </div>
-          </RailCard>
-
-          <!-- BBA auction comparison toggle (your-seat you-vs-BBA overlay). A
-               per-viewer table setting; the overlay is scoped to your own seat,
-               so it's shown once you're seated and the auction has settled. -->
-          <RailCard
-            v-if="srv.capabilities.divergence && srv.yourSeat && srv.dealLoaded && (srvCenterSlot === 'trick-area' || srvCenterSlot === 'review')"
-          >
-            <label class="tv-passbot-row" title="Compare your bids to the BBA expected auction in the auction grid.">
-              <input type="checkbox" :checked="srv.showBbaCompare" @change="srv.toggleBbaCompare()">
-              Show BBA auction comparison
-            </label>
           </RailCard>
 
           <RailCard v-if="srv.dealLoaded && srv.phase === 'complete'" title="Result">
@@ -326,6 +313,61 @@
         </transition>
 
         <TableDiagnostics v-if="srv.showDiagnostics" />
+
+        <ReportProblemModal
+          :visible="showReportProblem"
+          :context="reportProblemContext"
+          :anchor="reportProblemAnchor"
+          @close="showReportProblem = false"
+        />
+
+        <!-- Table settings (roadmap §5.1, David's #53/#54/#48). The served table
+             had NO settings modal, which is why per-table controls had grown as
+             rail cards — the rail is for what's happening, not for what you've
+             chosen. PassBot and the BBA comparison move here; "Rotate deals
+             randomly" appears for the first time (the behaviour existed on this
+             path but was reachable only by hand-editing localStorage). -->
+        <div v-if="srv.settingsOpen" class="modal-overlay" @click.self="srv.settingsOpen = false">
+          <div class="bp-settings-modal">
+            <div class="bp-settings-head">
+              <h3>Table settings</h3>
+              <button class="bp-settings-x" @click="srv.settingsOpen = false" title="Close">&times;</button>
+            </div>
+
+            <template v-if="srv.canDeal">
+              <label class="bp-setting-row" title="Deal each board to a random rotation of the seats.">
+                <input type="checkbox" v-model="srv.rotateDeals"> Rotate deals randomly
+              </label>
+            </template>
+
+            <!-- Host-only: PassBot changes the TABLE for everyone. -->
+            <template v-if="srv.canManageSeats">
+              <div class="bp-setting-sep">PassBot</div>
+              <div class="tv-passbot-hint">Bots on a “pass” side never bid (cardplay unaffected).</div>
+              <label class="bp-setting-row">
+                <input type="checkbox" :checked="srv.passSides.includes('NS')" @change="srv.togglePassSide('NS')">
+                N/S always pass
+              </label>
+              <label class="bp-setting-row">
+                <input type="checkbox" :checked="srv.passSides.includes('EW')" @change="srv.togglePassSide('EW')">
+                E/W always pass
+              </label>
+            </template>
+
+            <!-- Per-VIEWER: the comparison is scoped to your own seat, so it is
+                 yours to set even at someone else's table. -->
+            <template v-if="srv.capabilities.divergence">
+              <div class="bp-setting-sep">Auction</div>
+              <label class="bp-setting-row" title="Compare your bids to the BBA expected auction in the auction grid.">
+                <input type="checkbox" :checked="srv.showBbaCompare" @change="srv.toggleBbaCompare()">
+                Show BBA auction comparison
+              </label>
+              <div v-if="!srv.yourSeat" class="tv-passbot-hint">
+                Takes effect once you're seated — the comparison is against your own calls.
+              </div>
+            </template>
+          </div>
+        </div>
       </template>
     </TableShell>
   </template>
@@ -380,6 +422,12 @@
             <button v-if="!EMBEDDED && capabilities.narrative" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
             <span class="bp-actions-spacer"></span>
             <button v-if="!EMBEDDED" class="bp-btn bp-settings-btn" @click="showTableSettings = true" title="Table setup + cardplay options">&#9881; Table settings</button>
+            <button
+              v-if="!EMBEDDED && reportableDeal"
+              class="bp-btn"
+              title="Report a problem with this deal to the people who wrote it"
+              @click="openReportProblem"
+            >Report a Problem</button>
           </template>
         </ScenarioBar>
           </template>
@@ -690,6 +738,13 @@
       @become-teacher="leaveToMainApp"
     />
 
+    <ReportProblemModal
+      :visible="showReportProblem"
+      :context="reportProblemContext"
+      :anchor="reportProblemAnchor"
+      @close="showReportProblem = false"
+    />
+
     <!-- Table settings: deal setup + cardplay display options, grouped. -->
     <div v-if="showTableSettings" class="modal-overlay" @click.self="showTableSettings = false">
       <div class="bp-settings-modal">
@@ -739,6 +794,8 @@ import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
 import StatusStrip from '../components/StatusStrip.vue'
+import ReportProblemModal from '../components/ReportProblemModal.vue'
+import { deriveReportableDeal } from '../utils/reportableDeal.js'
 import BoardIndicator from '../components/BoardIndicator.vue'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
@@ -1119,6 +1176,66 @@ function tableReportContext() {
 }
 onMounted(() => setReportContextProvider(tableReportContext))
 onBeforeUnmount(() => clearReportContextProvider(tableReportContext))
+
+// ── Report a Problem, table surfaces (roadmap §5.2, David's #47) ─────────────
+//
+// TWO DELIBERATELY SEPARATE PATHS, worth stating as an invariant:
+//   beetle          → APP defects      → the app repo
+//   Report a Problem → BRIDGE/CONTENT defects → the content repo that owns the deal
+//
+// The backend needs nothing: POST /api/report already takes `collection` and
+// route_for_collection maps it to the owning repo AND that maintainer's PAT.
+// This is purely about mounting the existing modal on a second surface.
+//
+// ⚠️ THE GATE HAS A SHARP EDGE. With `collection` absent the server falls back to
+// the Bridge-Classroom repo — a fine safety net for a mis-tagged report, but it
+// means a button shown on a random/dealer-service deal or a pasted PBN would file
+// BRIDGE-CONTENT complaints into the APP repo. So the button appears only when the
+// deal is repository-backed: a single scenario ref carrying a repo we can map to a
+// collection, plus a board identity to point at.
+// The active selection for whichever table this is. On a SERVED table the deal
+// source is the host's; a guest's local selection is empty, so the button is
+// host-only there. That is a real limitation, not an oversight: the service
+// broadcasts a set LABEL, not the repo/file identity a report needs.
+const reportSelection = computed(() => (props.server ? srv?.dealSource?.selection : selection.value))
+const reportBoard = computed(() =>
+  props.server ? (srv?.boardNumber ?? null) : (localBoardNumber?.value ?? null))
+
+// The gate itself is a pure, separately-tested function — see reportableDeal.js
+// for why it is deliberately strict.
+const reportableDeal = computed(() =>
+  deriveReportableDeal(reportSelection.value, reportBoard.value))
+
+const showReportProblem = ref(false)
+const reportProblemAnchor = ref(null)
+const reportProblemContext = ref({})
+
+function openReportProblem(e) {
+  const d = reportableDeal.value
+  if (!d) return
+  const btn = e?.currentTarget
+  if (btn?.getBoundingClientRect) {
+    const r = btn.getBoundingClientRect()
+    reportProblemAnchor.value = { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
+  }
+  const role = userStore.currentUser.value?.role
+  reportProblemContext.value = {
+    collection: d.collection,
+    lesson_id: d.file,
+    lesson_name: d.label,
+    scenario: d.label || d.file,
+    display_number: d.board,
+    board_tag: d.board != null ? String(d.board) : null,
+    deal_pbn: null,
+    contract: props.server ? (srv?.contract?.text || null) : (finalContract.value?.contract || null),
+    auction: props.server ? [...(srv?.auction || [])] : [...bids.value],
+    reporter_tier: (role === 'teacher' || role === 'admin') ? 'reviewer' : 'learner',
+    reporterDefaultName: userStore.currentUser.value?.firstName || null,
+    app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null,
+    app_commit: typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : null,
+  }
+  showReportProblem.value = true
+}
 
 // The scenario bar's sub-lines. Composed here, not inside the component: WHICH
 // lines apply is a per-surface question (a served table has no local pool summary).
@@ -2319,7 +2436,6 @@ async function restartCardplay() {
   border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 600; margin: 0 0 8px;
 }
 .tv-passbot-hint { color: #777; font-size: 12px; margin-bottom: 6px; }
-.tv-passbot-row { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
 /* NW grid region: BoardIndicator glyph + StatusStrip stacked (mirrors a1's #nw). */
 .tv-grid-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 /* SE action corner: the box (or DD table) with the action cluster stacked beneath.

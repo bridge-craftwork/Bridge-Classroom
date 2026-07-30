@@ -128,6 +128,26 @@
           Couldn't connect: {{ connectionError }}
         </p>
       </template>
+
+      <!-- The join came back false. Until now this branch did not exist: doJoin
+           only acted when the join SUCCEEDED, so a failure left whatever mode was
+           showing — and on the accepted-invitation path that is 'identify', an
+           identity prompt for a table you had already accepted. That is the
+           "accepted, but the client never opened a socket" report (roadmap §4.2)
+           as the invitee experienced it: nothing happened, and nothing said why. -->
+      <template v-else-if="mode === 'join-failed'">
+        <h2>{{ hostName ? hostName + "'s table" : 'Table' }}</h2>
+        <p class="tl-big">Couldn't take your seat.</p>
+        <p class="tl-error" v-if="connectionError">{{ connectionError }}</p>
+        <p class="tl-muted">
+          Your invitation is still good — the seat is held for you. Try again, or
+          ask {{ hostName || 'your host' }} to re-invite you.
+        </p>
+        <button class="tl-btn tl-btn-primary" :disabled="joining" @click="retryJoin">
+          {{ joining ? 'Connecting…' : 'Try again' }}
+        </button>
+        <button class="tl-btn" @click="goPicker">See remembered tables</button>
+      </template>
     </div>
 
     <!-- Identity menu (Switch User / edit name) — same panel as the main app;
@@ -337,8 +357,15 @@ function enterIdentify(myEpoch) {
 
 // ── Joining ────────────────────────────────────────────────────────────
 
+// The last join attempt's options, so "Try again" can repeat it. The accepted-
+// invitation path especially needs this: invitationJoin.take() has already
+// CONSUMED the one-shot ticket by the time we get here, so without keeping the
+// opts a retry would have nothing to retry with.
+const lastJoinOpts = ref(null)
+
 async function doJoin(opts, myEpoch = navEpoch) {
   joining.value = true
+  lastJoinOpts.value = opts
   const bot = typeof route.query.bot === 'string' && route.query.bot ? route.query.bot : null
   // ?seat=N (per-seat invite link): request that seat on join. Honored under
   // Manual policy when free; otherwise the host seats you from the table.
@@ -347,7 +374,22 @@ async function doJoin(opts, myEpoch = navEpoch) {
   const ok = await table.join({ sessionId: sessionInfo.value.id, bot, seat, ...opts })
   if (myEpoch !== navEpoch) return
   joining.value = false
-  if (ok) mode.value = 'joined'
+  if (ok) {
+    mode.value = 'joined'
+    return
+  }
+  // Never fall through silently — see the 'join-failed' block in the template.
+  console.warn('[table] join failed', {
+    session: sessionInfo.value?.id,
+    ticket: !!opts.ticket,
+    status: connectionStatus.value,
+    error: connectionError.value,
+  })
+  mode.value = 'join-failed'
+}
+
+function retryJoin() {
+  if (lastJoinOpts.value) doJoin(lastJoinOpts.value)
 }
 
 function joinAsUser(myEpoch = navEpoch) {

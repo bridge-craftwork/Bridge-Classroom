@@ -526,6 +526,22 @@ async fn accept_request_inner(
     Ok(())
 }
 
+/// Tell the ANSWERING user's OWN connections that this request/invitation is
+/// settled, so the toast disappears from their other windows.
+///
+/// This is a DIFFERENT fan-out from the notifications above, which all target the
+/// counterparty. Toast state is per-window client state while the server pushes
+/// per USER, so every window of the invitee pops a toast and only the window that
+/// answered dismisses it — leaving stale, un-actionable toasts behind on the rest
+/// (roadmap 2026-07-30 §4.1). `presence::notify` already reaches every connection
+/// of one user, which is exactly the shape needed.
+fn notify_request_resolved(user_id: &str, request_id: &str, outcome: &str) {
+    crate::routes::presence::notify(
+        user_id,
+        &json!({ "friend_request_resolved": { "id": request_id, "outcome": outcome } }),
+    );
+}
+
 pub async fn accept_request(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -534,6 +550,7 @@ pub async fn accept_request(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     require_roster_member(&state, &headers, &q.acting_user_id).await?;
     accept_request_inner(&state, &request_id, &q.acting_user_id).await?;
+    notify_request_resolved(&q.acting_user_id, &request_id, "accepted");
     tracing::info!(
         event = "friendship_accepted",
         request_id = %request_id,
@@ -585,6 +602,12 @@ pub async fn decline_request(
         .await
         .map_err(db_err)?;
 
+    notify_request_resolved(&q.acting_user_id, &request_id, "declined");
+    tracing::info!(
+        event = "friendship_declined",
+        request_id = %request_id,
+        "friend request declined"
+    );
     Ok(Json(json!({ "success": true })))
 }
 
