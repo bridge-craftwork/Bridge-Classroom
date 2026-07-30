@@ -285,6 +285,7 @@ import { useDealSourceResolver } from '../composables/useDealSourceResolver.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { API_URL } from '../utils/apiUrl.js'
 import { testStudentName } from '../utils/testStudents.js'
+import { buildInviteUrl } from '../utils/inviteUrl.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 const SEAT_ORDER = ['N', 'E', 'S', 'W']
@@ -434,7 +435,7 @@ async function fetchHostCode() {
     })
     const data = await res.json()
     if (data.code) {
-      shareUrl.value = `${window.location.origin}${window.location.pathname}#/play/${data.code}`
+      shareUrl.value = buildInviteUrl(`#/play/${data.code}`)
       return data.code
     }
   } catch {

@@ -111,6 +111,7 @@ import { ref, computed, watch } from 'vue'
 import { useClassrooms } from '../../composables/useClassrooms.js'
 import { useAssignments } from '../../composables/useAssignments.js'
 import ClassroomRoster from './ClassroomRoster.vue'
+import { inviteOrigin } from '../../utils/inviteUrl.js'
 
 const props = defineProps({
   classroom: { type: Object, required: true },
@@ -127,8 +128,13 @@ const linkCopied = ref(false)
 const emailCopied = ref(false)
 const classroomAssignments = ref([])
 
+// Hard-coded `.com` until 2026-07-30: a student blocked off `.com` (Norton and
+// friends — see apiUrl.js) could not use their own classroom's join link. Only the
+// ORIGIN is changed here; the root-relative path is left exactly as it was, because
+// it predates the SPA moving to /solo-practice-app/ and whether it still resolves is
+// a separate question from which domain it points at.
 const inviteUrl = computed(() => {
-  return `https://bridge-classroom.com/#/join/${props.classroom.join_code}`
+  return `${inviteOrigin()}/#/join/${props.classroom.join_code}`
 })
 
 // Fetch detail and assignments when expanded
