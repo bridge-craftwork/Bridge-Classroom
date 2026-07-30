@@ -22,8 +22,13 @@
              the arranger was running the default, and a reporter filed three bundles
              believing they were on the preview. A control that lies about state is
              worse than no control. -->
-        <button class="bk-item" role="checkbox" :aria-checked="arrangement === 'beta'" @click="kitToggleArrangement">
-          <span class="bk-box" :class="{ on: arrangement === 'beta' }">{{ arrangement === 'beta' ? '✓' : '' }}</span> Beta Preview
+        <!-- The channel currently registers NO behavioural delta: everything it was
+             previewing was promoted to the default on 2026-07-30. The switch stays (it's
+             the permanent A/B harness) but says so, rather than implying there is
+             something to see. -->
+        <button class="bk-item" role="checkbox" :aria-checked="arrangement === 'beta'" @click="kitToggleArrangement"
+                title="Preview channel for arranger changes. Nothing differs from the default right now — the last preview was promoted to live.">
+          <span class="bk-box" :class="{ on: arrangement === 'beta' }">{{ arrangement === 'beta' ? '✓' : '' }}</span> Beta Preview <span class="bk-note">(no delta)</span>
         </button>
         <button class="bk-item" role="checkbox" :aria-checked="overlaysEnabled" @click="kitToggleOverlay">
           <span class="bk-box" :class="{ on: overlaysEnabled }">{{ overlaysEnabled ? '✓' : '' }}</span> Debug Overlay
@@ -354,6 +359,8 @@ function onSaved(payload) {
 .bk-item:hover { background: #f1f3ef; }
 .bk-item[role="checkbox"] { display: flex; align-items: center; }
 .bk-action { color: #33403a; }
+/* Quiet qualifier beside a kit label (e.g. a channel with nothing registered). */
+.bk-note { color: #8a938d; margin-left: 4px; }
 /* Checkbox box: empty (clearly unselected) → filled green ✓ when on. */
 .bk-box {
   display: inline-flex;

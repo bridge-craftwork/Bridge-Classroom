@@ -26,7 +26,7 @@ const caps = (seats) => ({ center: 1.8, seats, nw: 1, ne: 1, se: 'seats', sw: 1 
 const alloc = (L, area) => Math.round(L.regions[area].allocated)
 
 describe('height-driven seat cap vs column width', () => {
-  it('reproduces the collapse on the default channel', () => {
+  it('reproduces the collapse WITHOUT the fix', () => {
     const L = computeLayoutLedger({ ...BASE, caps: caps(0.65) })
     // West's column is pinned at 0.65 × 180 — BELOW its own 180 natural need …
     expect(alloc(L, 'nw')).toBe(117)
@@ -39,13 +39,13 @@ describe('height-driven seat cap vs column width', () => {
     expect(alloc(L, 'nw')).toBe(alloc(L, 'ne'))
   })
 
-  it('beta lifts the starved column to its natural need', () => {
+  it('lifts the starved column to its natural need', () => {
     const L = computeLayoutLedger({ ...BASE, caps: caps(0.65), capFloorAtNeed: true })
     expect(alloc(L, 'nw')).toBe(180) // == max(reserves.nw, reserves.w)
     expect(alloc(L, 'nw')).toBeGreaterThan(117)
   })
 
-  it('beta never SHRINKS a column — it only raises a ceiling', () => {
+  it('never SHRINKS a column — it only raises a ceiling', () => {
     for (const seats of [0.65, 1.0, 1.4]) {
       const off = computeLayoutLedger({ ...BASE, caps: caps(seats) })
       const on = computeLayoutLedger({ ...BASE, caps: caps(seats), capFloorAtNeed: true })
@@ -55,8 +55,8 @@ describe('height-driven seat cap vs column width', () => {
     }
   })
 
-  it('is a no-op when no cap is below its column need — the default channel is untouched', () => {
-    // The guard that matters for A1: with caps that never bite, both channels agree.
+  it('is a no-op when no cap is below its column need', () => {
+    // The guard that matters for A1: with caps that never bite, on and off agree.
     const off = computeLayoutLedger({ ...BASE, caps: caps(1.4) })
     const on = computeLayoutLedger({ ...BASE, caps: caps(1.4), capFloorAtNeed: true })
     expect(JSON.stringify(on.regions)).toBe(JSON.stringify(off.regions))

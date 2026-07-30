@@ -1,4 +1,4 @@
-// The beta height solve, pinned against the two MEASURED cases it was built from.
+// The height solve, pinned against the MEASURED cases it was built from.
 //
 // Both are 1516×836, the viewport the reports and the harness runs agree on:
 //  · b1-review  — four hands + the review stage; the case that kept ending ~8px

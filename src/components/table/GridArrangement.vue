@@ -559,9 +559,9 @@ let lastBudget = -1
 // by re-measuring after the width pass renders. Bounded to two passes so it can't loop.
 const HEIGHT_BOTTOM_MARGIN = 12
 let heightSeatCeiling = Infinity
-// BETA: the centre's own height ceiling. The default height fit shrinks ONLY the seats
-// (see applyHeightFit), which is why the centre cell looks locked while the eight outer
-// cells resize.
+// The centre's own height ceiling. The fit originally shrank ONLY the seats, which at
+// review couldn't shrink the middle row at all (the centre is the tallest thing in it) —
+// so every hand hit the floor and the stage still overflowed. The centre takes part now.
 let heightCenterCeiling = Infinity
 let heightPass = 0
 
@@ -576,8 +576,8 @@ function capsWithHeight(baseCaps) {
     const seatsCap = typeof out.seats === 'number' ? out.seats : 1
     out.seats = Math.min(seatsCap, heightSeatCeiling)
   }
-  // BETA only — see applyHeightFit. heightCenterCeiling stays Infinity on the default
-  // channel, so this branch never fires there.
+  // Stays Infinity unless the fit decided the stage should give height back — see
+  // applyHeightFit / solveHeightFit's order of spending.
   if (!noCenter) {
     const centerCap = typeof out.center === 'number' ? out.center : 1
     out.center = Math.min(centerCap, heightCenterCeiling)
@@ -623,11 +623,13 @@ function relayout(force = false) {
     // reverts to the natural-size min(1, fit) allocation, so this is purely additive.
     // The seats cap is additionally lowered by the height fit when the stack is too tall.
     caps: capsWithHeight(props.config.scale?.caps),
-    // BETA channel (?arrangement=beta). Stops a HEIGHT-driven seats-cap reduction from
-    // also capping a column's WIDTH below its natural need — the 1521x784 collapse where
-    // col0 (NW glyph + West seat, nothing else to defend it) was allocated 117 against
-    // col2's 220 for identical hands. Default channel is byte-identical.
-    capFloorAtNeed: arrangement.value === 'beta',
+    // Stops a HEIGHT-driven seats-cap reduction from also capping a column's WIDTH below
+    // its natural need — the 1521x784 collapse where col0 (NW glyph + West seat, nothing
+    // else to defend it) was allocated 117 against col2's 220 for identical hands. Rode
+    // the beta channel from 2026-07-30 (#358) and was promoted to the default the same
+    // day; the pure allocator keeps the flag so the regression test can still pin both
+    // sides of it.
+    capFloorAtNeed: true,
     // Column fr weights (tracks.columns) — the caps pass grows the stage only toward its fr
     // share of the budget (not straight to the cap), so it stays geometry-bound and clusters.
     columnWeights: props.config.tracks?.columns,
@@ -642,7 +644,7 @@ function relayout(force = false) {
   scheduleHeightFit()
 }
 
-// ── The height fit's missing trigger (BETA, from the 2026-07-30 bidding report) ──
+// ── The height fit's missing trigger (from the 2026-07-30 bidding reports) ───────
 // The height fit ran on mount, on a WIDTH change, on a window resize, and when the
 // deal's own inputs changed. Nothing covered the case the report caught: content
 // growing TALLER at a constant width. During bidding that's every auction — each
@@ -691,7 +693,6 @@ function naturalStackH(el) {
   return total
 }
 function watchContentHeight(el) {
-  if (arrangement.value !== 'beta') return
   const nat = naturalStackH(el)
   if (lastNaturalH < 0) { lastNaturalH = nat; return }
   if (nat <= lastNaturalH + NATURAL_H_EPS) { lastNaturalH = Math.min(lastNaturalH, nat); return }
@@ -720,7 +721,7 @@ function scheduleHeightFit() {
 // a small scroll beats illegible cards. Re-runs the width pass once with the lowered
 // seats cap; converges because the seat rows scale ~linearly with the seat scale and the
 // rest (centre, status, gaps) is fixed height, so the fit is a one-step solve.
-// The measured row model the beta solve consumes: every OCCUPIED region, grouped by
+// The measured row model the solve consumes: every OCCUPIED region, grouped by
 // grid row and tagged with how its height responds to the fit. Measurement lives here
 // (the component owns the DOM); the arithmetic is pure, in `solveHeightFit`.
 const SEAT_AREA_SET = new Set(['n', 'e', 's', 'w'])
@@ -752,10 +753,10 @@ function measureRowModel(el) {
 
 function applyHeightFit() {
   const el = root.value
-  // Pass budget. Two is enough for the default channel's single-lever fit. Beta solves
-  // both levers at once (see solveHeightFit), so the third pass is a settle margin, not
-  // a requirement — the ordered spend that needed a pass per step is gone.
-  const maxPasses = arrangement.value === 'beta' ? 3 : 2
+  // Pass budget. `solveHeightFit` settles both levers at once, so the extra passes are a
+  // margin for the second-order effects it can't model (a narrowed column re-wrapping a
+  // corner cluster), not a convergence requirement.
+  const maxPasses = 3
   if (!el || heightPass >= maxPasses) return
   const rect = el.getBoundingClientRect()
   const heightBudget = window.innerHeight - rect.top - HEIGHT_BOTTOM_MARGIN
@@ -767,12 +768,11 @@ function applyHeightFit() {
   let target = seatScale
   let centerTarget = null
 
-  // ── BETA: one honest solve over the measured rows ────────────────────────────
-  // Supersedes the ordered spend of #363 (which needed a pass per step) and the
-  // per-row over-prediction that left the stack 8px below the fold. The stage SPANS
-  // rows when it absorbs an empty centre-column seat (n-/s-absorption), so its height
-  // can't be attributed to one row — those layouts fall through to the default model.
-  const solved = arrangement.value === 'beta' && areaOccupied('n') && areaOccupied('s')
+  // One honest solve over the measured rows (promoted from the beta channel
+  // 2026-07-30). The stage SPANS rows when it absorbs an empty centre-column seat
+  // (n-/s-absorption), so its height can't be attributed to one row — those layouts
+  // fall through to the simpler model below.
+  const solved = areaOccupied('n') && areaOccupied('s')
     ? solveHeightFit({
         rows: measureRowModel(el),
         gridH,
@@ -788,10 +788,11 @@ function applyHeightFit() {
     target = solved.seatTarget
     centerTarget = solved.centerTarget
   } else {
-    // Default channel (unchanged): rows carrying a hand-bearing seat scale with the seat
-    // scale; sum the tallest such region per ROW (grouping avoids double-counting two
-    // side hands sharing the middle row). Everything else (centre, status, gaps) is the
-    // fixed remainder — which is the assumption beta's row model replaces.
+    // Row-SPANNING stage only (the solve above handles every other layout). Rows carrying
+    // a hand-bearing seat scale with the seat scale; sum the tallest such region per ROW
+    // (grouping avoids double-counting two side hands sharing the middle row). Everything
+    // else is treated as a fixed remainder — the assumption the row model replaces, kept
+    // here because a stage spanning two rows can't be attributed to one of them.
     const hb = ledger.value?.seats?.handBearing || []
     const rowMax = {}
     for (const area of hb) {
@@ -973,24 +974,17 @@ function onWindowResize() {
 }
 // Flipping the preview channel changes the ALLOCATION, so force a fresh width pass —
 // otherwise the beetle's live toggle would only take effect on the next resize.
-watch(arrangement, (next) => {
-  // Flipping the preview channel changes the ALLOCATION, so force a fresh width pass —
-  // otherwise the beetle's live toggle would only take effect on the next resize.
-  //
-  // The height CEILINGS are reset only when flipping INTO beta, where the solve has to
-  // start from an unclamped stack rather than from whatever the other channel left
-  // behind. Resetting them on the way OUT changed the default channel's behaviour on a
-  // flip — it re-fit from scratch, and its single-lever model doesn't reconverge within
-  // its two passes, so a flipped-to-grid table ended up further overflowing than a
-  // freshly loaded one. Beta must not be able to change what grid does, even in the
-  // moment you switch away from it.
+// Flipping the preview channel can change the ALLOCATION, so force a fresh width pass
+// and re-fit from an unclamped stack — otherwise the beetle's live toggle would only
+// take effect on the next resize. `beta` currently registers no delta (its changes were
+// promoted to the default on 2026-07-30), so this is dormant until the next alt; the
+// axis is kept deliberately as the permanent A/B harness.
+watch(arrangement, () => {
   lastNaturalH = -1
   heightRefits = 0
-  if (next === 'beta') {
-    heightSeatCeiling = Infinity
-    heightCenterCeiling = Infinity
-    heightPass = 0
-  }
+  heightSeatCeiling = Infinity
+  heightCenterCeiling = Infinity
+  heightPass = 0
   relayout(true)
 })
 
