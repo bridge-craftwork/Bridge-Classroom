@@ -305,6 +305,26 @@ absence reads as a bug every time, because the solo table has it. If the feature
 is not imminent, the cheap intermediate is to say so at the table rather than
 leave a silent gap.
 
+**Design constraints (Rick, 2026-07-30) — these change the shape of the work:**
+
+1. **A claim must be validated against double-dummy on the REMAINING tricks.**
+   Only a claim that does not exceed DD is allowed. That makes claim a
+   solver-backed operation, not a bookkeeping one — and it belongs wherever the
+   claim is adjudicated, i.e. server-side for a shared table. Note this is a
+   stricter rule than B1's current behaviour, which asks the *cardplay bot* and
+   then offers "override & claim anyway"; a DD ceiling has no override.
+2. **Claim must be available to EVERY seat, bots included.** So it is not a
+   host affordance bolted onto the host UI — it is a table operation any occupant
+   (human or bot) can initiate, which means the wire message and the adjudication
+   have to exist before any button does.
+
+Both point the same way: build it in the table service against DD, then surface
+it identically on B1/B2/B3 — rather than porting B1's bot-asks-bot flow outward.
+
+Availability note: DD is reachable from the solver service **and now via WASM**,
+so the adjudicator has a local option and does not have to depend on a network
+round trip mid-claim.
+
 ### 5.4 DD errors not visible (#56) — **DIAGNOSED, not yet built**
 
 `showDdErrors: true` in his settings, nothing rendered — because the overlay is
