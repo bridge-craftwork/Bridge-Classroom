@@ -45,7 +45,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { dealControlsIconPx, CLUSTER_UNIT } from './clusterMetrics.js'
+import { dealControlsButtonWidthPx, dealControlsReservePx, CLUSTER_UNIT } from './clusterMetrics.js'
 
 const props = defineProps({
   showRestart: { type: Boolean, default: true },
@@ -59,42 +59,53 @@ const props = defineProps({
 })
 const emit = defineEmits(['restart', 'next', 'restart-cardplay'])
 
-// The icons size themselves to keep the transport on ONE row within the board glyph's
-// width — the count is a render decision, so the component that makes it is the one
-// that resolves the size, from the same metric the arranger reserves against.
+// The row spans the board glyph and divides that width between its buttons, so it is
+// aligned under the glyph by construction. The count is a render decision, so the
+// component that makes it resolves the widths — from the same metric the arranger
+// reserves the corner against, which is what keeps the two from drifting.
+const shown = computed(() => ({
+  showRestart: props.showRestart,
+  showRestartCardplay: props.showRestartCardplay,
+  showNext: props.showNext,
+}))
 const buttonCount = computed(
   () => (props.showRestart ? 1 : 0) + (props.showRestartCardplay ? 1 : 0) + (props.showNext ? 1 : 0),
 )
-const clusterStyle = computed(() => {
-  const px = dealControlsIconPx(buttonCount.value)
-  return {
-    '--dc-btn': px + 'px',
-    // Glyph size tracks the button so a shrunken icon keeps its proportions rather
-    // than rattling around inside a smaller box.
-    '--dc-glyph': Math.round(14 * (px / CLUSTER_UNIT.iconBtnPx)) + 'px',
-  }
-})
+const clusterStyle = computed(() => ({
+  '--dc-btn-w': dealControlsButtonWidthPx(buttonCount.value) + 'px',
+  '--dc-btn-h': CLUSTER_UNIT.iconBtnPx + 'px',
+  '--dc-row-w': dealControlsReservePx(shown.value) + 'px',
+}))
 </script>
 
 <style scoped>
 /* Icon row. Sizes come from CLUSTER_UNIT (iconBtnPx / gapPx) so the arranger's
    reserve is exact by construction — the reason the labelled version over-reserved
    is that its min-width was a guess at the widest label. */
-/* ONE row, always: the buttons shrink (--dc-btn, from dealControlsIconPx) so the
-   cluster still fits under the board glyph instead of wrapping to 2+1. */
-.dc-cluster { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 6px; align-items: center; }
+/* ONE row spanning the board glyph's width (--dc-row-w), its buttons sharing that
+   width (--dc-btn-w) at a constant height (--dc-btn-h). Same width as the glyph above
+   means it needs no centring rule — it lines up by construction. */
+.dc-cluster {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  width: var(--dc-row-w, 89px);
+}
 .dc-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--dc-btn, 32px);
-  height: var(--dc-btn, 32px);
+  width: var(--dc-btn-w, 32px);
+  height: var(--dc-btn-h, 32px);
   flex: 0 0 auto;
   padding: 0;
   border-radius: 6px;
   border: 1px solid #ccc;
   background: #fff;
-  font-size: var(--dc-glyph, 14px);
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
 }

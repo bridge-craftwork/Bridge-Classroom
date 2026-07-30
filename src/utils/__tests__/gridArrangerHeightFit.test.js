@@ -38,6 +38,23 @@ const BIDDING = {
   centerScale: 1.68,
 }
 
+// The SECOND bidding bundle, 35 minutes later on the same build ("south and SE are
+// still sliding offscreen as the auction increases row count"). Same defect, caught at
+// a different auction length — a shorter stage (181 vs 256) but the same null ceilings.
+// Kept alongside the first because it pins a different point on the same curve: here
+// the centre giving up its growth is enough on its own, and the hands pay nothing.
+const BIDDING_SHORTER = {
+  rows: [
+    [{ area: 'nw', h: 129, kind: 'fixed' }, { area: 'n', h: 91, kind: 'seat', hand: false }],
+    [{ area: 'w', h: 91, kind: 'seat', hand: false }, { area: 'center', h: 181, kind: 'center' }, { area: 'e', h: 91, kind: 'seat', hand: false }],
+    [{ area: 's', h: 328, kind: 'seat', hand: true }, { area: 'se', h: 206, kind: 'action' }],
+  ],
+  gridH: 702,
+  heightBudget: 638,
+  seatScale: 1.4,
+  centerScale: 1.68,
+}
+
 // Re-derive the stack height the solve is predicting, so a test failure says WHICH
 // row moved rather than just "a number changed".
 function predictHeight({ rows, gridH, seatScale, centerScale }, { seatTarget, centerMode }) {
@@ -122,6 +139,19 @@ describe('solveHeightFit — bidding (the 2026-07-30 report)', () => {
       rows: [BIDDING.rows[0], BIDDING.rows[1], [{ area: 's', h: 328, kind: 'seat' }, { area: 'se', h: 206, kind: 'fixed' }]],
     })
     expect(flat.seatTarget).toBeCloseTo(out.seatTarget, 2)
+  })
+})
+
+describe('solveHeightFit — bidding, second bundle (shorter auction, same defect)', () => {
+  const out = solveHeightFit(BIDDING_SHORTER)
+
+  it('costs the hands NOTHING — the stage’s surplus growth covers the whole overflow', () => {
+    expect(out.centerTarget).toBe(1)
+    expect(out.seatTarget).toBe(BIDDING_SHORTER.seatScale) // 1.4, untouched
+  })
+
+  it('fits: 702 → 629 against a 638 budget', () => {
+    expect(Math.round(predictHeight(BIDDING_SHORTER, out))).toBe(629)
   })
 })
 

@@ -973,12 +973,24 @@ function onWindowResize() {
 }
 // Flipping the preview channel changes the ALLOCATION, so force a fresh width pass —
 // otherwise the beetle's live toggle would only take effect on the next resize.
-watch(arrangement, () => {
-  heightSeatCeiling = Infinity
-  heightCenterCeiling = Infinity
-  heightPass = 0
-  heightRefits = 0
+watch(arrangement, (next) => {
+  // Flipping the preview channel changes the ALLOCATION, so force a fresh width pass —
+  // otherwise the beetle's live toggle would only take effect on the next resize.
+  //
+  // The height CEILINGS are reset only when flipping INTO beta, where the solve has to
+  // start from an unclamped stack rather than from whatever the other channel left
+  // behind. Resetting them on the way OUT changed the default channel's behaviour on a
+  // flip — it re-fit from scratch, and its single-lever model doesn't reconverge within
+  // its two passes, so a flipped-to-grid table ended up further overflowing than a
+  // freshly loaded one. Beta must not be able to change what grid does, even in the
+  // moment you switch away from it.
   lastNaturalH = -1
+  heightRefits = 0
+  if (next === 'beta') {
+    heightSeatCeiling = Infinity
+    heightCenterCeiling = Infinity
+    heightPass = 0
+  }
   relayout(true)
 })
 
