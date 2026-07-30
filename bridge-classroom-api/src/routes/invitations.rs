@@ -344,7 +344,7 @@ pub async fn accept_invitation(
     // it. This path simply never did.
     let role = PLAYER_TICKET_ROLE;
     let (ticket, exp) =
-        crate::routes::table_tickets::mint_ticket(secret, &me, &name, &session_id, &role);
+        crate::routes::table_tickets::mint_ticket(secret, &me, &name, &session_id, role);
 
     sqlx::query("UPDATE table_invitations SET status = 'accepted' WHERE id = ?")
         .bind(&id)
