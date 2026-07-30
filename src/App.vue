@@ -146,7 +146,15 @@ async function acceptToast(t) {
     await friends.acceptRequest(uid, t.id)
     dismissToast(t.id)
   } catch (e) {
-    if (ALREADY_RESOLVED.has(e?.status)) dismissToast(t.id)
+    // Every terminal outcome says something (roadmap 2026-07-30 §3.3). Dismissing
+    // mutely turns a failure into "nothing happened" — which is precisely what
+    // two of the day's reports described.
+    if (ALREADY_RESOLVED.has(e?.status)) {
+      dismissToast(t.id)
+      notify('Already answered — probably in another window.')
+    } else {
+      notify("Couldn't accept that request — try again, or use the Friends tab.")
+    }
     // Otherwise leave the toast up so they can retry or use the Friends tab.
   } finally {
     const next = new Set(busyIds.value)
@@ -156,7 +164,7 @@ async function acceptToast(t) {
 }
 
 // Generic transient notices (App-wide toast surface).
-const { messages: appMessages } = useAppToast()
+const { messages: appMessages, notify } = useAppToast()
 
 // ── Table invitations (Phase 4) ────────────────────────────────────────────
 const router = useRouter()
@@ -174,8 +182,16 @@ async function acceptInvitation(t) {
     })
     // An invitation that's gone (410), already answered (409) or unknown (404) can
     // never be accepted by clicking again — same rule as the friend-request toast.
-    if (ALREADY_RESOLVED.has(res.status) || res.status === 410) {
+    // But SAY SO: PR #366 dismissed these silently, which reads as a dead button
+    // (roadmap §3.3). 410 is a different story from 409 and deserves its own words.
+    if (res.status === 410) {
       dismissToast(t.id)
+      notify('That invitation expired — ask them to invite you again.')
+      return
+    }
+    if (ALREADY_RESOLVED.has(res.status)) {
+      dismissToast(t.id)
+      notify('Already answered — probably in another window.')
       return
     }
     if (!res.ok) throw new Error(`accept failed (${res.status})`)
@@ -185,8 +201,11 @@ async function acceptInvitation(t) {
     invitationJoin.set({ sessionId: session_id, ticket, name, role })
     dismissToast(t.id)
     router.push(`/table/${session_id}`)
-  } catch {
-    // Leave the toast up so they can retry.
+  } catch (e) {
+    // Leave the toast up so they can retry — but never silently: a bare catch here
+    // is why "I clicked Accept and nothing happened" had no evidence behind it.
+    console.warn('[invitation] accept failed:', e)
+    notify("Couldn't join that table — check your connection and try again.")
   } finally {
     const next = new Set(busyIds.value)
     next.delete(t.id)
@@ -204,8 +223,10 @@ async function declineInvitation(t) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acting_user_id: uid }),
     })
-  } catch {
-    /* best-effort; the reservation also expires on its own */
+  } catch (e) {
+    // Best-effort — the seat reservation expires on its own — but the toast is
+    // already gone, so a console line is the only trace this ever happened.
+    console.warn('[invitation] decline failed (seat will expire on its own):', e)
   }
 }
 // `at_table` follows the (singleton) table socket: connected while seated at a
