@@ -358,11 +358,36 @@ wired on the served/host path at all or only in solo.
 
 Two stacking causes:
 
-1. **The arranger doesn't know SE is occupied.** The ledger has no `se` entry while
-   `rendered` carries `se: 222×166`, and the X-ray legend reads `COLLAPSED … se`. Mirror
-   image of the occupancy bug fixed in PR #364 (reserved-but-empty); this is
-   **present-but-unreserved**. Same root shape: what the shell reports as occupied and
-   what actually renders are two different questions.
+1. ~~**The arranger doesn't know SE is occupied.**~~ **RETRACTED 2026-07-30 — this
+   was a misreading, and I repeated it into two adjudications before checking it.**
+
+   The evidence was "the ledger has no `se` entry while `rendered` carries
+   `se: 222×166`". But `rendered` is not an occupancy signal:
+
+   - `GridArrangement` feeds the arranger `const occupied = ALL_AREAS.filter(areaOccupied)`
+     — **the identical predicate** the template's `v-if="areaOccupied('se')"` uses to
+     render the corner, in the same tick. A divergence between "the div renders" and
+     "the arranger was told" is not expressible.
+   - `rendered` is `{...sizes}`, and `sizes` is a `reactive({})` that `recordSizes()`
+     only ever WRITES to — **nothing ever deletes a key**. So `sizes.se` written while
+     SE held the bidding box during the auction survives into review, long after the
+     corner unmounted. Every "no `se` in the ledger but `se` in `rendered`" bundle is
+     explained by that, with no occupancy bug at all.
+   - The claimed X-ray legend `COLLAPSED … se` does not exist: `grep -rn COLLAPSED src/`
+     hits only an unrelated progress chart.
+
+   So the missing ledger entry means SE genuinely **was** unoccupied — which for the
+   review phase is exactly what the `capabilities.value` DD-gate bug caused (`seSlot`
+   returned null, so no `#se` slot was provided, so the corner didn't render). That bug
+   is fixed, which may resolve this half outright.
+
+   ⚠️ Caveat: this is reasoned from the code plus three bundles captured today, not from
+   David's original review bundle (bug-artifacts #56), which I have not read directly.
+
+   **Worth fixing anyway, separately:** `sizes` never being pruned makes `arranger.rendered`
+   actively misleading in every bundle — it reports corners that unmounted phases ago.
+   Clearing stale keys in `recordSizes` would stop the next person drawing the same wrong
+   conclusion I did.
 2. **Its cap forbids growth.** `caps.se = 'seats'` resolves to `min(1, seatScale)` — a
    ceiling of **1.0** — so when the seats grow above natural (1.36 in the report) the
    corner stays pinned. Right for the bidding box (fixed-width widget); wrong for the DD
@@ -380,10 +405,11 @@ involves:
 - Its counterpart in `solveHeightFit`: the corner is `kind: 'action'`
   (flat-then-proportional — it does not shrink until the seats drop below 1.0). A
   seats-TRACKING corner should be proportional throughout, like a seat.
-- **Check the occupancy half FIRST** (`areaOccupied('se')` = `hasRegion(area) &&
-  !!slots[area]`) against David's REVIEW bundle. The cap change does nothing if SE
-  never reaches the ledger, and the reported symptom was exactly that: no `se` entry
-  in the ledger while `rendered` carried `se: 222×166`.
+- **Re-measure BEFORE building the cap change.** The occupancy half is retracted
+  (above) and the DD-gate bug that kept SE unoccupied at review is fixed, so the
+  symptom may already be different — or gone. Get a fresh review-phase bundle with a
+  DD table actually on the table, and see whether it is still too small. Only then is
+  the cap the thing to change.
 
 ### 6.2 Auction box cramped with compare on (#49) — **SHIPPED**
 
