@@ -1034,8 +1034,40 @@ const {
 // the settings that most often explain a report: whether the hand plays out, which
 // cardplay bot, the reveal toggles, the BBA comparison, and WHICH DEAL this is.
 // Reporter notes routinely say "this deal" — now the bundle can say which.
+//
+// ── The report COORDINATE (roadmap 2026-07-30 §3.1) ─────────────────────────
+// The day's two hardest investigations were "correlate one screenshot with two
+// server logs by hand". The session id is already the join key in both logs —
+// it was just missing from one side's bundle: a joiner's URL carries it
+// (/table/<session>), the host's does not (server mode is entered in place, so
+// the address bar stays /table). With `session` + `at` a bundle becomes
+// addressable as (session, tableId, board, seq) — a coordinate, not just a key.
+//
+// `seq` is the TABLE'S OWN monotonic action counter, deliberately not a
+// hand-rolled bid/card number: the client already tracks it and rejects
+// out-of-order events against it, the service stamps it on every event, and
+// undo addresses it as to_seq. A parallel numbering would be a second, weaker
+// index that can disagree with the server's.
+//
+// `isHost` / `yourSeat` explain most of why two people describe the same moment
+// differently — they would have answered #51 without opening an editor.
+//
+// ⚠️ NEVER log the per-connection token (`myToken`). It is the roster/kick
+// handle — effectively a bearer for that socket — and bundles get attached to
+// GitHub issues. The session id is opaque and short-lived; safe.
 function tableReportContext() {
+  const served = !!props.server && !!srv
   return {
+    // env is merged OVER the base block, whose shell/engine coordinates sit null
+    // until an app fills them. The table shell never did, which is why every
+    // bundle read this cycle had `env.phase: null` while the arranger and table
+    // blocks both carried a phase.
+    env: {
+      engine: served ? 'server' : 'local',
+      phase: served ? srv.phase : enginePhase.value,
+      connection: served ? srv.connectionStatus : null,
+      board: served ? (srv.boardNumber ?? null) : (localBoardNumber?.value ?? null),
+    },
     context: {
       table: {
         settings: {
@@ -1043,18 +1075,44 @@ function tableReportContext() {
           cardplayBot: cardplayBotName.value,
           showPlayedCards: cardplayShowPlayed.value,
           showAllHands: cardplayShowAll.value,
-          showBbaCompare: showBbaCompare.value,
+          showBbaCompare: served ? srv.showBbaCompare : showBbaCompare.value,
           showDdErrors: cardplayShowDdErrors.value,
         },
         dealSource: {
-          summary: poolSummary.value || null,
+          summary: served ? (srv.dealSource?.label?.() || null) : (poolSummary.value || null),
           scenario: currentScenarioLabel?.value || currentScenario?.value || null,
-          board: localBoardNumber?.value ?? null,
-          hasSelection: !!hasSelection.value,
+          // Null in every served bundle read this cycle — a report could not be
+          // tied to the hand it was about. Phase 5.2 needs this field too, to
+          // decide whether a deal is repository-backed enough to show
+          // "Report a Problem".
+          board: served ? (srv.boardNumber ?? null) : (localBoardNumber?.value ?? null),
+          hasSelection: served ? !!srv.dealLoaded : !!hasSelection.value,
         },
-        phase: enginePhase.value,
+        // Both phase fields are kept on purpose. `arranger.phase` (layout) and
+        // this one (engine) already DISAGREE in the "Down 9" bundle — review vs
+        // bidding — because on a bid-only board the engine never leaves bidding
+        // while the layout moves on. That disagreement is diagnostic.
+        phase: served ? srv.phase : enginePhase.value,
         cardplayPhase: cardplayPhase.value,
         embedded: EMBEDDED,
+        session: served
+          ? {
+              id: srv.sessionId || null,
+              tableId: srv.tableId || null,
+              isHost: !!srv.isHost,
+              yourSeat: srv.yourSeat || null,
+              seeAll: !!srv.seeAll,
+              connection: srv.connectionStatus || null,
+            }
+          : null,
+        at: served
+          ? {
+              board: srv.boardNumber ?? null,
+              seq: srv.seq ?? null,
+              boardMode: srv.boardMode || null,
+              played: !!srv.boardPlayed,
+            }
+          : null,
       },
     },
   }

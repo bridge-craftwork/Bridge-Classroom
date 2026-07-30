@@ -174,8 +174,20 @@ pub async fn deliver_pending(state: &AppState, user_id: &str) {
             return;
         }
     };
+    if rows.is_empty() {
+        return;
+    }
+    tracing::info!(
+        event = "invitations_redelivered", to = %user_id, count = rows.len(),
+        "re-pushing pending invitations on connect"
+    );
     for (id, session_id, seat, first, last) in rows {
         let from_name = format!("{first} {last}").trim().to_string();
+        tracing::info!(
+            event = "invitation_delivered",
+            invitation = %id, session = %session_id, seat = %seat, to = %user_id,
+            "invitation pushed to presence stream"
+        );
         crate::routes::presence::notify(
             user_id,
             &json!({
@@ -238,7 +250,11 @@ pub async fn create_invitation(
     service_reserve(&state, secret, &session_id, &seat, &friend, &friend_name)
         .await
         .map_err(|e| {
-            tracing::warn!("invitation reserve failed: {e}");
+            tracing::warn!(
+                event = "invitation_reserve_failed",
+                session = %session_id, seat = %seat, to = %friend,
+                "{e}"
+            );
             (StatusCode::CONFLICT, "could not hold that seat".into())
         })?;
 
@@ -277,6 +293,13 @@ pub async fn create_invitation(
         }),
     );
 
+    tracing::info!(
+        event = "invitation_created",
+        invitation = %id, session = %session_id, seat = %seat,
+        from = %host, to = %friend, expires_at = %expires,
+        "invitation created"
+    );
+
     Ok(Json(json!({ "success": true, "id": id })))
 }
 
@@ -299,12 +322,25 @@ pub async fn accept_invitation(
     .await
     .map_err(db_err)?;
     let Some((session_id, to_user, status, expires_at)) = row else {
+        tracing::info!(
+            event = "invitation_accept_rejected", reason = "not_found",
+            invitation = %id, by = %me, "accept rejected"
+        );
         return Err((StatusCode::NOT_FOUND, "invitation not found".into()));
     };
     if to_user != me {
+        tracing::warn!(
+            event = "invitation_accept_rejected", reason = "not_yours",
+            invitation = %id, by = %me, "accept rejected"
+        );
         return Err((StatusCode::FORBIDDEN, "not your invitation".into()));
     }
     if status != "pending" {
+        tracing::info!(
+            event = "invitation_accept_rejected", reason = "not_pending",
+            invitation = %id, session = %session_id, by = %me, status = %status,
+            "accept rejected"
+        );
         return Err((
             StatusCode::CONFLICT,
             "invitation is no longer pending".into(),
@@ -321,6 +357,11 @@ pub async fn accept_invitation(
             .execute(&state.db)
             .await
             .map_err(db_err)?;
+        tracing::info!(
+            event = "invitation_accept_rejected", reason = "expired",
+            invitation = %id, session = %session_id, by = %me, expires_at = %expires_at,
+            "accept rejected"
+        );
         return Err((StatusCode::GONE, "invitation expired".into()));
     }
 
@@ -351,6 +392,17 @@ pub async fn accept_invitation(
         .execute(&state.db)
         .await
         .map_err(db_err)?;
+
+    // The ACCEPT is the transition that mattered most on 2026-07-30: establishing
+    // that one had succeeded meant reading the SQLite row by hand, because this
+    // module logged nothing at info. NEVER log `ticket` — it is a bearer for the
+    // seat. The session id is the join key into the table-service log, and is
+    // exactly what makes a bundle correlatable (roadmap §3.1/§3.2).
+    tracing::info!(
+        event = "invitation_accepted",
+        invitation = %id, session = %session_id, by = %me, role = %role,
+        "invitation accepted — ticket minted"
+    );
 
     Ok(Json(json!({
         "success": true,
@@ -405,6 +457,17 @@ pub async fn decline_invitation(
         crate::routes::presence::notify(
             &from_user,
             &json!({ "invitation_declined": { "from_name": me_name, "seat": seat } }),
+        );
+        tracing::info!(
+            event = "invitation_declined",
+            invitation = %id, session = %session_id, seat = %seat,
+            from = %from_user, by = %me, "invitation declined"
+        );
+    } else {
+        tracing::info!(
+            event = "invitation_decline_noop",
+            invitation = %id, session = %session_id, by = %me, status = %status,
+            "decline on a non-pending invitation"
         );
     }
     Ok(Json(json!({ "success": true })))

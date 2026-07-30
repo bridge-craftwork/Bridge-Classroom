@@ -124,60 +124,26 @@ pub async fn create_bug_report(
 
     let client = Client::new();
 
-    // 1) Commit screenshot + fixture + context (raw URLs are stable once the
-    //    files exist on `main`, so the issue body can reference them).
-    if let Some(shot) = req.screenshot_base64.as_deref().filter(|s| !s.is_empty()) {
-        put_file(
-            &client,
-            repo,
-            token,
-            &format!("{bundle_path}/screenshot.jpg"),
-            &format!("beetle: screenshot for {bundle_path}"),
-            shot, // already base64
-            None,
-        )
-        .await?;
-    }
-    if let Some(boxes) = req
-        .screenshot_boxes_base64
-        .as_deref()
-        .filter(|s| !s.is_empty())
-    {
-        put_file(
-            &client,
-            repo,
-            token,
-            &format!("{bundle_path}/screenshot-boxes.jpg"),
-            &format!("beetle: bounding-box screenshot for {bundle_path}"),
-            boxes, // already base64
-            None,
-        )
-        .await?;
-    }
-    let fixture_str = serde_json::to_string_pretty(&req.fixture).unwrap_or_else(|_| "{}".into());
-    put_file(
-        &client,
-        repo,
-        token,
-        &format!("{bundle_path}/fixture.json"),
-        &format!("beetle: fixture for {bundle_path}"),
-        &BASE64.encode(fixture_str.as_bytes()),
-        None,
-    )
-    .await?;
-    let context_str = serde_json::to_string_pretty(&context).unwrap_or_else(|_| "{}".into());
-    let context_put = put_file(
-        &client,
-        repo,
-        token,
-        &format!("{bundle_path}/context.json"),
-        &format!("beetle: context for {bundle_path}"),
-        &BASE64.encode(context_str.as_bytes()),
-        None,
-    )
-    .await?;
-
-    // 2) File the issue in the SAME repo (inline screenshot renders off session).
+    // ── Order: issue FIRST, files in the background (roadmap 2026-07-30 §3.4) ──
+    //
+    // This used to be 5-6 sequential awaited round trips to api.github.com — a
+    // PUT per file (two ~90KB base64 screenshots, fixture, context), then the
+    // issue, then a back-ref commit — ALL inside the request the reporter waits
+    // on, behind client → tunnel → Mac. At ~1s per GitHub write that is the ~8s
+    // David measured. Submit latency is a tax on the reporting habit, and this
+    // cycle proved the habit works.
+    //
+    // The obvious fix — run the four PUTs concurrently — is WRONG here: each is a
+    // commit to `main` via the Contents API, and concurrent commits to one branch
+    // race on the parent sha and 409. They stay sequential; they just stop being
+    // the reporter's problem.
+    //
+    // Nothing forced the old order. The issue body references raw file URLs, but
+    // those URLs are COMPUTABLE from `repo` + `bundle_path` — they never depended
+    // on the PUT responses. So: build the body, file the issue, hand the reporter
+    // their issue number, and let the bundle land behind them. Folding the issue
+    // link into `context.json` BEFORE its single write also deletes the sixth
+    // call (the back-ref micro-commit) outright.
     let shot_url = req
         .screenshot_base64
         .as_ref()
@@ -209,31 +175,94 @@ pub async fn create_bug_report(
     });
     let labels = build_labels(&env, is_feature);
 
+    // The ONE call the reporter waits on. Still fails loudly: if the issue can't
+    // be filed there is no report, and they should know now and retry.
     let issue = create_issue(&client, repo, token, &title, &body, labels).await?;
 
-    // 3) Back-reference: write the issue number into context.json (micro-commit).
+    // Back-reference goes in before the write, not after it.
     if let Value::Object(ref mut map) = context {
         map.insert(
             "issue".to_string(),
             json!({ "number": issue.number, "url": issue.html_url }),
         );
     }
-    let updated = serde_json::to_string_pretty(&context).unwrap_or(context_str);
-    let _ = put_file(
-        &client,
-        repo,
-        token,
-        &format!("{bundle_path}/context.json"),
-        &format!("beetle: link context to #{}", issue.number),
-        &BASE64.encode(updated.as_bytes()),
-        context_put.content.sha.as_deref(),
-    )
-    .await; // best-effort: the report already succeeded; a failed back-ref isn't fatal
+
+    // Everything below is off the critical path. Owned clones so the task is
+    // 'static; sequential inside, for the branch-race reason above.
+    let files: Vec<(String, String, String)> = {
+        let mut v = Vec::with_capacity(4);
+        if let Some(shot) = req.screenshot_base64.as_deref().filter(|s| !s.is_empty()) {
+            v.push((
+                format!("{bundle_path}/screenshot.jpg"),
+                format!("beetle: screenshot for {bundle_path}"),
+                shot.to_string(),
+            ));
+        }
+        if let Some(boxes) = req
+            .screenshot_boxes_base64
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            v.push((
+                format!("{bundle_path}/screenshot-boxes.jpg"),
+                format!("beetle: bounding-box screenshot for {bundle_path}"),
+                boxes.to_string(),
+            ));
+        }
+        let fixture_str =
+            serde_json::to_string_pretty(&req.fixture).unwrap_or_else(|_| "{}".into());
+        v.push((
+            format!("{bundle_path}/fixture.json"),
+            format!("beetle: fixture for {bundle_path}"),
+            BASE64.encode(fixture_str.as_bytes()),
+        ));
+        let context_str = serde_json::to_string_pretty(&context).unwrap_or_else(|_| "{}".into());
+        v.push((
+            format!("{bundle_path}/context.json"),
+            format!("beetle: context for {bundle_path} (#{})", issue.number),
+            BASE64.encode(context_str.as_bytes()),
+        ));
+        v
+    };
+
+    let repo_owned = repo.to_string();
+    let token_owned = token.to_string();
+    let bundle_for_log = bundle_path.clone();
+    let issue_number = issue.number;
+    tokio::spawn(async move {
+        let client = Client::new();
+        for (path, message, content_b64) in files {
+            if let Err((status, err)) = put_file(
+                &client,
+                &repo_owned,
+                &token_owned,
+                &path,
+                &message,
+                &content_b64,
+            )
+            .await
+            {
+                // The issue already exists and links here, so a failure leaves a
+                // dead link rather than losing the report. Say so loudly — a
+                // silent partial bundle is the thing that wastes triage time.
+                tracing::error!(
+                    event = "beetle_bundle_write_failed",
+                    issue = issue_number, path = %path, status = %status,
+                    "{err}"
+                );
+            }
+        }
+        tracing::info!(
+            event = "beetle_bundle_written",
+            issue = issue_number, bundle = %bundle_for_log,
+            "bundle committed"
+        );
+    });
 
     tracing::info!(
-        "Filed beetle bug report #{} ({})",
-        issue.number,
-        issue.html_url
+        event = "beetle_report_filed",
+        issue = issue.number, bundle = %bundle_path,
+        "{}", issue.html_url
     );
     Ok(Json(BugReportResponse {
         success: true,
@@ -245,17 +274,10 @@ pub async fn create_bug_report(
 
 // ── GitHub helpers ───────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-struct PutContent {
-    sha: Option<String>,
-}
-#[derive(Debug, Deserialize)]
-struct PutResponse {
-    content: PutContent,
-}
-
-/// Create/update one file via the Contents API (one commit). `content` is
-/// already base64. Pass `sha` to update an existing file.
+/// Create one file via the Contents API (one commit). `content` is already
+/// base64. There is no update path: each bundle writes to a fresh timestamped
+/// directory, and the back-ref commit that once needed a blob sha is gone —
+/// the issue link is folded into context.json before its single write.
 async fn put_file(
     client: &Client,
     repo: &str,
@@ -263,16 +285,12 @@ async fn put_file(
     path: &str,
     message: &str,
     content_b64: &str,
-    sha: Option<&str>,
-) -> Result<PutResponse, (StatusCode, String)> {
-    let mut body = json!({
+) -> Result<(), (StatusCode, String)> {
+    let body = json!({
         "message": message,
         "content": content_b64,
         "branch": "main",
     });
-    if let Some(sha) = sha {
-        body["sha"] = json!(sha);
-    }
     let url = format!("https://api.github.com/repos/{repo}/contents/{path}");
     let resp = client
         .put(&url)
@@ -299,13 +317,7 @@ async fn put_file(
             "The artifacts repo rejected the bundle".to_string(),
         ));
     }
-    resp.json::<PutResponse>().await.map_err(|e| {
-        tracing::error!("Could not parse GitHub contents response: {}", e);
-        (
-            StatusCode::BAD_GATEWAY,
-            "Unexpected response from the artifacts repo".to_string(),
-        )
-    })
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
