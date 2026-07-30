@@ -563,6 +563,16 @@ async function join({ sessionId, userId = null, guestName = null, bot = null, as
 }
 
 function leave() {
+  // Say so before dropping the socket. Leaving ON PURPOSE and vanishing are different
+  // events, and only one of them can be announced: the service holds a seat whose
+  // socket simply died (zombie-seat policy — a reconnect rebinds it, a bot covers
+  // meanwhile), which is right for a dropped connection but leaves the host looking at
+  // a seat that still bears your name (2026-07-30: "david never saw that i had
+  // disconnected"). `leave` vacates the seat and drops you from the roster at once.
+  //
+  // Deliberately NOT sent on tab-close/refresh: those are indistinguishable from each
+  // other, and a refresh must keep your seat. Clicking Leave is the signal.
+  socket.send({ t: 'leave' })
   socket.disconnect()
   if (unsubscribe) { unsubscribe(); unsubscribe = null }
   resetTableState()

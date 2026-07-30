@@ -131,6 +131,13 @@ watch(
     }
   },
 )
+// A request that is no longer pending has already been resolved — accepted from the
+// Friends tab, on another device, or by the server's crossing-proposal auto-accept
+// (two people who each asked the other are already both consenting). The outcome the
+// user wanted is true, so the toast's job is done; leaving it up asks them to keep
+// clicking a button that can only fail.
+const ALREADY_RESOLVED = new Set([404, 409])
+
 async function acceptToast(t) {
   const uid = userStore.currentUserId.value
   if (!uid || busyIds.value.has(t.id)) return
@@ -138,8 +145,9 @@ async function acceptToast(t) {
   try {
     await friends.acceptRequest(uid, t.id)
     dismissToast(t.id)
-  } catch {
-    // Leave the toast up so they can retry or use the Friends tab.
+  } catch (e) {
+    if (ALREADY_RESOLVED.has(e?.status)) dismissToast(t.id)
+    // Otherwise leave the toast up so they can retry or use the Friends tab.
   } finally {
     const next = new Set(busyIds.value)
     next.delete(t.id)
@@ -164,6 +172,12 @@ async function acceptInvitation(t) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acting_user_id: uid }),
     })
+    // An invitation that's gone (410), already answered (409) or unknown (404) can
+    // never be accepted by clicking again — same rule as the friend-request toast.
+    if (ALREADY_RESOLVED.has(res.status) || res.status === 410) {
+      dismissToast(t.id)
+      return
+    }
     if (!res.ok) throw new Error(`accept failed (${res.status})`)
     const { session_id, ticket, name, role } = await res.json()
     // Hand the minted ticket to TableLobbyView (never via URL — ADR-0006 §2) and

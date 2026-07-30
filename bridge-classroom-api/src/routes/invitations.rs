@@ -53,9 +53,15 @@ fn db_err<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, "database error".into())
 }
 
+/// The ticket role for someone joining a table to PLAY. The table service reads
+/// `teacher` as "session controller, no chair", so anyone accepting a social
+/// invitation must carry this instead of their account role.
+const PLAYER_TICKET_ROLE: &str = "student";
+
 /// `(display name, ticket role)` for a user, or None if there's no such user.
 /// Role is derived from the DB (never trusted from a request), mirroring
-/// `mint_table_ticket`.
+/// `mint_table_ticket`. Note the ACCEPT path deliberately ignores the role it
+/// returns — see `PLAYER_TICKET_ROLE`.
 async fn user_name_role(
     state: &AppState,
     id: &str,
@@ -319,11 +325,26 @@ pub async fn accept_invitation(
     }
 
     let secret = table_secret(&state)?;
-    let Some((name, role)) = user_name_role(&state, &me).await.map_err(db_err)? else {
+    let Some((name, _account_role)) = user_name_role(&state, &me).await.map_err(db_err)? else {
         return Err((StatusCode::NOT_FOUND, "user not found".into()));
     };
+    // A social invitation is an invitation to PLAY — always a seated player, never the
+    // session controller, whatever the invitee's account role happens to be.
+    //
+    // Minting from the account role gave a teacher/admin a `teacher` ticket, and the
+    // table service attaches a teacher ticket as the see-all session controller:
+    // session-level, NOT a room participant. The invitee then landed in kibitz beside a
+    // seat reserved in their own name, saw an empty table (no room → no deal, four
+    // bots), and the host's drag had no live connection to move. Confirmed in the
+    // table-service log (bug-artifacts #44, 2026-07-30): the working join logged
+    // `seat=W`, the re-invite 4 minutes later logged `role="teacher"` with no room.
+    //
+    // `/api/table-tickets` has always had this exception — `as_player` downgrades a
+    // teacher/admin for exactly this case — and TableLobbyView's social-invite path uses
+    // it. This path simply never did.
+    let role = PLAYER_TICKET_ROLE;
     let (ticket, exp) =
-        crate::routes::table_tickets::mint_ticket(secret, &me, &name, &session_id, &role);
+        crate::routes::table_tickets::mint_ticket(secret, &me, &name, &session_id, role);
 
     sqlx::query("UPDATE table_invitations SET status = 'accepted' WHERE id = ?")
         .bind(&id)
