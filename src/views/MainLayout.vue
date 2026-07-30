@@ -723,6 +723,9 @@ const { status: gridStatus } = useTableStatus({
   vulnerable: computed(() => currentDeal.value?.vulnerable),
   contract: computed(() => (currentDeal.value?.contract ? { text: currentDeal.value.contract, declarer: currentDeal.value.declarer } : null)),
   tricks: computed(() => (isDeclarerPlay.value ? cardplay.tricksTaken.value : { NS: 0, EW: 0 })),
+  // Only a declarer-play lesson is actually played to a result; a bidding or
+  // defence walkthrough would otherwise derive one from its zeroed tricks.
+  played: isDeclarerPlay,
 })
 
 // --- Coaching feedback fade (branch: coaching-feedback-fade) ----------------

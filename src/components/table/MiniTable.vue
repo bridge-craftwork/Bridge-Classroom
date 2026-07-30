@@ -11,7 +11,7 @@
           <span v-html="suitHtml(t.contract.text)"></span> by {{ t.contract.declarer }}
         </span>
         <span v-else class="mt-chip" :class="'mt-phase-' + t.phase">{{ t.phase }}</span>
-        <span v-if="t.phase !== 'bidding'" class="mt-chip">NS {{ t.tricks.ns }} · EW {{ t.tricks.ew }}</span>
+        <span v-if="t.phase !== 'bidding' && !t.result?.bid_only" class="mt-chip">NS {{ t.tricks.ns }} · EW {{ t.tricks.ew }}</span>
       </template>
       <span v-else class="mt-chip mt-chip-nodeal">no deal</span>
       <span class="mt-head-spacer"></span>
@@ -53,8 +53,9 @@
         </template>
         <div v-else-if="t.phase === 'play'" class="mt-center-note">{{ t.next_to_act }} to lead</div>
         <div v-else-if="t.phase === 'complete'" class="mt-center-note mt-center-result">
-          <template v-if="t.result && t.result.contract">
-            {{ t.result.contract.made ? 'Made' : 'Down' }}<br />
+          <template v-if="t.result?.bid_only">bid only<br />no play</template>
+          <template v-else-if="t.result && t.result.contract">
+            {{ resultWord }}<br />
             {{ t.result.contract.declarer_tricks }} tricks
           </template>
           <template v-else>Passed<br />out</template>
@@ -122,6 +123,15 @@ const props = defineProps({
   loaded: { type: Boolean, default: true },
 })
 defineEmits(['kibitz', 'advance', 'seat-click'])
+
+// `result.contract.made` is a RELATIVE figure from the service (0 = made
+// exactly, +N overtricks, -N down), so the obvious `made ? 'Made' : 'Down'`
+// read a contract made exactly — the commonest result there is — as "Down".
+const resultWord = computed(() => {
+  const made = props.t.result?.contract?.made
+  if (typeof made !== 'number') return ''
+  return made < 0 ? `Down ${-made}` : made === 0 ? 'Made' : `Made +${made}`
+})
 
 function isHuman(seat) {
   return props.t.seats?.[seat]?.kind === 'human'

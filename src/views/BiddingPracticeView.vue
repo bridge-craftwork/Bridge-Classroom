@@ -300,13 +300,19 @@
           <RailCard v-if="srv.dealLoaded && srv.phase === 'complete'" title="Result">
             <div class="tv-status-line tv-result-line">
               <span v-if="srv.resultBanner" v-html="srv.resultBanner"></span>
-              <template v-else-if="srv.contract">
+              <template v-else-if="srv.contract && srv.boardPlayed">
                 <span v-html="srv.contractHtml"></span> by {{ srv.declarer }} —
                 declarer took {{ srv.declarerTricks }} trick{{ srv.declarerTricks === 1 ? '' : 's' }}.
               </template>
+              <!-- Bid-only: complete, but nothing was played. Say so rather than
+                   reporting the zeroed trick counts as if it had been. -->
+              <template v-else-if="srv.contract">
+                <span v-html="srv.contractHtml"></span> by {{ srv.declarer }} —
+                bid-only board, no play.
+              </template>
               <template v-else>Passed out.</template>
             </div>
-            <div class="tv-status-line">
+            <div v-if="srv.boardPlayed" class="tv-status-line">
               Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
             </div>
           </RailCard>
@@ -1489,6 +1495,9 @@ const { status: localStatus } = useTableStatus({
       : null
   }),
   tricks: computed(() => cardplay.tricksTaken.value || { NS: 0, EW: 0 }),
+  // Solo boards reach 'review' two ways: played out, or a bidding-only deck
+  // where cardplay never ran. Only the first has a made/down result.
+  played: computed(() => cardplay.isActive.value || cardplay.playComplete.value),
 })
 const srvSlots = props.server
   ? useTableSlots({
@@ -1538,6 +1547,8 @@ const srvStatus = srv
       vulnerable: computed(() => srv.vulnerable),
       contract: computed(() => srv.contract || null),
       tricks: computed(() => srv.tricksTaken || { NS: 0, EW: 0 }),
+      // The served path that produced "Down 9" — see ServerEngine.boardPlayed.
+      played: computed(() => srv.boardPlayed),
     }).status
   : null
 const botName = computed(() => {

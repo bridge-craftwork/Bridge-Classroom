@@ -267,6 +267,19 @@ export function useServerEngine() {
   const contractHtml = computed(() =>
     contract.value?.text ? formatContract(contract.value.text) : '')
 
+  // Were cards actually played on this board? A bid-only board is COMPLETE the
+  // moment the auction ends, with every trick count still zero — so anything
+  // deriving a result, a trick total or a made/down figure has to ask this
+  // first, or it reports a played-out board that never happened (roadmap
+  // 2026-07-30 §2.1/§2.3; the "Down 9" family).
+  //
+  // board_complete.bidOnly is the authoritative answer once the event arrives.
+  // boardMode covers the two cases where it hasn't: a board still in progress,
+  // and a REJOIN — where the snapshot hands us phase 'complete' with no
+  // board_complete event behind it.
+  const boardPlayed = computed(() =>
+    boardComplete.value ? !boardComplete.value.bidOnly : boardMode.value !== 'bid-only')
+
   const declarerTricks = computed(() => {
     if (!declarer.value) return 0
     return declarer.value === 'N' || declarer.value === 'S'
@@ -448,7 +461,7 @@ export function useServerEngine() {
     showDiagnostics, dealModalOpen, dealSource,
     showAllHands, canToggleHands, canDeal,
     displayHands, myTurnToBid, displayHiddenSeats,
-    connectionLabel, tableTitle, contractHtml, declarerTricks,
+    connectionLabel, tableTitle, contractHtml, declarerTricks, boardPlayed,
     resultBanner, turnLabel, botThinking,
     pausedSeat, pausedLabel, passSides, botsPaused,
     lastSuitBid,

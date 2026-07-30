@@ -10,6 +10,7 @@ export default {
       vulnerable: 'All',
       contract: { text: '7NTXX', declarer: 'W' },
       tricks: { NS: 2, EW: 9 },
+      played: true,
     }),
   },
 }

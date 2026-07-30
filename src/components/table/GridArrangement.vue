@@ -31,6 +31,7 @@
         :clickable="clickableSeat === seat"
         :inspectable="inspectable"
         :density="seatDensity(seat)"
+        :phase="phase"
         :marks="marksFor(seat)"
         :hide-played-cards="hidePlayedCards"
         :label-component="labelComponent"
