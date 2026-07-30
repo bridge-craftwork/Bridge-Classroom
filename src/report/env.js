@@ -209,9 +209,12 @@ export function collectEnv({ win = globalThis, nav = globalThis.navigator, loc =
 
     // Shell/engine coordinates — filled by the collector's `enrich.env` hook as
     // apps expose them. Null here in Slice 0 (see file header).
+    // NOTE: `arrangement` is deliberately NOT in this placeholder list — it is
+    // resolved above from the URL/storage for every surface. It sat here as a null
+    // placeholder and silently overrode the resolved value (the key appears later in
+    // the object literal, so it won).
     engine: null,
     phase: null,
-    arrangement: null,
     tableScale: null,
     density: null,
     connection: null,

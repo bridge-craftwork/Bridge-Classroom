@@ -734,7 +734,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import TableShell from '../components/table/TableShell.vue'
@@ -743,6 +743,7 @@ import DealControls from '../components/table/DealControls.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
 import ScenarioBar from '../components/table/ScenarioBar.vue'
 import RailCard from '../components/table/RailCard.vue'
+import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
@@ -1039,6 +1040,40 @@ const {
 //   3. the rail sentence       → shownSummary
 // With the comparison off the user has opted out of BBA feedback entirely, so all
 // three go quiet rather than leaving a marker pointing at a hidden explanation.
+// ── Bug-report forensics for the TABLE shell ────────────────────────────────
+// The registry holds one provider (one shell renders at a time), and A1 was the only
+// shell registering — so a table bug report carried no shell state at all. These are
+// the settings that most often explain a report: whether the hand plays out, which
+// cardplay bot, the reveal toggles, the BBA comparison, and WHICH DEAL this is.
+// Reporter notes routinely say "this deal" — now the bundle can say which.
+function tableReportContext() {
+  return {
+    context: {
+      table: {
+        settings: {
+          playCardplay: playCardplay.value,
+          cardplayBot: cardplayBotName.value,
+          showPlayedCards: cardplayShowPlayed.value,
+          showAllHands: cardplayShowAll.value,
+          showBbaCompare: showBbaCompare.value,
+          showDdErrors: cardplayShowDdErrors.value,
+        },
+        dealSource: {
+          summary: poolSummary.value || null,
+          scenario: currentScenarioLabel?.value || currentScenario?.value || null,
+          board: localBoardNumber?.value ?? null,
+          hasSelection: !!hasSelection.value,
+        },
+        phase: enginePhase.value,
+        cardplayPhase: cardplayPhase.value,
+        embedded: EMBEDDED,
+      },
+    },
+  }
+}
+onMounted(() => setReportContextProvider(tableReportContext))
+onBeforeUnmount(() => clearReportContextProvider(tableReportContext))
+
 // The scenario bar's sub-lines. Composed here, not inside the component: WHICH
 // lines apply is a per-surface question (a served table has no local pool summary).
 const scenarioMetaLines = computed(() => {

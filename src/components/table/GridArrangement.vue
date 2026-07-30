@@ -80,6 +80,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import { useArrangement } from '../../composables/useArrangement.js'
+import { setArrangerSnapshot, clearArrangerSnapshot } from '../../report/arrangerSnapshot.js'
 import SeatPanel from '../SeatPanel.vue'
 import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, handReservePx, computeLayoutLedger, actionCornerFor } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
@@ -720,6 +721,35 @@ function applyHeightFit() {
     relayout(true)
   }
 }
+
+// ── Bug-report forensics ─────────────────────────────────────────────────────
+// Everything a layout report needs to be diagnosed from the BUNDLE instead of by
+// squinting at the X-ray screenshot: the resolved ledger (per-region reserve /
+// allocation / scale / binding), the two height ceilings, and the preview channel.
+// Three July-2026 bundles were diagnosed by hand-deriving exactly these numbers.
+const round2 = (x) => Math.round(x * 100) / 100
+function arrangerSnapshot() {
+  const l = ledger.value
+  return {
+    channel: arrangement.value,
+    phase: props.phase,
+    budget: Math.round(lastBudget),
+    heightSeatCeiling: Number.isFinite(heightSeatCeiling) ? round2(heightSeatCeiling) : null,
+    heightCenterCeiling: Number.isFinite(heightCenterCeiling) ? round2(heightCenterCeiling) : null,
+    seatScale: l?.seats?.scale != null ? round2(l.seats.scale) : null,
+    regions: l?.regions
+      ? Object.fromEntries(Object.entries(l.regions).map(([k, r]) => [k, {
+          reserve: Math.round(r.reserve ?? 0),
+          allocated: Math.round(r.allocated ?? 0),
+          scale: round2(r.scale ?? 0),
+          binding: r.binding ?? null,
+        }]))
+      : null,
+    rendered: { ...sizes },
+  }
+}
+onMounted(() => setArrangerSnapshot(arrangerSnapshot))
+onBeforeUnmount(() => clearArrangerSnapshot(arrangerSnapshot))
 
 // Received boxes for the bounding-box ledger (display only — never fed to scale).
 function recordSizes(el) {
