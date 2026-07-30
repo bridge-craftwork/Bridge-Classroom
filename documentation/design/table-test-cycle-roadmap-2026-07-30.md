@@ -405,11 +405,29 @@ involves:
 - Its counterpart in `solveHeightFit`: the corner is `kind: 'action'`
   (flat-then-proportional — it does not shrink until the seats drop below 1.0). A
   seats-TRACKING corner should be proportional throughout, like a seat.
-- **Re-measure BEFORE building the cap change.** The occupancy half is retracted
-  (above) and the DD-gate bug that kept SE unoccupied at review is fixed, so the
-  symptom may already be different — or gone. Get a fresh review-phase bundle with a
-  DD table actually on the table, and see whether it is still too small. Only then is
-  the cap the thing to change.
+- **RE-MEASURED 2026-07-30, review phase, DD table actually on the table** (solo/B1,
+  1574×1179@2, cardplay off so review is reached at auction end). Local dev can reach
+  review again now the CORS port range is fixed.
+
+  | region | reserve | allocated | scale | binding |
+  |---|---|---|---|---|
+  | seats (n/e/s/w) | 172 | 227-369 | **1.32** | cap |
+  | center | 220 | 369 | 1.68 | budget |
+  | **se** | **126** | **227** | **1.00** | natural |
+
+  X-ray label: `se · 120×117 · 1× · r126 · a227 · natural`. The DD table renders
+  **120×88 inside a 227px allocation** — roughly 107px of allocated width unused,
+  while every seat grew to 1.32×. **Cause #2 confirmed, and it is the whole story:**
+  SE is occupied, reserved and allocated correctly; it simply may not use the room.
+
+  Two notes for whoever builds it:
+  - `binding` reads **`natural`, not `cap`** — misleading, and worth fixing alongside.
+    The seats-relationship clamp only stamps `cap` when it TIGHTENS an existing scale;
+    since `numericCap` returns 1 for a `'seats'`-relationship area, SE never grows past
+    1.0 in the first place, so nothing records that a ceiling is responsible. Reading
+    the ledger, you would not know the cap was the cause.
+  - Sizing SE at `seatScale` would put the DD table at ~120 × 1.32 ≈ **158px**, still
+    inside the 227 allocated — so the decision is achievable without re-allocating.
 
 ### 6.2 Auction box cramped with compare on (#49) — **SHIPPED**
 
