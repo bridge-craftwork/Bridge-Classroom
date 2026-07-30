@@ -40,9 +40,8 @@
          above); the scene modelled only the strip until the 2026-07-29 audit. -->
     <div class="bsrv-shellhead">
       <div class="bsrv-head-left">
+        <!-- Board + contract/result chips removed 2026-07-29 — NW carries both. -->
         <span class="bsrv-shell-title">{{ f.scenario || "Rick's table" }}</span>
-        <span class="bsrv-tag">Board {{ f.board ?? 1 }}</span>
-        <StatusStrip :status="status" />
         <span class="bsrv-tag bsrv-tag-bots">bots: BBA+RulesBot</span>
         <button v-if="canManage" class="bsrv-tag bsrv-tag-toggle" type="button">Show all hands</button>
       </div>

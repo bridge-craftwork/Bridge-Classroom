@@ -84,6 +84,7 @@ async function collectScenes(dir, group) {
 const scenes = [
   ...(await collectScenes('src/harness/fixtures-a1', 'a1')),
   ...(await collectScenes('src/harness/fixtures-b', 'b')),
+  ...(await collectScenes('src/harness/fixtures-c', 'c')),
 ]
 
 const manifest = { components, widths, scales, scenes, viewports }

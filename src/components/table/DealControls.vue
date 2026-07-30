@@ -10,17 +10,16 @@
 
        Presentational only — actions are emits, enablement is props — so the live
        view and the harness scenes render the identical component. -->
-  <div class="dc-cluster" :class="{ 'dc-row': !stacked }">
+  <div class="dc-cluster">
     <button
       v-if="showRestart"
       class="dc-btn"
       type="button"
       :disabled="!canRestart"
       title="Restart this deal from the top"
+      aria-label="Restart this deal from the top"
       @click="emit('restart')"
-    >
-      <span class="dc-ico">⏮</span> Restart deal
-    </button>
+    >⏮</button>
     <!-- Under Restart deal, and only once cardplay has finished — replaying just the
          play of a hand you've already bid is a different, narrower action. -->
     <button
@@ -28,21 +27,19 @@
       class="dc-btn"
       type="button"
       :disabled="!canRestartCardplay"
-      title="Replay the cardplay only, keeping the auction"
+      title="Restart cardplay — replay the play only, keeping the auction"
+      aria-label="Restart cardplay — replay the play only, keeping the auction"
       @click="emit('restart-cardplay')"
-    >
-      <span class="dc-ico">↺</span> Restart cardplay
-    </button>
+    >↺</button>
     <button
       v-if="showNext"
       class="dc-btn"
       type="button"
       :disabled="!canNext"
       title="Deal the next board"
+      aria-label="Deal the next board"
       @click="emit('next')"
-    >
-      <span class="dc-ico">⏭</span> Next deal
-    </button>
+    >⏭</button>
   </div>
 </template>
 
@@ -56,33 +53,31 @@ defineProps({
   canNext: { type: Boolean, default: false },
   showRestartCardplay: { type: Boolean, default: false },
   canRestartCardplay: { type: Boolean, default: false },
-  // Stacked is the corner form. Row is kept for any shell that still wants the
-  // old horizontal strip.
-  stacked: { type: Boolean, default: true },
 })
 const emit = defineEmits(['restart', 'next', 'restart-cardplay'])
 </script>
 
 <style scoped>
-/* Width is pinned to CLUSTER_UNIT.stackedBtnPx so the arranger's reserve
-   (dealControlsReservePx) is exact by construction, not an estimate of label width. */
-.dc-cluster { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
-.dc-row { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; }
+/* Icon row. Sizes come from CLUSTER_UNIT (iconBtnPx / gapPx) so the arranger's
+   reserve is exact by construction — the reason the labelled version over-reserved
+   is that its min-width was a guess at the widest label. */
+/* max-width == CLUSTER_UNIT.maxPerRow icons (70px), so three wrap to 2+1 and the
+   cluster never exceeds the board glyph it sits under. */
+.dc-cluster { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 70px; }
 .dc-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-width: 148px;
-  padding: 6px 12px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #ccc;
   background: #fff;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
 }
-.dc-row .dc-btn { min-width: 0; justify-content: center; }
-.dc-btn:hover:not(:disabled) { border-color: #888; }
+.dc-btn:hover:not(:disabled) { border-color: #888; background: #f4f6f4; }
 .dc-btn:disabled { opacity: 0.45; cursor: default; }
-.dc-ico { font-size: 12px; }
 </style>

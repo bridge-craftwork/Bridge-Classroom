@@ -9,9 +9,13 @@
 
     <TableShell v-else>
       <template #header-left>
+          <!-- Board number and the contract/result chips were REMOVED here
+               2026-07-29: NW already carries both — the BoardIndicator glyph IS the
+               board number, and the StatusStrip under it IS the contract/result. The
+               header was showing the same two facts a second time, a few hundred
+               pixels away. What stays is what NW does NOT say: the table's name, the
+               bot backend, and the all-hands toggle. -->
           <span class="tv-title">{{ srv.tableTitle }}</span>
-          <span v-if="srv.boardNumber !== null" class="tv-tag">Board {{ srv.boardNumber }}</span>
-          <StatusStrip v-if="srvStatusSlot === 'status-strip'" :status="srvStatus" />
           <span
             v-if="srv.botMode"
             class="tv-tag tv-tag-bots"
