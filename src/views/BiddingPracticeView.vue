@@ -309,22 +309,6 @@
             <div class="tv-status-line">
               Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
             </div>
-
-            <template v-if="srv.sessionId && srv.yourSeat">
-              <button
-                class="tv-btn tv-btn-primary tv-ready-btn"
-                :disabled="srv.iAmReady || srv.connectionStatus !== 'connected'"
-                @click="srv.onReady"
-              >
-                {{ srv.iAmReady ? 'Ready ✓' : 'Ready for next board' }}
-              </button>
-              <div v-if="srv.readySeats.length" class="tv-status-line tv-ready-line">
-                Ready: {{ srv.readyNames }}
-              </div>
-              <div v-if="srv.iAmReady" class="tv-status-line tv-ready-wait">
-                Waiting for the others — or for the teacher to open the next board.
-              </div>
-            </template>
           </RailCard>
       </template>
 
@@ -2288,9 +2272,6 @@ async function restartCardplay() {
 .tv-your-turn { color: #1d9e75; font-weight: 600; }
 .tv-bot-note { color: #999; font-size: 12px; }
 .tv-result-line { font-weight: 600; }
-.tv-ready-btn { margin-top: 8px; width: 100%; }
-.tv-ready-line { color: #1d9e75; }
-.tv-ready-wait { color: #888; font-style: italic; }
 .tv-toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: #333; color: #fff; padding: 10px 18px; border-radius: 8px;

@@ -79,8 +79,6 @@ const passSides = ref([])
 const botsPaused = ref(false)
 
 // ── Session round state (teacher-gated boards; absent on the demo room) ──
-// Seats that have sent ready_next_board on the current board.
-const readySeats = ref([])
 // { open, total } from the boards_open event (null until the teacher opens
 // a round while we're connected — the server doesn't send it on join).
 const boardsOpen = ref(null)
@@ -487,9 +485,6 @@ function handleMessage(msg) {
         case 'card_played':
           handleCardPlayed(msg)
           break
-        case 'ready_update':
-          readySeats.value = msg.ready || []
-          break
         case 'boards_open':
           boardsOpen.value = { open: msg.open, total: msg.total }
           break
@@ -615,17 +610,10 @@ function sendUndo() {
   return { ok, reason: ok ? '' : 'not connected' }
 }
 
-// Session rounds: signal this seat is done with the current board. The
-// server broadcasts ready_update (which includes us) and advances the table
-// once every connected human is ready and the next board is open.
-function sendReady() {
-  if (!yourSeat.value) return { ok: false, reason: 'not seated' }
-  const ok = socket.send({ t: 'ready_next_board' })
-  return { ok, reason: ok ? '' : 'not connected' }
-}
-
-// Host-only: force the table to the next board now, without waiting for every
-// seat to ready up (the server routes force_advance through host control).
+// Host-only: move the table to the next board. Since ready-up was retired
+// (roadmap 2026-07-30 §1.1) this is the SINGLE advance path — the server has
+// no per-seat gate left to wait on. The name is historical; the server routes
+// force_advance through host control.
 function sendForceAdvance() {
   if (!isHost.value) return { ok: false, reason: 'not host' }
   const ok = socket.send({ t: 'force_advance' })
@@ -689,7 +677,6 @@ function resetBoardState() {
   currentTrick.plays = []
   clearTrickLinger()
   tricksTaken.value = { NS: 0, EW: 0 }
-  readySeats.value = []
   boardComplete.value = null
   dummyResyncRequested = false
 }
@@ -746,7 +733,6 @@ function captureFixture() {
     lastFinishedTrick: lastFinishedTrick.value,
     tricksTaken: tricksTaken.value,
     seats: seats.value,
-    readySeats: readySeats.value,
     boardsOpen: boardsOpen.value,
     boardComplete: boardComplete.value,
     sessionClosed: sessionClosed.value,
@@ -780,7 +766,6 @@ function loadFixture(snap) {
   lastFinishedTrick.value = snap.lastFinishedTrick ?? null
   tricksTaken.value = snap.tricksTaken ?? { NS: 0, EW: 0 }
   seats.value = snap.seats ?? {}
-  readySeats.value = snap.readySeats ?? []
   boardsOpen.value = snap.boardsOpen ?? null
   boardComplete.value = snap.boardComplete ?? null
   sessionClosed.value = !!snap.sessionClosed
@@ -841,7 +826,6 @@ export function useRemoteTable() {
     passSides,
     botsPaused,
     // session rounds
-    readySeats,
     boardsOpen,
     dealLoaded,
     setLabel,
@@ -866,7 +850,6 @@ export function useRemoteTable() {
     sendBid,
     sendCard,
     sendUndo,
-    sendReady,
     sendForceAdvance,
     sendAssignSeat,
     sendKick,

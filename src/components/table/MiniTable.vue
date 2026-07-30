@@ -17,7 +17,7 @@
       <span class="mt-head-spacer"></span>
       <button
         class="mt-icon"
-        title="Move this table to its next board now, skipping the ready check"
+        title="Move this table to its next board now"
         @click="$emit('advance')"
       >⏭</button>
     </div>
@@ -28,7 +28,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('N') }">
           <span class="mt-seat">N{{ isOnTurn('N') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('N')" @click="$emit('seat-click', 'N')">
-            {{ playerName('N') }}<span v-if="isHuman('N')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.N.connected }"></span><span v-if="t.ready.includes('N')" class="mt-ready">✓</span>
+            {{ playerName('N') }}<span v-if="isHuman('N')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.N.connected }"></span>
           </button>
         </div>
         <div class="mt-cards" v-html="handHtml('N')"></div>
@@ -38,7 +38,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('W') }">
           <span class="mt-seat">W{{ isOnTurn('W') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('W')" @click="$emit('seat-click', 'W')">
-            {{ playerName('W') }}<span v-if="isHuman('W')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.W.connected }"></span><span v-if="t.ready.includes('W')" class="mt-ready">✓</span>
+            {{ playerName('W') }}<span v-if="isHuman('W')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.W.connected }"></span>
           </button>
         </div>
         <div class="mt-cards mt-cards-side" v-html="handHtmlSide('W')"></div>
@@ -66,7 +66,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('E') }">
           <span class="mt-seat">E{{ isOnTurn('E') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('E')" @click="$emit('seat-click', 'E')">
-            {{ playerName('E') }}<span v-if="isHuman('E')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.E.connected }"></span><span v-if="t.ready.includes('E')" class="mt-ready">✓</span>
+            {{ playerName('E') }}<span v-if="isHuman('E')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.E.connected }"></span>
           </button>
         </div>
         <div class="mt-cards mt-cards-side" v-html="handHtmlSide('E')"></div>
@@ -76,7 +76,7 @@
         <div class="mt-who" :class="{ 'mt-turn': isOnTurn('S') }">
           <span class="mt-seat">S{{ isOnTurn('S') ? '▸' : '' }}</span>
           <button class="mt-player" :title="playerTitle('S')" @click="$emit('seat-click', 'S')">
-            {{ playerName('S') }}<span v-if="isHuman('S')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.S.connected }"></span><span v-if="t.ready.includes('S')" class="mt-ready">✓</span>
+            {{ playerName('S') }}<span v-if="isHuman('S')" class="mt-dot" :class="{ 'mt-dot-off': !t.seats.S.connected }"></span>
           </button>
         </div>
         <div class="mt-cards" v-html="handHtml('S')"></div>
@@ -291,7 +291,6 @@ const lastCallCol = computed(() => {
   background: #2fa572; margin-left: 3px; vertical-align: middle;
 }
 .mt-dot-off { background: #d33; }
-.mt-ready { color: #2fa572; font-weight: 700; margin-left: 2px; }
 .mt-cards {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px; letter-spacing: 0.02em; white-space: nowrap;

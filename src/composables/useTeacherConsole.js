@@ -1,7 +1,7 @@
 // useTeacherConsole — the teacher's side of a table session, layered over
 // the same socket as useRemoteTable. The server recognizes the session
 // owner (or any teacher-role ticket) at hello time and sends `lobby` frames
-// (full session state: every table's board/phase/tricks/seats/ready plus
+// (full session state: every table's board/phase/tricks/seats plus
 // the kibitzer roster) on join and on every change. This composable folds
 // those frames and exposes the teacher control messages; per-table game
 // state for the kibitzed table still flows through useRemoteTable (the
@@ -18,7 +18,7 @@ const socket = useTableSocket()
 // The latest lobby frame, parsed:
 // { session_id, set_label, loaded, boards: {total, open, index},
 //   tables: [{ table_id, board_no, board_index, phase, tricks: {ns, ew},
-//              next_to_act, seats, ready: [] }],
+//              next_to_act, seats }],
 //   kibitzers: [{ sub, name, table_id }] }
 const lobby = ref(null)
 
@@ -143,7 +143,7 @@ function pauseBots(on) {
   return socket.send({ t: 'pause_bots', on: !!on })
 }
 
-// Advance one table to its next board, skipping the ready/open checks.
+// Advance one table to its next board.
 function forceAdvance(tableId) {
   return socket.send({ t: 'force_advance', table: tableId })
 }

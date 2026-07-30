@@ -59,7 +59,7 @@ export function useServerEngine() {
     nextToAct, hands, handCounts,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
     passSides, botsPaused,
-    readySeats, boardComplete, sessionClosed,
+    boardComplete, sessionClosed,
     dealLoaded, setLabel, hasHumanSeat,
     clickableSeat, activeSeat,
     isYourBid, lastSuitBid, canDouble, canRedouble,
@@ -293,12 +293,6 @@ export function useServerEngine() {
       `(${c.declarerTricks} trick${c.declarerTricks === 1 ? '' : 's'}).`
   })
 
-  const iAmReady = computed(() =>
-    !!yourSeat.value && readySeats.value.includes(yourSeat.value))
-
-  const readyNames = computed(() =>
-    readySeats.value.map(s => SEAT_NAMES[s] || s).join(', '))
-
   function seatLabel(seat) {
     const occ = seats.value[seat]
     if (!occ || occ.kind === 'bot') return 'Bot'
@@ -395,8 +389,9 @@ export function useServerEngine() {
   function onBid(call) { table.sendBid(call) }
   function onCardClick({ seat, suit, rank }) { table.sendCard(seat, suit, rank) }
   function onUndo() { table.sendUndo() }
-  function onReady() { table.sendReady() }
-  // Host paces a session table: jump to the next board without waiting on ready.
+  // The host paces the table to the next board. Since ready-up was retired
+  // (roadmap 2026-07-30 §1.1) this is the ONLY way a session table advances —
+  // no per-seat gate is left that an idle-but-connected player could strand.
   function onHostNextDeal() { table.sendForceAdvance() }
   // Host-only seat management (seat-addressed): move / vacate / place-or-Sit.
   function onAssignSeat(args) { return table.sendAssignSeat(args) }
@@ -422,11 +417,11 @@ export function useServerEngine() {
     const { boardsPbn, label } = await materialize(selection)
     return { ok: socket.send({ t: 'load_boards', boards_pbn: boardsPbn, label }) }
   }
-  function nextBoard() { return { ok: table.sendReady() } }
+  // Host-only on the served path — see onHostNextDeal.
+  function nextBoard() { return table.sendForceAdvance() }
   const bid = table.sendBid
   const play = table.sendCard
   const undo = table.sendUndo
-  const ready = table.sendReady
   function assignSeat(table_id, seat, sub) {
     return { ok: socket.send({ t: 'assign_seat', table: table_id, seat, sub }) }
   }
@@ -443,7 +438,7 @@ export function useServerEngine() {
     auction, contract, declarer, dummySeat,
     nextToAct, hands, handCounts,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
-    readySeats, boardComplete, sessionClosed,
+    boardComplete, sessionClosed,
     dealLoaded, setLabel, clickableSeat, hasHumanSeat,
     canDouble, canRedouble, errorMessage, undoBy,
     // analysis
@@ -454,17 +449,17 @@ export function useServerEngine() {
     showAllHands, canToggleHands, canDeal,
     displayHands, myTurnToBid, displayHiddenSeats,
     connectionLabel, tableTitle, contractHtml, declarerTricks,
-    resultBanner, iAmReady, readyNames, turnLabel, botThinking,
+    resultBanner, turnLabel, botThinking,
     pausedSeat, pausedLabel, passSides, botsPaused,
     lastSuitBid,
     canHostAdvance, canManageSeats, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
-    onBid, onCardClick, onUndo, onReady, onHostNextDeal, onAssignSeat,
+    onBid, onCardClick, onUndo, onHostNextDeal, onAssignSeat,
     onKick, onSetPassSides, togglePassSide, onPauseBots,
     // TableEngine contract (canonical names for the useTableEngine factory)
     wantsCall, connect, leave: table.leave,
-    loadSource, nextBoard, bid, play, undo, ready, assignSeat, boot,
+    loadSource, nextBoard, bid, play, undo, assignSeat, boot,
     getDoubleDummy, getExpectedAuction, getNarrative,
   }
 }

@@ -52,8 +52,6 @@ export default {
   result: { took: 10, needed: 10, made: true },
   resultBanner: '4♠ by South — <strong>made</strong> (10 tricks)',
   summary: '4♠ by South · none vulnerable',
-  readySeats: ['N', 'E'],
-  iAmReady: true,
   kibitzers: ['Marta'],
   ddtricks: '9a6879a6874375643756',
 }

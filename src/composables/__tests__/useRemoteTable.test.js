@@ -217,10 +217,8 @@ describe('useRemoteTable', () => {
     expect(table.tableId.value).toBe('demo')
   })
 
-  it('folds ready_update and boards_open events', () => {
+  it('folds boards_open events', () => {
     table._handleMessage({ t: 'welcome', session_id: 's1', table_id: 's1-t1', name: 'A', role: 'guest', seat: 'S' })
-    table._handleMessage({ t: 'event', table_id: 's1-t1', seq: 0, kind: 'ready_update', ready: ['S', 'N'] })
-    expect(table.readySeats.value).toEqual(['S', 'N'])
     table._handleMessage({ t: 'event', table_id: 's1-t1', kind: 'boards_open', open: 2, total: 6 })
     expect(table.boardsOpen.value).toEqual({ open: 2, total: 6 })
     expect(table.sessionId.value).toBe('s1')
@@ -257,7 +255,6 @@ describe('useRemoteTable', () => {
     snap.table_id = 's1-t1'
     snap.seats = { S: { kind: 'human', name: 'A', connected: true }, N: { kind: 'empty' }, E: { kind: 'empty' }, W: { kind: 'empty' } }
     table._handleMessage(snap)
-    table._handleMessage({ t: 'event', table_id: 's1-t1', kind: 'ready_update', ready: ['S'] })
     table._handleMessage({
       t: 'event', table_id: 's1-t1', seq: 0, kind: 'board_advanced',
       board_no: 2, board_index: 1, forced: false,
@@ -265,7 +262,6 @@ describe('useRemoteTable', () => {
 
     // Board-scoped state cleared; seats survive.
     expect(table.auction.value).toEqual([])
-    expect(table.readySeats.value).toEqual([])
     expect(table.boardComplete.value).toBeNull()
     expect(table.seq.value).toBe(0)
     expect(table.boardNumber.value).toBe(2)

@@ -86,8 +86,8 @@ export const SERVER_CAPABILITIES = Object.freeze({
  *
  * Actions:
  *   loadSource(selection)      set/replace the deal source (stream|materialize)
- *   nextBoard()                advance to the next board
- *   bid(call) / play(seat,suit,rank) / undo() / ready()
+ *   nextBoard()                advance to the next board (host-only on the server)
+ *   bid(call) / play(seat,suit,rank) / undo()
  *   leave()
  *
  * Analysis hooks (LocalEngine implements; ServerEngine → unsupported for now):
