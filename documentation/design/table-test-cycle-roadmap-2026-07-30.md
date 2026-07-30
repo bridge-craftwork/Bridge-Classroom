@@ -104,18 +104,41 @@ by hand". The session id is **already the join key** in both logs — it's just 
 from one side's bundle: a joiner's URL carries it (`/table/<session>`), the host's does
 not (server mode is entered in place, address bar stays `/table`).
 
-`useRemoteTable` already exposes `sessionId` and `tableId`; the shell already contributes
-a `context.table` block. Add:
+`useRemoteTable` already exposes everything needed — `sessionId`, `tableId`, `seq`,
+`board`, `boardNumber`, `phase`, `boardMode`, `isHost`, `yourSeat` — and the shell
+already contributes a `context.table` block. So this is filling in fields, not building
+plumbing:
 
 ```
 context.table.session = { id, tableId, isHost, yourSeat }
+context.table.at      = { board, boardNumber, seq, boardMode }
 ```
 
 `isHost` / `yourSeat` explain most of why two people describe the same moment
 differently — they'd have answered #51 without opening an editor.
 
+**Use the server's `seq`, not a hand-rolled bid/card count** (Rick's question,
+2026-07-30). `seq` is the table's monotonic action counter: the client already tracks it
+and rejects out-of-order events against it (`if (ev.seq <= seq.value) return false`), the
+service stamps it on every event, and `undo` addresses it as `to_seq: N`. A separate
+"bid 4 / card 7" numbering would be a second, weaker index that can disagree with the
+server's.
+
+**Keep BOTH phase fields.** Bundles already carry `arranger.phase` (the LAYOUT phase) and
+`table.phase` / `cardplayPhase` (the ENGINE phase), and in the "Down 9" bundle they
+disagree — arranger `review` vs table `bidding` — because on a bid-only board the engine
+never leaves bidding while the layout moves on. That disagreement is diagnostic; don't
+collapse them. Do fix `env.phase`, which sits `null` on table surfaces while both other
+copies are populated.
+
 Also populate **`dealSource.board`** on the served path (null in every bundle read this
 cycle), so a report ties to the hand it was about. Phase 5.2 needs the same field.
+
+**Why this is worth more than correlation.** With the session id, a bundle becomes
+addressable as **(session, tableId, board, seq)** — a coordinate, not just a join key.
+That is the missing half of the beetle's stubbed `fixture.json` (bug-reporting spec,
+Slice 3/4): a report naming the exact action index is most of the way to replayable,
+which is what the harness loader was always meant to consume.
 
 ⚠️ **Never log the per-connection token** (`new_token()`) — it's the roster/kick handle,
 effectively a bearer for that socket, and bundles get attached to GitHub issues. The
