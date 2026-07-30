@@ -25,6 +25,13 @@ const ANCHORS = [
   '.auction-table', // AuctionTable — overflow / font sizing
   '.bidding-box',   // BiddingBox
   '.trick-area',    // TrickArea
+  // Corner/rail occupants whose PRESENCE is the question. A grid corner is occupied
+  // iff the shell provided its slot — which is a different test from whether the
+  // content inside chose to render, so "was this actually on screen?" was an
+  // inference from a screenshot. These two make it a fact in the bundle: a reserved
+  // corner with no `.dd-table` row is a reserved-but-empty corner.
+  '.dd-table',      // DoubleDummyTable — the SE occupant at review
+  '.rc',            // RailCard — the companion-rail blocks
   '.grid-table',    // grid arranger — per-region --region-scale
   '.bridge-table',  // legacy arranger
 ]

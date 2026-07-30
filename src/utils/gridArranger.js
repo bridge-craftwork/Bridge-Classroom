@@ -102,6 +102,127 @@ export function capSide(cap) {
  *  N-card worst case; `handReservePx` is a specific hand's actual widest suit row. */
 export { rowReservePx, handReservePx }
 
+// ── The height fit, as a pure solve (beta channel) ───────────────────────────
+// The width pass is one-directional; height is the measured input (§ symmetric
+// allocator). The ORIGINAL fit modelled the stack as "seat rows (scale with the
+// seat scale) + a fixed remainder", and shrank the seats until it fit.
+//
+// Two rows routinely break that model, and both were mis-costed:
+//   · the TOP row is bound by the NW cluster (glyph + status + transport: 235px
+//     against North's 188), so shrinking the hands buys nothing there;
+//   · the MIDDLE row is bound by the CENTRE at review (220 vs 188) — #359 saw
+//     this and let the centre join the fit, but still costed the row as seat-driven.
+// Counting a corner-bound row as scalable OVER-predicts what the hands can pay, so
+// every pass undershoots and the stack creeps down onto the fold from above — the
+// residual that survived #363.
+//
+// Here each ROW is `max(fixed, scalable × k)`: a row bound by a fixed corner
+// correctly contributes nothing, and one bisection on `k` solves the whole stack
+// in a single pass instead of converging over three.
+//
+// `kind` per measured region:
+//   'seat'   — a seat area; height ∝ the seat scale. `hand: true` marks the ones
+//              actually SHOWING a hand: every seat area scales, but only a hand is a
+//              legitimate thing to equalise the stage against. A chip is not a target
+//              (that mistake would match a 256px auction to a 91px name badge).
+//   'center' — the stage; its target is decided by the ORDER OF SPENDING below.
+//   'action' — a corner whose cap is the `se: 'seats'` RELATIONSHIP, so it rides
+//              min(1, seatScale): it does NOT shrink until the seats pass below 1.0.
+//   'fixed'  — everything else (NW status cluster, the NE reference auction).
+//
+/**
+ * @param {Object} o
+ * @param {Array<Array<{area:string,h:number,kind:string}>>} o.rows measured regions per grid row
+ * @param {number} o.gridH        measured grid height (px)
+ * @param {number} o.heightBudget px available before the fold
+ * @param {number} o.seatScale    the seat scale as currently rendered
+ * @param {number} o.centerScale  the centre scale as currently rendered
+ * @param {number} [o.floor]      legibility floor
+ * @param {number} [o.centerFloor] the centre's own floor (config regionFloors)
+ * @returns {{seatTarget:number, centerTarget:number|null, centerMode:string}|null}
+ */
+export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerScale, floor = 0.65, centerFloor = floor }) {
+  if (!Array.isArray(rows) || !rows.length || !(seatScale > 0) || !(centerScale > 0)) return null
+  const mid = rows[1] || []
+  const centerM = mid.find((m) => m.kind === 'center')
+  // The equalisation PEER is a hand, not merely a seat area — see `kind` above.
+  const midHands = mid.filter((m) => m.kind === 'seat' && m.hand).map((m) => m.h)
+  const midSeatH = midHands.length ? Math.max(...midHands) : 0
+
+  // ORDER OF SPENDING — what gives, and in what order (Rick, 2026-07-30: "equalise
+  // the middle row"; supersedes the cap-at-natural half of #363).
+  //
+  // 'equalise' — the middle row carries HANDS, so the centre has a peer to be
+  //   measured against: it renders at the same height as the hands beside it.
+  //   Nothing about the stage's content says it deserves to be the tallest thing in
+  //   its own row, and the height it takes above them is height the hands lose.
+  // 'natural'  — the middle row carries no hand (bidding: E/W are chips), so there
+  //   is no peer height to equalise TO — a chip is not a target. Fall back to #363:
+  //   the centre's growth ABOVE natural is discretionary, so spend that first.
+  // 'fixed'    — the centre is already the smaller party; leave it alone.
+  let centerMode = 'fixed'
+  if (centerM) {
+    if (midSeatH > 0) centerMode = 'equalise'
+    else if (centerScale > 1.01) centerMode = 'natural'
+  }
+
+  const seatCeil = Math.min(1, seatScale)
+  const hAt = (m, k) => {
+    if (m.kind === 'seat') return m.h * k
+    // The action corner tracks min(1, seatScale): flat while the seats are above
+    // natural, then proportional. Modelling it as plainly proportional would promise
+    // height the corner can't give back.
+    if (m.kind === 'action') return seatCeil > 0 ? m.h * (Math.min(1, seatScale * k) / seatCeil) : m.h
+    if (m.kind === 'center') {
+      // Rides the hands beside it, but only DOWNWARD: the fit exists to reclaim
+      // height, so a centre that is already the smaller party is left alone rather
+      // than grown to match. Evaluating this at the solved k (not at today's sizes)
+      // is what makes it hold — equalising against the CURRENT hands just hands the
+      // title back the moment those hands shrink past it, which is what the first
+      // cut did: the centre matched at 202 vs 203, the seats then went to 173, and
+      // the stage was the tallest thing in its row again.
+      if (centerMode === 'equalise') return Math.min(m.h, midSeatH * k)
+      if (centerMode === 'natural') return m.h / centerScale
+      return m.h
+    }
+    return m.h
+  }
+  const rowH = (ms, k) => ms.reduce((h, m) => Math.max(h, hAt(m, k)), 0)
+  // Deltas against the MEASURED rows, so padding, margins and any row-sizing mode
+  // cancel out: predicted(1) is the measured height by construction.
+  const measured = rows.map((ms) => ms.reduce((h, m) => Math.max(h, m.h), 0))
+  const predicted = (k) => rows.reduce((t, ms, i) => t + (rowH(ms, k) - measured[i]), gridH)
+
+  const kMin = Math.min(1, floor / seatScale)
+  let k = 1
+  if (predicted(1) > heightBudget) {
+    // Monotone in k → bisect for the LARGEST k that fits. If even kMin overflows,
+    // k lands on kMin and the page scrolls (the legibility floor is the pressure
+    // valve — a small scroll beats illegible cards).
+    let lo = kMin, hi = 1
+    for (let i = 0; i < 24; i++) {
+      const m = (lo + hi) / 2
+      if (predicted(m) <= heightBudget) lo = m
+      else hi = m
+    }
+    k = lo
+  }
+
+  const seatTarget = Math.max(floor, seatScale * k)
+  let centerTarget = null
+  if (centerMode === 'equalise') {
+    const h = Math.min(centerM.h, midSeatH * k)
+    centerTarget = Math.max(centerFloor, Math.min(centerScale, (centerScale * h) / centerM.h))
+  } else if (centerMode === 'natural') {
+    centerTarget = 1
+  }
+  // Round DOWN, not to nearest: the solve produces a CEILING ("at most this"), and
+  // rounding 0.786 up to 0.79 hands back the last two pixels it just took away — which
+  // is precisely how the stack kept ending a hair below the fold.
+  const down2 = (x) => Math.max(floor, Math.floor(x * 100) / 100)
+  return { seatTarget: down2(seatTarget), centerTarget: centerTarget == null ? null : down2(centerTarget), centerMode }
+}
+
 // ── Layout ledger (the one-directional allocator, as a pure function) ─────────
 // The 3×3 column topology is fixed (n-absorption is a ROW change, not a column
 // one), so it's hardcoded here; everything else is input.

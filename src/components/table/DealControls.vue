@@ -10,7 +10,7 @@
 
        Presentational only — actions are emits, enablement is props — so the live
        view and the harness scenes render the identical component. -->
-  <div class="dc-cluster">
+  <div class="dc-cluster" :style="clusterStyle">
     <button
       v-if="showRestart"
       class="dc-btn"
@@ -44,7 +44,10 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { dealControlsButtonWidthPx, dealControlsReservePx, CLUSTER_UNIT } from './clusterMetrics.js'
+
+const props = defineProps({
   showRestart: { type: Boolean, default: true },
   canRestart: { type: Boolean, default: false },
   // The embedded `?pbn` widget owns its own completion flow (a "Done" button
@@ -55,21 +58,49 @@ defineProps({
   canRestartCardplay: { type: Boolean, default: false },
 })
 const emit = defineEmits(['restart', 'next', 'restart-cardplay'])
+
+// The row spans the board glyph and divides that width between its buttons, so it is
+// aligned under the glyph by construction. The count is a render decision, so the
+// component that makes it resolves the widths — from the same metric the arranger
+// reserves the corner against, which is what keeps the two from drifting.
+const shown = computed(() => ({
+  showRestart: props.showRestart,
+  showRestartCardplay: props.showRestartCardplay,
+  showNext: props.showNext,
+}))
+const buttonCount = computed(
+  () => (props.showRestart ? 1 : 0) + (props.showRestartCardplay ? 1 : 0) + (props.showNext ? 1 : 0),
+)
+const clusterStyle = computed(() => ({
+  '--dc-btn-w': dealControlsButtonWidthPx(buttonCount.value) + 'px',
+  '--dc-btn-h': CLUSTER_UNIT.iconBtnPx + 'px',
+  '--dc-row-w': dealControlsReservePx(shown.value) + 'px',
+}))
 </script>
 
 <style scoped>
 /* Icon row. Sizes come from CLUSTER_UNIT (iconBtnPx / gapPx) so the arranger's
    reserve is exact by construction — the reason the labelled version over-reserved
    is that its min-width was a guess at the widest label. */
-/* max-width == CLUSTER_UNIT.maxPerRow icons (70px), so three wrap to 2+1 and the
-   cluster never exceeds the board glyph it sits under. */
-.dc-cluster { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 70px; }
+/* ONE row spanning the board glyph's width (--dc-row-w), its buttons sharing that
+   width (--dc-btn-w) at a constant height (--dc-btn-h). Same width as the glyph above
+   means it needs no centring rule — it lines up by construction. */
+.dc-cluster {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  width: var(--dc-row-w, 89px);
+}
 .dc-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--dc-btn-w, 32px);
+  height: var(--dc-btn-h, 32px);
+  flex: 0 0 auto;
   padding: 0;
   border-radius: 6px;
   border: 1px solid #ccc;

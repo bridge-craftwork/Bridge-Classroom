@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../../boardIndicatorMetrics.js'
 import {
   CLUSTER_UNIT,
+  dealControlsButtonWidthPx,
   dealControlsReservePx,
   actionClusterReservePx,
   doubleDummyReservePx,
@@ -17,14 +18,30 @@ describe('dealControlsReservePx (NW transport)', () => {
     expect(dealControlsReservePx({ showRestart: false, showNext: false, showRestartCardplay: false })).toBe(0)
   })
 
-  it('grows with the button count, then WRAPS rather than growing further', () => {
-    const one = dealControlsReservePx({ showRestart: true, showNext: false })
-    const two = dealControlsReservePx({ showRestart: true, showNext: true })
-    const three = dealControlsReservePx({ showRestart: true, showNext: true, showRestartCardplay: true })
-    expect(one).toBe(CLUSTER_UNIT.iconBtnPx)
-    expect(two).toBe(2 * CLUSTER_UNIT.iconBtnPx + CLUSTER_UNIT.gapPx)
-    // The third icon wraps onto a second line instead of widening the corner.
-    expect(three).toBe(two)
+  // 2026-07-30, Rick: the third button was wrapping to a second line — keep it to one
+  // row, centred under the board glyph, and scale the buttons to use that width. All
+  // three fall out of one rule: the ROW spans the glyph, whatever the count.
+  it('spans the board glyph at every button count, so the row is aligned under it', () => {
+    const glyph = Math.round(boardIndicatorExtentPx(A1_BOARD_SIZE))
+    for (const opts of [
+      { showRestart: true, showNext: false },
+      { showRestart: true, showNext: true },
+      { showRestart: true, showNext: true, showRestartCardplay: true },
+    ]) {
+      expect(dealControlsReservePx(opts)).toBe(glyph)
+    }
+  })
+
+  it('divides that width between the buttons — fewer buttons, wider ones', () => {
+    expect(dealControlsButtonWidthPx(1)).toBeGreaterThan(dealControlsButtonWidthPx(2))
+    expect(dealControlsButtonWidthPx(2)).toBeGreaterThan(dealControlsButtonWidthPx(3))
+    expect(dealControlsButtonWidthPx(3)).toBe(
+      Math.floor((boardIndicatorExtentPx(A1_BOARD_SIZE) - 2 * CLUSTER_UNIT.gapPx) / 3),
+    )
+  })
+
+  it('stops dividing at a usable target size, even if the row then overflows', () => {
+    expect(dealControlsButtonWidthPx(6)).toBe(CLUSTER_UNIT.minIconBtnPx)
   })
 
   // THE regression guard. The labelled first cut min-width'd each button to the
