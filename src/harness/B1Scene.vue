@@ -292,7 +292,16 @@ const heroInitials = computed(() => {
 </script>
 
 <style scoped>
+/* Production centres the stage and stops it growing at 1400px (TableShell's
+   .ts-page: max-width 1400 + margin auto). The scenes hand-roll their page, so they
+   grew to the full monitor — 2145px against production's 1366 on a 34" display
+   (2026-07-30 report). Mirroring the cap keeps the gallery honest about how big the
+   stage actually gets; it is the same hand-copied-chrome drift as the scenario bar.
+   NOTE: this does NOT change the centre/West column symptom, which is height-driven
+   (it reproduces at 1400 wide) — the two are separate. */
 .b1-app {
+  max-width: 1400px;
+  margin: 0 auto;
   min-height: 100%;
   background: #f5f5f3;
   font-family: 'DM Sans', system-ui, sans-serif;
