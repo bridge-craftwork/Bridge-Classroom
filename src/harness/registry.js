@@ -15,8 +15,21 @@ import SeatIndicator from '../components/SeatIndicator.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import CardSelectorPopup from '../components/CardSelectorPopup.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
+// Shell parts — the chrome AROUND the table (bar, rail card, control clusters), as
+// opposed to the table components above. Listed separately in SHELL_COMPONENTS so
+// the dev gallery can give them their own tab: they answer "what is this thing
+// called and what does it look like", which is a different question from the
+// table components' "how does this render at every width".
+import ScenarioBar from '../components/table/ScenarioBar.vue'
+import RailCard from '../components/table/RailCard.vue'
+import DealControls from '../components/table/DealControls.vue'
+import DealSourceButton from '../components/table/DealSourceButton.vue'
+import ActionCluster from '../components/table/ActionCluster.vue'
 
-export const COMPONENTS = { HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable, CardSelectorPopup, BoardIndicator }
+export const COMPONENTS = { ScenarioBar, RailCard, DealControls, DealSourceButton, ActionCluster, HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable, CardSelectorPopup, BoardIndicator }
+
+/** Which COMPONENTS are shell chrome rather than table components (gallery tabs). */
+export const SHELL_COMPONENTS = ['ScenarioBar', 'RailCard', 'DealControls', 'DealSourceButton', 'ActionCluster']
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 

@@ -31,19 +31,15 @@
       <div v-if="f.dealErrorHint" class="b1-error-hint">{{ f.dealErrorHint }}</div>
     </div>
 
-    <div class="b1-scenario-bar">
-      <div class="b1-scenario-info">
-        <div class="b1-scenario-name">{{ f.scenario || 'Practice deal' }}</div>
-        <div class="b1-scenario-meta">CC &middot; NS: {{ f.systemNS || 'Basic-Bridge' }} &middot; EW: {{ f.systemEW || 'Basic-Bridge' }}</div>
-      </div>
-      <div class="b1-scenario-actions">
+    <ScenarioBar :name="f.scenario || 'Practice deal'" :meta="metaLines">
+      <template #actions>
         <DealSourceButton :attention="!f.hands" />
         <button class="b1-btn" type="button">Invite friends&hellip;</button>
         <button class="b1-btn" type="button">Description</button>
         <span class="b1-actions-spacer"></span>
         <button class="b1-btn" type="button">&#9881; Table settings</button>
-      </div>
-    </div>
+      </template>
+    </ScenarioBar>
 
     <div class="b1-table-wrap">
       <div class="b1-frame">
@@ -141,18 +137,17 @@
       <!-- Right rail: cardplay controls in play, the contract/result block in
            review; empty in bidding (the auction + box live in the grid). -->
       <aside v-if="phase !== 'bidding'" class="b1-rail">
-        <div v-if="phase === 'play'" class="b1-rail-card">
-          <h3>Cardplay</h3>
+        <RailCard v-if="phase === 'play'" title="Cardplay">
           <div class="b1-rail-note">Tricks <strong>NS&nbsp;{{ tricks.NS }} · EW&nbsp;{{ tricks.EW }}</strong></div>
           <div v-if="f.lineNote" class="b1-line-note">↝ {{ f.lineNote }}</div>
           <div v-if="f.botStats" class="b1-stats">
             Bot: {{ f.botStats.count }} calls · avg {{ fmtMs(f.botStats.mean) }} · max {{ fmtMs(f.botStats.max) }}
           </div>
           <!-- (Claim moved to the SE action cluster; Restart cardplay to NW.) -->
-        </div>
+        </RailCard>
 
         <!-- Review: contract + result + DD + the deal-level actions. -->
-        <div v-if="phase === 'review'" class="b1-rail-card">
+        <RailCard v-if="phase === 'review'">
           <div class="b1-contract-line">{{ f.contract }} by {{ seatName(f.declarer) }}</div>
           <div class="b1-contract-meta">{{ f.summary }}</div>
           <div v-if="f.result" class="b1-result">
@@ -169,7 +164,7 @@
           </div>
           <!-- (Double dummy moved to the SE grid corner at review.) -->
           <!-- (Next deal / Replay removed 2026-07-29 — NW carries both now.) -->
-        </div>
+        </RailCard>
       </aside>
     </div>
 
@@ -191,6 +186,8 @@ import BoardIndicator from '../components/BoardIndicator.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import DealControls from '../components/table/DealControls.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
+import ScenarioBar from '../components/table/ScenarioBar.vue'
+import RailCard from '../components/table/RailCard.vue'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
@@ -266,6 +263,8 @@ const regionReserves = computed(() => {
   return se > 0 ? { nw, se } : { nw }
 })
 
+const metaLines = computed(() => [`CC · NS: ${f.value.systemNS || 'Basic-Bridge'} · EW: ${f.value.systemEW || 'Basic-Bridge'}`])
+
 const tricks = computed(() => f.value.tricksTaken || { NS: 0, EW: 0 })
 const SEAT_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' }
 const seatName = (s) => SEAT_NAMES[s] || s
@@ -301,21 +300,7 @@ const heroInitials = computed(() => {
   background: #fdecea; border: 1px solid #f5c6c2; color: #8a2018; font-size: 13px;
 }
 .b1-error-hint { margin-top: 4px; font-size: 12px; color: #a4544c; }
-/* Mirrors production's .bp-scenario-bar exactly: a COLUMN with the action row on
-   top (`order: -1`) and the deal-source info full-width beneath — not the info-left /
-   buttons-right ROW this scene originally guessed. Production chose the column so the
-   info line gets full width instead of being squeezed beside a non-wrapping button
-   row; copying the markup without the CSS intent is what produced the mismatch in the
-   2026-07-29 bug report. */
-.b1-scenario-bar {
-  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
-  margin: 16px; padding: 10px 14px; background: #fff; border: 1px solid #e6e8e3; border-radius: 12px;
-}
 .b1-actions-spacer { flex: 1 1 auto; }
-.b1-scenario-name { font-weight: 600; font-size: 15px; }
-.b1-scenario-meta { font-size: 12px; color: #6a726c; margin-top: 2px; }
-.b1-scenario-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; order: -1; }
-.b1-scenario-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
 .b1-btn {
   font: 600 13px 'DM Sans', system-ui, sans-serif; padding: 7px 12px;
   border: 1px solid #cfd6ce; border-radius: 8px; background: #f7f9f6; color: #33403a; cursor: default; white-space: nowrap;
@@ -336,8 +321,6 @@ const heroInitials = computed(() => {
 .b1-nw { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .b1-se-stack { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .b1-rail { flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px; }
-.b1-rail-card { background: #fff; border: 1px solid #e6e8e3; border-radius: 12px; padding: 12px 14px; }
-.b1-rail-card h3 { margin: 0 0 6px; font-size: 13px; }
 .b1-rail-note { font-size: 12px; color: #6a726c; }
 .b1-contract-line { font-weight: 700; font-size: 15px; }
 .b1-contract-meta { font-size: 12px; color: #6a726c; margin-top: 2px; }

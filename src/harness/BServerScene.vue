@@ -148,55 +148,48 @@
            them are host-only — the split that drives the context-dependent NW
            reserve. Card order matches the live server branch. -->
       <aside class="bsrv-rail">
-        <div v-if="f.ddtricks && phase !== 'review'" class="bsrv-card">
-          <h3>Double dummy</h3>
+        <RailCard v-if="f.ddtricks && phase !== 'review'" title="Double dummy">
           <DoubleDummyTable
             :ddtricks="f.ddtricks"
             :final-contract="{ contract: f.contract || '', declarer: f.declarer || null }"
             :diverged="!!f.divergence"
           />
-        </div>
+        </RailCard>
 
         <!-- Turn cue: your bid (bidding) / your play (play) / waiting on someone. -->
-        <div v-if="phase === 'bidding' && yourTurn" class="bsrv-card">
-          <h3>Your bid</h3>
+        <RailCard v-if="phase === 'bidding' && yourTurn" title="Your bid">
           <div class="bsrv-line bsrv-turn">Your call — use the bidding box.</div>
-        </div>
-        <div v-else-if="phase === 'bidding'" class="bsrv-card bsrv-waiting">
+        </RailCard>
+        <RailCard v-else-if="phase === 'bidding'" tone="waiting">
           <div class="bsrv-line">Waiting for {{ seatName(f.nextSeat) }}&hellip;</div>
-        </div>
+        </RailCard>
 
-        <div v-if="phase === 'play'" class="bsrv-card">
-          <h3>Play</h3>
+        <RailCard v-if="phase === 'play'" title="Play">
           <div class="bsrv-line">Tricks <strong>NS&nbsp;{{ tricks.NS }} · EW&nbsp;{{ tricks.EW }}</strong></div>
           <div v-if="yourTurn" class="bsrv-line bsrv-turn">Your turn — play a card.</div>
           <div v-else class="bsrv-line">
             Waiting for {{ seatName(f.nextSeat) }}&hellip;
             <span class="bsrv-bot-note">(bots can take up to ~20s)</span>
           </div>
-        </div>
+        </RailCard>
 
-        <div v-if="kibitzers.length || canManage" class="bsrv-card">
-          <h3>Kibitzers</h3>
+        <RailCard v-if="kibitzers.length || canManage" title="Kibitzers">
           <div class="bsrv-line">{{ kibitzers.length ? kibitzers.join(', ') : 'None watching' }}</div>
-        </div>
+        </RailCard>
 
         <!-- Host-only. -->
-        <div v-if="canManage" class="bsrv-card">
-          <h3>PassBot</h3>
+        <RailCard v-if="canManage" title="PassBot">
           <div class="bsrv-line">
             {{ passBotSeats.length ? passBotSeats.map(seatName).join(', ') + ' auto-pass' : 'Off' }}
           </div>
-        </div>
+        </RailCard>
 
         <!-- Review: divergence (read-only on a shared table, #304) + result. -->
-        <div v-if="phase === 'review' && f.divergence" class="bsrv-card">
-          <h3>Bidding vs BBA</h3>
+        <RailCard v-if="phase === 'review' && f.divergence" title="Bidding vs BBA">
           <div class="bsrv-line">Your auction diverged from BBA's — see the pinned auction.</div>
-        </div>
+        </RailCard>
 
-        <div v-if="phase === 'review'" class="bsrv-card">
-          <h3>Result</h3>
+        <RailCard v-if="phase === 'review'" title="Result">
           <div class="bsrv-line" v-html="f.resultBanner || (f.contract + ' by ' + seatName(f.declarer))"></div>
           <div class="bsrv-line">
             <button class="bsrv-btn" type="button">{{ f.iAmReady ? 'Ready ✓' : 'Ready for next board' }}</button>
@@ -204,7 +197,7 @@
           <div v-if="readySeats.length" class="bsrv-line bsrv-ready">
             Ready: {{ readySeats.map(seatName).join(', ') }}
           </div>
-        </div>
+        </RailCard>
       </aside>
     </div>
   </div>
@@ -220,6 +213,7 @@ import StatusStrip from '../components/StatusStrip.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
+import RailCard from '../components/table/RailCard.vue'
 import DealControls from '../components/table/DealControls.vue'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
@@ -376,8 +370,6 @@ const seatName = (s) => SEAT_NAMES[s] || s
 
 /* Rail — the column that was missing entirely before 2026-07-29. */
 .bsrv-rail { flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px; }
-.bsrv-card { background: #fff; border: 1px solid #e6e8e3; border-radius: 12px; padding: 12px 14px; }
-.bsrv-card h3 { margin: 0 0 6px; font-size: 13px; }
 .bsrv-line { font-size: 12px; color: #6a726c; margin-top: 4px; }
 .bsrv-turn { color: #1f6a4f; font-weight: 600; }
 .bsrv-waiting { opacity: 0.85; }

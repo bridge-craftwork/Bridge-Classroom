@@ -227,13 +227,15 @@
       <template #rail>
           <!-- Auction + bidding box live in the grid (centre/NE, and SE); the
                double-dummy table joined them in SE at review (2026-07-29), so the
-               rail keeps only the host controls + the off-turn waiting cues. -->
+               rail keeps only the host controls + the off-turn waiting cues.
+               Every card is a RailCard — one frame, one name, one CSS home; they
+               were eight ad-hoc divs in two namespaces before 2026-07-29. -->
 
-          <div v-if="srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode === 'play-only'" class="tv-card tv-waiting">
+          <RailCard v-if="srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode === 'play-only'" tone="waiting">
             Play-only board — the auction is bid automatically…
-          </div>
+          </RailCard>
 
-          <div v-else-if="srv.yourSeat && (!srv.dealLoaded || srv.phase === 'bidding')" class="tv-card">
+          <RailCard v-else-if="srv.yourSeat && (!srv.dealLoaded || srv.phase === 'bidding')">
             <div v-if="!srv.dealLoaded" class="tv-status-line tv-waiting tv-bid-waiting">
               Waiting for the first deal…
             </div>
@@ -241,22 +243,21 @@
             <div v-else-if="srv.nextToAct" class="tv-status-line tv-waiting tv-bid-waiting">
               Waiting for {{ srv.turnLabel }}…
             </div>
-          </div>
+          </RailCard>
 
-          <div v-else-if="srv.dealLoaded && srv.phase === 'bidding' && srv.nextToAct" class="tv-card tv-waiting">
+          <RailCard v-else-if="srv.dealLoaded && srv.phase === 'bidding' && srv.nextToAct" tone="waiting">
             Waiting for {{ srv.turnLabel }}…
-          </div>
+          </RailCard>
 
           <!-- Kibitz box: who's watching; the host drags labels here to unseat,
                and drags a kibitzer onto a seat to seat them. -->
-          <div v-if="srv.canManageSeats || srv.kibitzers.length" class="tv-card">
+          <RailCard v-if="srv.canManageSeats || srv.kibitzers.length">
             <KibitzBox :kibitzers="srv.kibitzers" :can-manage="srv.canManageSeats" @assign="srv.onAssignSeat" />
-          </div>
+          </RailCard>
 
           <!-- PassBot: make a side's bots always pass (BBO-style bidding
                practice). Cardplay still uses the room's cardplay bot. -->
-          <div v-if="srv.canManageSeats" class="tv-card tv-passbot">
-            <h3>PassBot</h3>
+          <RailCard v-if="srv.canManageSeats" title="PassBot" class="tv-passbot">
             <div class="tv-passbot-hint">Bots on a “pass” side never bid (cardplay unaffected).</div>
             <label class="tv-passbot-row">
               <input type="checkbox" :checked="srv.passSides.includes('NS')" @change="srv.togglePassSide('NS')">
@@ -266,10 +267,9 @@
               <input type="checkbox" :checked="srv.passSides.includes('EW')" @change="srv.togglePassSide('EW')">
               E/W always pass
             </label>
-          </div>
+          </RailCard>
 
-          <div v-if="srv.dealLoaded && srv.phase === 'play'" class="tv-card">
-            <h3>Play</h3>
+          <RailCard v-if="srv.dealLoaded && srv.phase === 'play'" title="Play">
             <div class="tv-status-line">
               Tricks <strong>NS {{ srv.tricksTaken.NS }} · EW {{ srv.tricksTaken.EW }}</strong>
             </div>
@@ -282,23 +282,21 @@
               Waiting for {{ srv.turnLabel }}…
               <span v-if="srv.botThinking" class="tv-bot-note">(bots can take up to ~20s)</span>
             </div>
-          </div>
+          </RailCard>
 
           <!-- BBA auction comparison toggle (your-seat you-vs-BBA overlay). A
                per-viewer table setting; the overlay is scoped to your own seat,
                so it's shown once you're seated and the auction has settled. -->
-          <div
+          <RailCard
             v-if="srv.capabilities.divergence && srv.yourSeat && srv.dealLoaded && (srvCenterSlot === 'trick-area' || srvCenterSlot === 'review')"
-            class="tv-card"
           >
             <label class="tv-passbot-row" title="Compare your bids to the BBA expected auction in the auction grid.">
               <input type="checkbox" :checked="srv.showBbaCompare" @change="srv.toggleBbaCompare()">
               Show BBA auction comparison
             </label>
-          </div>
+          </RailCard>
 
-          <div v-if="srv.dealLoaded && srv.phase === 'complete'" class="tv-card">
-            <h3>Result</h3>
+          <RailCard v-if="srv.dealLoaded && srv.phase === 'complete'" title="Result">
             <div class="tv-status-line tv-result-line">
               <span v-if="srv.resultBanner" v-html="srv.resultBanner"></span>
               <template v-else-if="srv.contract">
@@ -326,7 +324,7 @@
                 Waiting for the others — or for the teacher to open the next board.
               </div>
             </template>
-          </div>
+          </RailCard>
       </template>
 
       <template #overlays>
@@ -370,26 +368,13 @@
              deal source is picked; deal-dependent buttons (Next deal / Restart /
              Description) stay greyed until a deal loads, and the Deal source
              button is spotlighted while there's no deal yet. -->
-        <div v-if="currentDeal || !EMBEDDED" class="bp-scenario-bar">
-          <div class="bp-scenario-info">
-            <template v-if="currentDeal">
-              <!-- Board number, dealer, deal number and vul live in the board-status
-                   glyph (NW) — don't repeat them here. Just the source + CC. -->
-              <div class="bp-scenario-name">{{ scenarioNameNoBoard }}</div>
-              <div v-if="conventionsUsed" class="bp-scenario-meta">
-                CC &middot; NS: {{ conventionsUsed.ns }} &middot; EW: {{ conventionsUsed.ew }}
-              </div>
-              <div v-if="poolSummary" class="bp-scenario-meta">
-                Source: {{ poolSummary }}
-              </div>
-            </template>
-            <template v-else>
-              <div class="bp-scenario-name">No deal yet</div>
-              <div class="bp-scenario-meta">You sit South; three BBA bots fill the other seats.</div>
-              <div class="bp-scenario-meta">Pick a deal source to start bidding.</div>
-            </template>
-          </div>
-          <div class="bp-scenario-actions">
+        <ScenarioBar
+          v-if="currentDeal || !EMBEDDED"
+          :name="currentDeal ? scenarioNameNoBoard : 'No deal yet'"
+          :meta="scenarioMetaLines"
+          :embedded="EMBEDDED"
+        >
+          <template #actions>
             <DealSourceButton
               v-if="!EMBEDDED"
               :attention="!currentDeal"
@@ -403,9 +388,10 @@
               @click="inviteFriends"
             >Invite friends&hellip;</button>
             <button v-if="!EMBEDDED && capabilities.narrative" class="bp-btn" @click="showScenarioChat = true" :disabled="!scenarioChat" title="Show the scenario description">Description</button>
-            <button v-if="!EMBEDDED" class="bp-btn bp-settings-btn" @click="showTableSettings = true" title="Table setup + cardplay options">⚙ Table settings</button>
-          </div>
-        </div>
+            <span class="bp-actions-spacer"></span>
+            <button v-if="!EMBEDDED" class="bp-btn bp-settings-btn" @click="showTableSettings = true" title="Table setup + cardplay options">&#9881; Table settings</button>
+          </template>
+        </ScenarioBar>
           </template>
 
           <template #table>
@@ -753,6 +739,8 @@ import TableShell from '../components/table/TableShell.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
 import DealControls from '../components/table/DealControls.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
+import ScenarioBar from '../components/table/ScenarioBar.vue'
+import RailCard from '../components/table/RailCard.vue'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
@@ -1049,6 +1037,19 @@ const {
 //   3. the rail sentence       → shownSummary
 // With the comparison off the user has opted out of BBA feedback entirely, so all
 // three go quiet rather than leaving a marker pointing at a hidden explanation.
+// The scenario bar's sub-lines. Composed here, not inside the component: WHICH
+// lines apply is a per-surface question (a served table has no local pool summary).
+const scenarioMetaLines = computed(() => {
+  if (!currentDeal.value) {
+    return ['You sit South; three BBA bots fill the other seats.', 'Pick a deal source to start bidding.']
+  }
+  const out = []
+  const cc = conventionsUsed.value
+  if (cc) out.push(`CC · NS: ${cc.ns} · EW: ${cc.ew}`)
+  if (poolSummary.value) out.push(`Source: ${poolSummary.value}`)
+  return out
+})
+
 const shownDivergedBids = computed(() => showBbaCompare.value ? divergedBids.value : {})
 const shownWrongIndices = computed(() => showBbaCompare.value ? wrongIndicesArray.value : [])
 // `summary` is wholly a BBA statement — either "N of your bids differed…" or "You
@@ -1788,13 +1789,7 @@ async function restartCardplay() {
   gap: 10px;
   align-items: stretch;
 }
-.bp-app.embedded .bp-scenario-bar {
-  padding: 7px 12px;
-  max-width: none;
-}
-.bp-app.embedded .bp-scenario-name { font-size: 14px; }
-.bp-app.embedded .bp-scenario-meta { font-size: 11px; }
-
+.bp-app.embedded .bp-app.embedded .bp-app.embedded 
 .bp-nav {
   display: flex;
   align-items: center;
@@ -2035,10 +2030,8 @@ async function restartCardplay() {
   border-radius: 8px;
 }
 /* Board source / meta — flows horizontally and wraps, full width, under the buttons. */
-.bp-scenario-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
 .bp-scenario-name { font-size: 15px; font-weight: 500; }
 .bp-scenario-meta { font-size: 12px; color: #666; }
-.bp-scenario-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; order: -1; }
 .bp-btn {
   padding: 6px 14px;
   border-radius: 6px;
@@ -2050,6 +2043,7 @@ async function restartCardplay() {
 .bp-btn:hover { border-color: #888; }
 
 /* "Table settings" button pushed to the right end of the top action row. */
+.bp-actions-spacer { flex: 1 1 auto; }
 .bp-settings-btn { margin-left: auto; }
 
 /* Table-settings popup (deal setup + cardplay display options). */
