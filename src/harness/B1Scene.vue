@@ -56,7 +56,7 @@
           arrangement="grid"
           :table-config="tableConfig"
           :region-reserves="regionReserves"
-          :phase="phase"
+          :phase="arrangerPhase"
           :hero-seat="f.seat || 'S'"
           :hands="f.hands"
           :hidden-seats="f.hiddenSeats || []"
@@ -120,6 +120,7 @@
               />
               <DoubleDummyTable
                 v-else-if="seSlot === 'double-dummy'"
+                compact
                 :ddtricks="f.ddtricks"
                 :final-contract="{ contract: f.contract, declarer: f.declarer }"
                 :diverged="!!f.divergence"
@@ -201,6 +202,14 @@ import tableConfig from '../table-configs/table.tableConfig.js'
 const props = defineProps({ fixture: { type: Object, required: true } })
 const f = computed(() => props.fixture)
 const phase = computed(() => f.value.phase || 'bidding')
+
+// Pass the engine phase THROUGH, 'review' included. Tempting to map review→'play'
+// (production does), but the arranger already knows 'review': `shrinkWrapRows`
+// collapses its rows to content while deliberately NOT giving it the bottom-pack
+// corner margins and growth reserve that play gets. Mapping it to 'play' would take
+// those on for no reason — and measurably changes nothing about the row gaps, which
+// come from the top row being sized by the NE auction, not from row-sizing mode.
+const arrangerPhase = computed(() => phase.value)
 
 const { status } = useTableStatus({
   phase,

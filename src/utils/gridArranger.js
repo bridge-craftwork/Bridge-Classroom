@@ -147,7 +147,7 @@ const round2 = (x) => Math.round(x * 100) / 100
  * @returns {LayoutLedger}
  */
 export function computeLayoutLedger(o) {
-  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65, caps = {}, columnWeights = [1, 1, 1] } = o
+  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65, floors = {}, caps = {}, columnWeights = [1, 1, 1] } = o
   const occ = new Set(occupied)
   // Per-role cap resolution (§2 scale.caps). A seat area (n/e/s/w) uses caps.seats; the
   // stage uses caps.center; a corner its own. The 'seats' RELATIONSHIP string caps at 1.0
@@ -184,7 +184,18 @@ export function computeLayoutLedger(o) {
   const content = [0, 0, 0]
   const occCols = columns.filter((c) => c.full > 0)
   const contentBudget = budget - occCols.reduce((s, c) => s + c.margin, 0)
-  const floorContent = (c) => floor * c.need
+  // Per-region legibility floor (config `scale.regionFloors`), defaulting to the
+  // global one. A region whose content is REFERENCE rather than working material can
+  // legitimately go smaller — the double-dummy table at review is the case that
+  // forced this: pinned at 0.65 it could not shrink far enough to sit beside the
+  // South hand at laptop-half, so it painted over it. Same reasoning as the NE
+  // reference-auction floor ruling. Unset regions are unchanged, so A1 is untouched.
+  const floorOf = (area) => (typeof floors[area] === 'number' ? floors[area] : floor)
+  // A COLUMN's floor-minimum is the widest of its regions' own floor-minimums — each
+  // region may floor at a different fraction of its own reserve, so this is a max over
+  // (floor × reserve), not `columnFloor × need`.
+  const floorContent = (c) =>
+    c.occupied.length ? Math.max(...c.occupied.map((a) => floorOf(a) * (reserves[a] ?? 0))) : 0
   const sumFloor = occCols.reduce((s, c) => s + floorContent(c), 0)
   const orderedTiers = [...new Set(occCols.map((c) => c.tier))].sort((a, b) => a - b)
   // Grow occupied columns from their current allocation toward `target(c)` by TIER
@@ -240,13 +251,14 @@ export function computeLayoutLedger(o) {
   // the cap when cap > 1.0) — the region rendering at exactly its fit.
   const entry = (area, reserve, colContent, tier, cap) => {
     const fit = reserve > 0 ? colContent / reserve : 1
-    const scale = Math.max(floor, Math.min(cap, fit))
+    const rFloor = floorOf(area)
+    const scale = Math.max(rFloor, Math.min(cap, fit))
     const ceil = cap > 1 + 1e-6 ? 'cap' : 'natural'
     let binding, losing
     if (fit >= cap - 1e-6) { binding = ceil; losing = [`budget:${round2(fit)}`] }
-    else if (fit < floor - 1e-6) { binding = 'overflow'; losing = [`budget:${round2(fit)}`, `${ceil}:${cap}`, `floor:${floor}`] }
-    else if (fit <= floor + 1e-6) { binding = 'floor'; losing = [`budget:${round2(fit)}`, `${ceil}:${cap}`] }
-    else { binding = 'budget'; losing = [`${ceil}:${cap}`, `floor:${floor}`] }
+    else if (fit < rFloor - 1e-6) { binding = 'overflow'; losing = [`budget:${round2(fit)}`, `${ceil}:${cap}`, `floor:${rFloor}`] }
+    else if (fit <= rFloor + 1e-6) { binding = 'floor'; losing = [`budget:${round2(fit)}`, `${ceil}:${cap}`] }
+    else { binding = 'budget'; losing = [`${ceil}:${cap}`, `floor:${rFloor}`] }
     return { reserve, allocated: Math.round(colContent), scale: round2(scale), tier, cap: round2(cap), binding, losing }
   }
   const regions = {}

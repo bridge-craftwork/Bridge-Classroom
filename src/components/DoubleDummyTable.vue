@@ -1,7 +1,7 @@
 <template>
   <template v-if="rows">
-    <div class="dd-label">Double-dummy tricks</div>
-    <table class="dd-table">
+    <div class="dd-label" :class="{ 'dd-label-compact': compact }">Double-dummy tricks</div>
+    <table class="dd-table" :class="{ 'dd-compact': compact }">
       <thead>
         <tr>
           <th></th>
@@ -43,6 +43,16 @@ const props = defineProps({
   finalContract: { type: Object, default: () => ({ contract: '', declarer: null }) },
   // Colour the contract cell as "diverged" (pink) vs "matched" (green).
   diverged: { type: Boolean, default: false },
+  // Compact density for a grid CORNER (2026-07-29, Rick: "there is a lot of white
+  // space that can be compressed out on the sides before clamping, especially with
+  // single digits — the font can be reduced as necessary here also").
+  //
+  // The default cells carry 10px of padding on EACH side to hold a single digit —
+  // ~120px of the table's ~205px is padding. Compressing that is strictly better
+  // than letting the arranger scale the whole table down: a transform shrinks the
+  // digits too, while this keeps them legible and removes only the air. Squeeze
+  // first, clamp second.
+  compact: { type: Boolean, default: false },
 })
 
 const rows = computed(() => buildDdRows(props.ddtricks, props.finalContract))
@@ -67,6 +77,12 @@ const rows = computed(() => buildDdRows(props.ddtricks, props.finalContract))
   padding: 4px 10px;
   text-align: center;
 }
+/* Corner form: the air comes out of the sides first, then the type steps down.
+   Widths here are mirrored by doubleDummyReservePx() in table/clusterMetrics.js. */
+.dd-compact { font-size: 11px; margin-top: 4px; }
+.dd-compact th,
+.dd-compact td { padding: 2px 4px; min-width: 15px; }
+.dd-label-compact { font-size: 9px; margin-top: 6px; letter-spacing: 0.03em; }
 .dd-table th { background: #f3f3f0; color: #666; font-weight: 600; }
 .dd-table th.dd-red { color: #d32f2f; }
 .dd-table th.dd-black { color: #1a1a1a; }

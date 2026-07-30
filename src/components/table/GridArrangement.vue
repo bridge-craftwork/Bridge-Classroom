@@ -593,6 +593,9 @@ function relayout(force = false) {
     cellGap: CELL_GAP,
     actionHandGap: actionHandGap.value,
     floor: floor.value,
+    // Per-region floors (config scale.regionFloors) — reference content (the review
+    // double-dummy table) may compress below the global legibility floor.
+    floors: props.config.scale?.regionFloors || {},
     // Per-role scale ceilings (§2 scale.caps): the stage/center may grow above 1.0×
     // toward its cap, seats toward theirs, periphery pinned at 1.0, se ≤ seats. Keyed by
     // AREA — the arranger's config caps object. Omitting it (any surface without caps)
