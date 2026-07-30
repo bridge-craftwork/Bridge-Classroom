@@ -334,6 +334,26 @@
               <button class="bp-settings-x" @click="srv.settingsOpen = false" title="Close">&times;</button>
             </div>
 
+            <!-- Session-wide, host-only. Merged in from the host strip's separate
+                 settings modal (2026-07-30 report: two "Table settings" buttons).
+                 This modal is the survivor because it is the only one a GUEST
+                 renders — the host strip lives in TableView, which guests never
+                 see. -->
+            <template v-if="srv.canManageSeats">
+              <label class="bp-setting-row">
+                <input
+                  type="checkbox"
+                  :checked="srv.boardMode === 'bid-and-play'"
+                  @change="srv.onSetBoardMode($event.target.checked ? 'bid-and-play' : 'bid-only')"
+                >
+                Play the hand after bidding
+              </label>
+              <p class="bp-setting-note">
+                Applies live to every seat — the current auction transitions into cardplay
+                at its end, and board numbers stay put.
+              </p>
+            </template>
+
             <template v-if="srv.canDeal">
               <label class="bp-setting-row" title="Deal each board to a random rotation of the seats.">
                 <input type="checkbox" v-model="srv.rotateDeals"> Rotate deals randomly
@@ -2284,6 +2304,7 @@ async function restartCardplay() {
 .bp-settings-x:hover { color: #333; }
 .bp-setting-row { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .bp-setting-row > span { margin-right: auto; }
+.bp-setting-note { font-size: 12px; color: #667; margin: 4px 0 8px; line-height: 1.4; }
 .bp-setting-sep {
   margin-top: 6px;
   padding-top: 10px;
