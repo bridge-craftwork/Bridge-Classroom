@@ -17,6 +17,7 @@
     :config="tableConfig"
     :region-reserves="regionReserves"
     :phase="phase"
+    :stacked-rounds="stackedRounds"
     :hero-seat="heroSeat"
     :hero-name="heroName"
     :declarer="declarer"
@@ -242,6 +243,11 @@ const props = defineProps({
   phase: {
     type: String,
     default: 'bidding'
+  },
+  // Grid-only: auction rounds carrying a "you vs BBA" stack (see GridArrangement).
+  stackedRounds: {
+    type: Number,
+    default: 0
   },
   heroSeat: {
     type: String,
