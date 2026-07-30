@@ -558,14 +558,30 @@ let lastBudget = -1
 // by re-measuring after the width pass renders. Bounded to two passes so it can't loop.
 const HEIGHT_BOTTOM_MARGIN = 12
 let heightSeatCeiling = Infinity
+// BETA: the centre's own height ceiling. The default height fit shrinks ONLY the seats
+// (see applyHeightFit), which is why the centre cell looks locked while the eight outer
+// cells resize.
+let heightCenterCeiling = Infinity
 let heightPass = 0
 
 // Apply the height-fit ceiling to the seats cap (leaves every other role untouched;
 // the `se: 'seats'` relationship rides the resulting seatScale as before).
 function capsWithHeight(baseCaps) {
-  if (!Number.isFinite(heightSeatCeiling)) return baseCaps
-  const seatsCap = typeof baseCaps?.seats === 'number' ? baseCaps.seats : 1
-  return { ...(baseCaps || {}), seats: Math.min(seatsCap, heightSeatCeiling) }
+  const noSeat = !Number.isFinite(heightSeatCeiling)
+  const noCenter = !Number.isFinite(heightCenterCeiling)
+  if (noSeat && noCenter) return baseCaps
+  const out = { ...(baseCaps || {}) }
+  if (!noSeat) {
+    const seatsCap = typeof out.seats === 'number' ? out.seats : 1
+    out.seats = Math.min(seatsCap, heightSeatCeiling)
+  }
+  // BETA only — see applyHeightFit. heightCenterCeiling stays Infinity on the default
+  // channel, so this branch never fires there.
+  if (!noCenter) {
+    const centerCap = typeof out.center === 'number' ? out.center : 1
+    out.center = Math.min(centerCap, heightCenterCeiling)
+  }
+  return out
 }
 
 function relayout(force = false) {
@@ -579,7 +595,7 @@ function relayout(force = false) {
   // alone (vertical shrink-wrap) never re-triggers the WIDTH pass; the height fit below
   // re-runs with force when it needs to.
   if (!force && !widthChanged) { recordSizes(el); return }
-  if (widthChanged) { lastBudget = budget; heightSeatCeiling = Infinity; heightPass = 0 }
+  if (widthChanged) { lastBudget = budget; heightSeatCeiling = Infinity; heightCenterCeiling = Infinity; heightPass = 0 }
 
   // Build the ledger inputs from occupancy + exported reserves (no rendered-content
   // measurement) and delegate to the pure allocator. The ledger IS the layout: the
@@ -667,9 +683,39 @@ function applyHeightFit() {
   const fixedH = gridH - seatRowsH
   let target = (heightBudget - fixedH) / naturalSeatRowsH
   target = Math.max(floor.value, Math.min(seatScale, target))
-  // Only act when it actually tightens the clamp (avoids a no-op re-render / loop).
-  if (target < seatScale - 0.01 && target < heightSeatCeiling - 0.01) {
-    heightSeatCeiling = target
+
+  // ── BETA: let the CENTRE take part in the height fit ──────────────────────────
+  // The default fit above treats the centre as fixed height. That holds while the
+  // seats drive their own rows — but at review the centre is the tallest thing in the
+  // middle row, so shrinking the seats cannot shrink that row AT ALL. The fit then
+  // floors every hand and the stage still overflows: at 1521x784 all four hands sat at
+  // 0.65 with South below the fold, while the centre never moved. Shrinking the wrong
+  // thing, and then not fitting anyway.
+  //
+  // Here the centre's EXCESS over the tallest seat in its row is counted as scalable
+  // height too, and one multiplier `k` is solved for both. Keeping their ratio fixed
+  // means the stage keeps its proportions while getting smaller — and the seats give up
+  // less than they do today, because the centre is now sharing the reduction.
+  let centerTarget = null
+  const centerScale = scales.center || 1
+  if (arrangement.value === 'beta') {
+    const centerH = el.querySelector('[data-region="center"]')?.getBoundingClientRect().height || 0
+    const centerExcess = Math.max(0, centerH - (rowMax[1] || 0))
+    if (centerExcess > 0) {
+      const scalableH = seatRowsH + centerExcess
+      const k = (heightBudget - (gridH - scalableH)) / scalableH
+      target = Math.max(floor.value, Math.min(seatScale, seatScale * k))
+      centerTarget = Math.max(floor.value, Math.min(centerScale, centerScale * k))
+    }
+  }
+
+  // Only act when it actually tightens a clamp (avoids a no-op re-render / loop).
+  const seatTightens = target < seatScale - 0.01 && target < heightSeatCeiling - 0.01
+  const centerTightens = centerTarget != null
+    && centerTarget < centerScale - 0.01 && centerTarget < heightCenterCeiling - 0.01
+  if (seatTightens || centerTightens) {
+    if (seatTightens) heightSeatCeiling = target
+    if (centerTightens) heightCenterCeiling = centerTarget
     heightPass += 1
     relayout(true)
   }
@@ -781,6 +827,7 @@ let ro = null
 // viewport — this is what makes "measure, don't model" hold as the viewport changes.
 function onWindowResize() {
   heightSeatCeiling = Infinity
+  heightCenterCeiling = Infinity
   heightPass = 0
   relayout(true)
 }
@@ -814,7 +861,7 @@ onBeforeUnmount(() => {
 // hands have rendered before we re-measure boxes.
 watch(
   [dealSeatReserve, () => SEATS.filter(isHandBearing).join(''), () => props.phase],
-  async () => { heightSeatCeiling = Infinity; heightPass = 0; await nextTick(); relayout(true) },
+  async () => { heightSeatCeiling = Infinity; heightCenterCeiling = Infinity; heightPass = 0; await nextTick(); relayout(true) },
 )
 </script>
 
