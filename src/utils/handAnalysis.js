@@ -96,10 +96,25 @@ export function ddTrickAt(ddtricks, seatIdx, suitIdx) {
   return 0
 }
 
+// Whether a `ddtricks` payload can actually produce a table: 20 seat×strain cells.
+//
+// Exported because the SHELL has to ask the same question the component does. A grid
+// corner is occupied iff its role is configured AND the shell provided the slot — so a
+// shell that gates on `!!ddtricks` while DoubleDummyTable renders on `buildDdRows`
+// reserves a corner for a table that never appears. Same predicate, one export, and
+// the two can't drift.
+//
+// The length check is not pedantry: `ddTrickAt` returns 0 for any character it can't
+// read, so a truncated or empty payload renders a full grid of confident zeros — a
+// table saying every contract makes nothing. No table is the honest rendering.
+export function hasDdTricks(ddtricks) {
+  return !!ddtricks && ddtricks.length >= 20
+}
+
 // Build the DD display grid (rows N,S,E,W × cols ♣♦♥♠ NT), marking the cell
 // that matches the final contract's declarer+strain so the UI can highlight it.
 export function buildDdRows(ddtricks, finalContract) {
-  if (!ddtricks) return null
+  if (!hasDdTricks(ddtricks)) return null
   const seats = ['N', 'S', 'E', 'W']
   const colSuitIdx = [4, 3, 2, 1, 0] // display order ♣ ♦ ♥ ♠ NT
   const colStrain = ['C', 'D', 'H', 'S', 'NT']

@@ -12,6 +12,8 @@
 // The buttons take a fixed min-width from these same constants, so the metric is
 // exact by construction rather than an estimate of text width.
 
+import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../boardIndicatorMetrics.js'
+
 // ICON-ONLY transport (2026-07-29, Rick). The first cut used labelled buttons
 // min-width'd to the widest label ("Restart cardplay") at 148px — visibly wider than
 // their own text, and wide enough that NW's reserve grew from the glyph's ~89px to
@@ -21,31 +23,45 @@
 // and the aria-label, which is also the accessible name.
 export const CLUSTER_UNIT = {
   iconBtnPx: 32,
-  // The transport WRAPS at two icons per row. Three in a line would be 108px —
-  // still wider than the 89px glyph above it, so NW would keep growing and the
-  // North collision could come back. Two per row is 70px: strictly under the glyph,
-  // so the transport is genuinely free. The CSS max-width is derived from this.
-  maxPerRow: 2,
+  // Below this the icons stop being a usable target, so the row is allowed to exceed
+  // the glyph rather than shrink further. Nothing renders that many buttons today —
+  // it's the escape hatch if something ever does.
+  minIconBtnPx: 24,
   // "Claim…" keeps its word — it is rare, consequential, and has no obvious glyph.
   textBtnPx: 78,
   gapPx: 6,
 }
 
+// ONE ROW, always (2026-07-30, Rick: three buttons were wrapping to 2+1). The
+// transport used to wrap at two icons per row, because three at full size is 108px —
+// wider than the 89px board glyph it sits under, and NW growing past the glyph is what
+// once collided with North. Both goals hold if the BUTTONS give way instead of the
+// row: the icons shrink just enough that the whole transport still fits the glyph's
+// extent, so the corner reserves exactly what it reserved before the controls arrived.
+const SINGLE_ROW_MAX_PX = boardIndicatorExtentPx(A1_BOARD_SIZE)
+
+/** Icon edge (px) for a transport of `n` buttons — full size until a row needs more
+ *  than the glyph's width, then shrunk to fit (never below `minIconBtnPx`). */
+export function dealControlsIconPx(n) {
+  if (n <= 0) return 0
+  const fit = Math.floor((SINGLE_ROW_MAX_PX - (n - 1) * CLUSTER_UNIT.gapPx) / n)
+  return Math.max(CLUSTER_UNIT.minIconBtnPx, Math.min(CLUSTER_UNIT.iconBtnPx, fit))
+}
+
 /**
- * NW transport cluster width (px, 1.0×). A ROW of icon buttons, so it grows with the
- * count. A viewer with no transport (B3, or a kibitzing teacher) gets 0, which lets
- * the caller fall back to the board glyph's own extent.
+ * NW transport cluster width (px, 1.0×) — one row of icon buttons at the size
+ * `dealControlsIconPx` gives them. A viewer with no transport (B3, or a kibitzing
+ * teacher) gets 0, which lets the caller fall back to the board glyph's own extent.
  */
 export function dealControlsReservePx({ showRestart = true, showNext = true, showRestartCardplay = false } = {}) {
   const n = (showRestart ? 1 : 0) + (showNext ? 1 : 0) + (showRestartCardplay ? 1 : 0)
   if (n === 0) return 0
-  const perRow = Math.min(n, CLUSTER_UNIT.maxPerRow)
-  return perRow * CLUSTER_UNIT.iconBtnPx + (perRow - 1) * CLUSTER_UNIT.gapPx
+  return n * dealControlsIconPx(n) + (n - 1) * CLUSTER_UNIT.gapPx
 }
 
-/** The CSS max-width that produces the wrap the metric assumes. */
+/** The widest the transport is allowed to lay out before its icons shrink. */
 export function dealControlsMaxWidthPx() {
-  return CLUSTER_UNIT.maxPerRow * CLUSTER_UNIT.iconBtnPx + (CLUSTER_UNIT.maxPerRow - 1) * CLUSTER_UNIT.gapPx
+  return SINGLE_ROW_MAX_PX
 }
 
 /**

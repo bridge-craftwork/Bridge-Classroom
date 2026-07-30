@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../../boardIndicatorMetrics.js'
 import {
   CLUSTER_UNIT,
+  dealControlsIconPx,
   dealControlsReservePx,
   actionClusterReservePx,
   doubleDummyReservePx,
@@ -17,14 +18,26 @@ describe('dealControlsReservePx (NW transport)', () => {
     expect(dealControlsReservePx({ showRestart: false, showNext: false, showRestartCardplay: false })).toBe(0)
   })
 
-  it('grows with the button count, then WRAPS rather than growing further', () => {
+  it('grows with the button count, then SHRINKS THE ICONS rather than wrapping', () => {
     const one = dealControlsReservePx({ showRestart: true, showNext: false })
     const two = dealControlsReservePx({ showRestart: true, showNext: true })
     const three = dealControlsReservePx({ showRestart: true, showNext: true, showRestartCardplay: true })
     expect(one).toBe(CLUSTER_UNIT.iconBtnPx)
     expect(two).toBe(2 * CLUSTER_UNIT.iconBtnPx + CLUSTER_UNIT.gapPx)
-    // The third icon wraps onto a second line instead of widening the corner.
-    expect(three).toBe(two)
+    // The third icon used to wrap to a second line (2026-07-30, Rick: keep it to one
+    // row). It now stays in the row and every icon gives up a few px instead.
+    expect(three).toBeGreaterThan(two)
+    expect(dealControlsIconPx(3)).toBeLessThan(CLUSTER_UNIT.iconBtnPx)
+    expect(three).toBe(3 * dealControlsIconPx(3) + 2 * CLUSTER_UNIT.gapPx)
+  })
+
+  it('leaves one and two buttons at full size — only a row that must shrink does', () => {
+    expect(dealControlsIconPx(1)).toBe(CLUSTER_UNIT.iconBtnPx)
+    expect(dealControlsIconPx(2)).toBe(CLUSTER_UNIT.iconBtnPx)
+  })
+
+  it('stops shrinking at a usable target size, even if the row then overflows', () => {
+    expect(dealControlsIconPx(6)).toBe(CLUSTER_UNIT.minIconBtnPx)
   })
 
   // THE regression guard. The labelled first cut min-width'd each button to the

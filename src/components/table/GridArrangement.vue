@@ -82,7 +82,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, u
 import { useArrangement } from '../../composables/useArrangement.js'
 import { setArrangerSnapshot, clearArrangerSnapshot } from '../../report/arrangerSnapshot.js'
 import SeatPanel from '../SeatPanel.vue'
-import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, handReservePx, computeLayoutLedger, actionCornerFor } from '../../utils/gridArranger.js'
+import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, handReservePx, computeLayoutLedger, actionCornerFor, solveHeightFit } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
 import { biddingBoxReservePx } from '../biddingBoxMetrics.js'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../boardIndicatorMetrics.js'
@@ -595,8 +595,8 @@ function relayout(force = false) {
   // A width change is a fresh layout — drop any prior height clamp and re-fit. Height
   // alone (vertical shrink-wrap) never re-triggers the WIDTH pass; the height fit below
   // re-runs with force when it needs to.
-  if (!force && !widthChanged) { recordSizes(el); return }
-  if (widthChanged) { lastBudget = budget; heightSeatCeiling = Infinity; heightCenterCeiling = Infinity; heightPass = 0 }
+  if (!force && !widthChanged) { recordSizes(el); watchContentHeight(el); return }
+  if (widthChanged) { lastBudget = budget; heightSeatCeiling = Infinity; heightCenterCeiling = Infinity; heightPass = 0; heightRefits = 0; lastNaturalH = -1 }
 
   // Build the ledger inputs from occupancy + exported reserves (no rendered-content
   // measurement) and delegate to the pure allocator. The ledger IS the layout: the
@@ -642,6 +642,68 @@ function relayout(force = false) {
   scheduleHeightFit()
 }
 
+// ── The height fit's missing trigger (BETA, from the 2026-07-30 bidding report) ──
+// The height fit ran on mount, on a WIDTH change, on a window resize, and when the
+// deal's own inputs changed. Nothing covered the case the report caught: content
+// growing TALLER at a constant width. During bidding that's every auction — each
+// round adds a row, the stage passes its growth reserve, the stack lengthens, and the
+// early return above (unchanged width → measure only) meant the fit never looked
+// again. The bundle showed it exactly: a 776px stack in a 638px budget with BOTH
+// height ceilings still null — not a fit that clamped wrong, a fit that never ran.
+//
+// The trigger is the stack's height DIVIDED BY the scales applied to it — the height
+// the content would take at 1.0×. That quantity is invariant under the fit's own
+// clamping (which is pure scaling), so re-fitting can't retrigger itself; it moves
+// only when the content genuinely changes. A change is a fresh height problem, so the
+// ceilings reset — otherwise a clamp fitted to a 2-round auction would permanently
+// undersize a 5-round one. `heightRefits` bounds it per width epoch, in case some
+// layout does manage to feed its own output back in.
+// GROWTH only, and only past a threshold that separates content from jitter. Both
+// qualifiers are measured, not guessed. The invariance above is approximate: re-fitting
+// changes the centre's cap, which changes its column's width, which changes what
+// HandDisplay fits into the seats — so the "natural" stack wobbles by a few px as the
+// fit settles (b1-review logged 710 → 715 → 719 → 710, a 9px cycle, on a STATIC
+// fixture). An auction gaining a round is worth ~38px at 1.0×, so 24px sits cleanly
+// between them. Shrinkage is deliberately ignored: a clamp left over from taller
+// content only under-sizes the stack a little, while re-opening it on every wobble is
+// how the fit ends up bidding against itself (it cost the hands 0.06 of scale before
+// this threshold went in).
+const NATURAL_H_EPS = 24
+// One refit per auction round is the expected rate, so this has to clear the longest
+// auction a deal can produce (~12 rounds) with room to spare; it is a runaway backstop,
+// not a rationing device. Reset per deal, per width epoch and on a window resize.
+const HEIGHT_REFIT_BUDGET = 24
+let lastNaturalH = -1
+let heightRefits = 0
+function naturalStackH(el) {
+  let total = 0
+  for (const areas of AREA_ROWS) {
+    let h = 0
+    for (const area of areas) {
+      if (!areaOccupied(area)) continue
+      const node = el.querySelector('.region.area-' + area)
+      if (!node) continue
+      const s = area === 'center' ? scales.center : SEAT_AREA_SET.has(area) ? scales.seats : scales[area]
+      h = Math.max(h, node.getBoundingClientRect().height / (s || 1))
+    }
+    total += h
+  }
+  return total
+}
+function watchContentHeight(el) {
+  if (arrangement.value !== 'beta') return
+  const nat = naturalStackH(el)
+  if (lastNaturalH < 0) { lastNaturalH = nat; return }
+  if (nat <= lastNaturalH + NATURAL_H_EPS) { lastNaturalH = Math.min(lastNaturalH, nat); return }
+  lastNaturalH = nat
+  if (heightRefits >= HEIGHT_REFIT_BUDGET) return
+  heightRefits += 1
+  heightSeatCeiling = Infinity
+  heightCenterCeiling = Infinity
+  heightPass = 0
+  relayout(true)
+}
+
 // The height fit reads the LIVE DOM, so it must run AFTER Vue paints the new scale (a
 // synchronous read here sees the previous render). A double rAF waits for layout/paint,
 // the same settle HandDisplay's measure uses.
@@ -658,13 +720,41 @@ function scheduleHeightFit() {
 // a small scroll beats illegible cards. Re-runs the width pass once with the lowered
 // seats cap; converges because the seat rows scale ~linearly with the seat scale and the
 // rest (centre, status, gaps) is fixed height, so the fit is a one-step solve.
+// The measured row model the beta solve consumes: every OCCUPIED region, grouped by
+// grid row and tagged with how its height responds to the fit. Measurement lives here
+// (the component owns the DOM); the arithmetic is pure, in `solveHeightFit`.
+const SEAT_AREA_SET = new Set(['n', 'e', 's', 'w'])
+function measureRowModel(el) {
+  return AREA_ROWS.map((areas) => {
+    const members = []
+    for (const area of areas) {
+      if (!areaOccupied(area)) continue
+      const node = el.querySelector('.region.area-' + area)
+      if (!node) continue
+      const h = node.getBoundingClientRect().height
+      if (!(h > 0)) continue
+      // A corner whose configured cap is the `se: 'seats'` RELATIONSHIP rides the seat
+      // scale (the same key `isSeatsRel` reads in the allocator); every other corner is
+      // fixed height as far as this fit is concerned.
+      const capCfg = props.config.scale?.caps?.[area]
+      const kind = area === 'center' ? 'center'
+        : SEAT_AREA_SET.has(area) ? 'seat'
+        : (capCfg === 'seats' || capCfg === 'seat') ? 'action'
+        : 'fixed'
+      // Every seat area scales with the seat scale, but only one SHOWING A HAND is a
+      // peer the stage can be equalised against (in bidding E/W are name chips).
+      const seat = kind === 'seat' ? seatForArea(area) : null
+      members.push({ area, h, kind, hand: !!seat && isHandBearing(seat) })
+    }
+    return members
+  })
+}
+
 function applyHeightFit() {
   const el = root.value
-  // Pass budget. Two was enough while the fit had ONE lever (shrink the seats). The
-  // beta rule spends in ORDER — centre's discretionary growth first, then the seats —
-  // so it needs a pass for each step plus one to settle, or it stops half-applied with
-  // the centre corrected and the stage still overflowing (which is what two passes did:
-  // ratio fixed, South back off-screen).
+  // Pass budget. Two is enough for the default channel's single-lever fit. Beta solves
+  // both levers at once (see solveHeightFit), so the third pass is a settle margin, not
+  // a requirement — the ordered spend that needed a pass per step is gone.
   const maxPasses = arrangement.value === 'beta' ? 3 : 2
   if (!el || heightPass >= maxPasses) return
   const rect = el.getBoundingClientRect()
@@ -672,67 +762,49 @@ function applyHeightFit() {
   const gridH = Math.round(rect.height)
   if (!(heightBudget > 0) || gridH <= heightBudget + 2) return // fits — no height pressure
 
-  // Rows carrying a hand-bearing seat scale with the seat scale; sum the tallest such
-  // region per ROW (grouping avoids double-counting two side hands sharing the middle
-  // row). Everything else (centre, status, gaps) is the fixed remainder.
-  const hb = ledger.value?.seats?.handBearing || []
-  const rowMax = {}
-  for (const area of hb) {
-    const node = el.querySelector('.region.area-' + area)
-    if (!node) continue
-    const ri = AREA_ROWS.findIndex((r) => r.includes(area))
-    rowMax[ri] = Math.max(rowMax[ri] || 0, node.getBoundingClientRect().height)
-  }
-  const seatRowsH = Object.values(rowMax).reduce((s, h) => s + h, 0)
-  if (seatRowsH <= 0) return
   const seatScale = scales.seats || 1
-  const naturalSeatRowsH = seatRowsH / seatScale
-  const fixedH = gridH - seatRowsH
-  let target = (heightBudget - fixedH) / naturalSeatRowsH
-  target = Math.max(floor.value, Math.min(seatScale, target))
-
-  // ── BETA: let the CENTRE take part in the height fit ──────────────────────────
-  // The default fit above treats the centre as fixed height. That holds while the
-  // seats drive their own rows — but at review the centre is the tallest thing in the
-  // middle row, so shrinking the seats cannot shrink that row AT ALL. The fit then
-  // floors every hand and the stage still overflows: at 1521x784 all four hands sat at
-  // 0.65 with South below the fold, while the centre never moved. Shrinking the wrong
-  // thing, and then not fitting anyway.
-  //
-  // Here the centre's EXCESS over the tallest seat in its row is counted as scalable
-  // height too, and one multiplier `k` is solved for both. Keeping their ratio fixed
-  // means the stage keeps its proportions while getting smaller — and the seats give up
-  // less than they do today, because the centre is now sharing the reduction.
-  let centerTarget = null
   const centerScale = scales.center || 1
-  if (arrangement.value === 'beta') {
-    const centerH = el.querySelector('[data-region="center"]')?.getBoundingClientRect().height || 0
-    const centerExcess = Math.max(0, centerH - (rowMax[1] || 0))
-    if (centerExcess > 0) {
-      // PRIORITY, not a shared multiplier (2026-07-30, Rick: "center shouldn't be twice
-      // as big as the hands. Maybe we need a balance goal?").
-      //
-      // The first cut scaled the centre and the seats by ONE factor, which preserves
-      // whatever ratio they arrived with — so a stage that was already 2:1 stayed 2:1,
-      // just smaller. The reported case: centre 1.54x against hands 0.76x, both pinned
-      // at their height ceilings.
-      //
-      // The rule instead is an ORDER OF SPENDING: the centre's growth ABOVE its natural
-      // size is discretionary — it exists to use up spare room — while the hands going
-      // BELOW natural is a real cost to the reader. So give up all of the former before
-      // any of the latter. No magic ratio: on a roomy screen the centre still grows to
-      // its 1.8 cap, because nothing is starved and the rule never fires.
-      if (centerScale > 1.01) {
-        centerTarget = 1
-        target = seatScale // hands untouched this pass
-      } else {
-        // Centre already at natural — the remaining overflow has to come from the seats,
-        // which is the pre-existing solve.
-        const scalableH = seatRowsH + centerExcess
-        const k = (heightBudget - (gridH - scalableH)) / scalableH
-        target = Math.max(floor.value, Math.min(seatScale, seatScale * k))
-      }
+  let target = seatScale
+  let centerTarget = null
+
+  // ── BETA: one honest solve over the measured rows ────────────────────────────
+  // Supersedes the ordered spend of #363 (which needed a pass per step) and the
+  // per-row over-prediction that left the stack 8px below the fold. The stage SPANS
+  // rows when it absorbs an empty centre-column seat (n-/s-absorption), so its height
+  // can't be attributed to one row — those layouts fall through to the default model.
+  const solved = arrangement.value === 'beta' && areaOccupied('n') && areaOccupied('s')
+    ? solveHeightFit({
+        rows: measureRowModel(el),
+        gridH,
+        heightBudget,
+        seatScale,
+        centerScale,
+        floor: floor.value,
+        centerFloor: props.config.scale?.regionFloors?.center ?? floor.value,
+      })
+    : null
+
+  if (solved) {
+    target = solved.seatTarget
+    centerTarget = solved.centerTarget
+  } else {
+    // Default channel (unchanged): rows carrying a hand-bearing seat scale with the seat
+    // scale; sum the tallest such region per ROW (grouping avoids double-counting two
+    // side hands sharing the middle row). Everything else (centre, status, gaps) is the
+    // fixed remainder — which is the assumption beta's row model replaces.
+    const hb = ledger.value?.seats?.handBearing || []
+    const rowMax = {}
+    for (const area of hb) {
+      const node = el.querySelector('.region.area-' + area)
+      if (!node) continue
+      const ri = AREA_ROWS.findIndex((r) => r.includes(area))
+      rowMax[ri] = Math.max(rowMax[ri] || 0, node.getBoundingClientRect().height)
     }
+    const seatRowsH = Object.values(rowMax).reduce((s, h) => s + h, 0)
+    if (seatRowsH <= 0) return
+    const naturalSeatRowsH = seatRowsH / seatScale
+    const fixedH = gridH - seatRowsH
+    target = Math.max(floor.value, Math.min(seatScale, (heightBudget - fixedH) / naturalSeatRowsH))
   }
 
   // Only act when it actually tightens a clamp (avoids a no-op re-render / loop).
@@ -761,6 +833,11 @@ function arrangerSnapshot() {
     budget: Math.round(lastBudget),
     heightSeatCeiling: Number.isFinite(heightSeatCeiling) ? round2(heightSeatCeiling) : null,
     heightCenterCeiling: Number.isFinite(heightCenterCeiling) ? round2(heightCenterCeiling) : null,
+    // How many times the fit ran, and how many CONTENT-height changes re-triggered it.
+    // Both null ceilings with passes 0 is the "the fit never ran" signature — which is
+    // what the 2026-07-30 bidding report turned out to be.
+    heightPasses: heightPass,
+    heightRefits,
     seatScale: l?.seats?.scale != null ? round2(l.seats.scale) : null,
     regions: l?.regions
       ? Object.fromEntries(Object.entries(l.regions).map(([k, r]) => [k, {
@@ -773,7 +850,13 @@ function arrangerSnapshot() {
     rendered: { ...sizes },
   }
 }
-onMounted(() => setArrangerSnapshot(arrangerSnapshot))
+onMounted(() => {
+  setArrangerSnapshot(arrangerSnapshot)
+  // Harness builds also hang it on `window`, so a gallery sweep can read the resolved
+  // ledger from a script instead of a screenshot — which is how every number in this
+  // fit was checked. Behind VITE_HARNESS, so production has no such global.
+  if (import.meta.env.VITE_HARNESS === '1' && typeof window !== 'undefined') window.__arrSnap = arrangerSnapshot
+})
 onBeforeUnmount(() => clearArrangerSnapshot(arrangerSnapshot))
 
 // Received boxes for the bounding-box ledger (display only — never fed to scale).
@@ -884,11 +967,20 @@ function onWindowResize() {
   heightSeatCeiling = Infinity
   heightCenterCeiling = Infinity
   heightPass = 0
+  heightRefits = 0
+  lastNaturalH = -1
   relayout(true)
 }
 // Flipping the preview channel changes the ALLOCATION, so force a fresh width pass —
 // otherwise the beetle's live toggle would only take effect on the next resize.
-watch(arrangement, () => relayout(true))
+watch(arrangement, () => {
+  heightSeatCeiling = Infinity
+  heightCenterCeiling = Infinity
+  heightPass = 0
+  heightRefits = 0
+  lastNaturalH = -1
+  relayout(true)
+})
 
 onMounted(async () => {
   await nextTick(); relayout(true)
@@ -916,7 +1008,7 @@ onBeforeUnmount(() => {
 // hands have rendered before we re-measure boxes.
 watch(
   [dealSeatReserve, () => SEATS.filter(isHandBearing).join(''), () => props.phase],
-  async () => { heightSeatCeiling = Infinity; heightCenterCeiling = Infinity; heightPass = 0; await nextTick(); relayout(true) },
+  async () => { heightSeatCeiling = Infinity; heightCenterCeiling = Infinity; heightPass = 0; heightRefits = 0; lastNaturalH = -1; await nextTick(); relayout(true) },
 )
 </script>
 

@@ -774,7 +774,7 @@ import { useServerEngine } from '../composables/engines/serverEngine.js'
 import { useAppConfig } from '../composables/useAppConfig.js'
 import { useCardPlayAnalysis } from '../composables/useCardPlayAnalysis.js'
 import { trumpFromContract, computeRemaining } from '../utils/cardplayRules.js'
-import { seatAtIndex } from '../utils/handAnalysis.js'
+import { seatAtIndex, hasDdTricks } from '../utils/handAnalysis.js'
 import DealSourceModal from '../components/table/DealSourceModal.vue'
 import TableDiagnostics from '../components/table/TableDiagnostics.vue'
 
@@ -1467,7 +1467,9 @@ const { center: localCenterSlot, action: localActionSlot, status: localStatusSlo
 const seSlot = computed(() => {
   if (!auctionComplete.value) return 'bidding'
   if (cardplayPhase.value === 'playing') return 'cardplay'
-  if (capabilities.value?.doubleDummy && doubleDummy.value) return 'double-dummy'
+  // The SAME predicate DoubleDummyTable renders on — otherwise an unusable payload
+  // reserves the corner for a table that never appears (see hasDdTricks).
+  if (capabilities.value?.doubleDummy && hasDdTricks(doubleDummy.value)) return 'double-dummy'
   return null
 })
 

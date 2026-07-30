@@ -193,6 +193,7 @@ import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } f
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
 import { boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
+import { hasDdTricks } from '../utils/handAnalysis.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
@@ -264,7 +265,9 @@ const cardplayCompleted = computed(
 const seSlot = computed(() => {
   if (phase.value === 'bidding') return 'bidding'
   if (phase.value === 'play') return 'cardplay'
-  return f.value.ddtricks ? 'double-dummy' : null
+  // Same predicate the component renders on (production gates the same way) — a corner
+  // must not be reserved for a table that won't appear.
+  return hasDdTricks(f.value.ddtricks) ? 'double-dummy' : null
 })
 const regionReserves = computed(() => {
   const nw = Math.max(

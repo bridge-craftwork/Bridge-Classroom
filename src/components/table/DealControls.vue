@@ -10,7 +10,7 @@
 
        Presentational only — actions are emits, enablement is props — so the live
        view and the harness scenes render the identical component. -->
-  <div class="dc-cluster">
+  <div class="dc-cluster" :style="clusterStyle">
     <button
       v-if="showRestart"
       class="dc-btn"
@@ -44,7 +44,10 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { dealControlsIconPx, CLUSTER_UNIT } from './clusterMetrics.js'
+
+const props = defineProps({
   showRestart: { type: Boolean, default: true },
   canRestart: { type: Boolean, default: false },
   // The embedded `?pbn` widget owns its own completion flow (a "Done" button
@@ -55,26 +58,43 @@ defineProps({
   canRestartCardplay: { type: Boolean, default: false },
 })
 const emit = defineEmits(['restart', 'next', 'restart-cardplay'])
+
+// The icons size themselves to keep the transport on ONE row within the board glyph's
+// width — the count is a render decision, so the component that makes it is the one
+// that resolves the size, from the same metric the arranger reserves against.
+const buttonCount = computed(
+  () => (props.showRestart ? 1 : 0) + (props.showRestartCardplay ? 1 : 0) + (props.showNext ? 1 : 0),
+)
+const clusterStyle = computed(() => {
+  const px = dealControlsIconPx(buttonCount.value)
+  return {
+    '--dc-btn': px + 'px',
+    // Glyph size tracks the button so a shrunken icon keeps its proportions rather
+    // than rattling around inside a smaller box.
+    '--dc-glyph': Math.round(14 * (px / CLUSTER_UNIT.iconBtnPx)) + 'px',
+  }
+})
 </script>
 
 <style scoped>
 /* Icon row. Sizes come from CLUSTER_UNIT (iconBtnPx / gapPx) so the arranger's
    reserve is exact by construction — the reason the labelled version over-reserved
    is that its min-width was a guess at the widest label. */
-/* max-width == CLUSTER_UNIT.maxPerRow icons (70px), so three wrap to 2+1 and the
-   cluster never exceeds the board glyph it sits under. */
-.dc-cluster { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 70px; }
+/* ONE row, always: the buttons shrink (--dc-btn, from dealControlsIconPx) so the
+   cluster still fits under the board glyph instead of wrapping to 2+1. */
+.dc-cluster { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 6px; align-items: center; }
 .dc-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--dc-btn, 32px);
+  height: var(--dc-btn, 32px);
+  flex: 0 0 auto;
   padding: 0;
   border-radius: 6px;
   border: 1px solid #ccc;
   background: #fff;
-  font-size: 14px;
+  font-size: var(--dc-glyph, 14px);
   line-height: 1;
   cursor: pointer;
 }
