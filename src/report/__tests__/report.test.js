@@ -111,9 +111,17 @@ describe('collectEnv', () => {
 
   it('leaves shell/engine coordinates null for later enrichment', () => {
     const env = collectEnv(deps)
-    expect(env.arrangement).toBeNull()
     expect(env.phase).toBeNull()
     expect(env.tableScale).toBeNull()
+  })
+
+  // `arrangement` USED to be one of the nulls above. It is now resolved here for every
+  // surface (2026-07-30): the axis changes arranger behaviour, so a report that can't
+  // say which channel it was on can't be read — which is exactly what happened to a
+  // table bundle whose `arrangement` came back null.
+  it('resolves the preview channel rather than leaving it for the shell', () => {
+    expect(collectEnv(deps).arrangement).toBe('grid')
+    expect(collectEnv({ ...deps, loc: { ...deps.loc, hash: '#/table?arrangement=beta' } }).arrangement).toBe('beta')
   })
 
   it('treats an empty hash as the root route', () => {

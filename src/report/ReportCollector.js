@@ -59,6 +59,8 @@ function safe(fn, fallback) {
  *   bounding-box overlay on (grid layouts) — the bundle's own layout X-ray.
  * @returns {{context: object, fixture: object, screenshot: Blob|null, screenshotBoxes: Blob|null}}
  */
+import { captureArrangerSnapshot } from './arrangerSnapshot.js'
+
 export function collectReport({ note = '', screenshot = null, screenshotBoxes = null, enrich = {} } = {}) {
   const env = safe(() => ({ ...collectEnv(), ...(enrich.env || {}) }), enrich.env || {})
 
@@ -76,6 +78,10 @@ export function collectReport({ note = '', screenshot = null, screenshotBoxes = 
     tape: enrich.tape || [], // Slice 2 fills this
     consoleErrors: [], // reserved
     issue: null, // back-reference written by the GitHub sink (Slice 1)
+    // The arranger's own ledger, from whichever GridArrangement is mounted. Separate
+    // from the shell provider (which holds one app at a time), so table and console
+    // surfaces get the same forensics A1 has always had. Null when no grid is mounted.
+    arranger: safe(() => captureArrangerSnapshot(), null),
     ...(enrich.context || {})
   }
 
