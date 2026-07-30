@@ -79,6 +79,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
+import { useArrangement } from '../../composables/useArrangement.js'
 import SeatPanel from '../SeatPanel.vue'
 import { seatToArea, anchorFor, seatRole, partnerOf, rowReservePx, handReservePx, computeLayoutLedger, actionCornerFor } from '../../utils/gridArranger.js'
 import { auctionReservePx, auctionGrowthReservePx } from '../auctionMetrics.js'
@@ -187,6 +188,9 @@ const heroArea = computed(() => seatArea(props.heroSeat))
 const actionArea = computed(() => actionCornerFor(heroArea.value))
 
 const floor = computed(() => props.config.scale?.legibilityFloor ?? 0.65)
+// Per-client preview channel — read here so ONE url param previews the fix on every
+// surface at once (A1, the B tables, and the gallery scenes).
+const { arrangement } = useArrangement()
 // Effective region map: the configured 'action' role is RELOCATED to the bottom
 // corner on the hero's side, so the action cluster (bidding box / Undo·Claim) rides
 // with the hero instead of a fixed compass corner. A South/East hero keeps 'se'
@@ -602,6 +606,11 @@ function relayout(force = false) {
     // reverts to the natural-size min(1, fit) allocation, so this is purely additive.
     // The seats cap is additionally lowered by the height fit when the stack is too tall.
     caps: capsWithHeight(props.config.scale?.caps),
+    // BETA channel (?arrangement=beta). Stops a HEIGHT-driven seats-cap reduction from
+    // also capping a column's WIDTH below its natural need — the 1521x784 collapse where
+    // col0 (NW glyph + West seat, nothing else to defend it) was allocated 117 against
+    // col2's 220 for identical hands. Default channel is byte-identical.
+    capFloorAtNeed: arrangement.value === 'beta',
     // Column fr weights (tracks.columns) — the caps pass grows the stage only toward its fr
     // share of the budget (not straight to the cap), so it stays geometry-bound and clusters.
     columnWeights: props.config.tracks?.columns,
@@ -775,6 +784,10 @@ function onWindowResize() {
   heightPass = 0
   relayout(true)
 }
+// Flipping the preview channel changes the ALLOCATION, so force a fresh width pass —
+// otherwise the beetle's live toggle would only take effect on the next resize.
+watch(arrangement, () => relayout(true))
+
 onMounted(async () => {
   await nextTick(); relayout(true)
   if (typeof window !== 'undefined') window.addEventListener('resize', onWindowResize)

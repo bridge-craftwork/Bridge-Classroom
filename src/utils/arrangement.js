@@ -15,7 +15,11 @@
 // unit-testable; the composable (useArrangement.js) supplies the live inputs.
 
 export const ARRANGEMENT_STORAGE_KEY = 'bcArrangement'
-export const ARRANGEMENTS = ['legacy', 'grid']
+// 'beta' — the A/B preview channel. Same grid composition as the default; the
+// difference is inside the arranger (see GridArrangement's `capFloorAtNeed`). Kept as
+// a first-class arrangement so a preview is one URL away and the bug report records
+// which channel the reporter was on.
+export const ARRANGEMENTS = ['legacy', 'grid', 'beta']
 export const DEFAULT_ARRANGEMENT = 'grid'
 
 /** Normalize an arbitrary value to a valid arrangement, or null. */

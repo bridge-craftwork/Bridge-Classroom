@@ -147,7 +147,7 @@ const round2 = (x) => Math.round(x * 100) / 100
  * @returns {LayoutLedger}
  */
 export function computeLayoutLedger(o) {
-  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65, floors = {}, caps = {}, columnWeights = [1, 1, 1] } = o
+  const { budget, occupied, reserves, tiers, seatReserve, handBearingAreas = [], cellGap = 6, actionHandGap = 14, floor = 0.65, floors = {}, caps = {}, columnWeights = [1, 1, 1], capFloorAtNeed = false } = o
   const occ = new Set(occupied)
   // Per-role cap resolution (§2 scale.caps). A seat area (n/e/s/w) uses caps.seats; the
   // stage uses caps.center; a corner its own. The 'seats' RELATIONSHIP string caps at 1.0
@@ -166,7 +166,23 @@ export function computeLayoutLedger(o) {
     // capTarget = the widest the column can usefully grow to: the max over its regions of
     // cap×reserve (each region clamps to its OWN cap, so the column grows to satisfy the
     // greediest). ≥ need always (numericCap ≥ 1). Drives the caps growth pass below.
-    const capTarget = cOcc.length ? Math.max(...cOcc.map((a) => numericCap(a) * (reserves[a] ?? 0))) : 0
+    // A column's growth CEILING. `capFloorAtNeed` (beta) raises it to at least the
+    // column's own natural need, which is the fix for the height-collapse bug:
+    //
+    // caps.seats is lowered by the HEIGHT fit (capsWithHeight) when the stack is too
+    // tall. Because the ceiling is max(cap × reserve) over a column's members, that
+    // height clamp also caps the column's WIDTH — and column 0 is the one column with
+    // nothing but a seat to defend it (NW's glyph reserves 89 against NE's auction 220
+    // and the centre's 1.8 cap). At 1521×784 that put col0 at 117 against col2's 220
+    // for identical 6-card hands, and uniformSeatScale then dragged ALL FOUR hands to
+    // the 0.65 floor — leaving ~251px of allocated width unused beside North.
+    //
+    // A cap answers "how large may this RENDER", never "how narrow must this column
+    // be". Conflating the two is the defect; clamping the ceiling up to `need` keeps
+    // the height fit doing what it is for (shrinking the rendered scale) without
+    // letting it starve a column below the width its own content asked for.
+    const rawCapTarget = cOcc.length ? Math.max(...cOcc.map((a) => numericCap(a) * (reserves[a] ?? 0))) : 0
+    const capTarget = capFloorAtNeed ? Math.max(need, rawCapTarget) : rawCapTarget
     const margin = cOcc.length ? 2 * cellGap + (cOcc.includes('se') ? actionHandGap : 0) : 0
     return { index, occupied: cOcc, need, capTarget, margin, full: need ? need + margin : 0, tier: cOcc.length ? tierOf(cOcc) : tierList.length, allocated: 0 }
   })

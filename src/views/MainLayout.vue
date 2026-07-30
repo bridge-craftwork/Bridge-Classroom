@@ -90,7 +90,10 @@
              `?arrangement=legacy`; renders exactly as it did pre-flip (inner markup
              byte-identical). Retired entirely in slice 1.7. -->
         <!-- Two-column layout for desktop -->
-        <div v-if="arrangement !== 'grid'" class="practice-layout">
+        <!-- Keyed on 'legacy' explicitly, NOT "not grid": the axis gained a 'beta'
+             channel (2026-07-30) and `!== 'grid'` would have dropped beta into the
+             legacy branch. -->
+        <div v-if="arrangement === 'legacy'" class="practice-layout">
           <!-- Left column: Deal info + Bridge table -->
           <div class="practice-left">
             <BoardMasteryStrip
