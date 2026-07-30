@@ -241,7 +241,28 @@ self-diagnosing; without them it's guesswork. Do not chase it before Phase 3.
 
 Mostly David's, all from the host's TableView.
 
-### 5.1 Table settings placement (#53, #54, #48)
+### 5.1 Table settings placement (#53, #54, #48) — **SHIPPED, with #48 partial**
+
+⚠️ Corrections from the 2026-07-30 follow-up report (bundle
+`you-added-a-2nd-table-settings-button-th-20260730-142300`):
+
+- The first pass claimed "the served table had no settings modal at all". Wrong:
+  the served **shell** had none, but the host **wrapper** (`TableView`) did — so
+  the host briefly saw TWO buttons with different contents. Now merged into the
+  shell's modal, which is the survivor because a guest joins through
+  `TableLobbyView` and never renders `TableView`'s strip at all.
+- Moving board mode there meant `useHostedTable.hostBoardMode()` had to stop
+  reading a cached ref and read the persisted key at call time — otherwise a
+  flip from the new modal would go stale and the next deal-source load would
+  silently revert it.
+- The host strip's invite-URL input is gone; the Copy button remains.
+- **#48 is only HALF done.** "Rotate deals randomly" is settable where it works
+  (the demo room), but a hosted session draws boards via `loadBoards`, which
+  never consults `rotateDeals` — so rotation on a hosted table is still
+  unimplemented. It would have to apply at materialize/load time. The toggle is
+  deliberately hidden there rather than shown doing nothing (the §5.4 trap).
+
+
 
 PassBot and "Show BBA auction comparison" live in the right rail; David wants them in
 Table settings. Plus a new request: **Randomly Rotate/Alternate**. One coherent piece of

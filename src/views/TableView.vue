@@ -50,15 +50,12 @@
           <button class="th-btn" :disabled="!shareUrl" :title="shareUrl || 'Generating your link…'" @click="copyShareUrl">
             {{ copied ? 'Copied!' : 'Copy invite link' }}
           </button>
-          <input v-if="shareUrl" class="th-invite-url" :value="shareUrl" readonly @focus="$event.target.select()">
         </div>
 
         <label class="th-spawn" title="Open N tabs that each join as a test player (allow pop-ups)">
           <input v-model.number="spawnCount" type="number" min="1" max="3" class="th-num" :disabled="!shareUrl">
           <button class="th-btn" :disabled="!shareUrl" @click="spawnPlayers">🧪 Test players</button>
         </label>
-
-        <button class="th-btn" :disabled="!connected" @click="showTableSettings = true" title="Table settings">&#9881; Table settings</button>
 
         <button class="th-btn th-btn-danger" :disabled="!hasSession" @click="endSession">End table</button>
       </div>
@@ -95,26 +92,10 @@
       />
     </div>
 
-    <!-- Host Table settings: live board mode via the set_board_mode frame (no
-         re-deal / no board-number reset). Solo has the fuller settings; this is
-         the host/session subset that acts on every seat. -->
-    <div v-if="showTableSettings" class="th-modal-backdrop" @click.self="showTableSettings = false">
-      <div class="th-settings">
-        <div class="th-settings-head">
-          <h3>Table settings</h3>
-          <button class="th-settings-x" @click="showTableSettings = false" title="Close">&times;</button>
-        </div>
-        <label class="th-settings-row">
-          <input
-            type="checkbox"
-            :checked="boardMode === 'bid-and-play'"
-            @change="setBoardMode($event.target.checked ? 'bid-and-play' : 'bid-only')"
-          >
-          Play the hand after bidding
-        </label>
-        <p class="th-settings-note">Applies live to every seat — the current auction transitions into cardplay at its end, and board numbers stay put.</p>
-      </div>
-    </div>
+    <!-- Table settings used to live here too, giving the host TWO buttons with
+         different contents (2026-07-30 report). It is now one modal inside the
+         table shell — the only surface a guest renders — carrying board mode
+         alongside deal rotation, PassBot and the BBA comparison. -->
   </div>
 </template>
 
@@ -182,9 +163,7 @@ const {
   connectionStatus, connected, sessionId, hasSession, needsDeal,
   resolving, startError, loadError, shareUrl, copied, spawnCount,
   copyShareUrl, spawnPlayers, ensureSession, endSession, teardown, exit: onExitTable,
-  boardMode, setBoardMode,
 } = host
-const showTableSettings = ref(false)
 
 const pickerAllow = {
   tabs: ['favorites', 'scenarios', 'curated', 'clubgames', 'library', 'pbn', 'random', 'history'],
@@ -301,17 +280,6 @@ onUnmounted(() => presence.setPracticing(false))
   font-size: 13px;
 }
 .th-invite { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.th-invite-url {
-  width: 260px;
-  max-width: 40vw;
-  font-size: 12px;
-  padding: 5px 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fafbfc;
-  color: #444;
-}
-
 .th-btn {
   padding: 6px 14px;
   border-radius: 6px;
@@ -321,12 +289,6 @@ onUnmounted(() => presence.setPracticing(false))
   cursor: pointer;
 }
 .th-btn:hover:not(:disabled) { border-color: #888; }
-.th-settings { background: #fff; border-radius: 12px; padding: 16px 18px; width: min(380px, 92vw); box-shadow: 0 8px 40px rgba(0,0,0,0.25); }
-.th-settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.th-settings-head h3 { margin: 0; font-size: 16px; }
-.th-settings-x { background: none; border: none; font-size: 22px; line-height: 1; color: #888; cursor: pointer; }
-.th-settings-row { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
-.th-settings-note { font-size: 12px; color: #667; margin: 8px 0 0; line-height: 1.4; }
 .th-btn:disabled { opacity: 0.45; cursor: default; }
 .th-btn-primary { background: #1D9E75; color: #fff; border-color: #1D9E75; }
 .th-btn-primary:hover:not(:disabled) { background: #167a5a; border-color: #167a5a; }

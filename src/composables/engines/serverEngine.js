@@ -57,6 +57,19 @@ export function useServerEngine() {
     try { localStorage.setItem(ROTATE_KEY, v ? '1' : '0') } catch { /* private mode */ }
   })
 
+  // Flip the board mode LIVE for every seat (bid-and-play | bid-only). The
+  // service applies it mid-hand and resyncs, so board numbers are untouched —
+  // no re-deal. Session-wide, hence host-only.
+  //
+  // Also writes `bp.playCardplay`, which is the single persisted source of truth
+  // shared with the solo table AND read by useHostedTable.hostBoardMode() when a
+  // fresh deal source is loaded. Without that write, flipping the mode here and
+  // then loading a new set would quietly revert it.
+  function onSetBoardMode(mode) {
+    try { localStorage.setItem('bp.playCardplay', mode === 'bid-and-play' ? '1' : '0') } catch { /* private mode */ }
+    return socket.send({ t: 'set_board_mode', mode })
+  }
+
   function onNextDeal() {
     const rotate = rotateDeals.value ? Math.floor(Math.random() * 4) : 0
     dealSource.nextDeal(rotate)
@@ -482,7 +495,7 @@ export function useServerEngine() {
     canHostAdvance, canManageSeats, seatOccupants, kibitzers,
     // actions
     onNextDeal, toggleShowAllHands, seatLabel, occupantName,
-    onBid, onCardClick, onUndo, onHostNextDeal, onAssignSeat,
+    onBid, onCardClick, onUndo, onHostNextDeal, onAssignSeat, onSetBoardMode,
     onKick, onSetPassSides, togglePassSide, onPauseBots,
     // TableEngine contract (canonical names for the useTableEngine factory)
     wantsCall, connect, leave: table.leave,
