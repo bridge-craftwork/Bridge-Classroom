@@ -66,6 +66,53 @@ If something needs to be shown or hidden, the PBN says so explicitly. The app do
 - **Backend API**: Rust server running locally on Mac at port 3000
 - **Tunnel**: Cloudflare Tunnel routes https://api.bridge-classroom.com → localhost:3000
 - **LiveKit**: `wss://livekit.bridge-classroom.com` on DigitalOcean droplet (Caddy + Docker at `/opt/livekit/`)
+
+### Our services — all of them are ours
+
+Every backing service this app calls is **owned by us** and runs on the same
+DigitalOcean droplet behind one shared Caddy reverse proxy. None of them is a
+third-party dependency, so when one misbehaves the fix is ours to make — don't
+assume a vendor is in the way (that mistake cost real time on 2026-07-30).
+
+| host | what | upstream | repo |
+|---|---|---|---|
+| `bba.harmonicsystems.com` | BBA bidding engine (auctions, scenarios) | `localhost:5000` | `BBA-tools/bba-server` |
+| `solver.bridge-craftwork.com` | double-dummy solver (`/dd`, `/dd/play`) | `localhost:8005` | `bridge-solver-service` |
+| `ben.bridge-craftwork.com` | BEN cardplay bot | `localhost:8003` | (BEN upstream + wrapper) |
+| `dealer.bridge-craftwork.com` | deal generator (`/deal`) | `localhost:8001` | `bridge-dealer-service` |
+| `tables.bridge-craftwork.com` | multiplayer table service (WS) | `localhost:8004` | `bridge-table-service` |
+| `game-parser.bridge-craftwork.com` | club-game result parsing | `localhost:8002` | `bridge-event-parser-service` |
+| `livekit.bridge-classroom.com` | LiveKit (audio) | `localhost:7880` | — |
+
+**`bridge-craftwork-platform` is the reference repo for all of it** (private):
+
+- `edge/Caddyfile` — the shared reverse proxy fronting every hostname above,
+  including the **CORS allow lists**. This is the single place to look when a
+  browser call to one of these services fails.
+- `docs/runbooks/` — per-service runbooks (`new-service.md`, `deploy.md`,
+  `rollback.md`, `migrate-systemd-to-container.md`, plus per-service ones).
+- `docs/decisions/` — ADRs. `droplet/` — stack config. `mac/` — dev-Mac setup.
+  `templates/` — copied (not referenced) when starting a new service.
+
+⚠️ **CORS is per-service, in two different places.** dealer / solver / BEN get
+their headers from the Caddyfile; **BBA emits its own** (its Caddy stanza is a
+bare `reverse_proxy`), so its allow list lives in `bba-server/src/main.rs`. A
+change to one does not cover the other.
+
+**If local dev "can't finish an auction", check the port before anything else.**
+The allow lists cover localhost on the vite ranges 5173-5199 / 4173-4199. Vite
+takes 5173 and silently INCREMENTS when it's busy — and there are seven Vite
+repos in the workspace, none pinning a port — so a second dev server lands
+outside the range and every call is CORS-rejected in ~20ms. An instant rejection
+with no bid coming back looks exactly like a hung service. One-shot diagnostic:
+
+```sh
+curl -s -o /dev/null -D - -X OPTIONS https://bba.harmonicsystems.com/api/auction/generate \
+  -H "Origin: http://localhost:$PORT" -H "Access-Control-Request-Method: POST" \
+  | grep -i access-control-allow-origin
+```
+
+No header back → that port isn't allow-listed.
 - **Recovery emails**: Sent from `noreply@mail.bridge-classroom.org` via Resend (this is the live `FROM_EMAIL` in the plist / `config.rs` default — an earlier note said `mail.bridge-craftwork.com`, which is stale; verify against `config.rs`/plist before quoting). As of 2026-07-28 (PRs #335/#336) the email is **6-digit code only — the magic link was removed** (Yahoo/AOL silently filtered the button-link phishing shape post-acceptance, and the link/code shared one single-use token row so clicking the link on a phone consumed the code on the laptop). The token + token-claim endpoint + break-glass console dump are retained, and a **1h reuse grace** (`recovery_tokens.used_at` + `CLAIM_REUSE_GRACE_SECS`) now lets the same code claim on a second device within an hour.
 - **DNS security**: bridge-craftwork.com has SPF, DKIM (via Resend), DMARC (`p=none`) configured in Cloudflare. bridge-classroom.com SPF/DKIM/DMARC retained but no longer used for sending.
 - **Database**: SQLite at `bridge-classroom-api/data/bridge_classroom.db`
@@ -466,7 +513,9 @@ export function useMyComposable() {
 - URL params silently merge with existing config on revisit
 - Hand visibility driven by `[show ...]` tags from PBN, not inferred
 - API key header: `x-api-key` on all authenticated endpoints
-- Frontend env vars: `VITE_API_URL`, `VITE_API_KEY`, `VITE_SOLVER_URL`
+- Frontend env vars: `VITE_API_URL`, `VITE_API_KEY`, `VITE_SOLVER_URL`,
+  `VITE_BBA_URL` — each defaulting to the matching host in the services table
+  above (see §Our services for the full list + the platform repo).
 - Double-dummy: `src/utils/ddsClient.js::fetchDoubleDummy` POSTs the deal to our
   self-hosted `bridge-solver-service` (`VITE_SOLVER_URL`, default
   `https://solver.bridge-craftwork.com`) and returns the raw 20-char `ddtricks`
