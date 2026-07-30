@@ -1655,7 +1655,13 @@ const seSlot = computed(() => {
   if (cardplayPhase.value === 'playing') return 'cardplay'
   // The SAME predicate DoubleDummyTable renders on — otherwise an unusable payload
   // reserves the corner for a table that never appears (see hasDdTricks).
-  if (capabilities.value?.doubleDummy && hasDdTricks(doubleDummy.value)) return 'double-dummy'
+  //
+  // `capabilities` is a PLAIN frozen object (LocalEngine returns LOCAL_CAPABILITIES,
+  // not a ref), so `.value` here was always undefined and this branch could never be
+  // taken — B1 never showed a DD table, for any deal, however good the payload
+  // (2026-07-30 report). The sibling use at the Description button has always read it
+  // correctly as `capabilities.narrative`; this one line disagreed with it.
+  if (capabilities?.doubleDummy && hasDdTricks(doubleDummy.value)) return 'double-dummy'
   return null
 })
 
