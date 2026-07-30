@@ -41,7 +41,7 @@
       </template>
     </ScenarioBar>
 
-    <div class="b1-table-wrap">
+    <div class="b1-table-wrap" :class="{ 'b1-table-wrap--stacked': railStacked }">
       <div class="b1-frame">
         <!-- Review banner — the "you gave away N tricks" strip above the table. -->
         <div v-if="f.inspect" class="b1-review-banner">
@@ -136,7 +136,7 @@
 
       <!-- Right rail: cardplay controls in play, the contract/result block in
            review; empty in bidding (the auction + box live in the grid). -->
-      <aside v-if="phase !== 'bidding'" class="b1-rail">
+      <aside v-if="phase !== 'bidding'" class="b1-rail" :class="{ 'b1-rail--stacked': railStacked }">
         <RailCard v-if="phase === 'play'" title="Cardplay">
           <div class="b1-rail-note">Tricks <strong>NS&nbsp;{{ tricks.NS }} · EW&nbsp;{{ tricks.EW }}</strong></div>
           <div v-if="f.lineNote" class="b1-line-note">↝ {{ f.lineNote }}</div>
@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -196,8 +196,23 @@ import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
+import { matchShell, isStacked, DEFAULT_SHELL } from '../utils/shellLayout.js'
 
 const props = defineProps({ fixture: { type: Object, required: true } })
+
+// The scene resolves its companion placement through the SAME matcher TableShell
+// uses, against the same config — so the gallery can't tell you the rail sits beside
+// the table when production has already stacked it. (Hand-rolled scene chrome
+// drifting from production is exactly what the 2026-07-29 bug report caught.)
+const vw = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+const vh = ref(typeof window === 'undefined' ? 900 : window.innerHeight)
+function onShellResize() { vw.value = window.innerWidth; vh.value = window.innerHeight }
+onMounted(() => window.addEventListener('resize', onShellResize, { passive: true }))
+onBeforeUnmount(() => window.removeEventListener('resize', onShellResize))
+const railStacked = computed(
+  () => isStacked(matchShell(tableConfig.shell, { w: vw.value, h: vh.value }) || DEFAULT_SHELL),
+)
+
 const f = computed(() => props.fixture)
 const phase = computed(() => f.value.phase || 'bidding')
 
@@ -336,4 +351,20 @@ const heroInitials = computed(() => {
   font-size: 12px; color: #8a938d;
 }
 .b1-footer-links { color: #6a726c; }
+/* Stacked (portrait / narrow): companion goes UNDER the table, full width, and its
+   cards flow in a row rather than a single tall column. These MUST come after the
+   base .b1-table-wrap / .b1-rail rules — same specificity, so source order decides, and
+   declaring them earlier is why the first attempt silently kept the column form.
+   `align-items: stretch` on the wrap is load-bearing too: the base rule is
+   flex-start, which in a COLUMN direction sizes the frame to its content and
+   collapsed the table into a narrow strip. */
+.b1-table-wrap--stacked { flex-direction: column; align-items: stretch; }
+.b1-rail--stacked {
+  flex: 1 1 auto;
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.b1-rail--stacked > * { flex: 1 1 260px; }
 </style>

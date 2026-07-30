@@ -53,8 +53,14 @@ export default {
     review: { ne: 'none' },
   },
 
+  // Where the shell puts the companion column (rail cards today, chat soon).
+  // First hit wins; TableShell resolves this against the live viewport. Portrait is
+  // stated FIRST and explicitly, rather than left to fall out of a width threshold:
+  // on a portrait screen the rail beside the table starves both, whatever the width,
+  // and saying so keeps the intent legible when the numbers next get tuned.
   shell: {
     perViewport: [
+      { portrait: true, mode: 'stacked', companionPosition: 'below' },
       { minWidth: 1000, mode: 'two-column', companionPosition: 'right' },
       { maxWidth: 999, mode: 'stacked', companionPosition: 'below' },
     ],
