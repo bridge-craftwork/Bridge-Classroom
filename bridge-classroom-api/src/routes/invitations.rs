@@ -197,6 +197,22 @@ pub async fn deliver_pending(state: &AppState, user_id: &str) {
     }
 }
 
+/// Tell the ANSWERING user's OWN connections that this request/invitation is
+/// settled, so the toast disappears from their other windows.
+///
+/// This is a DIFFERENT fan-out from the notifications above, which all target the
+/// counterparty. Toast state is per-window client state while the server pushes
+/// per USER, so every window of the invitee pops a toast and only the window that
+/// answered dismisses it — leaving stale, un-actionable toasts behind on the rest
+/// (roadmap 2026-07-30 §4.1). `presence::notify` already reaches every connection
+/// of one user, which is exactly the shape needed.
+fn notify_invitation_resolved(user_id: &str, invitation_id: &str, outcome: &str) {
+    crate::routes::presence::notify(
+        user_id,
+        &json!({ "invitation_resolved": { "id": invitation_id, "outcome": outcome } }),
+    );
+}
+
 // ---- POST /api/tables/:session_id/invitations ----
 
 pub async fn create_invitation(
@@ -398,6 +414,10 @@ pub async fn accept_invitation(
     // module logged nothing at info. NEVER log `ticket` — it is a bearer for the
     // seat. The session id is the join key into the table-service log, and is
     // exactly what makes a bundle correlatable (roadmap §3.1/§3.2).
+    // Settle the toast on this user's OTHER windows (roadmap §4.1) — see
+    // notify_invitation_resolved.
+    notify_invitation_resolved(&me, &id, "accepted");
+
     tracing::info!(
         event = "invitation_accepted",
         invitation = %id, session = %session_id, by = %me, role = %role,
@@ -458,6 +478,7 @@ pub async fn decline_invitation(
             &from_user,
             &json!({ "invitation_declined": { "from_name": me_name, "seat": seat } }),
         );
+        notify_invitation_resolved(&me, &id, "declined");
         tracing::info!(
             event = "invitation_declined",
             invitation = %id, session = %session_id, seat = %seat,

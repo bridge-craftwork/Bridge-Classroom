@@ -111,6 +111,15 @@ function openStream() {
       if (dec) {
         pushToast({ kind: 'declined', id: `declined:${Date.now()}`, name: dec.from_name })
       }
+      // This user answered somewhere — settle the toast HERE too (roadmap §4.1).
+      // Toast state is per-window but the server pushes per USER, so every window
+      // pops one and only the answering window used to clear it, leaving stale
+      // toasts on the rest. The answering window is a harmless no-op (already
+      // dismissed); this is for its siblings.
+      const invRes = data.invitation_resolved
+      if (invRes && invRes.id) dismissToast(`inv:${invRes.id}`)
+      const reqRes = data.friend_request_resolved
+      if (reqRes && reqRes.id) dismissToast(reqRes.id)
     } catch {
       /* ignore a malformed frame */
     }

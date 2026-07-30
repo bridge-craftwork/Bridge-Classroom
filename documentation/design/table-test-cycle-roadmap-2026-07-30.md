@@ -184,7 +184,48 @@ one and only the answering window dismisses. Two separable halves:
 - **Client:** drop that toast everywhere on receipt; and when a stale one *is* clicked,
   say "already answered on another window" rather than dismissing mutely (3.3's rule).
 
-### 4.2 Re-examine the unexplained accept (blocked on Phase 3)
+### 4.2 Re-examine the unexplained accept — **RESOLVED 2026-07-30 evening**
+
+**The environmental hypothesis was wrong, and the log says so.** Session
+`4afd41d0` was `session_created` at 17:52:39 and the HOST's `ws_joined seat=S`
+landed at 17:52:40 — one second later. The service had not "forgotten" this
+session; it had just minted it. A restart 20 minutes earlier is irrelevant to a
+session created after it. Retire that theory.
+
+The invitee's sub appears **nowhere** in `4afd41d0` — not even a rejected join —
+so the failure was entirely client-side, between a successful accept and the
+socket open. That narrows it to one function, and the defect is plain once you
+look at `TableLobbyView.doJoin`:
+
+```js
+const ok = await table.join({ … })
+if (myEpoch !== navEpoch) return
+joining.value = false
+if (ok) mode.value = 'joined'      // ← and if it's NOT ok?
+```
+
+It acted **only on success**. A failed join fell through with no error, no retry
+and no state change — leaving whatever mode was already showing. On the
+accepted-invitation fast path that mode is `'identify'`, set just before the
+call, so the invitee was left staring at an *identity prompt for a table they
+had already accepted*. "It accepted and then nothing happened" is exactly what
+that looks like from the outside, and it is the same swallowing class as §3.3 —
+a terminal outcome with no user-visible result.
+
+Fixed: a `join-failed` mode that names the failure, says the invitation is still
+good (the seat reservation outlives the failed socket), and offers **Try again**.
+The retry needs `lastJoinOpts` because `invitationJoin.take()` has already
+consumed the one-shot ticket by then.
+
+⚠️ **Operational note, learned the hard way:** `docker compose up -d` RECREATES the
+container, and the old container's `docker logs` go with it. On a service whose
+sessions are in-memory *and* whose logs are the only forensic record, a deploy
+destroys both halves of the evidence. The 17:52 window survived only because it
+had been read into a session transcript first. Worth a logging driver or log
+shipping before the next test cycle.
+
+<details><summary>Original entry — the reasoning that set up the fix</summary>
+
 
 Session `4afd41d0`: the invitation reached `accepted` server-side and returned a ticket;
 the client never opened a socket; Close Table + restart cleared it and the retry was
@@ -192,6 +233,7 @@ flawless (`ws_joined seat=N`). The one environmental oddity: the table service h
 restarted 20 minutes earlier, wiping its in-memory sessions, so clients held references
 to a world it had forgotten. **Unproven.** With 3.1–3.3 in place a recurrence is
 self-diagnosing; without them it's guesswork. Do not chase it before Phase 3.
+</details>
 
 ---
 
