@@ -68,5 +68,12 @@ export default {
     ],
   },
   kibitzers: ['Marta'],
+  // Table chat — no backend yet; this exercises the rail's future occupant so the
+  // companion column can be sized for it before it ships.
+  chat: [
+    { from: 'Lia', text: 'nice lead' },
+    { from: 'You', text: 'thanks — thought about the heart', own: true },
+    { from: 'Marta', text: '(watching) tough defence here' },
+  ],
   ddtricks: '9a6879a6874375643756',
 }

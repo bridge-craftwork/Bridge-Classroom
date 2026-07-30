@@ -4,8 +4,8 @@
 // config-driven layout bug reads input→output at a glance ("center cap 1.8 →
 // computed 1.27×") without re-deriving.
 //
-// Report-side and SELF-CONTAINED: it understands the config SHAPE but imports no
-// arranger module, so the collector stays decoupled from the arranger (and works
+// Report-side: it understands the config SHAPE but imports no ARRANGER module
+// (the shell-rule matcher it shares with TableShell is a plain util), so the collector stays decoupled from the arranger (and works
 // before the arranger ships). The shell that mounts the arranger calls
 // resolveTableConfig(...) and hands the result to enrich.context.tableConfig — and
 // may spread in its own computed reserves alongside, e.g.:
@@ -16,24 +16,12 @@
 // (Reserves live in the arranger's own modules, so they're passed in, not
 // imported here — keeping this file dependency-free.)
 
-/**
- * Which per-viewport shell rule the current viewport resolves to (mode +
- * companion side). Mirrors the shell's own first-hit-wins matching so the report
- * shows the layout the user actually saw, not just the config file.
- * @returns {{mode:string, companion:string|null}|null}
- */
-export function matchShell(shell, viewport) {
-  const rules = shell?.perViewport
-  if (!Array.isArray(rules) || !viewport || viewport.w == null) return null
-  const w = viewport.w
-  const portrait = viewport.h != null ? viewport.h > viewport.w : null
-  const hit = rules.find((r) =>
-    (r.minWidth == null || w >= r.minWidth) &&
-    (r.maxWidth == null || w <= r.maxWidth) &&
-    (r.portrait == null || r.portrait === portrait),
-  )
-  return hit ? { mode: hit.mode ?? null, companion: hit.companionPosition ?? null } : null
-}
+// The shell matcher now lives in utils/shellLayout.js and is SHARED with TableShell,
+// so the rule this report records is literally the one the shell rendered. Re-exported
+// here to keep this module's public surface unchanged for existing callers.
+import { matchShell } from '../utils/shellLayout.js'
+export { matchShell }
+
 
 /**
  * Flatten a tableConfig into a compact report snapshot (~0.4 KB). Only the

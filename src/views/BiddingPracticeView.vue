@@ -7,7 +7,8 @@
       <button class="tv-btn tv-btn-primary" @click="emit('exit')">Back to the lobby</button>
     </div>
 
-    <TableShell v-else>
+    <TableShell
+        :table-config="tableConfig" v-else>
       <template #header-left>
           <!-- Board number and the contract/result chips were REMOVED here
                2026-07-29: NW already carries both — the BoardIndicator glyph IS the
@@ -356,7 +357,8 @@
 
     <div class="bp-main">
       <main class="bp-stage">
-        <TableShell :embedded="EMBEDDED">
+        <TableShell
+        :table-config="tableConfig" :embedded="EMBEDDED">
           <template #notes>
         <div v-if="dealError" class="bp-error-box">
           <strong>Error:</strong> {{ dealError }}

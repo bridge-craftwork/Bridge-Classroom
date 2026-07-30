@@ -67,6 +67,13 @@ export default {
   },
   // Rail state (server-only cards the gallery previously never rendered).
   kibitzers: ['Marta'],
+  // Table chat — no backend yet; this exercises the rail's future occupant so the
+  // companion column can be sized for it before it ships.
+  chat: [
+    { from: 'Lia', text: 'nice lead' },
+    { from: 'You', text: 'thanks — thought about the heart', own: true },
+    { from: 'Marta', text: '(watching) tough defence here' },
+  ],
   passBotSeats: ['E'],
   // Seat [N,S,E,W] × strain [NT,S,H,D,C]; NS/EW complement to 13 per strain.
   // South takes 10 at spades — the 4♠ contract makes exactly.

@@ -64,7 +64,7 @@
       <p v-if="f.pausedSeat" class="bsrv-note">Bots paused at {{ seatName(f.pausedSeat) }}.</p>
     </div>
 
-    <div class="bsrv-table-wrap">
+    <div class="bsrv-table-wrap" :class="{ 'bsrv-table-wrap--stacked': railStacked }">
       <div class="bsrv-frame">
         <SeatControlTable
           arrangement="grid"
@@ -147,7 +147,7 @@
            of the controls that are candidates to move into the grid, and several of
            them are host-only — the split that drives the context-dependent NW
            reserve. Card order matches the live server branch. -->
-      <aside class="bsrv-rail">
+      <aside class="bsrv-rail" :class="{ 'bsrv-rail--stacked': railStacked }">
         <RailCard v-if="f.ddtricks && phase !== 'review'" title="Double dummy">
           <DoubleDummyTable
             :ddtricks="f.ddtricks"
@@ -172,6 +172,16 @@
             <span class="bsrv-bot-note">(bots can take up to ~20s)</span>
           </div>
         </RailCard>
+
+        <!-- CHAT — the rail's reason to exist once its other cards migrate into the
+             grid (Rick, 2026-07-29: "we will be adding chat that will need to exist
+             there, so I want to keep making room for it"). ContextPanel has had a
+             `chat` mode since roadmap Phase 0 and is still 0x in production, so this
+             is the component waiting for a host, not a mock-up of one.
+             Shown HERE ONLY: the table service has no chat backend yet, so wiring it
+             into the live view would be inventing a feature. The gallery is where it
+             can be sized and looked at honestly. -->
+        <ContextPanel v-if="chatMessages.length" mode="chat" :messages="chatMessages" />
 
         <RailCard v-if="kibitzers.length || canManage" title="Kibitzers">
           <div class="bsrv-line">{{ kibitzers.length ? kibitzers.join(', ') : 'None watching' }}</div>
@@ -204,7 +214,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'
@@ -214,6 +224,7 @@ import BoardIndicator from '../components/BoardIndicator.vue'
 import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
 import RailCard from '../components/table/RailCard.vue'
+import ContextPanel from '../components/ContextPanel.vue'
 import DealControls from '../components/table/DealControls.vue'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
@@ -223,8 +234,23 @@ import { A1_BOARD_SIZE } from '../components/boardIndicatorMetrics.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
+import { matchShell, isStacked, DEFAULT_SHELL } from '../utils/shellLayout.js'
 
 const props = defineProps({ fixture: { type: Object, required: true } })
+
+// The scene resolves its companion placement through the SAME matcher TableShell
+// uses, against the same config — so the gallery can't tell you the rail sits beside
+// the table when production has already stacked it. (Hand-rolled scene chrome
+// drifting from production is exactly what the 2026-07-29 bug report caught.)
+const vw = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+const vh = ref(typeof window === 'undefined' ? 900 : window.innerHeight)
+function onShellResize() { vw.value = window.innerWidth; vh.value = window.innerHeight }
+onMounted(() => window.addEventListener('resize', onShellResize, { passive: true }))
+onBeforeUnmount(() => window.removeEventListener('resize', onShellResize))
+const railStacked = computed(
+  () => isStacked(matchShell(tableConfig.shell, { w: vw.value, h: vh.value }) || DEFAULT_SHELL),
+)
+
 const f = computed(() => props.fixture)
 const phase = computed(() => f.value.phase || 'bidding')
 const role = computed(() => (f.value.surface === 'b2' ? 'host' : 'player'))
@@ -293,6 +319,7 @@ const regionReserves = computed(() => {
 // ── Rail state (2026-07-29: the rail was entirely absent from this scene) ──
 const tricks = computed(() => f.value.tricksTaken || { NS: 0, EW: 0 })
 const kibitzers = computed(() => f.value.kibitzers || [])
+const chatMessages = computed(() => f.value.chat || [])
 const passBotSeats = computed(() => f.value.passBotSeats || [])
 const readySeats = computed(() => f.value.readySeats || [])
 const yourTurn = computed(() => !!f.value.clickableSeat && f.value.clickableSeat === (f.value.seat || 'S'))
@@ -375,4 +402,20 @@ const seatName = (s) => SEAT_NAMES[s] || s
 .bsrv-waiting { opacity: 0.85; }
 .bsrv-bot-note { color: #8a938d; }
 .bsrv-ready { color: #1f6a4f; }
+/* Stacked (portrait / narrow): companion goes UNDER the table, full width, and its
+   cards flow in a row rather than a single tall column. These MUST come after the
+   base .bsrv-table-wrap / .bsrv-rail rules — same specificity, so source order decides, and
+   declaring them earlier is why the first attempt silently kept the column form.
+   `align-items: stretch` on the wrap is load-bearing too: the base rule is
+   flex-start, which in a COLUMN direction sizes the frame to its content and
+   collapsed the table into a narrow strip. */
+.bsrv-table-wrap--stacked { flex-direction: column; align-items: stretch; }
+.bsrv-rail--stacked {
+  flex: 1 1 auto;
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.bsrv-rail--stacked > * { flex: 1 1 260px; }
 </style>
