@@ -867,11 +867,28 @@ onMounted(() => {
 onBeforeUnmount(() => clearArrangerSnapshot(arrangerSnapshot))
 
 // Received boxes for the bounding-box ledger (display only — never fed to scale).
+//
+// PRUNES keys whose region is no longer in the DOM. This map used to be
+// write-only, so a corner measured in one phase lingered forever: SE holds the
+// bidding box during the auction, unmounts at review, and `sizes.se` survived —
+// making every bug bundle report a corner that had not rendered for two phases.
+//
+// That cost real diagnostic time (2026-07-30): "no `se` in the ledger but `se` in
+// `rendered`" was read as the arranger failing to see an occupied corner, and
+// written into the roadmap as a layout bug. It was neither — the ledger is fed
+// `ALL_AREAS.filter(areaOccupied)`, the SAME predicate the template's `v-if` uses,
+// so the two cannot disagree. Only this stale map could.
 function recordSizes(el) {
+  const present = new Set()
   el.querySelectorAll('[data-region]').forEach((r) => {
+    const key = r.getAttribute('data-region')
+    present.add(key)
     const b = r.getBoundingClientRect()
-    sizes[r.getAttribute('data-region')] = { w: Math.round(b.width), h: Math.round(b.height) }
+    sizes[key] = { w: Math.round(b.width), h: Math.round(b.height) }
   })
+  for (const key of Object.keys(sizes)) {
+    if (!present.has(key)) delete sizes[key]
+  }
   measureVertical(el)
 }
 
