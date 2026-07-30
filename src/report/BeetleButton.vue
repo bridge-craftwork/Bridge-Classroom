@@ -121,8 +121,12 @@ function closeFieldKitOutside() { closeFieldKit() }
 function kitToggleOverlay() {
   toggleOverlays()
 }
+// Cycle the preview channel: grid (production) → beta (arranger preview) → legacy.
+// Beta is the A/B channel, so it sits next to the default rather than behind legacy.
 function kitToggleArrangement() {
-  setArrangement(arrangement.value === 'grid' ? 'legacy' : 'grid')
+  const order = ['grid', 'beta', 'legacy']
+  const i = order.indexOf(arrangement.value)
+  setArrangement(order[(i + 1) % order.length])
 }
 async function kitCopySnapshot() {
   const enrich = captureReportContext()
