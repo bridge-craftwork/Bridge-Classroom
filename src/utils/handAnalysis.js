@@ -29,12 +29,32 @@ export function isAuctionOver(arr) {
 // it doesn't re-request BBA per turn, so `expected` should already be a per-turn-
 // consistent reference for the deal (the caller decides how to source it).
 // Only indices present in BOTH auctions are compared (length mismatch ≠ divergence).
+
+// One call, one spelling. Notrump has TWO live spellings in this codebase and they
+// meet here: PBN and the table-service wire protocol say `1N`, while BiddingBox and
+// BBA both say `1NT`. Comparing those raw made every NT bid on a SERVED table read
+// as a divergence — the auction grid showed "● YOU 1NT" over "○ BBA 1NT" struck
+// through, two identical calls flagged as a disagreement (report #52, verified
+// 2026-07-30 against the live BBA service, which returns "7NT").
+//
+// Solo never hit it because BiddingBox and BBA already agree; only the served path
+// mixes vocabularies. Normalising HERE rather than at the one call site means a
+// future caller can't reintroduce it — the same reasoning as deriveStatus's
+// `played`. Canonical form is the spoken one, `1NT`.
+export function normalizeCall(call) {
+  return typeof call === 'string' ? call.replace(/^([1-7])N$/, '$1NT') : call
+}
+
 export function bidderDivergence(actual, expected, dealer, seat) {
   const out = {}
   const n = Math.min(actual?.length || 0, expected?.length || 0)
   for (let i = 0; i < n; i++) {
     if (seatAtIndex(dealer, i) !== seat) continue
-    if (actual[i] !== expected[i]) out[i] = { actual: actual[i], bba: expected[i] }
+    // Compare normalised; REPORT the caller's own spellings, so the overlay keeps
+    // rendering whatever vocabulary that surface already uses.
+    if (normalizeCall(actual[i]) !== normalizeCall(expected[i])) {
+      out[i] = { actual: actual[i], bba: expected[i] }
+    }
   }
   return out
 }

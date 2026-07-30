@@ -1,7 +1,53 @@
 import { describe, it, expect } from 'vitest'
-import { bidderDivergence } from '../handAnalysis.js'
+import { bidderDivergence, normalizeCall } from '../handAnalysis.js'
 
 // dealer N → bid index 0=N, 1=E, 2=S, 3=W, 4=N, …
+// Report #52, verified 2026-07-30 against the live BBA service. Notrump has two
+// live spellings and they meet in this function: PBN + the table-service wire say
+// `1N`; BiddingBox and BBA say `1NT`. Comparing raw made every NT bid on a SERVED
+// table a false divergence — the grid showed "● YOU 1NT" over "○ BBA 1NT" struck
+// through. Solo never hit it (BiddingBox and BBA already agree).
+describe('bidderDivergence — notrump spelling is not a disagreement', () => {
+  const dealer = 'N'
+
+  it('does not flag 1N (wire) against 1NT (BBA) — the served-table case', () => {
+    // dealer N, so index 2 is South.
+    const actual = ['Pass', 'Pass', '1N', 'Pass']
+    const expected = ['Pass', 'Pass', '1NT', 'Pass']
+    expect(bidderDivergence(actual, expected, dealer, 'S')).toEqual({})
+  })
+
+  it('holds at every level', () => {
+    for (const lvl of [1, 2, 3, 4, 5, 6, 7]) {
+      const actual = ['Pass', 'Pass', `${lvl}N`, 'Pass']
+      const expected = ['Pass', 'Pass', `${lvl}NT`, 'Pass']
+      expect(bidderDivergence(actual, expected, dealer, 'S')).toEqual({})
+    }
+  })
+
+  it('still reports a REAL divergence, in the caller\'s own spelling', () => {
+    const actual = ['Pass', 'Pass', '1N', 'Pass']
+    const expected = ['Pass', 'Pass', '2NT', 'Pass']
+    expect(bidderDivergence(actual, expected, dealer, 'S')).toEqual({
+      2: { actual: '1N', bba: '2NT' },
+    })
+  })
+
+  // Normalising must not smear anything else together.
+  it('does not confuse a suit bid, a double, or a different level', () => {
+    expect(normalizeCall('1N')).toBe('1NT')
+    expect(normalizeCall('1NT')).toBe('1NT')
+    expect(normalizeCall('1S')).toBe('1S')
+    expect(normalizeCall('Pass')).toBe('Pass')
+    expect(normalizeCall('X')).toBe('X')
+    expect(normalizeCall('XX')).toBe('XX')
+    // Not a call shape at all — passed through untouched, never coerced.
+    expect(normalizeCall('8N')).toBe('8N')
+    expect(normalizeCall(null)).toBeNull()
+    expect(normalizeCall(undefined)).toBeUndefined()
+  })
+})
+
 describe('bidderDivergence (per-bidder auction divergence)', () => {
   const dealer = 'N'
 
