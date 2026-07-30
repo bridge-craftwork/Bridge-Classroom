@@ -1791,7 +1791,6 @@ async function restartCardplay() {
   gap: 10px;
   align-items: stretch;
 }
-.bp-app.embedded .bp-app.embedded .bp-app.embedded 
 .bp-nav {
   display: flex;
   align-items: center;
