@@ -47,15 +47,24 @@ function reset() {
 /**
  * Unwrap a friends-API response. Distinguishes the three outcomes the UI cares
  * about: ok, no-session (401/403), and everything else.
+ *
+ * The thrown error carries its `status`, because "this didn't work, try again" and
+ * "this was already done" are different answers and the UI has to tell them apart —
+ * a 409 on accepting a friend request means you are already friends, which is the
+ * outcome the user wanted, not a failure to retry.
  */
 async function readJson(res) {
   if (res.status === 401 || res.status === 403) {
     needsSession.value = true
-    throw new Error('no-session')
+    const err = new Error('no-session')
+    err.status = res.status
+    throw err
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `request failed (${res.status})`)
+    const err = new Error(text || `request failed (${res.status})`)
+    err.status = res.status
+    throw err
   }
   return res.json()
 }
@@ -141,10 +150,20 @@ export function useFriends() {
         { method: 'POST' }
       )
       await readJson(res)
-      await refresh(userId)
     } catch (e) {
       if (e.message !== 'no-session') error.value = e.message
       throw e
+    }
+    // The list reload is a CONSEQUENCE of the response, not part of it. It used to sit
+    // inside the try, so a blip refreshing a list could make a completed accept look
+    // like a failure — and the caller, quite reasonably, left its "Accept" button up
+    // (bug-artifacts #43: the server logged `friendship_accepted` at 16:54:54 and the
+    // toast was still on screen three minutes later). Never let a cosmetic follow-up
+    // decide whether the real action happened.
+    try {
+      await refresh(userId)
+    } catch {
+      /* already-applied server-side; the list catches up on the next load */
     }
   }
 
