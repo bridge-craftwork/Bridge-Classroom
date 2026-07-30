@@ -23,13 +23,12 @@
         type="button"
         :disabled="!canUndo"
         title="Undo — steps back to your last decision (bid or card)"
+        aria-label="Undo — steps back to your last decision (bid or card)"
         @click="emit('undo')"
-      >
-        <span class="ac-ico">⏪</span> Undo
-      </button>
+      >⏪</button>
       <button
         v-if="showClaim"
-        class="ac-btn"
+        class="ac-btn ac-btn-text"
         type="button"
         :disabled="!canClaim"
         title="Claim the rest of the tricks"
@@ -56,24 +55,27 @@ const emit = defineEmits(['undo', 'claim'])
 /* Button width is pinned to CLUSTER_UNIT.inlineBtnPx so actionClusterReservePx is
    exact by construction rather than an estimate of label width. */
 .ac-cluster { display: flex; flex-direction: column; gap: 6px; align-items: center; }
-.ac-buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.ac-buttons { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+/* Undo is an ICON (same VCR family as the NW transport, same 32px unit); Claim keeps
+   its word — rare, consequential, no obvious glyph. Sizes mirror CLUSTER_UNIT. */
 .ac-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 78px;
-  padding: 6px 10px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #ccc;
   background: #fff;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
 }
+.ac-btn-text { width: auto; min-width: 78px; padding: 0 10px; font-size: 13px; }
 .ac-btn:hover:not(:disabled) { border-color: #888; }
 .ac-btn:disabled { opacity: 0.45; cursor: default; }
-.ac-ico { font-size: 12px; }
 .ac-status { font-size: 11px; color: #6a726c; text-align: center; }
 .ac-error { color: #b3261e; }
 </style>
