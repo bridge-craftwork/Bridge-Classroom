@@ -78,15 +78,13 @@
           >
             Next deal
           </button>
-          <button
-            v-if="srv.canHostAdvance"
-            class="tv-btn tv-btn-primary"
-            :disabled="srv.connectionStatus !== 'connected'"
-            title="Move everyone to the next board now (host)"
-            @click="srv.onHostNextDeal"
-          >
-            Next deal →
-          </button>
+          <!-- The host's next-board affordance is the NW transport ⏭ alone
+               (roadmap 2026-07-30 §1.2, Rick's ruling). It routes to the same
+               onHostNextDeal and is already host-gated, so a second header
+               button only reproduced #45's "three different buttons". The
+               "Next deal" button above stays: it is the DEMO room's draw-from-
+               a-source action, paired with its own picker, not a session
+               advance. -->
       </template>
 
       <template #notes>
