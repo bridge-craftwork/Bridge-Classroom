@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bidderDivergence, normalizeCall } from '../handAnalysis.js'
+import { bidderDivergence, normalizeCall, firstNewDivergence } from '../handAnalysis.js'
 
 // dealer N → bid index 0=N, 1=E, 2=S, 3=W, 4=N, …
 // Report #52, verified 2026-07-30 against the live BBA service. Notrump has two
@@ -45,6 +45,59 @@ describe('bidderDivergence — notrump spelling is not a disagreement', () => {
     expect(normalizeCall('8N')).toBe('8N')
     expect(normalizeCall(null)).toBeNull()
     expect(normalizeCall(undefined)).toBeUndefined()
+  })
+})
+
+// Roadmap §7.2 (#50): the served table's comparison only appeared once the auction
+// ended. Going per-call needs ONE divergence at a time, because a from-scratch BBA
+// reference stops being positionally meaningful after your first disagreement —
+// every later reference call assumes BBA's line, not the auction that happened.
+// The caller records the hit, re-requests with the real auction as prefix, asks again.
+describe('firstNewDivergence — one at a time, so the reference can be re-anchored', () => {
+  const dealer = 'N' // idx 0=N, 1=E, 2=S, 3=W, 4=N, ...
+
+  it('returns null while the seat is matching', () => {
+    const a = ['Pass', 'Pass', '1S']
+    expect(firstNewDivergence(a, ['Pass', 'Pass', '1S'], dealer, 'S')).toBeNull()
+  })
+
+  it('finds the seat\'s first disagreement', () => {
+    const a = ['Pass', 'Pass', '1S', 'Pass', 'Pass', 'Pass', '3H']
+    const e = ['Pass', 'Pass', '1S', 'Pass', 'Pass', 'Pass', '2H']
+    expect(firstNewDivergence(a, e, dealer, 'S')).toEqual({ idx: 6, user: '3H', bba: '2H' })
+  })
+
+  it('ignores other seats entirely', () => {
+    const a = ['1C', 'Pass', '1S']
+    const e = ['1D', 'Pass', '1S'] // North differs — not my problem
+    expect(firstNewDivergence(a, e, dealer, 'S')).toBeNull()
+  })
+
+  it('skips what is already recorded, so it advances instead of looping', () => {
+    const a = ['Pass', 'Pass', '1S', 'Pass', 'Pass', 'Pass', '3H']
+    const e = ['Pass', 'Pass', '2S', 'Pass', 'Pass', 'Pass', '2H']
+    const first = firstNewDivergence(a, e, dealer, 'S')
+    expect(first).toEqual({ idx: 2, user: '1S', bba: '2S' })
+    const next = firstNewDivergence(a, e, dealer, 'S', { 2: first })
+    expect(next).toEqual({ idx: 6, user: '3H', bba: '2H' })
+    expect(firstNewDivergence(a, e, dealer, 'S', { 2: first, 6: next })).toBeNull()
+  })
+
+  it('does not read past the shorter array — a live auction is still growing', () => {
+    const a = ['Pass', 'Pass'] // South hasn't called yet
+    const e = ['Pass', 'Pass', '1N', 'Pass']
+    expect(firstNewDivergence(a, e, dealer, 'S')).toBeNull()
+  })
+
+  it('applies the notrump normalisation too', () => {
+    const a = ['Pass', 'Pass', '1N']
+    const e = ['Pass', 'Pass', '1NT']
+    expect(firstNewDivergence(a, e, dealer, 'S')).toBeNull()
+  })
+
+  it('survives empty/absent input', () => {
+    expect(firstNewDivergence([], [], dealer, 'S')).toBeNull()
+    expect(firstNewDivergence(undefined, undefined, dealer, 'S')).toBeNull()
   })
 })
 

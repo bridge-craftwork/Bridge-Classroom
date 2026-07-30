@@ -31,6 +31,16 @@ export const AUCTION_UNIT = {
   // 59) overshot the real 54 by 5px.
   headerRowPx: 19,
   roundRowPx: 35,
+  // Extra height (px, 1.0×) a round costs when one of its cells is a "you vs BBA"
+  // stack. MEASURED 2026-07-30 from the AuctionTable specimens (plain vs
+  // diverged-stacked / diverged-shipped, --table-scale 1): a plain round row is
+  // 43.5-44.5px; a row carrying a stacked cell is 70.2-76.2px. Delta 26-32; take
+  // the worst case, since under-reserving is what report #49 looked like (the
+  // auction cramped once compare was on) while over-reserving only leaves slack.
+  //
+  // The stacked cell is four lines (● You / call / ○ BBA / call) but drops to a
+  // compact font, which is why it costs ~0.7× a row rather than 3× one.
+  stackedRoundExtraPx: 32,
 }
 
 // Natural width (px, 1.0×) the auction needs — its four-column grid min-width.
@@ -45,6 +55,25 @@ export function auctionReservePx(u = AUCTION_UNIT) {
 // position through any normal auction and only displace on a freak one. Bounded by
 // design — NOT the viewport (the grid never reads viewport dimensions; the shell
 // owns placement).
-export function auctionGrowthReservePx(rounds = 6, u = AUCTION_UNIT) {
-  return u.headerRowPx + rounds * u.roundRowPx
+// How many auction ROUNDS a divergence map touches. The reserve is per-round, not
+// per-cell: two divergences in the same round of four cost one taller row, not two.
+// Keys are auction indices (0-based, dealer first), so the round is idx >> 2.
+export function stackedRoundCount(divergedBids) {
+  if (!divergedBids) return 0
+  const rounds = new Set()
+  for (const k of Object.keys(divergedBids)) {
+    const idx = Number(k)
+    if (Number.isInteger(idx) && idx >= 0) rounds.add(idx >> 2)
+  }
+  return rounds.size
+}
+
+// `stackedRounds` — how many of those rounds carry a "you vs BBA" stacked cell.
+// The reserve provisions a NORMAL auction by default, so with the BBA comparison
+// on it systematically under-reserved and the auction cramped (#49). The count
+// comes from the shell, which is the only party that knows its own divergences —
+// the same division of labour as `regionReserves`.
+export function auctionGrowthReservePx(rounds = 6, stackedRounds = 0, u = AUCTION_UNIT) {
+  const stacked = Math.max(0, Math.min(stackedRounds, rounds))
+  return u.headerRowPx + rounds * u.roundRowPx + stacked * u.stackedRoundExtraPx
 }

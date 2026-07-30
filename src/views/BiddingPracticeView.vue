@@ -121,6 +121,7 @@
             :table-config="tableConfig"
             :region-reserves="srvRegionReserves"
             :phase="srv.phase === 'complete' ? 'review' : srv.phase"
+            :stacked-rounds="stackedRoundCount(srv.divergedBids)"
             :hero-seat="srv.yourSeat || 'S'"
             :hands="srv.displayHands"
             :hidden-seats="srv.displayHiddenSeats"
@@ -500,6 +501,7 @@
               :table-config="tableConfig"
               :region-reserves="localRegionReserves"
               :phase="enginePhase"
+              :stacked-rounds="stackedRoundCount(shownDivergedBids)"
               :hero-seat="yourSeat"
               :hands="visibleHands"
               :hidden-seats="hiddenSeats"
@@ -810,6 +812,7 @@ import { setReportContextProvider, clearReportContextProvider } from '../report/
 import ActionCluster from '../components/table/ActionCluster.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
+import { stackedRoundCount } from '../components/auctionMetrics.js'
 import BiddingBox from '../components/BiddingBox.vue'
 import AuctionTable from '../components/AuctionTable.vue'
 import TrickArea from '../components/TrickArea.vue'

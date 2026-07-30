@@ -59,6 +59,37 @@ export function bidderDivergence(actual, expected, dealer, seat) {
   return out
 }
 
+/**
+ * The first of `seat`'s calls that disagrees with the reference and isn't already
+ * recorded — the per-call counterpart to `bidderDivergence`'s wholesale sweep.
+ *
+ * Why one at a time rather than all of them: a from-scratch BBA reference is only
+ * positionally meaningful UP TO AND INCLUDING the first divergence. Once you bid
+ * something BBA didn't, every later reference call assumes BBA's line rather than
+ * the auction that actually happened, so comparing them to your real calls invents
+ * disagreements. The caller records this one, re-requests the reference with the
+ * ACTUAL auction as the prefix, and asks again — which is exactly what the solo
+ * table has always done in `onUserBid`.
+ *
+ * @param {string[]} actual    calls made so far
+ * @param {string[]} expected  BBA's reference auction
+ * @param {string} dealer
+ * @param {string} seat        the viewer's own seat
+ * @param {object} known       divergences already recorded, keyed by index
+ * @returns {{idx:number,user:string,bba:string}|null}
+ */
+export function firstNewDivergence(actual, expected, dealer, seat, known = {}) {
+  const n = Math.min(actual?.length || 0, expected?.length || 0)
+  for (let i = 0; i < n; i++) {
+    if (seatAtIndex(dealer, i) !== seat) continue
+    if (Object.prototype.hasOwnProperty.call(known, i)) continue
+    if (normalizeCall(actual[i]) !== normalizeCall(expected[i])) {
+      return { idx: i, user: actual[i], bba: expected[i] }
+    }
+  }
+  return null
+}
+
 // The last actual suit/NT bid (ignoring Pass/X/XX).
 export function lastSuitBid(arr) {
   for (let i = arr.length - 1; i >= 0; i--) {

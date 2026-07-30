@@ -23,7 +23,7 @@ import { SUIT_SYMBOLS } from '../../utils/cardFormatting.js'
 import { SERVER_CAPABILITIES } from './tableEngine.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
-import { bidderDivergence } from '../../utils/handAnalysis.js'
+import { firstNewDivergence } from '../../utils/handAnalysis.js'
 
 // Default convention card for the BBA reference auction on a shared table (no
 // scenario context server-side) — mirrors LocalEngine's non-scenario default.
@@ -160,7 +160,7 @@ export function useServerEngine() {
   //     setting is one preference wherever there's an auction to compare); and
   //   • PER-SEAT diff — each client compares only ITS OWN seat's calls against
   //     the BBA reference, so a multi-human table shows each player just their
-  //     own divergences. bidderDivergence + AuctionTable are both built around a
+  //     own divergences. The comparison + AuctionTable are both built around a
   //     single "You vs BBA" perspective, so a kibitzer (no seat) sees no overlay.
   const BBA_COMPARE_KEY = 'bp.cardplayShowBbaCompare'
   const showBbaCompare = ref(localStorage.getItem(BBA_COMPARE_KEY) !== '0')
@@ -169,37 +169,78 @@ export function useServerEngine() {
     try { localStorage.setItem(BBA_COMPARE_KEY, showBbaCompare.value ? '1' : '0') } catch { /* private mode */ }
   }
 
-  // The BBA reference auction for the current board, fetched once the auction is
-  // settled (phase play/complete) and the full deal is captured. Tokened like the
-  // DD overlay so a fast next-board can't land a stale reference; reset to null
-  // whenever the board changes so the next settled auction refetches.
+  // The BBA reference auction for the current board. Fetched as soon as the full
+  // deal is captured — NOT held back until the auction settles (roadmap §7.2,
+  // report #50: the comparison only ever appeared at the end). Tokened like the DD
+  // overlay so a fast next-board can't land a stale reference.
   const expectedAuction = ref(null)
   let bbaToken = 0
-  const auctionSettled = computed(() => phase.value === 'play' || phase.value === 'complete')
-  watch(() => boardNumber.value, () => { expectedAuction.value = null; bbaToken++ })
-  watch([auctionSettled, fullDeal, showBbaCompare], async ([settled, deal, show]) => {
-    if (!(capabilities.bbaExpectedAuction && settled && deal && show)) return
-    if (expectedAuction.value) return
+
+  // Divergences ACCUMULATE rather than being recomputed from the current
+  // reference, because the reference is replaced as the auction proceeds — see
+  // below. Board-scoped.
+  const divergedMap = ref({})
+  watch(() => boardNumber.value, () => {
+    expectedAuction.value = null
+    divergedMap.value = {}
+    bbaToken++
+  })
+
+  async function fetchReference(prefix = null) {
+    const deal = fullDeal.value
+    if (!deal) return
     const token = ++bbaToken
     // No scenario/conventions server-side — getExpectedAuction falls back to the
     // default convention card (same as the solo table's non-scenario sources).
-    const res = await getExpectedAuction({ hands: deal, dealer: dealer.value, vulnerable: vulnerable.value })
+    const res = await getExpectedAuction(
+      { hands: deal, dealer: dealer.value, vulnerable: vulnerable.value },
+      prefix && prefix.length ? { auctionPrefix: prefix } : {},
+    )
     if (token === bbaToken) expectedAuction.value = res
+  }
+
+  watch([fullDeal, showBbaCompare], ([deal, show]) => {
+    if (!(capabilities.bbaExpectedAuction && deal && show)) return
+    if (expectedAuction.value) return
+    fetchReference()
   }, { immediate: true })
 
-  // Per-seat divergence map for AuctionTable ({ idx: { user, bba } }), scoped to
-  // YOUR seat and gated on the preference. bidderDivergence returns { actual, bba };
-  // AuctionTable expects the acting side under `user` (labelled "You"), so remap.
-  // Empty (no overlay) when off, unseated, or the reference isn't ready yet.
-  const divergedBids = computed(() => {
-    if (!showBbaCompare.value || !yourSeat.value) return {}
-    const exp = expectedAuction.value
-    if (!exp?.auction) return {}
-    const diffs = bidderDivergence(auction.value, exp.auction, dealer.value, yourSeat.value)
-    const out = {}
-    for (const [idx, d] of Object.entries(diffs)) out[idx] = { user: d.actual, bba: d.bba }
-    return out
-  })
+  // Per-call comparison, mirroring the solo table's onUserBid.
+  //
+  // The subtlety that makes this more than "drop the settled gate": a
+  // from-scratch BBA reference is only positionally meaningful UP TO AND
+  // INCLUDING your first divergence. Once you bid something BBA didn't, every
+  // later reference call assumes BBA's line rather than the auction that actually
+  // happened — so comparing them to your real calls invents disagreements. So on
+  // each divergence we record it and RE-REQUEST the reference with the actual
+  // auction as the prefix, exactly as solo has always done. `firstNewDivergence`
+  // returns one at a time for that reason.
+  let refetching = false
+  watch([() => auction.value.length, expectedAuction, showBbaCompare, () => yourSeat.value],
+    async () => {
+      if (!capabilities.bbaExpectedAuction) return
+      if (!showBbaCompare.value || !yourSeat.value || refetching) return
+      const exp = expectedAuction.value?.auction
+      if (!exp) return
+      const hit = firstNewDivergence(
+        auction.value, exp, dealer.value, yourSeat.value, divergedMap.value,
+      )
+      if (!hit) return
+      divergedMap.value = { ...divergedMap.value, [hit.idx]: { user: hit.user, bba: hit.bba } }
+      refetching = true
+      try {
+        await fetchReference(auction.value.slice(0, hit.idx + 1))
+      } finally {
+        refetching = false
+      }
+    },
+    { immediate: true })
+
+  // What AuctionTable renders ({ idx: { user, bba } }), scoped to YOUR seat and
+  // gated on the preference — a multi-human table shows each player only their own
+  // divergences, and a kibitzer (no seat) sees no overlay.
+  const divergedBids = computed(() =>
+    (showBbaCompare.value && yourSeat.value) ? divergedMap.value : {})
 
   // ── Teacher hand-visibility toggle ─────────────────────────────────────
   const SHOW_ALL_HANDS_KEY = 'bridgeTableShowAllHands'

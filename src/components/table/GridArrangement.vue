@@ -126,6 +126,11 @@ const props = defineProps({
   // role-derived default, so every existing caller — A1 included — is byte-identical.
   regionReserves: { type: Object, default: null },
   phase: { type: String, default: 'bidding' },
+  // How many auction ROUNDS carry a "you vs BBA" stacked cell. Shell-supplied for
+  // the same reason as regionReserves: only the shell knows its own divergences,
+  // and a stacked round is ~32px taller at 1.0× (see auctionMetrics). 0 → today's
+  // normal-auction reserve, so every existing caller is unchanged.
+  stackedRounds: { type: Number, default: 0 },
   heroSeat: { type: String, default: 'S' },
   heroName: { type: String, default: null },
   // Declarer seat (played/reviewed deals) — names declarer + its dummy (item 5).
@@ -952,7 +957,7 @@ function seatAllocStyle(seat) {
 // matches the rendered auction. Fixed (not viewport-derived): the auction grows
 // upward into it without moving the hand/BB until it's exhausted.
 const stageReservePx = computed(() =>
-  biddingAnchored.value ? Math.round(auctionGrowthReservePx(reserveRounds.value) * (scales.center || 1)) : 0,
+  biddingAnchored.value ? Math.round(auctionGrowthReservePx(reserveRounds.value, props.stackedRounds) * (scales.center || 1)) : 0,
 )
 // Center region: scale vars + (bidding only) the reserved min-height that holds the
 // growth band. `data-region-reserve` exposes it for the bounding-box diagnostic.
