@@ -102,7 +102,7 @@ export function capSide(cap) {
  *  N-card worst case; `handReservePx` is a specific hand's actual widest suit row. */
 export { rowReservePx, handReservePx }
 
-// ── The height fit, as a pure solve (beta channel) ───────────────────────────
+// ── The height fit, as a pure solve ──────────────────────────────────────────
 // The width pass is one-directional; height is the measured input (§ symmetric
 // allocator). The ORIGINAL fit modelled the stack as "seat rows (scale with the
 // seat scale) + a fixed remainder", and shrank the seats until it fit.
@@ -287,8 +287,9 @@ export function computeLayoutLedger(o) {
     // capTarget = the widest the column can usefully grow to: the max over its regions of
     // cap×reserve (each region clamps to its OWN cap, so the column grows to satisfy the
     // greediest). ≥ need always (numericCap ≥ 1). Drives the caps growth pass below.
-    // A column's growth CEILING. `capFloorAtNeed` (beta) raises it to at least the
-    // column's own natural need, which is the fix for the height-collapse bug:
+    // A column's growth CEILING. `capFloorAtNeed` raises it to at least the column's own
+    // natural need, which is the fix for the height-collapse bug. Every caller in the app
+    // passes it; the option survives so the regression test can pin both sides of it:
     //
     // caps.seats is lowered by the HEIGHT fit (capsWithHeight) when the stack is too
     // tall. Because the ceiling is max(cap × reserve) over a column's members, that
