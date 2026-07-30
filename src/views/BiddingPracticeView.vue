@@ -624,10 +624,14 @@
 
                 <!-- (Double dummy moved to the SE grid corner at review, 2026-07-29.) -->
 
-                <div class="bp-contract-actions">
-                  <button v-if="EMBEDDED" class="bp-btn bp-btn-primary" @click="done">Done</button>
-                  <button v-else class="bp-btn bp-btn-primary" @click="newDeal">Next deal &rarr;</button>
-                  <button class="bp-btn" @click="resetAuction">Replay this deal</button>
+                <!-- "Next deal" and "Replay this deal" were REMOVED here 2026-07-29:
+                     NW now carries Next deal and Restart deal, and showing the same
+                     two actions twice on one screen is worse than showing them once.
+                     "Done" stays — it's the embedded widget's hand-back to Game
+                     Analysis, has no NW equivalent, and is the only action that
+                     surface needs. -->
+                <div v-if="EMBEDDED" class="bp-contract-actions">
+                  <button class="bp-btn bp-btn-primary" @click="done">Done</button>
                 </div>
               </div>
             </div>

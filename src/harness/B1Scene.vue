@@ -166,10 +166,7 @@
             max {{ fmtMs(f.botStats.max) }} · total {{ fmtMs(f.botStats.total) }}
           </div>
           <!-- (Double dummy moved to the SE grid corner at review.) -->
-          <div class="b1-rail-actions">
-            <button class="b1-btn b1-btn-primary" type="button">Next deal &rarr;</button>
-            <button class="b1-btn" type="button">Replay this deal</button>
-          </div>
+          <!-- (Next deal / Replay removed 2026-07-29 — NW carries both now.) -->
         </div>
       </aside>
     </div>
