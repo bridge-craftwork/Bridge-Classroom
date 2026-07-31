@@ -95,19 +95,20 @@ export function actionClusterReservePx({ showUndo = true, showClaim = false } = 
 // Re-measured in the harness with offsetWidth (untransformed); +6 is a one-cell
 // tolerance so a font tweak doesn't silently re-starve the corner.
 // Re-measured 2026-07-30 from the harness specimens at 1.0x, after the corner density
-// was re-balanced so the DD's native size is comparable to a hand's (127 → 189, i.e.
-// 96% of a hand's 196 reserve — it was 65%, and rendered at 25% of a hand's height).
+// was TYPE-matched to the cards: the DD cell is now 22px base against a card rank's
+// 24px (92%), where it was 13px (54%). The box came out NARROWER doing it (189 → 179)
+// because the width had been padding, not type.
 // Earlier note, still true of the collapse itself: Collapsing makes the grid SHORTER (2 rows, h 60 vs 79) but marginally
 // WIDER — the row label is now "NS" rather than "N", and a two-character label is a
 // wider cell. 121 → 127. The old 120 + a 6px tolerance would have landed at 126 and
 // under-reserved by a pixel; measuring beat assuming that the collapse could only
 // shrink things.
-export const DD_COMPACT_MEASURED_PX = 189
+export const DD_COMPACT_MEASURED_PX = 179
 // Rotated form: 5 strain rows over N declarer columns, plus the strain-glyph column.
 // MEASURED: 2 declarer columns (both pairs collapsed) → 72px; 4 → 90px. Roughly HALF
 // the upright width, which is the whole point of offering it to a corner that is
 // narrow rather than short — and it is taller in exchange (h 123 vs 60).
-export const DD_ROTATED_MEASURED_PX = { 2: 105, 4: 138 }
+export const DD_ROTATED_MEASURED_PX = { 2: 106, 4: 138 }
 
 /**
  * Natural WIDTH (px, 1.0x) of the DD table in its corner form.

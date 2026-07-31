@@ -168,30 +168,35 @@ const parLine = computed(() => {
 }
 /* Corner form: the air comes out of the sides first, then the type steps down.
    Widths here are mirrored by doubleDummyReservePx() in table/clusterMetrics.js. */
-/* Corner density RE-BALANCED 2026-07-30 (Rick: "if we want to retain the scaling with
-   the hand, we should make the native size similar to the hand. right now it's like
-   the native DD is 50% of the native hand").
+/* Corner density: TYPE-matched to the cards, 2026-07-30.
 
-   The July compaction took the table 205 → 120 to fit a corner that could not grow.
-   Now that the corner tracks the seats, that squeeze is the binding constraint: at
-   11px the natural was 127 against a hand's 196 reserve — 65% — and the DD rendered
-   at 25% of a hand's height.
+   Rick: "hand and DD are both 1.1x, but the cards are much larger. Isn't this because
+   cards have a native size larger than DD? this is 1.1x what?" — exactly right, and
+   the answer is the whole point: `--table-scale` multiplies each component's OWN base
+   px. It is a multiplier, not a shared unit. Measured in the b2-review scene:
 
-   13px / 4px·8px measures 189 natural = 96% of the hand reserve, and still takes the
-   full seat scale. MEASURED alternatives, and why not bigger: past ~190 the natural
-   exceeds the SE allocation, so the arranger clamps the scale DOWN and the rendered
-   size stops improving —
+       card rank base 24px  → 28.8px at 1.2x
+       DD cell   base 13px  → 15.6px at 1.2x     (1.85x apart at IDENTICAL scale)
 
-       natural 189 → scale 1.10 → renders 208   ← chosen
-       natural 220 → scale 0.96 → renders 210
-       natural 251 → scale 0.84 → renders 211
+   The previous pass matched the table's WIDTH to a hand's reserve (189 vs 196) and
+   still looked wrong, because that width came from PADDING rather than type — a wider
+   box around the same small digits.
 
-   Bigger native buys nothing there and costs the seat-tracking. */
-.dd-compact { font-size: calc(13px * var(--table-scale, 1)); margin-top: calc(4px * var(--table-scale, 1)); }
+   So trade the air for the type. Measured against the 195px reserve budget:
+
+       13px / 4·8  →  54% of card type,  natural 189   ← was
+       18px / 3·4  →  75%,               natural 175
+       22px / 2·2  →  92%,               natural 179   ← chosen
+       24px / 2·2  → 100%,               natural 199   (over budget)
+
+   22px nearly doubles the type AND comes out NARROWER than the 13px version, because
+   the padding was buying nothing. Full parity needs 199 and would force the arranger
+   to clamp the scale down, which costs more than the last 8% gains. */
+.dd-compact { font-size: calc(22px * var(--table-scale, 1)); margin-top: calc(4px * var(--table-scale, 1)); }
 .dd-compact th,
 .dd-compact td {
-  padding: calc(4px * var(--table-scale, 1)) calc(8px * var(--table-scale, 1));
-  min-width: calc(19px * var(--table-scale, 1));
+  padding: calc(2px * var(--table-scale, 1)) calc(2px * var(--table-scale, 1));
+  min-width: calc(26px * var(--table-scale, 1));
 }
 .dd-label-compact {
   font-size: calc(10px * var(--table-scale, 1));
