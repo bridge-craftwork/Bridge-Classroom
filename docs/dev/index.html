@@ -81,6 +81,11 @@
   .comp .chead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
   .comp .chead .cname { font-size: 15px; font-weight: 600; }
   .comp .chead .ccount { font-size: 11px; color: var(--faint); }
+  /* Sizing contract badge: does this component track --table-scale? */
+  .comp .chead .sbadge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 9px;
+    letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; }
+  .comp .chead .sb-yes { background: #e3f2ec; color: #1d6a4f; }
+  .comp .chead .sb-no  { background: #eeeeef; color: #77787c; }
   .comp .chead a { color: var(--accent); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
   .comp .chead a:hover { text-decoration: underline; }
   .comp .stage { background: var(--panel); min-height: 240px; max-height: 320px; overflow: auto; }
@@ -307,6 +312,27 @@
 
   // ── Live component tiles (from the manifest) ───────────────────────────────
   var HARNESS = 'harness/#/harness/component/';
+  // Does this component resize with --table-scale? DECLARED in registry.js
+  // (SCALEABLE) and carried through the manifest — not sniffed here, so the answer is
+  // the component's own statement of intent rather than a guess from the outside.
+  //
+  // Worth showing at all because the alternative is discovering it the hard way:
+  // DoubleDummyTable is table content that silently ignored the var, so the arranger
+  // computed a scale its corner then discarded — invisible until someone set the
+  // variable by hand and watched nothing move.
+  //
+  // "fixed" is NOT a defect. Chrome and controls are deliberately fixed, and
+  // BoardIndicator sizes from an explicit `size` prop instead. The badge says which
+  // contract a component follows, not whether it is correct.
+  function scaleBadge(name, scaleable) {
+    if (!scaleable) return '';
+    var yes = scaleable.indexOf(name) !== -1;
+    return '<span class="sbadge ' + (yes ? 'sb-yes' : 'sb-no') + '" title="' +
+      (yes ? 'Resizes with --table-scale (table content).'
+           : 'Fixed size — chrome/controls, or sized by an explicit prop.') +
+      '">' + (yes ? 'scales' : 'fixed') + '</span>';
+  }
+
   // Two tabs share one renderer: Components shows the table components, Shell parts
   // shows the chrome around them. `m.shell` names the split (from registry.js).
   function buildComponents(gridId, wantShell) {
@@ -334,7 +360,8 @@
           card.className = 'comp';
           card.innerHTML =
             '<div class="chead"><div><span class="cname">' + name + '</span> ' +
-            '<span class="ccount">· ' + specs.length + ' specimen' + (specs.length === 1 ? '' : 's') + '</span></div>' +
+            '<span class="ccount">· ' + specs.length + ' specimen' + (specs.length === 1 ? '' : 's') + '</span> ' +
+            scaleBadge(name, m.scaleable) + '</div>' +
             '<a href="' + drill + '" target="_blank" rel="noopener">all sizes ↗</a></div>' +
             '<div class="stage" data-src="' + HARNESS + encodeURIComponent(name) + '/' + encodeURIComponent(def) + '?w=panel&scale=1">' +
             '<div class="ph">' + def + '</div></div>';

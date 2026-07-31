@@ -67,6 +67,19 @@ function shellList() {
 }
 const shell = shellList().filter((c) => components[c])
 
+// Which components declare that they resize with --table-scale. Parsed from
+// registry.js exactly like the shell list, so the declaration lives in one place and
+// this script still never has to import Vue.
+function scaleableList() {
+  try {
+    const src = fs.readFileSync(path.join(ROOT, 'src/harness/registry.js'), 'utf8')
+    const m = src.match(/export const SCALEABLE\s*=\s*\[([^\]]*)\]/)
+    if (!m) return []
+    return m[1].split(',').map((x) => x.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  } catch { return [] }
+}
+const scaleable = scaleableList()
+
 // ── Scenes (Tier-2 fixtures) — a1 group first (the released app), then table ──
 // Import each fixture for its label/surface (sibling-only imports resolve in
 // node, same as a1-gallery.mjs). Fall back to the bare name if an import fails.
@@ -100,7 +113,7 @@ const scenes = [
   ...(await collectScenes('src/harness/fixtures-c', 'c')),
 ]
 
-const manifest = { components, shell, widths, scales, scenes, viewports }
+const manifest = { components, shell, scaleable, widths, scales, scenes, viewports }
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
 fs.writeFileSync(OUT, JSON.stringify(manifest, null, 2))
 const total = Object.values(components).reduce((n, s) => n + s.length, 0)
