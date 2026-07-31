@@ -128,6 +128,8 @@ export { rowReservePx, handReservePx }
 //   'center' — the stage; its target is decided by the ORDER OF SPENDING below.
 //   'action' — a corner whose cap is the `se: 'seats'` RELATIONSHIP, so it rides
 //              min(1, seatScale): it does NOT shrink until the seats pass below 1.0.
+//   'action-track' — cap `'seats-track'`: rides seatScale in BOTH directions, so it is
+//              proportional like a seat (the review double-dummy table).
 //   'fixed'  — everything else (NW status cluster, the NE reference auction).
 //
 /**
@@ -173,6 +175,11 @@ export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerSca
     // natural, then proportional. Modelling it as plainly proportional would promise
     // height the corner can't give back.
     if (m.kind === 'action') return seatCeil > 0 ? m.h * (Math.min(1, seatScale * k) / seatCeil) : m.h
+    // A TRACKING corner ('seats-track') rides seatScale in both directions, so its
+    // height is plainly proportional — same model as a seat. Using the 'action' curve
+    // here would under-promise the height it can give back, since that curve goes flat
+    // above 1.0x precisely where a tracking corner keeps growing.
+    if (m.kind === 'action-track') return m.h * k
     if (m.kind === 'center') {
       // Rides the hands beside it, but only DOWNWARD: the fit exists to reclaim
       // height, so a centre that is already the smaller party is left alone rather
@@ -276,7 +283,25 @@ export function computeLayoutLedger(o) {
   // seat-relationship at scale time (below). Missing → 1.0 (no growth above natural).
   const capRaw = (area) => (area === 'center' ? caps.center : SEAT_AREAS.has(area) ? caps.seats : caps[area])
   const isSeatsRel = (area) => { const v = capRaw(area); return v === 'seats' || v === 'seat' }
-  const numericCap = (area) => { const v = capRaw(area); if (isSeatsRel(area)) return 1; return typeof v === 'number' && v > 0 ? v : 1 }
+  // 'seats-track' — the SECOND seat relationship (§6.1). Like 'seats' it follows the
+  // hero's hand, but in BOTH directions: its ceiling is seatScale itself rather than
+  // min(1, seatScale), so it GROWS with the seats instead of being pinned at natural.
+  //
+  // Why a new string rather than changing 'seats': the two occupants of that corner
+  // want opposite things. The bidding box is a fixed-width widget that must never
+  // exceed natural size — 'seats' is right for it. The double-dummy table at review is
+  // a data grid that should track the hands, and pinning it at 1.0 left it rendering
+  // 120px inside a 227px allocation while every seat grew to 1.32x.
+  const isSeatsTrack = (area) => capRaw(area) === 'seats-track'
+  const anySeatsRel = (area) => isSeatsRel(area) || isSeatsTrack(area)
+  const numericCap = (area) => {
+    const v = capRaw(area)
+    if (isSeatsRel(area)) return 1
+    // A tracking region may grow to the seats' own ceiling in the column pass; the
+    // exact seatScale clamp is applied below, once seatScale is known.
+    if (isSeatsTrack(area)) return (typeof caps.seats === 'number' && caps.seats > 0) ? caps.seats : 1
+    return typeof v === 'number' && v > 0 ? v : 1
+  }
   const seatsCap = (typeof caps.seats === 'number' && caps.seats > 0) ? caps.seats : 1
   const tierList = (tiers && tiers.length ? tiers : [['center'], ['n', 'e', 's', 'w'], ['nw', 'ne', 'se', 'sw']]).map((t) => (Array.isArray(t) ? t : [t]))
   const tierOf = (areas) => { let best = tierList.length; for (const a of areas) { const i = tierList.findIndex((t) => t.includes(a)); if (i >= 0 && i < best) best = i } return best }
@@ -410,13 +435,14 @@ export function computeLayoutLedger(o) {
     seatScale = Math.max(floor, Math.min(seatsCap, ...hb.map((a) => (content[LEDGER_COL_OF[a]] || 0) / seatReserve)))
     hb.forEach((a) => { if (regions[a]) regions[a].scale = round2(seatScale) })
   }
-  // The SE↔seats RELATIONSHIP (§2 caps.se: 'seats'): a region whose cap is the string
-  // 'seats' (the action cluster) may never render larger than the seats — its ceiling is
-  // min(1, seatScale). Applied after seatScale is known; the region already clamped to ≤ 1
-  // via numericCap, so this only tightens it further when the hero's hand is below 1.0×.
+  // The SE↔seats RELATIONSHIPS (§2 caps.se). Both follow the hero's hand; they differ
+  // in whether they may exceed natural size:
+  //   'seats'       ceiling min(1, seatScale) — never bigger than natural (bidding box)
+  //   'seats-track' ceiling seatScale         — grows WITH the seats (review DD table)
+  // Applied after seatScale is known.
   for (const a of Object.keys(regions)) {
-    if (!isSeatsRel(a)) continue
-    const seCeil = Math.min(1, seatScale)
+    if (!anySeatsRel(a)) continue
+    const seCeil = isSeatsTrack(a) ? seatScale : Math.min(1, seatScale)
     const clamped = Math.max(floor, Math.min(regions[a].scale, seCeil))
     if (Math.abs(clamped - regions[a].scale) > 1e-9) { regions[a].scale = round2(clamped); regions[a].binding = 'cap' }
     regions[a].cap = round2(seCeil)

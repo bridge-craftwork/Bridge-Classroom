@@ -340,3 +340,45 @@ describe('computeLayoutLedger (§3 one-directional allocator)', () => {
     for (const a of ['center', 'n', 's', 'nw']) expect(l.regions[a].scale).toBe(1) // all natural
   })
 })
+
+// §6.1 — the review double-dummy corner tracks the seats instead of being pinned at
+// natural. Reported as "the DD looks very small… it's small in all viewports": every
+// seat grew to 1.32x while SE stayed at 1.00, rendering 120px inside a 227px
+// allocation.
+describe("caps.se: 'seats-track' — the corner grows WITH the seats", () => {
+  const base = {
+    budget: 994,
+    occupied: ['center', 'n', 'e', 's', 'w', 'nw', 'se'],
+    reserves: { center: 220, n: 172, e: 172, s: 172, w: 172, nw: 89, se: 126 },
+    seatReserve: 172,
+    handBearingAreas: ['n', 'e', 's', 'w'],
+    capFloorAtNeed: true,
+  }
+  const capsWith = (se) => ({ center: 1.8, seats: 1.4, nw: 1.0, ne: 1.0, se, sw: 1.0 })
+
+  it("'seats' pins the corner at natural even when the seats grow", () => {
+    const l = computeLayoutLedger({ ...base, caps: capsWith('seats') })
+    expect(l.seats.scale).toBeGreaterThan(1)
+    expect(l.regions.se.scale).toBe(1)
+  })
+
+  it("'seats-track' lets it follow the seats up", () => {
+    const l = computeLayoutLedger({ ...base, caps: capsWith('seats-track') })
+    expect(l.seats.scale).toBeGreaterThan(1)
+    expect(l.regions.se.scale).toBeCloseTo(l.seats.scale, 2)
+  })
+
+  // The DOWNWARD half must be unchanged: a tracking corner still shrinks with the
+  // hands, or a starved table would overflow rather than compress.
+  it('still follows the seats DOWN when the table is tight', () => {
+    const tight = { ...base, budget: 420 }   // 620 still leaves the seats above 1.0
+    const l = computeLayoutLedger({ ...tight, caps: capsWith('seats-track') })
+    expect(l.seats.scale).toBeLessThan(1)
+    expect(l.regions.se.scale).toBeLessThanOrEqual(l.seats.scale + 0.01)
+  })
+
+  it('leaves every other corner alone', () => {
+    const l = computeLayoutLedger({ ...base, caps: capsWith('seats-track') })
+    expect(l.regions.nw.scale).toBe(1)
+  })
+})

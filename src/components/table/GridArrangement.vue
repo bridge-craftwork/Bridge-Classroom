@@ -573,6 +573,18 @@ let heightPass = 0
 
 // Apply the height-fit ceiling to the seats cap (leaves every other role untouched;
 // the `se: 'seats'` relationship rides the resulting seatScale as before).
+// The SE corner holds different occupants in different phases, and they want opposite
+// cap relationships (§6.1): the bidding box is a fixed-width widget that must never
+// exceed natural size ('seats'), while the review double-dummy table is a data grid
+// that should track the hands ('seats-track'). Resolved in ONE place so the allocator
+// and the height fit cannot disagree about which is in force.
+function phaseCaps(baseCaps) {
+  const c = baseCaps || {}
+  if (props.phase !== 'review') return c
+  if (c.se !== 'seats' && c.se !== 'seat') return c
+  return { ...c, se: 'seats-track' }
+}
+
 function capsWithHeight(baseCaps) {
   const noSeat = !Number.isFinite(heightSeatCeiling)
   const noCenter = !Number.isFinite(heightCenterCeiling)
@@ -628,7 +640,7 @@ function relayout(force = false) {
     // AREA — the arranger's config caps object. Omitting it (any surface without caps)
     // reverts to the natural-size min(1, fit) allocation, so this is purely additive.
     // The seats cap is additionally lowered by the height fit when the stack is too tall.
-    caps: capsWithHeight(props.config.scale?.caps),
+    caps: capsWithHeight(phaseCaps(props.config.scale?.caps)),
     // Stops a HEIGHT-driven seats-cap reduction from also capping a column's WIDTH below
     // its natural need — the 1521x784 collapse where col0 (NW glyph + West seat, nothing
     // else to defend it) was allocated 117 against col2's 220 for identical hands. Rode
@@ -743,9 +755,10 @@ function measureRowModel(el) {
       // A corner whose configured cap is the `se: 'seats'` RELATIONSHIP rides the seat
       // scale (the same key `isSeatsRel` reads in the allocator); every other corner is
       // fixed height as far as this fit is concerned.
-      const capCfg = props.config.scale?.caps?.[area]
+      const capCfg = phaseCaps(props.config.scale?.caps)?.[area]
       const kind = area === 'center' ? 'center'
         : SEAT_AREA_SET.has(area) ? 'seat'
+        : capCfg === 'seats-track' ? 'action-track'
         : (capCfg === 'seats' || capCfg === 'seat') ? 'action'
         : 'fixed'
       // Every seat area scales with the seat scale, but only one SHOWING A HAND is a
