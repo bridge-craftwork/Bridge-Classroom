@@ -60,7 +60,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.harness-page { padding: 16px; background: #fff; }
+/* Scroll rather than clip when a component is wider than the width it was given.
+   The drill matrix crosses width x scale independently, so it produces combinations
+   the arranger never would (it derives scale FROM the allocation — a 160px region
+   never gets 1.5x). Those cells are legitimately impossible; what is NOT acceptable
+   is showing a plausible-looking component with its right-hand column silently cut
+   off. Reported for DoubleDummyTable at 160/1.5 (+29px); measuring every cell then
+   found AuctionTable overflowing the same cell by 170px, unnoticed.
+
+   Scrolling here rather than in the gallery's cell keeps the matrix geometry
+   untouched, so the comparison the matrix exists for stays honest. */
+.harness-page { padding: 16px; background: #fff; overflow-x: auto; }
 /* width is set inline per specimen×width; the component fills or overflows it,
    which is exactly what we want to see at the narrow end. */
 .harness-frame { display: inline-block; }
