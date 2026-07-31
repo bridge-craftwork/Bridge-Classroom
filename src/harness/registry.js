@@ -31,6 +31,28 @@ export const COMPONENTS = { ScenarioBar, RailCard, DealControls, DealSourceButto
 /** Which COMPONENTS are shell chrome rather than table components (gallery tabs). */
 export const SHELL_COMPONENTS = ['ScenarioBar', 'RailCard', 'DealControls', 'DealSourceButton', 'ActionCluster']
 
+/**
+ * Which COMPONENTS resize with `--table-scale` — DECLARED INTENT, surfaced as a badge
+ * in the /dev gallery so the answer is visible instead of having to be discovered.
+ *
+ * Why this list exists: `DoubleDummyTable` is table CONTENT (a data grid you read,
+ * exactly like AuctionTable) that silently ignored the var — its CSS is fixed px. The
+ * arranger computed a scale for its corner and the component discarded it, so it
+ * rendered 121px at `--table-scale` 1, 1.32, 2 AND 0.65 alike (measured 2026-07-30).
+ * Nothing surfaced that, and a corner-cap fix was planned that would have had no
+ * visible effect.
+ *
+ * NOT every component should scale. There are three legitimate sizing contracts:
+ *   • `--table-scale`      — table CONTENT that must track the table (this list)
+ *   • an explicit prop     — e.g. BoardIndicator's `size` (default 130) driving its SVG
+ *   • fixed                — chrome and controls: rail cards, buttons, clusters
+ *
+ * So a `false` here is a design statement, not a gap. What the list buys is that the
+ * statement is written down and checked (see registry.scaleable.test.js) rather than
+ * being an accident nobody notices for three weeks.
+ */
+export const SCALEABLE = ['HandDisplay', 'SeatChip', 'SeatPanel', 'AuctionTable', 'BiddingBox', 'StatusStrip', 'SeatIndicator']
+
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 
 // SPECIMENS[component][name] = { label, props }
