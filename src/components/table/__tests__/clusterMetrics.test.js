@@ -11,6 +11,7 @@ import {
   dealControlsReservePx,
   actionClusterReservePx,
   doubleDummyReservePx,
+  DD_COMPACT_MEASURED_PX,
 } from '../clusterMetrics.js'
 
 describe('dealControlsReservePx (NW transport)', () => {
@@ -81,5 +82,37 @@ describe('doubleDummyReservePx (SE at review)', () => {
     // The pre-compaction table was 205 + tolerance; anything near that means the
     // corner form regressed back to the full-padding table.
     expect(doubleDummyReservePx()).toBeLessThan(160)
+  })
+})
+
+// Shape-awareness (2026-07-30). The DD table renders in more than one shape now, and
+// a reserve reporting a single number would mis-provision the rest — the same trap
+// §6.2 hit with the auction, where auctionReservePx() provisioned a NORMAL auction and
+// compare mode systematically under-reserved.
+describe('doubleDummyReservePx — shape-aware', () => {
+  it('defaults to the upright corner form, unchanged for existing callers', () => {
+    expect(doubleDummyReservePx()).toBe(DD_COMPACT_MEASURED_PX + 6)
+    expect(doubleDummyReservePx({})).toBe(doubleDummyReservePx())
+  })
+
+  it('rotated is much narrower — that is the point of offering it', () => {
+    expect(doubleDummyReservePx({ rotated: true })).toBeLessThan(doubleDummyReservePx())
+    // roughly half the upright width
+    expect(doubleDummyReservePx({ rotated: true })).toBeLessThan(doubleDummyReservePx() * 0.7)
+  })
+
+  it('rotated widens with four declarer columns rather than two', () => {
+    const two = doubleDummyReservePx({ rotated: true, rows: 2 })
+    const four = doubleDummyReservePx({ rotated: true, rows: 4 })
+    expect(four).toBeGreaterThan(two)
+    // 3 rows (one pair split) is 3 declarer COLUMNS when rotated — wider than 2, so
+    // it must provision like 4. Asserting it equalled `two` was a tautology that hid
+    // exactly the under-reserve this function exists to prevent.
+    expect(doubleDummyReservePx({ rotated: true, rows: 3 })).toBe(four)
+    expect(doubleDummyReservePx({ rotated: true, rows: 3 })).toBeGreaterThan(two)
+  })
+
+  it('row count does not affect the upright width (rows are rows there)', () => {
+    expect(doubleDummyReservePx({ rows: 4 })).toBe(doubleDummyReservePx({ rows: 2 }))
   })
 })

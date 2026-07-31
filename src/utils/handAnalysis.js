@@ -162,6 +162,43 @@ export function hasDdTricks(ddtricks) {
   return !!ddtricks && ddtricks.length >= 20
 }
 
+/**
+ * Collapse a partnership's two rows into one when their trick counts are identical —
+ * N+S → "NS", E+W → "EW". Rick's ask, 2026-07-30: "only show one row per direction
+ * when the values are all the same, so most often we would just see a NS row and an
+ * EW row."
+ *
+ * Lossless by construction: a pair only merges when every cell already matches, so
+ * nothing is hidden. When they differ — which is the interesting case, and the one a
+ * learner should look at — all four rows stay.
+ *
+ * `isContract` survives as OR of the pair. The merged highlight then means "this
+ * partnership, this strain" rather than naming a seat; the declarer is stated in full
+ * beside the table, so the seat isn't lost from the display as a whole.
+ *
+ * @param {Array<{seat, cells}>|null} rows  output of buildDdRows
+ */
+export function collapseDdRows(rows) {
+  if (!rows) return rows
+  const bySeat = Object.fromEntries(rows.map(r => [r.seat, r]))
+  const same = (a, b) =>
+    a && b && a.cells.length === b.cells.length &&
+    a.cells.every((c, i) => c.tricks === b.cells[i].tricks)
+  const merge = (a, b, seat) => ({
+    seat,
+    cells: a.cells.map((c, i) => ({
+      tricks: c.tricks,
+      isContract: c.isContract || b.cells[i].isContract,
+    })),
+  })
+  const out = []
+  if (same(bySeat.N, bySeat.S)) out.push(merge(bySeat.N, bySeat.S, 'NS'))
+  else { if (bySeat.N) out.push(bySeat.N); if (bySeat.S) out.push(bySeat.S) }
+  if (same(bySeat.E, bySeat.W)) out.push(merge(bySeat.E, bySeat.W, 'EW'))
+  else { if (bySeat.E) out.push(bySeat.E); if (bySeat.W) out.push(bySeat.W) }
+  return out
+}
+
 // Build the DD display grid (rows N,S,E,W × cols ♣♦♥♠ NT), marking the cell
 // that matches the final contract's declarer+strain so the UI can highlight it.
 export function buildDdRows(ddtricks, finalContract) {

@@ -94,7 +94,40 @@ export function actionClusterReservePx({ showUndo = true, showClaim = false } = 
 // type from 13px to 11px, taking the table from 205 → 120: the air was ~40% of it.
 // Re-measured in the harness with offsetWidth (untransformed); +6 is a one-cell
 // tolerance so a font tweak doesn't silently re-starve the corner.
-export const DD_COMPACT_MEASURED_PX = 120
-export function doubleDummyReservePx() {
+// Re-measured 2026-07-30 from the harness specimens at 1.0x, after `collapse` became
+// the default. Collapsing makes the grid SHORTER (2 rows, h 60 vs 79) but marginally
+// WIDER — the row label is now "NS" rather than "N", and a two-character label is a
+// wider cell. 121 → 127. The old 120 + a 6px tolerance would have landed at 126 and
+// under-reserved by a pixel; measuring beat assuming that the collapse could only
+// shrink things.
+export const DD_COMPACT_MEASURED_PX = 127
+// Rotated form: 5 strain rows over N declarer columns, plus the strain-glyph column.
+// MEASURED: 2 declarer columns (both pairs collapsed) → 72px; 4 → 90px. Roughly HALF
+// the upright width, which is the whole point of offering it to a corner that is
+// narrow rather than short — and it is taller in exchange (h 123 vs 60).
+export const DD_ROTATED_MEASURED_PX = { 2: 72, 4: 90 }
+
+/**
+ * Natural WIDTH (px, 1.0x) of the DD table in its corner form.
+ *
+ * SHAPE-AWARE, because the component now renders in more than one shape and a reserve
+ * that reports a single number would mis-provision the rest. This is the same trap
+ * §6.2 hit with the auction: auctionReservePx() provisioned a NORMAL auction, so
+ * compare mode systematically under-reserved. The shell knows which shape it asked
+ * for, so the shell passes it — same division of labour as regionReserves.
+ *
+ * `rows` is how many rows the grid will actually show: 2 when a collapse merged both
+ * partnerships (the common case), 4 when a pair disagrees. It only affects the
+ * ROTATED width, where rows become columns.
+ */
+export function doubleDummyReservePx({ rotated = false, rows = 2 } = {}) {
+  if (rotated) {
+    // Rows become COLUMNS when rotated, so 3 rows is 3 declarer columns — wider than
+    // 2 and nearly as wide as 4. Round UP to the 4-column measurement for anything
+    // above a clean pair: under-reserving is the failure this function exists to
+    // prevent, and the cost of over-reserving by a few px is nothing.
+    const w = DD_ROTATED_MEASURED_PX[rows > 2 ? 4 : 2]
+    return w + 6
+  }
   return DD_COMPACT_MEASURED_PX + 6
 }
