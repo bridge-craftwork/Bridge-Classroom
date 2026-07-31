@@ -59,30 +59,46 @@ const rows = computed(() => buildDdRows(props.ddtricks, props.finalContract))
 </script>
 
 <style scoped>
+/* Every dimension rides --table-scale, like HandDisplay / AuctionTable / BiddingBox.
+   It did NOT until 2026-07-30: the CSS was fixed px, so this component silently
+   discarded the scale the arranger computed for its region. Measured before the fix,
+   it rendered 121px at --table-scale 1, 1.32, 2 AND 0.65 alike — which meant the
+   review corner could neither grow into spare room nor shrink when starved, and the
+   §6.1 corner-cap change would have had no visible effect at all.
+
+   The px numbers below are the 1.0x naturals and are MIRRORED by doubleDummyReservePx()
+   in table/clusterMetrics.js — keep the two in step (same contract as auctionMetrics). */
 .dd-label {
-  font-size: 11px;
+  font-size: calc(11px * var(--table-scale, 1));
   color: #666;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-top: 10px;
+  margin-top: calc(10px * var(--table-scale, 1));
 }
 .dd-table {
   border-collapse: collapse;
-  margin-top: 6px;
-  font-size: 13px;
+  margin-top: calc(6px * var(--table-scale, 1));
+  font-size: calc(13px * var(--table-scale, 1));
 }
 .dd-table th,
 .dd-table td {
   border: 0.5px solid #ddd;
-  padding: 4px 10px;
+  padding: calc(4px * var(--table-scale, 1)) calc(10px * var(--table-scale, 1));
   text-align: center;
 }
 /* Corner form: the air comes out of the sides first, then the type steps down.
    Widths here are mirrored by doubleDummyReservePx() in table/clusterMetrics.js. */
-.dd-compact { font-size: 11px; margin-top: 4px; }
+.dd-compact { font-size: calc(11px * var(--table-scale, 1)); margin-top: calc(4px * var(--table-scale, 1)); }
 .dd-compact th,
-.dd-compact td { padding: 2px 4px; min-width: 15px; }
-.dd-label-compact { font-size: 9px; margin-top: 6px; letter-spacing: 0.03em; }
+.dd-compact td {
+  padding: calc(2px * var(--table-scale, 1)) calc(4px * var(--table-scale, 1));
+  min-width: calc(15px * var(--table-scale, 1));
+}
+.dd-label-compact {
+  font-size: calc(9px * var(--table-scale, 1));
+  margin-top: calc(6px * var(--table-scale, 1));
+  letter-spacing: 0.03em;
+}
 .dd-table th { background: #f3f3f0; color: #666; font-weight: 600; }
 .dd-table th.dd-red { color: #d32f2f; }
 .dd-table th.dd-black { color: #1a1a1a; }

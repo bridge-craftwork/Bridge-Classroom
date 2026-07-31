@@ -80,6 +80,34 @@ function scaleableList() {
 }
 const scaleable = scaleableList()
 
+// Every .vue under src/components that is NOT registered in the gallery. Listed (name
+// only, no preview) so the gallery says "these exist, nobody has given them specimens"
+// rather than quietly implying the registered set is all there is.
+//
+// That silence had a cost: DoubleDummyTable was extracted 2026-07-05, two days before
+// the gallery existed, and simply never joined it — so the one component whose sizing
+// was broken was also the one nobody could see. Absence should be visible.
+function unregisteredComponents() {
+  const registered = new Set(registryOrder())
+  // Scoped to the two directories the registry actually draws from — `src/components`
+  // (top level) and `src/components/table`. Walking everything turns up 80 files, most
+  // of them lobby/admin/convention-card views that were never candidates for a TABLE
+  // gallery; 80 rows of noise would bury the handful that matter.
+  const DIRS = ['src/components', 'src/components/table']
+  const found = []
+  for (const rel of DIRS) {
+    const dir = path.join(ROOT, rel)
+    if (!fs.existsSync(dir)) continue
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isFile() || !e.name.endsWith('.vue')) continue
+      const name = e.name.replace(/\.vue$/, '')
+      if (!registered.has(name)) found.push({ name, path: `${rel}/${e.name}` })
+    }
+  }
+  return found.sort((a, b) => a.name.localeCompare(b.name))
+}
+const unregistered = unregisteredComponents()
+
 // ── Scenes (Tier-2 fixtures) — a1 group first (the released app), then table ──
 // Import each fixture for its label/surface (sibling-only imports resolve in
 // node, same as a1-gallery.mjs). Fall back to the bare name if an import fails.
@@ -113,8 +141,8 @@ const scenes = [
   ...(await collectScenes('src/harness/fixtures-c', 'c')),
 ]
 
-const manifest = { components, shell, scaleable, widths, scales, scenes, viewports }
+const manifest = { components, shell, scaleable, unregistered, widths, scales, scenes, viewports }
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
 fs.writeFileSync(OUT, JSON.stringify(manifest, null, 2))
 const total = Object.values(components).reduce((n, s) => n + s.length, 0)
-console.log(`harness-manifest → ${path.relative(ROOT, OUT)} (${ordered.length} components incl. ${shell.length} shell, ${total} specimens, ${scenes.length} scenes)`)
+console.log(`harness-manifest → ${path.relative(ROOT, OUT)} (${ordered.length} components incl. ${shell.length} shell, ${total} specimens, ${scenes.length} scenes, ${unregistered.length} unregistered)`)

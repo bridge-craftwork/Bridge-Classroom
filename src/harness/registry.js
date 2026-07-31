@@ -15,6 +15,7 @@ import SeatIndicator from '../components/SeatIndicator.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import CardSelectorPopup from '../components/CardSelectorPopup.vue'
 import BoardIndicator from '../components/BoardIndicator.vue'
+import DoubleDummyTable from '../components/DoubleDummyTable.vue'
 // Shell parts — the chrome AROUND the table (bar, rail card, control clusters), as
 // opposed to the table components above. Listed separately in SHELL_COMPONENTS so
 // the dev gallery can give them their own tab: they answer "what is this thing
@@ -26,7 +27,7 @@ import DealControls from '../components/table/DealControls.vue'
 import DealSourceButton from '../components/table/DealSourceButton.vue'
 import ActionCluster from '../components/table/ActionCluster.vue'
 
-export const COMPONENTS = { ScenarioBar, RailCard, DealControls, DealSourceButton, ActionCluster, HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable, CardSelectorPopup, BoardIndicator }
+export const COMPONENTS = { ScenarioBar, RailCard, DealControls, DealSourceButton, ActionCluster, HandDisplay, SeatChip, SeatPanel, BridgeTable, AuctionTable, BiddingBox, StatusStrip, ContextPanel, SeatIndicator, SeatControlTable, CardSelectorPopup, BoardIndicator, DoubleDummyTable }
 
 /** Which COMPONENTS are shell chrome rather than table components (gallery tabs). */
 export const SHELL_COMPONENTS = ['ScenarioBar', 'RailCard', 'DealControls', 'DealSourceButton', 'ActionCluster']
@@ -51,7 +52,7 @@ export const SHELL_COMPONENTS = ['ScenarioBar', 'RailCard', 'DealControls', 'Dea
  * statement is written down and checked (see registry.scaleable.test.js) rather than
  * being an accident nobody notices for three weeks.
  */
-export const SCALEABLE = ['HandDisplay', 'SeatChip', 'SeatPanel', 'AuctionTable', 'BiddingBox', 'StatusStrip', 'SeatIndicator']
+export const SCALEABLE = ['HandDisplay', 'SeatChip', 'SeatPanel', 'AuctionTable', 'BiddingBox', 'StatusStrip', 'SeatIndicator', 'DoubleDummyTable']
 
 const modules = import.meta.glob('./specimens/**/*.js', { eager: true })
 
