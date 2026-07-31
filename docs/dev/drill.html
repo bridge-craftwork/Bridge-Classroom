@@ -42,7 +42,14 @@
   .col-head span { color: var(--faint); font-weight: 400; margin-left: 5px; font-family: ui-monospace, Menlo, monospace; }
   .cell { margin-bottom: 12px; }
   .cell .cap { font: 10px ui-monospace, Menlo, monospace; color: var(--faint); margin-bottom: 3px; }
-  .cell .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  /* `auto`, not `hidden`: a component too wide for its cell must be reachable, not
+     silently truncated. See flagOverflow(). */
+  .cell .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    overflow: auto; position: relative; }
+  .cell .stage.over { border-color: #e0a94a; }
+  .cell .stage .ovf { position: sticky; left: 0; bottom: 0; display: inline-block;
+    font: 10px ui-monospace, Menlo, monospace; background: #f6e0b8; color: #7a5310;
+    padding: 1px 5px; border-radius: 6px 0 0 0; }
   .cell iframe { display: block; border: 0; background: #fff; }
   .cell .ph { color: var(--faint); font-size: 11px; padding: 14px; }
   .miss { color: #c00; padding: 30px 4px; }
@@ -79,6 +86,41 @@
     entries.forEach(function (e) { if (e.isIntersecting) { mount(e.target); io.unobserve(e.target); } });
   }, { rootMargin: '400px' }) : null;
 
+  // Measure whether the component actually FITS the cell it was given, and say so.
+  //
+  // The stage used to be `overflow: hidden`, so a component too wide for its width x
+  // scale combination was silently cut off — you saw a plausible-looking table with
+  // its right-hand column missing and no indication anything was wrong. Reported for
+  // DoubleDummyTable at 160/1.5 (+29px), but measuring every cell turned up worse:
+  // AuctionTable overflows the same cell by 170px, and had been doing so unnoticed.
+  //
+  // The matrix deliberately crosses width and scale independently, so it produces
+  // combinations the arranger never would (it derives scale FROM the allocation, so a
+  // 160px region never gets 1.5x). Those cells are legitimately impossible — the point
+  // is that an impossible cell should LOOK impossible rather than look fine.
+  function flagOverflow(stage, f) {
+    try {
+      var d = f.contentDocument;
+      if (!d) return;
+      var el = d.querySelector('.harness-frame') || d.body;
+      var over = Math.round(el.scrollWidth - el.clientWidth);
+      if (over > 1) {
+        stage.classList.add('over');
+        // The cell geometry is deliberately left ALONE. An earlier cut pinned the
+        // stage and widened the iframe to expose the overflow, which worked but left
+        // flagged cells 2px narrower than their neighbours (an explicit width vs a
+        // shrink-wrapped one, box-sizing doing the rest) — distorting the very
+        // comparison the matrix exists for. The scrolling belongs INSIDE the frame,
+        // where the component actually overflows; `.harness-page` now handles it.
+        var tag = document.createElement('div');
+        tag.className = 'ovf';
+        tag.textContent = '+' + over + 'px';
+            tag.title = 'Content is ' + over + 'px wider than this cell — scroll inside the cell to see the rest.';
+        stage.appendChild(tag);
+      }
+    } catch (e) { /* cross-origin or not ready — no badge, never a broken page */ }
+  }
+
   function mount(stage) {
     if (stage.querySelector('iframe')) return;
     var f = document.createElement('iframe');
@@ -89,6 +131,7 @@
     f.src = stage.getAttribute('data-src');
     stage.innerHTML = '';
     stage.appendChild(f);
+    f.addEventListener('load', function () { setTimeout(function () { flagOverflow(stage, f); }, 350); });
   }
 
   fetch('components-manifest.json', { cache: 'no-cache' })
