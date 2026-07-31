@@ -397,11 +397,31 @@ Two stacking causes:
 NOT YET BUILT — it lives in the shared arranger and wants its own pass. What it
 involves:
 
-- `caps.se: 'seats'` resolves to `min(1, seatScale)` in `gridArranger.js`. A second
-  relationship (ceiling = `seatScale`, without the 1.0 clamp) is needed, selected at
-  REVIEW, where that corner's occupant is the DD table rather than the bidding box.
-  The natural seam is `GridArrangement.capsWithHeight` — already the one place caps
-  are adjusted before `arrangeGrid`.
+- **Where the 1.0 actually comes from — TWO places, both need changing:**
+
+  1. `gridArranger.js:279` — `numericCap()`:
+     ```js
+     const numericCap = (area) => { const v = capRaw(area); if (isSeatsRel(area)) return 1; … }
+     ```
+     `capRaw('se')` is the string `'seats'` (from `table.tableConfig.js` /
+     `a1.tableConfig.js`), so `isSeatsRel` is true and this returns a **hard-coded 1**.
+     THIS is the cap fed to `entry()`, and it is what produced SE's `scale 1 /
+     binding natural`. A tracking relationship needs this to return `seatsCap` (1.4)
+     rather than 1.
+  2. `gridArranger.js:413-423` — the post-hoc seats clamp, `seCeil = Math.min(1, seatScale)`.
+     It can only TIGHTEN below 1 (when the hero's hand is under 1.0×), so at
+     seatScale 1.32 it is a no-op — but it would re-pin a tracking corner unless the
+     `min(1, …)` becomes plain `seatScale`.
+
+  The design intent is stated at `:274-276`: a `'seats'`-relationship region's true
+  ceiling is `min(1, seatScale)`, which is ≤ 1 by construction, so 1 is a safe upper
+  bound for the growth pass. A seats-TRACKING relationship breaks that assumption, so
+  it must be a NEW relationship string rather than a tweak to `'seats'` — the bidding
+  box still wants the old behaviour.
+
+  Selecting it at REVIEW (where the corner's occupant is the DD table, not the bidding
+  box) can ride `GridArrangement.capsWithHeight`, already the one place caps are
+  adjusted before `arrangeGrid`.
 - Its counterpart in `solveHeightFit`: the corner is `kind: 'action'`
   (flat-then-proportional — it does not shrink until the seats drop below 1.0). A
   seats-TRACKING corner should be proportional throughout, like a seat.
@@ -421,11 +441,22 @@ involves:
   SE is occupied, reserved and allocated correctly; it simply may not use the room.
 
   Two notes for whoever builds it:
-  - `binding` reads **`natural`, not `cap`** — misleading, and worth fixing alongside.
-    The seats-relationship clamp only stamps `cap` when it TIGHTENS an existing scale;
-    since `numericCap` returns 1 for a `'seats'`-relationship area, SE never grows past
-    1.0 in the first place, so nothing records that a ceiling is responsible. Reading
-    the ledger, you would not know the cap was the cause.
+  - ~~`binding` reads `natural`, not `cap` — misleading~~ **WRONG, corrected.**
+    `natural` and `cap` are the SAME branch of `entry()` — the "you are at your
+    ceiling" branch — with the label chosen by how high the ceiling is:
+
+    ```js
+    const ceil = cap > 1 + 1e-6 ? 'cap' : 'natural'
+    if (fit >= cap - 1e-6) { binding = ceil }      // ← at the ceiling
+    ```
+
+    So `binding: 'natural'` already says precisely what is happening: SE is pinned at
+    its ceiling, and that ceiling is ≤ 1.0. It is not ambiguous and it does not mean
+    "unconstrained". The four values are: `natural`/`cap` = at the ceiling (≤1 / >1),
+    `budget` = rendering at exactly its fit, `floor` = pinned at the legibility floor,
+    `overflow` = starved below the floor. Nothing needs fixing here.
+
+    SE's numbers say it outright: `a227 / r126` = a fit of **1.80**, held to **1.00**.
   - Sizing SE at `seatScale` would put the DD table at ~120 × 1.32 ≈ **158px**, still
     inside the 227 allocated — so the decision is achievable without re-allocating.
 
