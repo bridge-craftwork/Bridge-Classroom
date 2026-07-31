@@ -114,15 +114,33 @@
   // iframe is fixed — so the document is what clips vertically. Measuring only width
   // (the first cut) meant a component too TALL for its cell was cut off in silence,
   // which is the same blind spot one axis over.
+  // A component's width is NOT perfectly linear in scale: each cell carries a 0.5px
+  // border and a scaled min-width, and five columns of sub-pixel rounding accumulate
+  // ~1.6px. So a single ratio can never land exactly, and integer scrollWidth hides
+  // which way it missed. Measure fractionally and allow a tolerance.
+  //
+  // 2px on a 160px cell is 1% — invisible, and Rick's report was exactly that: a cell
+  // badged "+2px" with nothing actually cut off. A component that genuinely cannot fit
+  // is over by tens of px, so the tolerance costs no real signal.
+  var FIT_TOLERANCE_PX = 2;
+
   function measure(f) {
     try {
       var d = f.contentDocument;
       if (!d) return null;
       var el = d.querySelector('.harness-frame');
       if (!el) return null;
+      var fr = el.getBoundingClientRect();
+      // Fractional content extent: how far past the frame's left edge anything reaches.
+      var contentW = 0;
+      for (var i = 0; i < el.children.length; i++) {
+        var cr = el.children[i].getBoundingClientRect();
+        if (cr.width > 0) contentW = Math.max(contentW, cr.right - fr.left);
+      }
+      if (!contentW) contentW = el.scrollWidth;
       var root = d.documentElement;
       return {
-        contentW: el.scrollWidth, availW: el.clientWidth,
+        contentW: contentW, availW: fr.width || el.clientWidth,
         contentH: root.scrollHeight, availH: root.clientHeight,
       };
     } catch (e) { return null; }
@@ -136,7 +154,9 @@
     };
   }
   function overBy(m) {
-    return { w: Math.round(m.contentW - m.availW), h: Math.round(m.contentH - m.availH) };
+    var w = m.contentW - m.availW, h = m.contentH - m.availH;
+    return { w: w > FIT_TOLERANCE_PX ? Math.round(w) : 0,
+             h: h > FIT_TOLERANCE_PX ? Math.round(h) : 0 };
   }
   function axisLabel(o) {
     var bits = [];
@@ -158,11 +178,17 @@
   function afterReduce(stage, f, asked, used) {
     var m = measure(f);
     var o = m ? overBy(m) : { w: 0, h: 0 };
-    if (o.w > 1 || o.h > 1) {
+    if (o.w > 0 || o.h > 0) {
       stage.classList.add('over');
-      note(stage, 'ovf-bad', '+' + axisLabel(o) + ' at floor',
-        'Still ' + axisLabel(o) + ' over even at the ' + LEGIBILITY_FLOOR +
-        ' legibility floor — the component cannot render in this allocation. A real problem.');
+      // Say WHY it is still over. Claiming "at floor" when the scale never reached the
+      // floor was simply wrong — the earlier badge said that at 0.755, well above 0.65.
+      var atFloor = used <= LEGIBILITY_FLOOR + 0.001;
+      note(stage, 'ovf-bad', '+' + axisLabel(o) + (atFloor ? ' at floor' : ''),
+        atFloor
+          ? ('Still ' + axisLabel(o) + ' over at the ' + LEGIBILITY_FLOOR +
+             ' legibility floor — the component cannot render in this allocation.')
+          : ('Reduced to ' + used.toFixed(2) + '× and still ' + axisLabel(o) +
+             ' over — it does not shrink proportionally.'));
     } else {
       stage.classList.add('reduced');
       note(stage, 'ovf-ok', asked.toFixed(2) + '× → ' + used.toFixed(2) + '×',
@@ -175,13 +201,16 @@
     var m = measure(f);
     if (!m) return;
     var o = overBy(m);
-    if (o.w <= 1 && o.h <= 1) return;                       // fits as asked, both axes
+    if (o.w === 0 && o.h === 0) return;                     // fits as asked, both axes
 
     var asked = Number(stage.getAttribute('data-scale')) || 1;
     var r = fitRatios(m);
     // Constrained by the TIGHTER axis — scaling to fit the width is no use if the
     // height still spills.
-    var used = Math.max(LEGIBILITY_FLOOR, asked * Math.min(r.w, r.h));
+    // Aim a hair under the exact fit: the accumulated per-cell rounding means the
+    // exact ratio consistently lands ~1-2px OVER, which is what produced a red badge
+    // on a cell that visibly fitted.
+    var used = Math.max(LEGIBILITY_FLOOR, asked * Math.min(r.w, r.h) * 0.99);
     if (used >= asked - 0.001) {                            // can't help — already at/below
       stage.classList.add('over');
       note(stage, 'ovf-bad', '+' + axisLabel(o),
