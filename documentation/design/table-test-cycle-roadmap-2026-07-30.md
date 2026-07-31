@@ -397,7 +397,41 @@ Two stacking causes:
 NOT YET BUILT — it lives in the shared arranger and wants its own pass. What it
 involves:
 
-- **Where the 1.0 actually comes from — TWO places, both need changing:**
+- ⚠️ **THE CAP IS NOT THE BLOCKER. `DoubleDummyTable` ignores `--table-scale`
+  entirely.** Measured 2026-07-30 by setting the var directly on the `se` region of a
+  live review table:
+
+  | `--table-scale` | DD width |
+  |---|---|
+  | 1 | 121px |
+  | 1.32 | 121px |
+  | 2 | 121px |
+  | 0.65 | 121px |
+
+  Control: a seat panel in the same tree reports `padding: 11.16px` (= 12 × 0.93), so
+  the var is live and other components do honour it. `grep -c table-scale
+  DoubleDummyTable.vue` → **0**; its CSS is fixed px (`font-size: 11px`,
+  `padding: 2px 4px`).
+
+  **Consequences, and they change the plan:**
+  1. The decided cap change would have been built and had **no visible effect**.
+     The arranger would compute a bigger scale that this component discards.
+  2. The arranger's automatic shrink does not reach it either. At 1100px the ledger
+     correctly says `se.scale 0.93 / binding cap` — and the table still renders 121px.
+     So "if space is tight the arranger just reduces it to fit" (Rick's question) is
+     true of every other region and **false of this one**.
+  3. Raising its natural CSS size (the "finesse") would make it bigger everywhere,
+     including where there is no room, with no shrink to save it.
+
+  **So the first change is: make `DoubleDummyTable` honour `--table-scale`**, the same
+  convention as every other component (`calc(11px * var(--table-scale))` etc.).
+  That one fix makes BOTH directions work — it grows when the cap allows, and shrinks
+  when space is tight. Only then is the cap worth changing, and at that point Rick's
+  original decision does exactly what it was meant to: seatScale 1.32 → ~158px inside
+  the 227-259px already allocated. `DD_COMPACT_MEASURED_PX` stays 120, since that is
+  the 1.0× natural and remains the right basis.
+
+- **Where the 1.0 comes from, once the component actually scales — TWO places:**
 
   1. `gridArranger.js:279` — `numericCap()`:
      ```js
