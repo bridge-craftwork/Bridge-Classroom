@@ -397,6 +397,31 @@ Two stacking causes:
 NOT YET BUILT — it lives in the shared arranger and wants its own pass. What it
 involves:
 
+- **ORIENTATION DECIDED (Rick, 2026-07-30):** *"use the horizontal version there,
+  unless the arranger gives us a tall frame. People are used to the original layout —
+  the rotated version will work in a pinch but should be avoided in regular cases."*
+
+  So upright is the default and rotated is a fallback, not a co-equal option. Both
+  forms exist and are prop-driven today (`rotated`), and the corner currently renders
+  UPRIGHT — which is the correct default under this rule and needs no change.
+
+  **What is NOT built: choosing between them automatically.** Attempted and reverted
+  the same day, because it was wrong in both directions:
+  - at 120px available it stayed upright and did not fit (should have rotated)
+  - at 320px × 1.5 it stayed stuck rotated with ample room (should have flipped back)
+
+  Cause: a `ResizeObserver` on the component's root does not fire when only
+  `--table-scale` changes — the root is a full-width block, so its box is unchanged —
+  so the orientation goes stale on any scale-only relayout. A correct version needs to
+  react to scale as well as width (watch the computed var, or have the shell pass the
+  scale in), and needs hysteresis so it cannot oscillate between forms at the boundary.
+
+  Note the circularity that pushed the decision into the component in the first place:
+  the SHELL supplies the RESERVE, which is an input to the allocation, so the shell
+  cannot know the allocation at the moment it must choose. Either the component
+  measures its own box (needs the fix above), or the shell chooses from the PREVIOUS
+  pass's ledger (a feedback loop that wants care).
+
 - ⚠️ **THE CAP IS NOT THE BLOCKER. `DoubleDummyTable` ignores `--table-scale`
   entirely.** Measured 2026-07-30 by setting the var directly on the `se` region of a
   live review table:
