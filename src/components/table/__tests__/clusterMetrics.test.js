@@ -77,11 +77,29 @@ describe('doubleDummyReservePx (SE at review)', () => {
   // density squeezed the table from 205 → 120 — it is now NARROWER than Undo+Claim.
   // Which is the point: the corner's width is set by whichever occupant is widest in
   // that phase, so the reserve has to be per-phase either way, just not always by DD.
-  it('is small enough to sit beside a hand — the compact form, not the full table', () => {
-    expect(doubleDummyReservePx()).toBeLessThan(actionClusterReservePx({ showUndo: true, showClaim: true }))
-    // The pre-compaction table was 205 + tolerance; anything near that means the
-    // corner form regressed back to the full-padding table.
-    expect(doubleDummyReservePx()).toBeLessThan(160)
+  // Re-baselined 2026-07-30. This assertion has now flipped TWICE, which is the point
+  // worth recording: the corner form's size is a live design trade, not a constant.
+  //   • originally "wider than the action cluster" (the 205px full-padding table)
+  //   • then "narrower" (the July squeeze to 120, to fit a corner that couldn't grow)
+  //   • now comparable to a HAND, because the corner tracks the seats and a DD at 65%
+  //     of a hand's reserve read as an afterthought (Rick: "the native DD is 50% of
+  //     the native hand").
+  // So pin the RELATIONSHIP that actually matters rather than a bare number.
+  const HAND_RESERVE_PX = 196   // rowReservePx(7) in the b2-review ledger
+
+  it('is comparable to a hand — neither an afterthought nor the full-padding table', () => {
+    const dd = doubleDummyReservePx()
+    // Within a quarter of a hand's reserve: the corner reads as a peer of the hands.
+    expect(dd).toBeGreaterThan(HAND_RESERVE_PX * 0.75)
+    expect(dd).toBeLessThanOrEqual(HAND_RESERVE_PX * 1.05)
+  })
+
+  it('still fits the SE allocation without forcing the scale down', () => {
+    // Measured allocation at the reported viewport. If the reserve creeps past this,
+    // the arranger clamps the scale BELOW the seat scale and the corner stops
+    // tracking — bigger native, smaller render.
+    const SE_ALLOCATED_PX = 216
+    expect(doubleDummyReservePx()).toBeLessThanOrEqual(SE_ALLOCATED_PX)
   })
 })
 
