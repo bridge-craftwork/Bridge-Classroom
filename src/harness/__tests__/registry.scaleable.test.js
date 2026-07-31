@@ -14,6 +14,13 @@ import { COMPONENTS, SCALEABLE } from '../registry.js'
 // question the environment can actually answer.
 const ROOT = path.resolve(__dirname, '../../..')
 
+// Match `var(--table-scale)` AND `var(--table-scale, 1)`. The fallback form is the
+// safer one for a component that can render outside a scaled region, so the predicate
+// is "reads the var", not "reads it one exact way". (This matcher was too strict on
+// its first outing and failed DoubleDummyTable the moment it was wired up correctly —
+// the test working as intended, pointing at the wrong thing.)
+const READS_SCALE = /var\(\s*--table-scale\b/
+
 function sourceOf(name) {
   for (const rel of [`src/components/${name}.vue`, `src/components/table/${name}.vue`]) {
     const abs = path.join(ROOT, rel)
@@ -28,14 +35,14 @@ describe('SCALEABLE matches what the components actually do', () => {
   })
 
   it('every component declared scaleable really consumes var(--table-scale)', () => {
-    const liars = SCALEABLE.filter((n) => !sourceOf(n).includes('var(--table-scale)'))
+    const liars = SCALEABLE.filter((n) => !READS_SCALE.test(sourceOf(n)))
     expect(liars, `declared scaleable but never reads the var: ${liars.join(', ')}`).toEqual([])
   })
 
   it('no component consumes the var while declared fixed', () => {
     const undeclared = Object.keys(COMPONENTS)
       .filter((n) => !SCALEABLE.includes(n))
-      .filter((n) => sourceOf(n).includes('var(--table-scale)'))
+      .filter((n) => READS_SCALE.test(sourceOf(n)))
     expect(undeclared, `reads --table-scale but is not in SCALEABLE: ${undeclared.join(', ')}`).toEqual([])
   })
 })

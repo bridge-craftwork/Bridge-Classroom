@@ -86,6 +86,13 @@
     letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; }
   .comp .chead .sb-yes { background: #e3f2ec; color: #1d6a4f; }
   .comp .chead .sb-no  { background: #eeeeef; color: #77787c; }
+  /* Components that exist but have no specimens — named, not previewed. */
+  .unreg-block { margin-top: 22px; }
+  .unreg-block summary { cursor: pointer; font-size: 13px; color: var(--faint); padding: 4px 0; }
+  .unreg-block summary:hover { color: inherit; }
+  .unreg-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .unreg-list .unreg { font-size: 11px; padding: 2px 8px; border-radius: 9px;
+    background: #f4f4f5; color: #6b6c70; border: 1px solid #e6e6e8; white-space: nowrap; }
   .comp .chead a { color: var(--accent); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
   .comp .chead a:hover { text-decoration: underline; }
   .comp .stage { background: var(--panel); min-height: 240px; max-height: 320px; overflow: auto; }
@@ -248,6 +255,7 @@
   <section class="panel" id="p-components" role="tabpanel" aria-labelledby="tab-components">
     <p class="sub" style="margin-top:0">Every component rendered <strong>live</strong> from its static specimen props (panel width · 1× scale), straight from the current build — so a refactor that breaks one shows here. Click <strong>all sizes ↗</strong> to open the full width × scale × specimen matrix in a new tab.</p>
     <div class="comps" id="comp-grid"><div class="empty">Loading component manifest…</div></div>
+    <div id="comp-unreg" class="unreg-block"></div>
     <p class="note">Rendered through the harness build served at <code>/dev/harness/</code>. If tiles are blank, the harness bundle wasn't produced by <code>build-site.sh</code> (run a full <code>npm run build &amp;&amp; bash scripts/build-site.sh</code>).</p>
   </section>
 
@@ -324,6 +332,27 @@
   // "fixed" is NOT a defect. Chrome and controls are deliberately fixed, and
   // BoardIndicator sizes from an explicit `size` prop instead. The badge says which
   // contract a component follows, not whether it is correct.
+  // Components that exist in the gallery's own directories but have no specimens.
+  // Named only — no preview, because there is nothing to preview. The point is that
+  // absence should be VISIBLE: DoubleDummyTable sat unregistered for three weeks
+  // because nothing ever said it was missing, and it was the one whose sizing was
+  // broken. A gallery that shows only what it has quietly implies that is everything.
+  function renderUnregistered(list) {
+    var host = document.getElementById('comp-unreg');
+    if (!host) return;
+    if (!list || !list.length) { host.innerHTML = ''; return; }
+    host.innerHTML =
+      '<details><summary>' + list.length + ' component' + (list.length === 1 ? '' : 's') +
+      ' in <code>src/components</code> / <code>src/components/table</code> with no specimens' +
+      '</summary><p class="sub" style="margin:8px 0 10px">' +
+      'These exist but are not in <code>src/harness/registry.js</code>, so nothing here ' +
+      'exercises them at different widths and scales. Adding one is a registry line plus ' +
+      'a specimen file.</p><div class="unreg-list">' +
+      list.map(function (u) {
+        return '<span class="unreg" title="' + u.path + '">' + u.name + '</span>';
+      }).join('') + '</div></details>';
+  }
+
   function scaleBadge(name, scaleable) {
     if (!scaleable) return '';
     var yes = scaleable.indexOf(name) !== -1;
@@ -352,6 +381,7 @@
           return wantShell ? shell.indexOf(n) !== -1 : shell.indexOf(n) === -1;
         });
         if (!names.length) { grid.innerHTML = '<div class="empty">Nothing in this group yet.</div>'; return; }
+        if (!wantShell) renderUnregistered(m.unregistered);
         names.forEach(function (name) {
           var specs = m.components[name];
           var def = specs[0];
