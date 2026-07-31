@@ -46,10 +46,14 @@
      silently truncated. See flagOverflow(). */
   .cell .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
     overflow: auto; position: relative; }
-  .cell .stage.over { border-color: #e0a94a; }
+  /* amber = REDUCED to fit (what the arranger would do); red = still clipped at the
+     legibility floor, i.e. a genuine problem worth looking at. */
+  .cell .stage.reduced { border-color: #cfd6e0; }
+  .cell .stage.over { border-color: #d8544f; }
   .cell .stage .ovf { position: sticky; left: 0; bottom: 0; display: inline-block;
-    font: 10px ui-monospace, Menlo, monospace; background: #f6e0b8; color: #7a5310;
-    padding: 1px 5px; border-radius: 6px 0 0 0; }
+    font: 10px ui-monospace, Menlo, monospace; padding: 1px 5px; border-radius: 6px 0 0 0; }
+  .cell .stage .ovf-ok { background: #e8ecf2; color: #566173; }
+  .cell .stage .ovf-bad { background: #f8d7d5; color: #8c2f2b; }
   .cell iframe { display: block; border: 0; background: #fff; }
   .cell .ph { color: var(--faint); font-size: 11px; padding: 14px; }
   .miss { color: #c00; padding: 30px 4px; }
@@ -86,39 +90,125 @@
     entries.forEach(function (e) { if (e.isIntersecting) { mount(e.target); io.unobserve(e.target); } });
   }, { rootMargin: '400px' }) : null;
 
-  // Measure whether the component actually FITS the cell it was given, and say so.
+  // Apply the ARRANGER'S OWN RULE to each cell, instead of asking for combinations
+  // the arranger would never produce.
   //
-  // The stage used to be `overflow: hidden`, so a component too wide for its width x
-  // scale combination was silently cut off — you saw a plausible-looking table with
-  // its right-hand column missing and no indication anything was wrong. Reported for
-  // DoubleDummyTable at 160/1.5 (+29px), but measuring every cell turned up worse:
-  // AuctionTable overflows the same cell by 170px, and had been doing so unnoticed.
+  // The matrix crosses width and scale independently, so "160px at 1.5x" was an
+  // impossible ask: the real arranger derives scale FROM the allocation —
+  // scale = max(floor, min(cap, allocated / reserve)) — so a 160px region never gets
+  // 1.5x in the first place. Rendering it anyway produced a clipped component that
+  // looked like a defect and wasn't one, which is worse than useless: it trains you
+  // to ignore clipping.
   //
-  // The matrix deliberately crosses width and scale independently, so it produces
-  // combinations the arranger never would (it derives scale FROM the allocation, so a
-  // 160px region never gets 1.5x). Those cells are legitimately impossible — the point
-  // is that an impossible cell should LOOK impossible rather than look fine.
-  function flagOverflow(stage, f) {
+  // So a cell now behaves the way the arranger would: if the requested scale doesn't
+  // fit, it REDUCES to the scale that does and says so ("1.50x → 1.24x"). Clipping
+  // that survives that reduction is a genuine problem — the component cannot render
+  // in its allocation even at the legibility floor, which is exactly the arranger's
+  // `overflow` (starved) binding.
+  //
+  // Mirrors scale.legibilityFloor from the table configs. If that moves, move this.
+  var LEGIBILITY_FLOOR = 0.65;
+
+  // BOTH axes. Width overflows inside `.harness-frame` (it has an explicit width);
+  // height overflows at the IFRAME boundary, since the frame is auto-height and the
+  // iframe is fixed — so the document is what clips vertically. Measuring only width
+  // (the first cut) meant a component too TALL for its cell was cut off in silence,
+  // which is the same blind spot one axis over.
+  function measure(f) {
     try {
       var d = f.contentDocument;
-      if (!d) return;
-      var el = d.querySelector('.harness-frame') || d.body;
-      var over = Math.round(el.scrollWidth - el.clientWidth);
-      if (over > 1) {
-        stage.classList.add('over');
-        // The cell geometry is deliberately left ALONE. An earlier cut pinned the
-        // stage and widened the iframe to expose the overflow, which worked but left
-        // flagged cells 2px narrower than their neighbours (an explicit width vs a
-        // shrink-wrapped one, box-sizing doing the rest) — distorting the very
-        // comparison the matrix exists for. The scrolling belongs INSIDE the frame,
-        // where the component actually overflows; `.harness-page` now handles it.
-        var tag = document.createElement('div');
-        tag.className = 'ovf';
-        tag.textContent = '+' + over + 'px';
-            tag.title = 'Content is ' + over + 'px wider than this cell — scroll inside the cell to see the rest.';
-        stage.appendChild(tag);
+      if (!d) return null;
+      var el = d.querySelector('.harness-frame');
+      if (!el) return null;
+      var root = d.documentElement;
+      return {
+        contentW: el.scrollWidth, availW: el.clientWidth,
+        contentH: root.scrollHeight, availH: root.clientHeight,
+      };
+    } catch (e) { return null; }
+  }
+
+  // How much this cell can afford, per axis. < 1 means the ask doesn't fit.
+  function fitRatios(m) {
+    return {
+      w: m.availW > 0 && m.contentW > 0 ? m.availW / m.contentW : 1,
+      h: m.availH > 0 && m.contentH > 0 ? m.availH / m.contentH : 1,
+    };
+  }
+  function overBy(m) {
+    return { w: Math.round(m.contentW - m.availW), h: Math.round(m.contentH - m.availH) };
+  }
+  function axisLabel(o) {
+    var bits = [];
+    if (o.w > 1) bits.push(o.w + 'px wide');
+    if (o.h > 1) bits.push(o.h + 'px tall');
+    return bits.join(' · ');
+  }
+
+  function note(stage, cls, text, title) {
+    var tag = document.createElement('div');
+    tag.className = 'ovf ' + cls;
+    tag.textContent = text;
+    tag.title = title;
+    stage.appendChild(tag);
+  }
+
+  // Second pass: the cell has been re-rendered at the reduced scale. Anything still
+  // over is starved, not merely tight.
+  function afterReduce(stage, f, asked, used) {
+    var m = measure(f);
+    var o = m ? overBy(m) : { w: 0, h: 0 };
+    if (o.w > 1 || o.h > 1) {
+      stage.classList.add('over');
+      note(stage, 'ovf-bad', '+' + axisLabel(o) + ' at floor',
+        'Still ' + axisLabel(o) + ' over even at the ' + LEGIBILITY_FLOOR +
+        ' legibility floor — the component cannot render in this allocation. A real problem.');
+    } else {
+      stage.classList.add('reduced');
+      note(stage, 'ovf-ok', asked.toFixed(2) + '× → ' + used.toFixed(2) + '×',
+        'Asked for ' + asked.toFixed(2) + '×; this cell only affords ' + used.toFixed(2) +
+        '×, so it scaled down the way the arranger would.');
+    }
+  }
+
+  function fitToCell(stage, f) {
+    var m = measure(f);
+    if (!m) return;
+    var o = overBy(m);
+    if (o.w <= 1 && o.h <= 1) return;                       // fits as asked, both axes
+
+    var asked = Number(stage.getAttribute('data-scale')) || 1;
+    var r = fitRatios(m);
+    // Constrained by the TIGHTER axis — scaling to fit the width is no use if the
+    // height still spills.
+    var used = Math.max(LEGIBILITY_FLOOR, asked * Math.min(r.w, r.h));
+    if (used >= asked - 0.001) {                            // can't help — already at/below
+      stage.classList.add('over');
+      note(stage, 'ovf-bad', '+' + axisLabel(o),
+        'Content is ' + axisLabel(o) + ' beyond this cell and cannot be reduced further.');
+      return;
+    }
+    // Re-render at the scale this cell actually affords.
+    //
+    // NOT via a `load` listener: the harness is a HASH router, so the new src differs
+    // only after the '#'. That is an in-page navigation — the SPA re-renders but the
+    // iframe never fires `load`, so a load-based callback silently never runs. (It
+    // did exactly that on the first cut: the cells genuinely re-rendered at the
+    // reduced scale and not one of them got a badge.) Poll for the frame to settle
+    // instead.
+    f.src = stage.getAttribute('data-src').replace(/scale=[0-9.]+/, 'scale=' + used.toFixed(3));
+    var tries = 0;
+    (function settle() {
+      var m2 = measure(f);
+      // Wait until the re-render has actually taken effect (or give up and report
+      // what we see, rather than hanging silently).
+      if (m2 && Math.abs(m2.contentW - m.contentW) < 1 && tries < 12) {
+        tries++;
+        setTimeout(settle, 120);
+        return;
       }
-    } catch (e) { /* cross-origin or not ready — no badge, never a broken page */ }
+      afterReduce(stage, f, asked, used);
+    })();
   }
 
   function mount(stage) {
@@ -131,7 +221,10 @@
     f.src = stage.getAttribute('data-src');
     stage.innerHTML = '';
     stage.appendChild(f);
-    f.addEventListener('load', function () { setTimeout(function () { flagOverflow(stage, f); }, 350); });
+    f.addEventListener('load', function onFirst() {
+      f.removeEventListener('load', onFirst);
+      setTimeout(function () { fitToCell(stage, f); }, 300);
+    });
   }
 
   fetch('components-manifest.json', { cache: 'no-cache' })
@@ -190,7 +283,7 @@
               var frameH = Math.round(220 * s);
               cells += '<div class="cell"><div class="cap">' + cap + '</div>' +
                 '<div class="stage" data-src="' + src + '" data-w="' + frameW + '" data-h="' + frameH +
-                '" data-cap="' + cap + '"><div class="ph">' + w + '</div></div></div>';
+                '" data-scale="' + s + '" data-cap="' + cap + '"><div class="ph">' + w + '</div></div></div>';
             });
             cols += '<div class="col"><div class="col-head">' + w + '<span>' + px + 'px</span></div>' + cells + '</div>';
           });
