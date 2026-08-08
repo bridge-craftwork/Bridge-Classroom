@@ -60,6 +60,13 @@ cp docs/robots.txt             dist/robots.txt
 cp -r docs/curator           dist/curator
 cp -r docs/bidding-practice  dist/bidding-practice
 cp -r docs/screenshots       dist/screenshots
+# The bc-ingest receiver — the extension's hand-off target. Top-level and
+# use-case neutral by design (ADR 0001 Decision 2): the extension points at
+# /ingest and nothing beyond it, and this page routes onward to whichever
+# consumer was asked for. The directory name is load-bearing — the extension's
+# ingest content script matches the whole origin but self-gates on a path
+# ending in /ingest.
+cp -r docs/ingest            dist/ingest
 
 # ── Co-locate the Game Analysis app under /game-analysis/ (same-origin) ──────
 # app-architecture.md M1: serve club-game-analysis from the SPA origin so it
@@ -73,7 +80,9 @@ if [ -f "$GAME_ANALYSIS_SRC/index.html" ]; then
   echo "build-site.sh: co-locating game-analysis from $GAME_ANALYSIS_SRC"
   mkdir -p dist/game-analysis
   cp "$GAME_ANALYSIS_SRC/index.html" dist/game-analysis/index.html
-  [ -d "$GAME_ANALYSIS_SRC/static" ] && cp -r "$GAME_ANALYSIS_SRC/static" dist/game-analysis/static
+  if [ -d "$GAME_ANALYSIS_SRC/static" ]; then
+    cp -r "$GAME_ANALYSIS_SRC/static" dist/game-analysis/static
+  fi
 else
   echo "build-site.sh: NOTE game-analysis source not at $GAME_ANALYSIS_SRC — skipping /game-analysis/ (non-fatal)"
 fi

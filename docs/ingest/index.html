@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Receiving game data…</title>
+<!--
+  bc-ingest receiver — the page half of
+  acbl-live-fetch/docs/ingest-protocol.md, implementing ADR 0001.
+
+  Lives at the SITE ROOT (/ingest/), per ADR 0001 Decision 2. Deliberately not
+  under /game-analysis/ or any other consumer's path: the extension points at the
+  ingest route and nothing beyond it, so the route must not imply a use case.
+  That is also why this page belongs to the site repo rather than to any one
+  consuming app.
+
+  This is a SWITCHYARD, not a destination. It completes the postMessage
+  handshake once, decodes once, and then routes the envelopes to whichever
+  consumers are configured. ADR 0001's whole point was that the list of
+  consumers is growing (club game analysis today; a double-dummy solver and
+  Bridge Classroom replay in progress) and that none of them should be gated on
+  an extension review cycle. Keeping the routing here means adding or changing a
+  consumer is a small local edit to the tables below — the transport, the
+  handshake and the extension never move.
+
+  Two kinds of destination, because they compose differently:
+
+    SINKS    run for every delivery, may be several, none terminal.
+             (archive to the user's Bridge Classroom account)
+    OPENERS  exactly one gets the tab, terminal, navigates away.
+             (club game analysis, and later the solver)
+
+  Deliberately self-contained: no external scripts, styles or fonts. ADR 0001
+  makes that a standing constraint rather than a preference — window.postMessage
+  is readable by ANY script on the page, so a third-party tag here could read
+  members' hand records straight off the channel.
+
+  Kept as its own small document rather than folded into a consuming app: the
+  page has to speak first, and a small document reaches its `ready` post sooner.
+-->
+<style>
+:root {
+  --bg: #f8f9fa; --surface: #ffffff; --text: #212529; --text-muted: #6c757d;
+  --primary: #2563eb; --primary-hover: #1d4ed8; --border: #dee2e6;
+  --good: #16a34a; --error: #dc2626; --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh;
+}
+header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0.375rem 0; margin-bottom: 1.5rem;
+}
+header h1 { font-size: 0.95rem; font-weight: 600; text-align: center; }
+header h1 span { color: var(--text-muted); font-weight: 400; }
+.container { max-width: 640px; margin: 0 auto; padding: 0 1rem; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 2rem; text-align: center;
+}
+.card.error { border-color: var(--error); background: #fdf6f6; }
+.card h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; }
+.card p { color: var(--text-muted); font-size: 0.9rem; }
+.card p + p { margin-top: 0.75rem; }
+.spinner {
+  width: 1.75rem; height: 1.75rem; margin: 0 auto 1rem;
+  border: 3px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.bar {
+  height: 5px; background: var(--border); border-radius: 3px;
+  overflow: hidden; margin: 1.25rem 0 0.5rem;
+}
+.bar > div {
+  height: 100%; width: 0; background: var(--primary);
+  border-radius: 3px; transition: width 0.2s;
+}
+.tick { color: var(--good); font-size: 1.75rem; line-height: 1; margin-bottom: 0.5rem; }
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 0.75rem; margin-top: 1.5rem; text-align: center;
+}
+.stat-value { font-size: 1.1rem; font-weight: 600; }
+.stat-label {
+  font-size: 0.7rem; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+/* Sink outcomes — one line each, reported rather than hidden. */
+.reports { margin-top: 1.25rem; text-align: left; font-size: 0.85rem; }
+.reports li { list-style: none; color: var(--text-muted); padding: 0.15rem 0; }
+.reports li::before { content: '· '; }
+.reports li.ok::before { content: '✓ '; color: var(--good); }
+.reports li.warn::before { content: '! '; color: var(--error); }
+/* Destination picker */
+.dests { display: grid; gap: 0.5rem; margin-top: 1.25rem; text-align: left; }
+.dest {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.7rem 0.9rem; font: inherit;
+  transition: border-color 0.15s;
+}
+.dest:hover:not(:disabled) { border-color: var(--primary); }
+.dest:disabled { cursor: not-allowed; opacity: 0.55; }
+.dest-name { font-weight: 600; font-size: 0.9rem; }
+.dest-blurb { color: var(--text-muted); font-size: 0.8rem; }
+.btn {
+  display: inline-block; margin-top: 1.25rem; padding: 0.5rem 1.25rem;
+  background: var(--primary); color: white; border: none;
+  border-radius: var(--radius); cursor: pointer; font-size: 0.875rem;
+  font-weight: 500; text-decoration: none;
+}
+.btn:hover { background: var(--primary-hover); }
+.btn-outline {
+  background: transparent; color: var(--primary); border: 1px solid var(--primary);
+}
+.btn-outline:hover { background: var(--primary); color: white; }
+.note { font-size: 0.8rem; color: var(--text-muted); margin-top: 1.25rem; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<header><h1>Bridge Classroom <span>· receiving game data</span></h1></header>
+
+<div class="container">
+  <!-- WAITING / RECEIVING / FILING -->
+  <div id="state-busy" class="card">
+    <div class="spinner"></div>
+    <h2 id="busy-title">Waiting for the extension…</h2>
+    <p id="busy-detail">Keep this tab open.</p>
+    <div id="busy-bar" class="bar hidden"><div></div></div>
+  </div>
+
+  <!-- CHOOSE: only when routing was left open (?to=ask) -->
+  <div id="state-choose" class="card hidden">
+    <h2 id="choose-title">Where should this go?</h2>
+    <p id="choose-detail"></p>
+    <div id="choose-list" class="dests"></div>
+    <ul id="choose-reports" class="reports"></ul>
+  </div>
+
+  <!-- DONE -->
+  <div id="state-done" class="card hidden">
+    <div class="tick">✓</div>
+    <h2 id="done-title">Received</h2>
+    <p id="done-detail"></p>
+    <div id="done-stats" class="stats"></div>
+    <ul id="done-reports" class="reports"></ul>
+    <a id="done-link" class="btn" href="#">Continue</a>
+  </div>
+
+  <!-- EMPTY: opened directly, no handoff reference -->
+  <div id="state-empty" class="card hidden">
+    <h2>Nothing to receive</h2>
+    <p>
+      This page receives bridge results handed over by the
+      <em>ACBL Live Fetch and Analyze</em> browser extension, and passes them on
+      to whichever Bridge Classroom tool you send them to. It opens by itself
+      when you send results from the extension — there's nothing to do here
+      otherwise.
+    </p>
+    <a id="empty-link" class="btn btn-outline" href="#">Go to Bridge Classroom</a>
+  </div>
+
+  <!-- ERROR -->
+  <div id="state-error" class="card error hidden">
+    <h2 id="error-title">Couldn't receive the game data</h2>
+    <p id="error-detail"></p>
+    <p id="error-hint" class="hidden"></p>
+    <a id="error-link" class="btn btn-outline" href="#">Go to Club Game Analysis</a>
+  </div>
+
+  <!-- ADR 0001 Decision 5 wants origin-scoping visible rather than silent, but
+       only where a capture actually exists to be scoped. -->
+  <p id="storage-note" class="note hidden"></p>
+</div>
+
+<script>
+'use strict';
+
+// ---- Protocol constants (docs/ingest-protocol.md) ----
+const CHANNEL = 'bc-ingest';
+const PROTOCOL_VERSION = 1;
+const SUPPORTED_MAJOR = 1;        // payload schema_version major, per normalized-schema.md
+
+const READY_REPEAT_MS = 250;      // re-post `ready` until `begin` lands
+const BEGIN_TIMEOUT_MS = 5000;    // ready → begin
+const CHUNK_TIMEOUT_MS = 15000;   // rolling, reset per chunk
+const SINK_TIMEOUT_MS = 20000;    // a slow archive must not strand the tab
+
+// Analyzer hand-off keys. These are the ANALYZER's entry contract, not the
+// extension's — the extension no longer writes them, this page does.
+const PENDING_KEY = 'pending-session';
+const BATCH_KEY = 'pending-batch';
+
+// ---- The reference, read synchronously ----
+//
+// Load-bearing: the content script clears the fragment via replaceState as soon
+// as our `ready` arrives, so the ref must be captured before any await. A ref
+// we never read is a ref we can never recover.
+const hashParams = new URLSearchParams(location.hash.replace(/^#/, ''));
+const ref = hashParams.get('sid') || hashParams.get('batch') || null;
+
+const queryParams = new URLSearchParams(location.search);
+
+// `to` selects the opener; `to=ask` defers the choice to the user. This is the
+// PAGE's own query param, so adding or renaming destinations costs no
+// transport-version bump and no extension change — the extension only has to
+// land on a path ending /ingest.
+const routeParam = queryParams.get('to');
+
+// `v` versions the TRANSPORT contract (the message sequence), not the payload —
+// each envelope carries its own schema_version. The extension sends ?v=1.
+const transportParam = queryParams.get('v');
+
+/** The site root, derived by dropping our own trailing `/ingest` segment. '/' in
+ *  production; keeps a prefixed dev deploy (or a test server) working without a
+ *  build-time base path. */
+function siteRoot() {
+  return location.pathname.replace(/\/+$/, '').replace(/\/ingest$/, '/') || '/';
+}
+
+/** Per-destination dev override, e.g.
+ *    localStorage.setItem('bc-ingest-analysis-url', 'http://localhost:3001/?analyze') */
+function destOverride(id) {
+  try { return localStorage.getItem(`bc-ingest-${id}-url`) || ''; } catch (e) { return ''; }
+}
+
+/** Where a destination lives, or '' if it cannot receive a hand-off.
+ *
+ *  Same-origin is a hard requirement, not a preference: the hand-off travels
+ *  through sessionStorage, which does not cross origins. A cross-origin consumer
+ *  needs its own ingest route (which is what this page is) rather than a
+ *  hand-off from here, so a cross-origin URL is refused outright instead of
+ *  being half-supported. */
+function destUrl(dest) {
+  const raw = destOverride(dest.id) || (dest.path ? siteRoot() + dest.path : '');
+  if (!raw) return '';
+  try {
+    return new URL(raw, location.href).origin === location.origin ? raw : '';
+  } catch (e) { return ''; }
+}
+
+function destAvailable(dest) { return !!destUrl(dest); }
+
+function destUnavailableReason(dest) {
+  if (destOverride(dest.id)) {
+    return 'Its configured address is on another origin, which cannot receive a hand-off from this page.';
+  }
+  return 'Not wired up yet.';
+}
+
+// ---- View helpers ----
+const $ = (id) => document.getElementById(id);
+const STATES = ['state-busy', 'state-choose', 'state-done', 'state-empty', 'state-error'];
+
+function showState(id) {
+  for (const s of STATES) $(s).classList.toggle('hidden', s !== id);
+}
+
+function showBusy(title, detail) {
+  $('busy-title').textContent = title;
+  $('busy-detail').textContent = detail || '';
+  showState('state-busy');
+}
+
+function showProgress(received, total) {
+  $('busy-bar').classList.remove('hidden');
+  $('busy-bar').firstElementChild.style.width =
+    total > 0 ? `${Math.round((received / total) * 100)}%` : '0%';
+}
+
+/** Terminal failure: stop the protocol clocks so a late message can't reopen a
+ *  state the user has already been told about. */
+function fail(detail, hint) {
+  settled = true;
+  clearTimers();
+  $('error-detail').textContent = detail;
+  $('error-hint').textContent = hint || '';
+  $('error-hint').classList.toggle('hidden', !hint);
+  showState('state-error');
+  $('storage-note').classList.add('hidden');
+}
+
+function renderReports(el, reports) {
+  el.innerHTML = reports.map((r) =>
+    `<li class="${r.ok ? 'ok' : (r.warn ? 'warn' : '')}">${escapeHtml(r.text)}</li>`
+  ).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---- Bridge Classroom identity + API ----
+//
+// Mirrors the same helpers in the analyzer's index.html. Duplicated rather than
+// shared because both documents are hand-authored with everything inlined and
+// there is no build step to factor with; keep the two copies in step.
+
+const BC_API_KEY = '8a3ccc23767bdcbe6bb1709dfe3f20194dc0b8b4874939244e802dc71a21a568';
+
+function bcApiBase() {
+  try { const o = localStorage.getItem('bc-api-base'); if (o) return o; } catch (e) {}
+  const tld = location.hostname.endsWith('.org') ? 'org' : 'com';
+  return `https://api.bridge-classroom.${tld}/api`;
+}
+
+/** The signed-in Bridge Classroom user id, or '' when anonymous. Same-origin
+ *  with the SPA (the M1 payoff), so its user store is readable directly. */
+function bcCurrentUserId() {
+  try {
+    const store = JSON.parse(localStorage.getItem('bridgePractice') || '{}');
+    const id = store.currentUserId;
+    if (id && store.users && store.users[id]) return id;
+  } catch (e) {}
+  return '';
+}
+
+/** Upsert key for one event. Mirrors eventCacheId() in the analyzer. */
+function eventKeyOf(env) {
+  const t = env?.tournaments?.[0];
+  const e = t?.events?.[0];
+  const date = e?.date || env?.fetched_at?.slice(0, 10) || 'unknown';
+  return `${date}|${e?.name || t?.name || 'Game'}`;
+}
+
+function firstSessionBoardCount(env) {
+  return env?.tournaments?.[0]?.events?.[0]?.sessions?.[0]?.boards?.length ?? null;
+}
+
+/** Bounded-concurrency map. A full-history batch is hundreds of events; firing
+ *  every upsert at once would hammer the API for no gain. */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  }));
+  return out;
+}
+
+// ==================== Destinations ====================
+//
+// SINKS run on every delivery. Failures are reported, never fatal — a delivery
+// that reached its opener is still a success.
+
+const SINKS = [
+  {
+    id: 'bc-archive',
+    /** Durable, cross-device storage for registered users (app-architecture.md
+     *  M3). Only the normalized payload is sent: the analysis is a pure function
+     *  of it (measured at ~0.1 ms per player per event), so it is recomputed on
+     *  read rather than stored and kept in sync. */
+    available: () => !!bcCurrentUserId(),
+    unavailable: () => ({
+      warn: false,
+      text: 'Not signed in — this capture stays in this browser.',
+    }),
+    async run({ envelopes }) {
+      const owner = bcCurrentUserId();
+
+      // Collapse by event_key before posting. Two reasons, both real:
+      //
+      //  - The server upserts with SELECT-then-INSERT and there is no UNIQUE
+      //    index on (owner, event_key), so two concurrent posts sharing a key
+      //    both miss the select and both insert. Posting concurrently (below)
+      //    would otherwise race that.
+      //  - Two envelopes CAN legitimately share a key — two sessions of one
+      //    event, or two events that both fell back to `unknown|Game`. The
+      //    server would overwrite one with the other silently; collapsing here
+      //    at least lets us say it happened.
+      const byKey = new Map();
+      for (const env of envelopes) {
+        const key = eventKeyOf(env);
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(env);
+      }
+      const collapsed = [...byKey.values()].filter((g) => g.length > 1).length;
+      // Last wins, matching what a sequence of upserts would have left behind.
+      const unique = [...byKey.values()].map((g) => g[g.length - 1]);
+
+      const outcomes = await mapLimit(unique, 4, async (env) => {
+        try {
+          const res = await fetch(`${bcApiBase()}/club-games`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': BC_API_KEY },
+            body: JSON.stringify({
+              owner,
+              event_key: eventKeyOf(env),
+              event_name: env?.tournaments?.[0]?.events?.[0]?.name
+                || env?.tournaments?.[0]?.name || null,
+              event_date: env?.tournaments?.[0]?.events?.[0]?.date
+                || env?.fetched_at?.slice(0, 10) || null,
+              // No venue/club field in the normalized schema yet; the full data
+              // is in `payload` regardless.
+              location: null,
+              board_count: firstSessionBoardCount(env),
+              payload: JSON.stringify(env),
+            }),
+          });
+          // 429 is the per-owner lifetime cap, which deserves its own message
+          // rather than being lumped in with a network failure.
+          if (res.status === 429) return 'capped';
+          return res.ok ? 'ok' : `http-${res.status}`;
+        } catch (err) {
+          return 'network';
+        }
+      });
+      const saved = outcomes.filter((o) => o === 'ok').length;
+      const capped = outcomes.filter((o) => o === 'capped').length;
+      const failed = outcomes.length - saved - capped;
+      // Never silent: a collapse means something the user sent was not stored
+      // separately, and only they can tell whether that matters.
+      const note = collapsed
+        ? ` ${collapsed} group${collapsed === 1 ? '' : 's'} of events shared an identifier and were stored as one.`
+        : '';
+      if (capped) {
+        return { ok: false, warn: true,
+          text: `Saved ${saved} of ${outcomes.length} to your account — the rest hit your stored-game limit.${note}` };
+      }
+      if (failed) {
+        return { ok: saved > 0, warn: true,
+          text: `Saved ${saved} of ${outcomes.length} to your account; ${failed} could not be stored.${note}` };
+      }
+      return { ok: true, warn: !!collapsed,
+        text: `Saved to your Bridge Classroom account — available on your other devices.${note}` };
+    },
+  },
+];
+
+// OPENERS take the tab. Exactly one runs, and it is terminal.
+
+const OPENERS = [
+  {
+    id: 'analysis',
+    label: 'Club Game Analysis',
+    blurb: 'Board-by-board results with cause analysis.',
+    path: 'game-analysis/?analyze',
+    /** Hands off through the analyzer's existing sessionStorage entry contract.
+     *  This is the one piece of the pre-ADR scheme still standing: it
+     *  re-serializes what we just decoded, which reinstates the ~5 MB ceiling
+     *  the postMessage transport removed. Replace it when the analyzer grows a
+     *  direct entry point; nothing else here changes when it does. */
+    async stage({ kind, envelopes, chunks, errors }) {
+      if (kind === 'batch') {
+        // runBatch() expects gzip+base64 items. Batch chunks already arrive that
+        // way; re-compress only if a producer sent plain json, so the analyzer's
+        // batch path stays untouched.
+        const items = await Promise.all(chunks.map(async (c) => ({
+          compressed: c.encoding === 'gzip+base64' ? c.data : await gzipBase64(c.data),
+        })));
+        sessionStorage.setItem(BATCH_KEY, JSON.stringify({
+          items, total: items.length, errors,
+        }));
+      } else {
+        sessionStorage.setItem(PENDING_KEY, JSON.stringify(envelopes[0]));
+      }
+    },
+  },
+  {
+    id: 'solver',
+    label: 'Double-dummy solver',
+    blurb: 'Solve and compare every board.',
+    /** Declared but not wired: the solver app has no agreed entry contract and no
+     *  route on this site yet, so it has no `path`. Point it somewhere
+     *  same-origin to develop against:
+     *    localStorage.setItem('bc-ingest-solver-url', '/solver/?ingest') */
+    path: null,
+    async stage({ envelopes }) {
+      sessionStorage.setItem('pending-solver', JSON.stringify(envelopes));
+    },
+  },
+];
+
+const DEFAULT_OPENER = 'analysis';
+
+// ---- Protocol state ----
+let settled = false;              // a terminal state has been reached
+let meta = null;                  // the `begin` message
+const chunks = [];                // by seq
+let received = 0;
+let t0 = 0;                       // ready posted → for transport_ms
+let readyTimer = null;
+let beginTimer = null;
+let chunkTimer = null;
+
+function clearTimers() {
+  clearInterval(readyTimer);
+  clearTimeout(beginTimer);
+  clearTimeout(chunkTimer);
+  readyTimer = beginTimer = chunkTimer = null;
+}
+
+function post(msg) {
+  window.postMessage({ channel: CHANNEL, v: PROTOCOL_VERSION, ref, ...msg }, location.origin);
+}
+
+// ---- Decoding ----
+
+/** Decode one chunk into an envelope. Both encodings must be handled whatever
+ *  the `kind` — the protocol is explicit that one cannot be inferred from the
+ *  other. */
+async function decodeChunk(chunk) {
+  if (chunk.encoding === 'json') return JSON.parse(chunk.data);
+  if (chunk.encoding === 'gzip+base64') return JSON.parse(await gunzipBase64(chunk.data));
+  throw new Error(`unknown chunk encoding "${chunk.encoding}"`);
+}
+
+async function gunzipBase64(b64) {
+  const raw = atob(b64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return await new Response(stream).text();
+}
+
+/** gzip+base64 a string, matching the extension's compressEnvelope. */
+async function gzipBase64(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  // Chunked — String.fromCharCode(...buf) blows the argument limit at exactly
+  // the payload size this path exists for.
+  let out = '';
+  for (let i = 0; i < buf.length; i += 0x8000) {
+    out += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  }
+  return btoa(out);
+}
+
+/** The protocol's summary shape. Counts are the cheapest end-to-end
+ *  correctness check available, and the provenance fields are what let a
+ *  consumer decide what the data can honestly support. */
+function summarize(envelopes, base) {
+  const counts = { envelopes: envelopes.length, events: 0, sessions: 0, boards: 0, results: 0 };
+  const sources = new Set();
+  const providers = new Set();
+  const coverage = { cardplay: new Set(), results: new Set(), sections: new Set() };
+  const contexts = new Set();
+  const dates = [];
+  let partial = false;
+  let warnings = 0;
+  let bytes = 0;
+  for (const env of envelopes) {
+    if (env?.source) sources.add(env.source);
+    if (env?.provider) providers.add(`${env.provider.id} ${env.provider.version}`);
+    if (env?.capture?.context) contexts.add(env.capture.context);
+    if (env?.coverage) {
+      coverage.cardplay.add(env.coverage.cardplay ?? '?');
+      coverage.results.add(env.coverage.results ?? '?');
+      coverage.sections.add(env.coverage.sections_labelled
+        ? 'all (labelled)' : (env.coverage.sections ?? '?'));
+    }
+    for (const t of env?.tournaments ?? []) {
+      for (const ev of t.events ?? []) {
+        counts.events++;
+        if (ev.date) dates.push(ev.date);
+        for (const s of ev.sessions ?? []) {
+          counts.sessions++;
+          if (s.partial) partial = true;
+          warnings += (s.warnings ?? []).length;
+          for (const b of s.boards ?? []) {
+            counts.boards++;
+            counts.results += (b.results ?? []).length;
+          }
+        }
+      }
+    }
+  }
+  for (const c of chunks) if (c) bytes += c.data.length;
+  dates.sort();
+  return {
+    ...base, ...counts, bytes, partial, warnings,
+    received_at: new Date().toISOString(),
+    sources: [...sources],
+    providers: [...providers],
+    contexts: [...contexts],
+    coverage: {
+      cardplay: [...coverage.cardplay],
+      results: [...coverage.results],
+      sections: [...coverage.sections],
+    },
+    date_range: dates.length ? [dates[0], dates[dates.length - 1]] : null,
+  };
+}
+
+// ---- Message handling ----
+
+window.addEventListener('message', (event) => {
+  // Any script on the page can post here. Validate all four before trusting.
+  if (event.source !== window) return;
+  if (event.origin !== location.origin) return;
+  const m = event.data;
+  if (!m || m.channel !== CHANNEL || m.v !== PROTOCOL_VERSION || m.ref !== ref) return;
+  if (settled) return;
+
+  switch (m.type) {
+    case 'begin':
+      clearInterval(readyTimer);
+      clearTimeout(beginTimer);
+      readyTimer = beginTimer = null;
+      meta = m;
+      showBusy(
+        'Receiving game data…',
+        m.kind === 'batch'
+          ? `${m.parts} event${m.parts === 1 ? '' : 's'} on the way.`
+          : 'One game on the way.'
+      );
+      showProgress(0, m.parts);
+      armChunkTimer();
+      break;
+
+    case 'chunk':
+      if (!meta) return;               // out of sequence; ignore
+      if (chunks[m.seq] === undefined) received++;
+      chunks[m.seq] = m;
+      showProgress(received, meta.parts);
+      armChunkTimer();
+      break;
+
+    case 'finish':
+      clearTimeout(chunkTimer);
+      chunkTimer = null;
+      onFinish(m);
+      break;
+
+    case 'error':
+      onProtocolError(m);
+      break;
+  }
+});
+
+function armChunkTimer() {
+  clearTimeout(chunkTimer);
+  chunkTimer = setTimeout(() => {
+    const got = meta ? `${received} of ${meta.parts}` : '0';
+    fail(
+      `The transfer stopped partway through (received ${got} pieces).`,
+      'Nothing was saved. Send the game again from the extension.'
+    );
+  }, CHUNK_TIMEOUT_MS);
+}
+
+function onProtocolError(m) {
+  // `expired` is a normal outcome — the payload aged out of its one-hour hold
+  // because the tab sat unopened. Say so plainly rather than as a fault.
+  const messages = {
+    expired: [
+      'That capture expired.',
+      'The extension holds a game for one hour. Send it again from the extension.',
+    ],
+    'not-found': [
+      'The extension had no game waiting under this reference.',
+      'It may already have been received in another tab. Send it again if you need it.',
+    ],
+    malformed: [
+      'The extension sent game data this page could not read.',
+      m.detail ? `Reported: ${m.detail}` : '',
+    ],
+    'send-failed': [
+      'The extension could not reach its own background service.',
+      'Reload the extension, or restart the browser, then send the game again.',
+    ],
+  };
+  const [detail, hint] = messages[m.reason]
+    || [`The extension reported an error: ${m.reason || 'unknown'}.`, m.detail || ''];
+  fail(detail, hint);
+}
+
+async function onFinish(m) {
+  settled = true;
+  clearTimers();
+
+  if (!meta) {
+    fail('The transfer finished before it started.',
+         'Nothing was saved. Send the game again from the extension.');
+    return;
+  }
+
+  const transportMs = Math.round(performance.now() - t0);
+  const present = chunks.filter((c) => c !== undefined);
+  const expected = typeof m.parts === 'number' ? m.parts : meta.parts;
+  if (present.length !== expected) {
+    fail(
+      `Received ${present.length} of ${expected} pieces of game data.`,
+      'Nothing was saved — a partial game would analyze wrongly. Send it again.'
+    );
+    return;
+  }
+
+  showBusy('Decoding…', 'Almost there.');
+
+  const d0 = performance.now();
+  let envelopes;
+  try {
+    envelopes = await Promise.all(present.map(decodeChunk));
+  } catch (e) {
+    fail(`The game data could not be decoded: ${e.message}`,
+         'Nothing was saved. Send the game again from the extension.');
+    return;
+  }
+  const decodeMs = Math.round(performance.now() - d0);
+
+  // Version-check before anything is stored or routed. The analyzer checks too,
+  // but it can only report after a navigation — catching it here keeps the
+  // message on the page that has the context.
+  const badVersion = envelopes
+    .map((env) => String(env?.schema_version ?? ''))
+    .find((ver) => parseInt(ver.split('.')[0], 10) !== SUPPORTED_MAJOR);
+  if (badVersion !== undefined) {
+    fail(
+      `This game uses data format ${badVersion || '(missing)'}, which this ` +
+      `version of Club Game Analysis does not read (it supports ${SUPPORTED_MAJOR}.x).`,
+      'Reload the page to pick up the current build; if it persists, the extension is newer than the site.'
+    );
+    return;
+  }
+
+  const errors = Array.isArray(m.errors) ? m.errors : [];
+  const summary = summarize(envelopes, {
+    ref, kind: meta.kind,
+    transport_ms: transportMs, decode_ms: decodeMs,
+    errors: errors.length,
+  });
+
+  await dispatch({ kind: meta.kind, envelopes, chunks: present, errors, summary });
+}
+
+// ==================== Routing ====================
+
+async function dispatch(payload) {
+  // Sinks first: archiving is destination-independent, and doing it before any
+  // user choice means a capture is safe even if the tab is closed at the picker.
+  showBusy('Filing…', 'Storing this capture.');
+  const reports = await runSinks(payload);
+
+  const requested = routeParam && routeParam !== 'ask' ? routeParam : null;
+  if (requested) {
+    const opener = OPENERS.find((o) => o.id === requested);
+    if (!opener) {
+      fail(
+        `Unknown destination "${requested}".`,
+        `Available destinations: ${OPENERS.map((o) => o.id).join(', ')}.`
+      );
+      return;
+    }
+    if (!destAvailable(opener)) {
+      fail(
+        `${opener.label} cannot take this capture right now.`,
+        destUnavailableReason(opener)
+      );
+      return;
+    }
+    await runOpener(opener, payload, reports);
+    return;
+  }
+
+  if (routeParam === 'ask') {
+    showPicker(payload, reports);
+    return;
+  }
+
+  const fallback = OPENERS.find((o) => o.id === DEFAULT_OPENER);
+  await runOpener(fallback, payload, reports);
+}
+
+async function runSinks(payload) {
+  const reports = [];
+  for (const sink of SINKS) {
+    if (!sink.available()) {
+      const note = sink.unavailable?.();
+      if (note) reports.push(note);
+      continue;
+    }
+    try {
+      // A hung archive must not strand the tab; the opener still deserves to run.
+      reports.push(await Promise.race([
+        sink.run(payload),
+        new Promise((resolve) => setTimeout(
+          () => resolve({ ok: false, warn: true, text: `${sink.id}: timed out while storing.` }),
+          SINK_TIMEOUT_MS)),
+      ]));
+    } catch (err) {
+      reports.push({ ok: false, warn: true, text: `${sink.id}: ${err.message}` });
+    }
+  }
+  return reports;
+}
+
+function showPicker(payload, reports) {
+  const s = payload.summary;
+  $('choose-detail').textContent = s.kind === 'batch'
+    ? `${s.events} events, ${s.boards} boards.`
+    : `${s.boards} boards, ${s.results} results.`;
+  renderReports($('choose-reports'), reports);
+  $('choose-list').innerHTML = OPENERS.map((o) => {
+    const ok = destAvailable(o);
+    const why = ok ? o.blurb : destUnavailableReason(o);
+    return `<button class="dest" data-id="${o.id}"${ok ? '' : ' disabled'}>` +
+      `<span class="dest-name">${escapeHtml(o.label)}</span><br>` +
+      `<span class="dest-blurb">${escapeHtml(why)}</span></button>`;
+  }).join('');
+  for (const btn of $('choose-list').querySelectorAll('.dest')) {
+    btn.addEventListener('click', () => {
+      const opener = OPENERS.find((o) => o.id === btn.dataset.id);
+      runOpener(opener, payload, reports);
+    });
+  }
+  // The payload is one-shot: the content script already consumed it from
+  // chrome.storage.local, so what's held here is the only copy. Sinks have
+  // already run, so a closed tab loses the routing, not the capture.
+  showState('state-choose');
+  $('storage-note').classList.add('hidden');
+}
+
+async function runOpener(opener, payload, reports) {
+  showBusy(`Opening ${opener.label}…`, '');
+  const target = destUrl(opener);
+  try {
+    await opener.stage(payload);
+  } catch (e) {
+    // Overwhelmingly a sessionStorage quota failure on the analysis path — the
+    // ~5 MB ceiling this hand-off reinstates. Name it accurately rather than
+    // blaming the data.
+    fail(
+      `The capture was received but could not be handed to ${opener.label}: ${e.message}`,
+      'Try importing fewer events at once, or clear your saved history first.'
+    );
+    return;
+  }
+
+  // Required by the protocol even though the extension only logs it today: it
+  // is how "delivered" and "delivered and stored" stay distinguishable without
+  // a second protocol revision.
+  const summary = { ...payload.summary, routed_to: opener.id };
+  post({ type: 'ack', ok: true, summary });
+  console.info('[bc-ingest] received', summary);
+
+  renderDone(payload, opener, target, reports);
+}
+
+function renderDone(payload, opener, target, reports) {
+  const s = payload.summary;
+  const isBatch = s.kind === 'batch';
+
+  $('done-title').textContent = isBatch
+    ? `Received ${s.events} event${s.events === 1 ? '' : 's'}`
+    : 'Received';
+
+  const skipped = s.errors
+    ? ` ${s.errors} event${s.errors === 1 ? ' ' : 's '}the extension could not fetch ` +
+      `${s.errors === 1 ? 'was' : 'were'} skipped.`
+    : '';
+  $('done-detail').textContent = `Opening ${opener.label}…${skipped}`;
+
+  // A multi-session event (typical for tournament data) gets a session count; a
+  // single club session would only ever show "1".
+  const tiles = isBatch
+    ? [['Events', s.events], ['Boards', s.boards], ['Results', s.results]]
+    : [
+        ...(s.sessions > 1 ? [['Sessions', s.sessions]] : []),
+        ['Boards', s.boards],
+        ['Results', s.results],
+      ];
+  $('done-stats').innerHTML = tiles.map(([label, value]) =>
+    `<div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`
+  ).join('');
+
+  // Coverage decides what the analysis can honestly claim: matchpoints and
+  // declarer-vs-field are only meaningful across a whole field.
+  const extra = [...reports];
+  if (s.coverage.results.length && !s.coverage.results.includes('all-tables')) {
+    extra.push({ warn: true,
+      text: `Results cover ${s.coverage.results.join(', ')} — field comparisons will be limited.` });
+  }
+  if (s.partial) extra.push({ warn: true, text: 'At least one session is marked incomplete.' });
+  renderReports($('done-reports'), extra);
+
+  $('done-link').href = target;
+  $('done-link').textContent = `Open ${opener.label}`;
+  showState('state-done');
+
+  const signedIn = !!bcCurrentUserId();
+  $('storage-note').textContent = signedIn
+    ? 'Saved to your account, so it is available on your other devices and on the other Bridge Classroom domain.'
+    : 'This capture is stored on this domain in your own browser. Sign in to make it available on your other devices.';
+  $('storage-note').classList.remove('hidden');
+
+  // The link is the fallback, not the path: replace() keeps this page out of
+  // history so Back from the destination doesn't land on a consumed handoff.
+  setTimeout(() => location.replace(target), 600);
+}
+
+// ---- Start ----
+
+$('empty-link').href = siteRoot();
+$('error-link').href = siteRoot();
+
+if (transportParam && transportParam !== String(PROTOCOL_VERSION)) {
+  // A transport bump changes the message sequence itself, so there is no point
+  // starting a handshake we would not understand. Fail before `ready` rather
+  // than timing out and blaming the extension.
+  fail(
+    `The extension is using hand-off protocol v${transportParam}, and this page speaks v${PROTOCOL_VERSION}.`,
+    'Reload the page to pick up the current build. If it persists, the extension is newer than the site.'
+  );
+} else if (!ref) {
+  showState('state-empty');
+} else {
+  // The page speaks first — postMessage has no delivery guarantee to a listener
+  // that isn't attached yet, so the content script waits for `ready` instead of
+  // firing blind. Repeat it: this inline script routinely runs before the
+  // content script's dynamic import resolves, and a single missed `ready`
+  // strands the handoff with no recovery path.
+  t0 = performance.now();
+  post({ type: 'ready' });
+  readyTimer = setInterval(() => post({ type: 'ready' }), READY_REPEAT_MS);
+
+  beginTimer = setTimeout(() => {
+    fail(
+      'The extension did not respond.',
+      'Reload this page to try again — the extension holds the game for an hour. ' +
+      'If it keeps failing, check that the extension is enabled.'
+    );
+  }, BEGIN_TIMEOUT_MS);
+}
+</script>
+</body>
+</html>
