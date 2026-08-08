@@ -229,14 +229,76 @@ function destOverride(id) {
   try { return localStorage.getItem(`bc-ingest-${id}-url`) || ''; } catch (e) { return ''; }
 }
 
-/** Where a destination lives, or '' if it cannot receive a hand-off.
+// ---- Payload shape ----
+
+/** Every board in a delivery, flattened. */
+function allBoards(envelopes) {
+  const boards = [];
+  for (const env of envelopes) {
+    for (const t of env?.tournaments ?? []) {
+      for (const ev of t.events ?? []) {
+        for (const sess of ev.sessions ?? []) {
+          for (const b of sess.boards ?? []) boards.push(b);
+        }
+      }
+    }
+  }
+  return boards;
+}
+
+/** A hand-viewer capture: one board at one table, with the cardplay for it.
  *
- *  Same-origin is a hard requirement, not a preference: the hand-off travels
- *  through sessionStorage, which does not cross origins. A cross-origin consumer
- *  needs its own ingest route (which is what this page is) rather than a
- *  hand-off from here, so a cross-origin URL is refused outright instead of
- *  being half-supported. */
-function destUrl(dest) {
+ *  This shape is useless to the club-game analyzer, which exists to compare a
+ *  result against its field — there is no field here. It is exactly what the
+ *  solver wants. Detected structurally (one board, one result) rather than from
+ *  `coverage.sections === 'not-applicable'`, so it still works if an adapter
+ *  omits provenance. */
+function isSingleTableReplay(envelopes) {
+  if (envelopes.length !== 1) return false;
+  const boards = allBoards(envelopes);
+  return boards.length === 1 && (boards[0].results ?? []).length === 1;
+}
+
+/** Pull the BBO LIN out of a capture's hand-viewer URL.
+ *
+ *  The adapter does not store the LIN as a field, but the URL it captured is a
+ *  hand-viewer link carrying `?lin=` (BBO also accepts it after the hash).
+ *  Result-level first: that is the table the cardplay belongs to. */
+function linFromEnvelope(env) {
+  const candidates = [];
+  for (const b of allBoards([env])) {
+    for (const r of b.results ?? []) if (r.handviewer_url) candidates.push(r.handviewer_url);
+  }
+  if (env?.source_url) candidates.push(env.source_url);
+  for (const raw of candidates) {
+    try {
+      const u = new URL(raw, 'https://www.bridgebase.com/');
+      const fromHash = u.hash.includes('?')
+        ? new URLSearchParams(u.hash.slice(u.hash.indexOf('?') + 1)).get('lin')
+        : null;
+      const lin = u.searchParams.get('lin') || fromHash;
+      if (lin && lin.trim()) return lin.trim();
+    } catch (e) { /* not a URL we can read; try the next */ }
+  }
+  return '';
+}
+
+/** Where a destination lives for this delivery, or '' if it cannot take it.
+ *
+ *  Two hand-off styles, and the origin rule differs between them:
+ *
+ *   - `path` destinations are handed off through sessionStorage, which does not
+ *     cross origins, so same-origin is a hard requirement. A cross-origin
+ *     consumer needs its own ingest route (which is what this page is).
+ *   - `external` destinations carry the payload IN the URL, so cross-origin is
+ *     fine — that is the whole point of them. */
+function destUrl(dest, payload) {
+  if (dest.external) {
+    const url = dest.target(payload, destOverride(dest.id) || dest.external);
+    // A URL is a poor container with a silent failure mode at size — the
+    // #bcdev-mega export produced a 0-byte file this way. Refuse loudly.
+    return url && url.length <= 8000 ? url : '';
+  }
   const raw = destOverride(dest.id) || (dest.path ? siteRoot() + dest.path : '');
   if (!raw) return '';
   try {
@@ -244,10 +306,14 @@ function destUrl(dest) {
   } catch (e) { return ''; }
 }
 
-function destAvailable(dest) { return !!destUrl(dest); }
+function destAvailable(dest, payload) { return !!destUrl(dest, payload); }
 
-function destUnavailableReason(dest) {
-  if (destOverride(dest.id)) {
+function destUnavailableReason(dest, payload) {
+  if (dest.cannotTake) {
+    const why = dest.cannotTake(payload);
+    if (why) return why;
+  }
+  if (destOverride(dest.id) && !dest.external) {
     return 'Its configured address is on another origin, which cannot receive a hand-off from this page.';
   }
   return 'Not wired up yet.';
@@ -364,6 +430,14 @@ const SINKS = [
       warn: false,
       text: 'Not signed in — this capture stays in this browser.',
     }),
+    /** Single-table replays are not club games and must not be archived as
+     *  though they were. They carry no date and no event name, so eventKeyOf
+     *  falls back to `unknown|...` — every replay would upsert onto the SAME row
+     *  and overwrite the last one (Bridge-Classroom#395). Silently corrupting
+     *  the archive is a worse outcome than not saving a single board. */
+    declines: ({ envelopes }) => isSingleTableReplay(envelopes)
+      ? { warn: false, text: 'Single-board replay — not added to your club-game archive.' }
+      : null,
     async run({ envelopes }) {
       const owner = bcCurrentUserId();
 
@@ -468,19 +542,55 @@ const OPENERS = [
   {
     id: 'solver',
     label: 'Double-dummy solver',
-    blurb: 'Solve and compare every board.',
-    /** Declared but not wired: the solver app has no agreed entry contract and no
-     *  route on this site yet, so it has no `path`. Point it somewhere
-     *  same-origin to develop against:
-     *    localStorage.setItem('bc-ingest-solver-url', '/solver/?ingest') */
-    path: null,
-    async stage({ envelopes }) {
-      sessionStorage.setItem('pending-solver', JSON.stringify(envelopes));
+    blurb: 'Replay the hand and see every line.',
+    /** Cross-origin, and legitimately so: the payload rides in the URL rather
+     *  than through sessionStorage. The solver reads the first non-empty of
+     *  `hand`, `lin`, `pbn`, `url`, `board` from the query (or after the hash),
+     *  so `?lin=` is its documented front door.
+     *
+     *  Pinned to `.org`: as of 2026-08-08 no solver exists on `.com`, so this
+     *  does NOT mirror the page's TLD the way bcApiBase() does. A `.com` visitor
+     *  is therefore sent to `.org`, which is tolerable because `.org` is the
+     *  Norton *fallback* domain rather than the blocked one.
+     *
+     *  TODO: solver.bridge-classroom.com is expected. Once it exists, mirror the
+     *  page host here exactly as bcApiBase() does, and delete this note —
+     *  otherwise a `.com` user keeps being bounced across domains for no reason.
+     *
+     *  Override for dev with:
+     *    localStorage.setItem('bc-ingest-solver-url', 'http://localhost:5173/') */
+    external: 'https://solver.bridge-classroom.org/',
+    target({ envelopes }, base) {
+      if (!isSingleTableReplay(envelopes)) return '';
+      const lin = linFromEnvelope(envelopes[0]);
+      if (!lin) return '';
+      const sep = base.includes('?') ? '&' : '?';
+      return `${base}${sep}lin=${encodeURIComponent(lin)}`;
     },
+    cannotTake({ envelopes }) {
+      if (!isSingleTableReplay(envelopes)) {
+        return 'The solver takes one board at a time, and this capture holds a whole field.';
+      }
+      if (!linFromEnvelope(envelopes[0])) {
+        return 'This capture has no hand-viewer link, so there is no hand to replay.';
+      }
+      return '';
+    },
+    // Nothing to stage: the hand travels in the URL.
+    async stage() {},
   },
 ];
 
 const DEFAULT_OPENER = 'analysis';
+
+/** Which destination a delivery goes to when the URL didn't say.
+ *
+ *  A single-table replay has no field to compare against, so routing it to the
+ *  analyzer would show a board with nothing to say about it. An explicit ?to=
+ *  still wins over this. */
+function defaultOpenerFor(payload) {
+  return isSingleTableReplay(payload.envelopes) ? 'solver' : DEFAULT_OPENER;
+}
 
 // ---- Protocol state ----
 let settled = false;              // a terminal state has been reached
@@ -751,10 +861,10 @@ async function dispatch(payload) {
       );
       return;
     }
-    if (!destAvailable(opener)) {
+    if (!destAvailable(opener, payload)) {
       fail(
         `${opener.label} cannot take this capture right now.`,
-        destUnavailableReason(opener)
+        destUnavailableReason(opener, payload)
       );
       return;
     }
@@ -767,13 +877,24 @@ async function dispatch(payload) {
     return;
   }
 
-  const fallback = OPENERS.find((o) => o.id === DEFAULT_OPENER);
-  await runOpener(fallback, payload, reports);
+  const chosen = OPENERS.find((o) => o.id === defaultOpenerFor(payload));
+  if (!destAvailable(chosen, payload)) {
+    // Auto-routing picked a destination that then declined. Say why rather than
+    // silently falling back to a consumer that cannot use this data either.
+    fail(
+      `${chosen.label} cannot take this capture.`,
+      destUnavailableReason(chosen, payload)
+    );
+    return;
+  }
+  await runOpener(chosen, payload, reports);
 }
 
 async function runSinks(payload) {
   const reports = [];
   for (const sink of SINKS) {
+    const declined = sink.declines?.(payload);
+    if (declined) { reports.push(declined); continue; }
     if (!sink.available()) {
       const note = sink.unavailable?.();
       if (note) reports.push(note);
@@ -801,8 +922,8 @@ function showPicker(payload, reports) {
     : `${s.boards} boards, ${s.results} results.`;
   renderReports($('choose-reports'), reports);
   $('choose-list').innerHTML = OPENERS.map((o) => {
-    const ok = destAvailable(o);
-    const why = ok ? o.blurb : destUnavailableReason(o);
+    const ok = destAvailable(o, payload);
+    const why = ok ? o.blurb : destUnavailableReason(o, payload);
     return `<button class="dest" data-id="${o.id}"${ok ? '' : ' disabled'}>` +
       `<span class="dest-name">${escapeHtml(o.label)}</span><br>` +
       `<span class="dest-blurb">${escapeHtml(why)}</span></button>`;
@@ -822,7 +943,7 @@ function showPicker(payload, reports) {
 
 async function runOpener(opener, payload, reports) {
   showBusy(`Opening ${opener.label}…`, '');
-  const target = destUrl(opener);
+  const target = destUrl(opener, payload);
   try {
     await opener.stage(payload);
   } catch (e) {
@@ -873,10 +994,13 @@ function renderDone(payload, opener, target, reports) {
     `<div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`
   ).join('');
 
-  // Coverage decides what the analysis can honestly claim: matchpoints and
-  // declarer-vs-field are only meaningful across a whole field.
+  // Coverage decides what the ANALYSIS can honestly claim: matchpoints and
+  // declarer-vs-field are only meaningful across a whole field. Irrelevant to a
+  // destination that doesn't compare against one, where it reads as a fault
+  // rather than a caveat.
   const extra = [...reports];
-  if (s.coverage.results.length && !s.coverage.results.includes('all-tables')) {
+  const comparesToField = opener.id === 'analysis';
+  if (comparesToField && s.coverage.results.length && !s.coverage.results.includes('all-tables')) {
     extra.push({ warn: true,
       text: `Results cover ${s.coverage.results.join(', ')} — field comparisons will be limited.` });
   }
