@@ -66,7 +66,7 @@
 <div class="hero">
   <h1>Privacy Policy</h1>
   <p>Bridge Classroom is a free, open-source platform for learning and teaching the card game of bridge. We collect as little as possible, never sell your data, and never share it without your consent.</p>
-  <div class="hero-updated">Last updated: July 29, 2026</div>
+  <div class="hero-updated">Last updated: August 8, 2026</div>
 </div>
 
 <div class="content">
@@ -85,6 +85,7 @@
         <li><strong>Email address</strong> &#8212; used to save your practice history across devices and to recover your account if you lose access.</li>
       </ul>
       <p>As you practice, the app records your <strong>practice activity</strong> (which deals you played and how you did) so it can show your progress and, if you join a class, share your progress with your teacher. We do not collect payment information and we serve no downloads.</p>
+      <p>One thing you can bring with you does contain other people's details: a <strong>club game you analyze</strong> lists everyone who played in it, by name and ACBL number, because that is how the ACBL publishes results. See <a href="#extension">the browser extension</a> below.</p>
       <p>Two things are recorded automatically rather than typed in by you:</p>
       <ul>
         <li><strong>The kind of device and browser you signed in on</strong> &#8212; broad categories such as &#8220;iPad&#8221; and &#8220;Safari,&#8221; stored alongside your sign-in. This tells us how many people use tablets versus computers, and helps us spot problems that affect only one browser (for example, a change to how Safari stores data that logs people out early). We <strong>do not store your IP address</strong> and we do not keep the detailed browser string that could be used to fingerprint your device.</li>
@@ -99,6 +100,23 @@
       <p>Your practice activity is <strong>end-to-end encrypted</strong>. It is encrypted on your device before it is sent to our server, which means it cannot be read in transit or at rest by anyone &#8212; including us &#8212; except you and any teacher you have explicitly chosen to share it with.</p>
       <p>Sharing your progress with a teacher is always something <strong>you opt into</strong> by joining their class. You can <strong>leave a class at any time</strong> from your settings, which stops your teacher from seeing your progress on new work.</p>
       <p>If you add friends, they can see whether you are <strong>currently online</strong> and whether you are at a table or practicing &#8212; the same way any online game shows who is around to play. This is never stored: it exists only while you have the site open and disappears when you close it. You can appear offline at any time using the <strong>invisible</strong> setting, and your friends are simply shown that you are offline.</p>
+    </div>
+  </div>
+
+  <div class="section-block" id="extension">
+    <div class="section-head"><span class="section-icon">&#129513;</span><h2>The browser extension</h2></div>
+    <div class="prose">
+      <p><strong>Bridge Classroom Fetch</strong> is our browser extension. On a results page you are already looking at &#8212; ACBL tournament results, an ACBL club game, or Bridge Base Online &#8212; it adds a button that reads that game's results and hands them to Bridge Classroom, saving you from downloading files or clicking through every board by hand.</p>
+      <p>The extension is a courier, not a consumer. It keeps nothing, learns nothing about you, and sends results to no one but this site. What it reads, and how briefly it holds it, is set out in its own <a href="https://github.com/bridge-craftwork/bridge-classroom-fetch/blob/main/PRIVACY.md" target="_blank" rel="noopener">extension privacy policy</a>. This section covers what happens <strong>after</strong> the results arrive here.</p>
+      <p><strong>What arrives.</strong> One game's results: contracts, declarers, tricks taken, scores, matchpoint or IMP comparisons, the deals themselves, and the player identifiers the source site publishes. From the ACBL sites that means players' names and ACBL numbers, because those sites publish them and naming the players is the point of the analysis. From Bridge Base Online it means usernames only &#8212; the extension deliberately requests those pages signed out, so Bridge Base withholds other players' real names.</p>
+      <p><strong>If you are not signed in</strong>, the results never reach our server. They are passed from one page to the next inside your own browser and are gone when you close the tab. You can analyze a game start to finish without an account.</p>
+      <p><strong>If you are signed in</strong>, the game is also saved to your Bridge Classroom account, so it is waiting for you on your other devices. Two things are worth being plain about:</p>
+      <ul>
+        <li>Unlike your practice activity, saved club games are <strong>not end-to-end encrypted</strong>. They are stored as they were sent, which means we are technically able to read them. They are never sold, shared, or used for anything but showing you your own games.</li>
+        <li>A saved game <strong>includes the other players at your club</strong>, by name and ACBL number, exactly as the ACBL published them. You can delete any saved game at any time, and delete your account and everything in it by emailing us.</li>
+      </ul>
+      <p><strong>Where the analysis happens.</strong> The analysis itself runs in your browser. Double-dummy results &#8212; what each contract could have made against perfect play &#8212; either arrive with the results the ACBL published or are computed on your own device; no outside solver is involved. When you open a board, the deal is also sent to our own bidding service to show the auction a robot would have bid with those cards. That request carries <strong>the cards, the dealer, and the vulnerability, and nothing else</strong> &#8212; no names, no usernames, no account details. It goes to a service we run, not to another company, and the same thing happens with a game you upload by hand.</p>
+      <p><strong>Analytics.</strong> The pages that receive and analyze your results carry no page-view counter at all.</p>
     </div>
   </div>
 
