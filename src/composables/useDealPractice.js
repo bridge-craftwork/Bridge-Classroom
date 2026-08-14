@@ -467,6 +467,14 @@ export function useDealPractice() {
   })
 
   // ==================== METHODS: Visibility & Plays ====================
+  // A [PLAY] group that lists a seat's whole 13-card hand is not trick history — it is
+  // the lesson's complete play-out record, which the two-phase [ROTATE] boards carry on
+  // the very step that asks the student to "Make a Plan". Striking those cards through
+  // would show a hand already played before the planning has begun; the source lesson
+  // shows it intact. Trick history never comes near a full hand — across the corpus the
+  // biggest genuine group is 9 cards, and every 13-card group belongs to a rotate board.
+  const FULL_HAND = 13
+
   function updateVisibilityAndPlays() {
     // Recalculate played cards by walking steps
     playedCards.value = { N: [], E: [], S: [], W: [] }
@@ -475,8 +483,8 @@ export function useDealPractice() {
       const step = stepsList[i]
       if (!step?.plays?.length) continue
       for (const playStr of step.plays) {
-        const plays = playStr.split(/[,\s]+/)
-        for (const play of plays) {
+        const bySeat = { N: [], E: [], S: [], W: [] }
+        for (const play of playStr.split(/[,\s]+/)) {
           if (!play) continue
           const match = play.trim().match(/^([NESW]):([SHDC])(.+)$/i)
           if (match) {
@@ -484,8 +492,12 @@ export function useDealPractice() {
             const suit = match[2].toUpperCase()
             let card = match[3].toUpperCase()
             if (card === '10') card = 'T'
-            playedCards.value[seat].push({ suit, card })
+            bySeat[seat].push({ suit, card })
           }
+        }
+        for (const seat of ['N', 'E', 'S', 'W']) {
+          if (bySeat[seat].length >= FULL_HAND) continue
+          playedCards.value[seat].push(...bySeat[seat])
         }
       }
     }

@@ -95,6 +95,25 @@ describe('useDealPractice — [ROTATE] table turn', () => {
     expect(dp.struckCards.value.N).toBeUndefined()
   })
 
+  it('does not strike a whole hand out on the "make a plan" step', () => {
+    // The real boards carry the complete play-out on that step — all 13 of declarer's
+    // cards and all 13 of dummy's. That is a record of the play to come, not tricks
+    // already gathered, so the hands must still be shown intact for planning.
+    const fullPlay = ROTATE_PBN.replace(
+      '[PLAY N:S9,N:S2,N:HK]',
+      '[PLAY N:S9,N:S2,N:HK,N:HQ,N:HJ,N:HT,N:H6,N:H3,N:D8,N:D3,N:C9,N:C6,N:C2,' +
+      'S:SA,S:SK,S:S4,S:S3,S:HA,S:H5,S:H2,S:DA,S:D7,S:D6,S:D2,S:CK,S:C4]'
+    )
+    const dp2 = useDealPractice()
+    dp2.loadDeal(parsePbn(fullPlay)[0])
+    dp2.makeBid('4H')
+    dp2.advance()
+
+    expect(dp2.frameTurned.value).toBe(true)
+    expect(dp2.struckCards.value).toEqual({})
+    expect(hearts(dp2.hands.value.S)).toBe('KQJT63')
+  })
+
   it('turns back when the reader steps back over the rotate', () => {
     dp.makeBid('4H')
     dp.advance()
