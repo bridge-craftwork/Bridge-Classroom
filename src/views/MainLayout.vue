@@ -112,10 +112,10 @@
 
             <DealInfo
               :boardNumber="currentDeal?.displayNumber"
-              :dealer="currentDeal?.dealer"
+              :dealer="practice.displayDealer.value"
               :vulnerable="currentDeal?.vulnerable"
               :contract="currentDeal?.contract"
-              :declarer="currentDeal?.declarer"
+              :declarer="practice.displayDeclarer.value"
               :showContract="isDeclarerPlay || practice.auctionState.auctionComplete || practice.showOpeningLead.value || (practice.hasSteps.value && !practice.hasBidSteps.value)"
               :openingLead="practice.showOpeningLead.value ? currentDeal?.openingLead : ''"
               :totalDeals="deals.length"
@@ -169,7 +169,7 @@
             <AuctionTable
               v-if="practice.showAuctionTable.value"
               :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
-              :dealer="currentDeal?.dealer || 'N'"
+              :dealer="practice.displayAuctionDealer.value"
               :currentBidIndex="practice.hasBidSteps.value ? practice.auctionState.currentBidIndex : -1"
               :wrongBidIndex="practice.auctionState.wrongBidIndex"
               :correctBidIndex="practice.auctionState.correctBidIndex"
@@ -268,7 +268,7 @@
                     class="instruction-btn primary"
                     @click="practice.advance()"
                   >
-                    {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
+                    {{ isRotateStep(practice.currentStep.value) ? 'Rotate' : 'Next' }} →
                   </button>
                   <!-- Next Deal button when complete -->
                   <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">
@@ -352,7 +352,7 @@
               :hide-played-cards="isDeclarerPlay"
               :hero-seat="gridHeroSeat"
               :hero-name="firstName"
-              :declarer="currentDeal?.declarer"
+              :declarer="isDeclarerPlay ? currentDeal?.declarer : practice.displayDeclarer.value"
               @card-click="onGridCardClick"
             >
               <!-- NW: compact board·dealer·vul glyph (+ contract/result in play/review).
@@ -362,7 +362,7 @@
                 <div class="a1-grid-nw">
                   <BoardIndicator
                     :board-number="currentDeal?.displayNumber || 1"
-                    :dealer="currentDeal?.dealer || null"
+                    :dealer="practice.displayDealer.value || null"
                     :vulnerable="currentDeal?.vulnerable || null"
                     :size="A1_BOARD_SIZE"
                   />
@@ -397,7 +397,7 @@
                 <div v-else-if="practice.showAuctionTable.value && !companionAuction" class="a1-center-auction">
                   <AuctionTable
                     :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
-                    :dealer="currentDeal?.dealer || 'N'"
+                    :dealer="practice.displayAuctionDealer.value"
                     :currentBidIndex="practice.hasBidSteps.value ? practice.auctionState.currentBidIndex : -1"
                     :wrongBidIndex="practice.auctionState.wrongBidIndex"
                     :correctBidIndex="practice.auctionState.correctBidIndex"
@@ -408,7 +408,7 @@
               <!-- NE: the completed auction pinned during declarer play. -->
               <template v-if="pinnedAuction" #ne>
                 <div class="a1-grid-ne">
-                  <AuctionTable :bids="currentDeal?.auction || []" :dealer="currentDeal?.dealer || 'N'" :currentBidIndex="-1" />
+                  <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :currentBidIndex="-1" />
                 </div>
               </template>
               <!-- SE (hero's corner): the bidding box, clustered with the hand. -->
@@ -429,7 +429,7 @@
             <!-- Defence scenes: the completed auction rides atop the companion (above the
                  narrative), matching prod, instead of pinned tiny at NE. -->
             <div v-if="companionAuction" class="a1-companion-auction">
-              <AuctionTable :bids="currentDeal?.auction || []" :dealer="currentDeal?.dealer || 'N'" :currentBidIndex="-1" />
+              <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :currentBidIndex="-1" />
             </div>
             <!-- Blue context ribbon (the bridgeContext note that lived in DealInfo before
                  #nw went compact) — reunited with the coaching prose it belongs beside. -->
@@ -475,7 +475,7 @@
                   <button
                     v-if="!practice.isComplete.value && (practice.bidAnswered.value || (!practice.hasBidPrompt.value && !practice.hasCardChoice.value && practice.currentStep.value && practice.currentStep.value.type !== 'end'))"
                     class="instruction-btn primary" @click="practice.advance()">
-                    {{ practice.currentStep.value?.type === 'rotate' ? 'Rotate' : 'Next' }} →
+                    {{ isRotateStep(practice.currentStep.value) ? 'Rotate' : 'Next' }} →
                   </button>
                   <button v-if="practice.isComplete.value && currentDealIndex < deals.length - 1" class="next-deal-btn" @click="nextDeal">Next Deal →</button>
                 </div>
@@ -570,7 +570,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { parsePbn, getDealTitle } from '../utils/pbnParser.js'
+import { parsePbn, getDealTitle, isRotateStep } from '../utils/pbnParser.js'
 import { stripControlDirectives, colorizeSuits, flowText, formatBid } from '../utils/cardFormatting.js'
 import { useDealPractice } from '../composables/useDealPractice.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
@@ -717,11 +717,16 @@ const companionAuction = computed(() => defenceScene.value && hasCompletedAuctio
 // the arranger's ~89px status reserve — unlike the full-width DealInfo, which overflowed
 // the column and occluded the auction. Same shape A1Scene uses. Nav lives in the
 // BoardMasteryStrip above the grid, not the corner.
+// Dealer and declarer come from the practice display frame, not the raw deal: after a
+// [ROTATE] the table has turned, and the strip has to name the seats the hands are
+// actually drawn at ("4♥ by S", matching the authored "South plays 4♥") — #400.
 const { status: gridStatus } = useTableStatus({
   phase: gridPhase,
-  dealer: computed(() => currentDeal.value?.dealer),
+  dealer: computed(() => practice.displayDealer.value),
   vulnerable: computed(() => currentDeal.value?.vulnerable),
-  contract: computed(() => (currentDeal.value?.contract ? { text: currentDeal.value.contract, declarer: currentDeal.value.declarer } : null)),
+  contract: computed(() => (currentDeal.value?.contract
+    ? { text: currentDeal.value.contract, declarer: practice.displayDeclarer.value }
+    : null)),
   tricks: computed(() => (isDeclarerPlay.value ? cardplay.tricksTaken.value : { NS: 0, EW: 0 })),
   // Only a declarer-play lesson is actually played to a result; a bidding or
   // defence walkthrough would otherwise derive one from its zeroed tricks.

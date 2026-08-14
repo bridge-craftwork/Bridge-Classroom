@@ -1,5 +1,5 @@
 import { ref, computed, reactive } from 'vue'
-import { getSeatForBid } from '../utils/pbnParser.js'
+import { getSeatForBid, isRotateStep, turnSeat, turnSeatKeys } from '../utils/pbnParser.js'
 import { useObservationStore } from './useObservationStore.js'
 
 /**
@@ -78,6 +78,25 @@ export function useDealPractice() {
     }
     return 0
   })
+
+  // ==================== COMPUTED: Table frame ([ROTATE]) ====================
+  // Two-phase lessons bid one hand, then turn the table so the student plays partner's
+  // hand as declarer. The deal itself is held in the [Student] frame throughout — the
+  // parser settles it there (normalizeRotateFrame) — so bid binding, observations and
+  // the recorded student hand all stay in the frame the student was sitting in.
+  //
+  // Once the reader advances PAST the rotate step we present the same deal turned 180°.
+  // The student's new hand comes up at the bottom, still called South, which is what
+  // makes the authored play-phase prose ("South plays 4♥") true. Nothing about the
+  // student's seat changes — the table turns under them. Issue #400.
+  const rotateStepIndex = computed(() => steps.value.findIndex(isRotateStep))
+  const frameTurned = computed(() => {
+    const idx = rotateStepIndex.value
+    return idx !== -1 && currentStepIndex.value > idx
+  })
+  const turnedSeat = (seat) => (frameTurned.value ? turnSeat(seat) : seat)
+  const turnedMap = (map) => (frameTurned.value ? turnSeatKeys(map) : map)
+  const turnedList = (list) => (frameTurned.value && list ? list.map(turnSeat) : list)
 
   // ==================== COMPUTED: Bidding ====================
   const studentSeat = computed(() => currentDeal.value?.studentSeat || 'S')
@@ -373,6 +392,20 @@ export function useDealPractice() {
     return out
   })
 
+  // ==================== COMPUTED: Display frame ====================
+  // Everything above is computed in the deal's [Student] frame. These are the only
+  // things the table sees, and they are the single place the 180° turn is applied —
+  // so the turn cannot be half-applied, and no consumer has to know about it.
+  const displayHands = computed(() => turnedMap(hands.value))
+  const displayHiddenSeats = computed(() => turnedList(effectiveHiddenSeats.value))
+  const displayStruckCards = computed(() => turnedMap(struckCards.value))
+  const displayShowcardsPlayed = computed(() => turnedMap(showcardsPlayedCards.value))
+  const displayShowcards = computed(() => turnedMap(currentShowcards.value))
+  const displayDealer = computed(() => turnedSeat(currentDeal.value?.dealer || 'N'))
+  const displayAuctionDealer = computed(() =>
+    turnedSeat(currentDeal.value?.auctionDealer || currentDeal.value?.dealer || 'N'))
+  const displayDeclarer = computed(() => turnedSeat(currentDeal.value?.declarer || ''))
+
   // Show HCP?
   const showHcp = computed(() => {
     if (hasBidSteps.value && !auctionState.auctionComplete) return false
@@ -434,6 +467,14 @@ export function useDealPractice() {
   })
 
   // ==================== METHODS: Visibility & Plays ====================
+  // A [PLAY] group that lists a seat's whole 13-card hand is not trick history — it is
+  // the lesson's complete play-out record, which the two-phase [ROTATE] boards carry on
+  // the very step that asks the student to "Make a Plan". Striking those cards through
+  // would show a hand already played before the planning has begun; the source lesson
+  // shows it intact. Trick history never comes near a full hand — across the corpus the
+  // biggest genuine group is 9 cards, and every 13-card group belongs to a rotate board.
+  const FULL_HAND = 13
+
   function updateVisibilityAndPlays() {
     // Recalculate played cards by walking steps
     playedCards.value = { N: [], E: [], S: [], W: [] }
@@ -442,8 +483,8 @@ export function useDealPractice() {
       const step = stepsList[i]
       if (!step?.plays?.length) continue
       for (const playStr of step.plays) {
-        const plays = playStr.split(/[,\s]+/)
-        for (const play of plays) {
+        const bySeat = { N: [], E: [], S: [], W: [] }
+        for (const play of playStr.split(/[,\s]+/)) {
           if (!play) continue
           const match = play.trim().match(/^([NESW]):([SHDC])(.+)$/i)
           if (match) {
@@ -451,8 +492,12 @@ export function useDealPractice() {
             const suit = match[2].toUpperCase()
             let card = match[3].toUpperCase()
             if (card === '10') card = 'T'
-            playedCards.value[seat].push({ suit, card })
+            bySeat[seat].push({ suit, card })
           }
+        }
+        for (const seat of ['N', 'E', 'S', 'W']) {
+          if (bySeat[seat].length >= FULL_HAND) continue
+          playedCards.value[seat].push(...bySeat[seat])
         }
       }
     }
@@ -992,17 +1037,24 @@ export function useDealPractice() {
     hasCardChoice,
     currentChooseCard,
 
-    // Computed: Display
-    hiddenSeats: effectiveHiddenSeats,
-    hands,
+    // Computed: Display — all in the display frame (turned after [ROTATE])
+    hiddenSeats: displayHiddenSeats,
+    hands: displayHands,
     showHcp,
-    showcardsPlayedCards,
-    struckCards,
+    showcardsPlayedCards: displayShowcardsPlayed,
+    struckCards: displayStruckCards,
+    // The table frame. `frameTurned` is true once the reader is past the rotate step;
+    // the display dealer/declarer follow it so the auction columns and the "4♥ by S"
+    // badge name the same seats the hands are drawn at.
+    frameTurned,
+    displayDealer,
+    displayAuctionDealer,
+    displayDeclarer,
     // All showcards (each seat's shown/played cards), incl. played-card-only seats
     // (E/S in a defence scene). The grid arranger uses this to render those cards as a
     // centre trick and hide the played-card-only seats, instead of scattering them as
     // tiny floored seats (a1 grid-flip: defensive-signals trick composition).
-    currentShowcards,
+    currentShowcards: displayShowcards,
     isComplete,
 
     // Computed: Auction & Lead

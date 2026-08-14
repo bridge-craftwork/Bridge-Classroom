@@ -104,11 +104,7 @@ export function parsePbn(pbnContent) {
       if (tagName === 'Board') {
         // Save previous deal if exists
         if (currentDeal) {
-          currentDeal.commentary = formatCommentary(currentCommentary)
-          currentDeal.steps = parseUnifiedSteps(currentCommentary)
-          currentDeal.auction = trimAuction(currentDeal.auction)
-          currentDeal.playCoaching = parsePlayCoaching(currentCommentary)
-          currentDeal.isDeclarerPlay = !!currentDeal.playLine
+          finalizeDeal(currentDeal, currentCommentary)
           deals.push(currentDeal)
         }
         // Start new deal
@@ -195,11 +191,7 @@ export function parsePbn(pbnContent) {
   // Don't forget the last deal
   if (currentDeal) {
     if (inPlaySection) finalizePlayLine(currentDeal, playLeader, playRows)
-    currentDeal.commentary = formatCommentary(currentCommentary)
-    currentDeal.steps = parseUnifiedSteps(currentCommentary)
-    currentDeal.auction = trimAuction(currentDeal.auction)
-    currentDeal.playCoaching = parsePlayCoaching(currentCommentary)
-    currentDeal.isDeclarerPlay = !!currentDeal.playLine
+    finalizeDeal(currentDeal, currentCommentary)
     deals.push(currentDeal)
   }
 
@@ -346,6 +338,13 @@ function parseUnifiedSteps(commentaryParts) {
       const type = nextMatch ? 'next' : 'rotate'
       if (textBuffer.trim()) {
         steps.push(parseStepContent(textBuffer.trim(), type))
+      } else if (rotateMatch && steps.length) {
+        // A [ROTATE] with no text of its own — the usual Baker Bridge shape, where it
+        // follows a [BID]'s explanation ("…North would play 4♥. Click [ROTATE]"). The
+        // explanation was already consumed into the bid step, so there is no buffer
+        // left to make a step from and the tag used to be dropped outright. Hang it on
+        // the step whose button performs the turn instead (#400).
+        steps[steps.length - 1].rotateAfter = true
       }
       textBuffer = ''
 
@@ -513,6 +512,135 @@ function parseStepContent(text, action) {
 }
 
 /**
+ * Turning the table puts you in partner's chair, which is a 180° rotation of all four
+ * seats — N↔S *and* E↔W. It has to be the whole table, not just the two partners: the
+ * auction and the play run clockwise, and swapping one pair alone would reverse that
+ * order and put partner's overcall after the opponents instead of before them.
+ */
+export const OPPOSITE_SEAT = { N: 'S', S: 'N', E: 'W', W: 'E' }
+
+/**
+ * Is this the step whose button turns the table? Either the [ROTATE] made a step of
+ * its own (it had text before it) or it was hung on the preceding step as
+ * `rotateAfter`. Advancing FROM such a step is what performs the turn.
+ */
+export function isRotateStep(step) {
+  return !!step && (step.type === 'rotate' || step.rotateAfter === true)
+}
+
+/** The seat opposite this one. Unknown/blank seats pass through untouched. */
+export function turnSeat(seat) {
+  return OPPOSITE_SEAT[seat] || seat
+}
+
+/** Re-key a { seat: value } map through the 180° turn. */
+export function turnSeatKeys(map) {
+  if (!map) return map
+  const out = {}
+  for (const [seat, value] of Object.entries(map)) out[turnSeat(seat)] = value
+  return out
+}
+
+// Compare calls the way the practice engine does when it binds [BID] to the auction:
+// suit glyphs back to letters, Pass/X/XX folded to one spelling.
+function callKey(call) {
+  if (!call) return ''
+  const upper = String(call)
+    .replace(/!/g, '')
+    .replace(/♠/g, 'S').replace(/♥/g, 'H').replace(/♦/g, 'D').replace(/♣/g, 'C')
+    .toUpperCase()
+  if (upper === 'PASS' || upper === 'P') return 'PASS'
+  if (upper === 'X' || upper === 'DBL' || upper === 'DOUBLE') return 'X'
+  if (upper === 'XX' || upper === 'RDBL' || upper === 'REDOUBLE') return 'XX'
+  return upper.replace(/(\d)N$/, '$1NT')
+}
+
+function isSubsequence(needles, hay) {
+  let i = 0
+  for (const h of hay) if (i < needles.length && h === needles[i]) i++
+  return i === needles.length
+}
+
+function callsAtSeat(deal, seat) {
+  const dealer = deal.auctionDealer || deal.dealer
+  if (!dealer) return []
+  return (deal.auction || [])
+    .filter((_, i) => getSeatForBid(i, dealer) === seat)
+    .map(callKey)
+}
+
+/**
+ * Two-phase Baker Bridge lessons ([ROTATE]): the student bids one hand, the table
+ * turns, and they play partner's hand as declarer.
+ *
+ * The generator emits these boards in TWO frames. `[Deal]`, `[Auction]` and
+ * `[Declarer]` come out already turned — the post-rotate frame, where the phase-2
+ * prose "South plays 4♥" reads true — while `[Student]` and the `[PLAY]` directives
+ * stay in the pre-rotate frame the bidding phase is written in. (bbparse.py rotates
+ * the hands but never calls its own `rotate_seat_180_degrees()`; Baker-Bridge#36.)
+ *
+ * Two frames in one board is what broke them: the bidding phase narrated a hand the
+ * student was not holding ("you have 19 points" beside a 6-count), and `[BID]` found
+ * no matching call at `[Student]`'s seat, so no bidding box appeared (Baker-Bridge#37).
+ *
+ * We settle the deal into the ONE frame its directives already use — the `[Student]`
+ * frame — so everything the app records (observations, the reported deal) is in the
+ * frame the student was actually sitting in. The play phase is put back on screen by
+ * a display-only swap at the rotate step (`frameSwapped` in useDealPractice), which
+ * is what keeps the authored "South plays 4♥" true. Issue #400.
+ */
+function dealIsTurned(deal) {
+  if (!deal.steps?.some(isRotateStep)) return false
+
+  // Prefer evidence to assumption. If the pre-rotate [BID] targets already appear, in
+  // order, among the calls at [Student]'s seat, the board is in the [Student] frame
+  // and there is nothing to undo — so this stays correct if the generator is ever
+  // fixed to stop turning the deal. Only a board whose targets bind at PARTNER's seat
+  // instead is actually turned.
+  const targets = []
+  for (const step of deal.steps) {
+    if (step.type === 'bid' && step.bid) targets.push(callKey(step.bid))
+    if (isRotateStep(step)) break
+  }
+  const student = deal.studentSeat || 'S'
+  if (targets.length) {
+    const bindsAsDealt = isSubsequence(targets, callsAtSeat(deal, student))
+    const bindsTurned = isSubsequence(targets, callsAtSeat(deal, turnSeat(student)))
+    if (bindsAsDealt !== bindsTurned) return bindsTurned
+  }
+  // No usable evidence (no [BID] before the rotate, or the calls bind at both seats /
+  // neither). Fall back to what the generator does today: a board that rotates was
+  // emitted turned.
+  return true
+}
+
+/**
+ * Turn a board back into its [Student] frame, in place: every seat-bearing field goes
+ * through the 180° map, which puts the student back in the chair [Student] names and
+ * leaves the auction running in its recorded order.
+ */
+function normalizeRotateFrame(deal) {
+  if (!dealIsTurned(deal)) return
+  deal.hands = turnSeatKeys(deal.hands)
+  deal.dealer = turnSeat(deal.dealer)
+  deal.declarer = turnSeat(deal.declarer)
+  if (deal.auctionDealer) deal.auctionDealer = turnSeat(deal.auctionDealer)
+  if (deal.openingLeader) deal.openingLeader = turnSeat(deal.openingLeader)
+  // `dealString` is deliberately NOT rewritten — it is the raw [Deal] tag and the
+  // stable key the Report button quotes back to the content repo.
+  deal.frameNormalized = true
+}
+
+function finalizeDeal(deal, commentaryParts) {
+  deal.commentary = formatCommentary(commentaryParts)
+  deal.steps = parseUnifiedSteps(commentaryParts)
+  deal.auction = trimAuction(deal.auction)
+  deal.playCoaching = parsePlayCoaching(commentaryParts)
+  deal.isDeclarerPlay = !!deal.playLine
+  normalizeRotateFrame(deal)
+}
+
+/**
  * Create an empty deal object with default values
  */
 function createEmptyDeal() {
@@ -541,7 +669,10 @@ function createEmptyDeal() {
     bridgeContext: '',    // File-level %bridge-context: convention/carding summary
     // ADR-0001 board identity / prerelease
     stable: false,            // From %bridge-classroom-stable + [Stable]; default not stable
-    boardVersionToken: null   // [VersionToken] (legacy: [BoardVersionToken]) — opaque stamp
+    boardVersionToken: null,  // [VersionToken] (legacy: [BoardVersionToken]) — opaque stamp
+    // True when a two-phase [ROTATE] board was put back into its [Student] frame at
+    // parse time (see normalizeRotateFrame). Diagnostic only — nothing branches on it.
+    frameNormalized: false
   }
 }
 
