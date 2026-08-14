@@ -60,11 +60,11 @@ Changes are live at https://practice.harmonicsystems.com within ~2 minutes of pu
 
 PBN lesson files are fetched from the Baker-Bridge repo:
 ```
-https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/{lesson}.pbn
+https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/bridge-classroom/{lesson}.pbn
 ```
 
 To add new lessons:
-1. Add PBN file to Baker-Bridge repo's `Package/` folder
+1. Add PBN file to Baker-Bridge repo's `bridge-classroom/` folder
 2. Update lesson list in `src/components/LessonBrowser.vue` or lesson config
 
 ### Environment Configuration
@@ -404,6 +404,12 @@ HTML Files → bbparse.py → CSV → CSV_to_PBN.py → PBN Files
 
 ### Running the Build
 
+> ⚠️ **Stale — Baker-Bridge's build has moved on.** Since Baker-Bridge#21 Phase B the
+> merge/stamp/manifest steps write a gitignored `Collection/` master, and an `export`
+> phase copies the app's contracted files out to `bridge-classroom/`. The steps below
+> still describe the older `Package/` flow. Baker-Bridge's own `CLAUDE.md` is the
+> authority for its pipeline — check there before running any of this.
+
 ```bash
 cd /Users/rick/Development/GitHub/Baker-Bridge/Tools
 
@@ -481,14 +487,15 @@ Converts CSV data to PBN format with control directives:
 | `Tools/CSV_to_PBN.py` | CSV to PBN converter |
 | `Tools/BakerBridge.csv` | Parsed lesson data (intermediate) |
 | `Tools/pbns/` | Generated PBN files (working) |
-| `Package/` | PBN files served via GitHub raw URLs |
+| `bridge-classroom/` | The app's contracted export — PBN files served via GitHub raw URLs |
+| `Package/` | Frozen orphan, superseded by `bridge-classroom/` (Baker-Bridge#21 Phase B) |
 | `CLAUDE.md` | Build process documentation |
 
 ### How the App Fetches Lessons
 
 The frontend fetches PBN files from:
 ```
-https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/{lesson}.pbn
+https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/bridge-classroom/{lesson}.pbn
 ```
 
 Lesson names are the subfolder names from the original HTML structure (e.g., "Declarer", "Squeeze", "OLead").

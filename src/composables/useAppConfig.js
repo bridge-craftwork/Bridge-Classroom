@@ -128,8 +128,11 @@ const COLLECTIONS = [
     name: 'Baker Bridge',
     description: 'Classic bridge lessons covering bidding conventions and play',
     icon: '♠',
-    tocUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package/toc.json',
-    baseUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/Package',
+    // `bridge-classroom/` is the folder the Baker-Bridge build writes for this
+    // app (Baker-Bridge#21 Phase B). The older `Package/` is frozen and drifted
+    // — do not point back at it (issue #399).
+    tocUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/bridge-classroom/toc.json',
+    baseUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Baker-Bridge/main/bridge-classroom',
     // Repo that receives "Report a Problem" issues for this collection. Its
     // presence makes the collection reportable; the actual routing is done
     // server-side by collection id (reports.rs::repo_for_collection) — keep the

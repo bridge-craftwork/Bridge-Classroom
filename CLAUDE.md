@@ -33,7 +33,11 @@ Bridge Classroom is a bridge (card game) teaching platform with role-based dashb
 - Generates `[show ...]`, `[PLAY ...]`, `[BID ...]`, `[NEXT]` etc. directives
 - Determines hand visibility from actual HTML content
 - Single source of truth for lesson behavior
-- **Local PBN files**: `/Users/rick/Development/GitHub/Baker-Bridge/Package/` (all practice lessons live here)
+- **Local PBN files**: `/Users/rick/Development/GitHub/Baker-Bridge/bridge-classroom/` — the
+  build's contracted export for this app, and what the Baker Bridge collection fetches
+  (`useAppConfig.js`). The sibling `Package/` is a **frozen orphan** from before
+  Baker-Bridge#21 Phase B; it drifted 47% of its boards out of sync before we repointed
+  (issue #399). Never read or write it.
 
 ### Bridge-Classroom (Dumb Renderer)
 - Reads PBN files and follows instructions exactly

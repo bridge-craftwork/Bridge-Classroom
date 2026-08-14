@@ -2,7 +2,7 @@
  * Baker Bridge Master Taxonomy
  *
  * Complete catalog of all skill paths available in Baker Bridge lesson content.
- * Derived from SkillPath tags embedded in PBN files in Baker-Bridge/Package/.
+ * Derived from SkillPath tags embedded in PBN files in Baker-Bridge/bridge-classroom/.
  *
  * Each entry includes:
  *   - path:        The skill path (category/skill_name)
