@@ -2,6 +2,52 @@ import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
 import { apiFetch } from '@/utils/apiFetch.js'
 
+/**
+ * Collapse the duplicate a student sees when ONE exercise reaches them through more
+ * than one classroom they belong to. That is the only duplicate worth hiding.
+ *
+ * It must not collapse a re-assignment. Teachers repeat an exercise across terms, and
+ * each assignment is its own piece of work — progress is stored per assignment_id, not
+ * per exercise — so a fresh assignment of an exercise the class did months ago is a new
+ * thing to do, not a duplicate of the old one.
+ *
+ * Two rules keep those apart:
+ *
+ *  - A CLOSED assignment never takes part. It is history: it shows in the review list
+ *    tagged "Closed" and is filtered out of the active list. Letting it compete used to
+ *    make a repeat vanish outright — the old (worked-through) row won on progress, then
+ *    the active list dropped it for being closed, so the student saw nothing at all.
+ *    That hit the students who had actually done the earlier assignment, and only them,
+ *    which is what made it look arbitrary.
+ *  - Among OPEN assignments, the most recently assigned wins; progress breaks a tie.
+ *    A newly-set assignment is what the student is being asked to do now.
+ */
+export function dedupeStudentAssignments(assignments) {
+  const out = []
+  const openByExercise = new Map()
+
+  for (const a of assignments || []) {
+    if (a.closed_at) {
+      out.push(a)
+      continue
+    }
+    const existing = openByExercise.get(a.exercise_id)
+    if (!existing || beatsForDisplay(a, existing)) {
+      openByExercise.set(a.exercise_id, a)
+    }
+  }
+  return [...openByExercise.values(), ...out]
+}
+
+function beatsForDisplay(candidate, incumbent) {
+  const at = (a) => {
+    const t = Date.parse(a.assigned_at || '')
+    return Number.isNaN(t) ? 0 : t
+  }
+  if (at(candidate) !== at(incumbent)) return at(candidate) > at(incumbent)
+  return (candidate.attempted_boards || 0) > (incumbent.attempted_boards || 0)
+}
+
 // Singleton reactive state
 const studentAssignments = ref([])
 const teacherAssignments = ref([])
@@ -27,16 +73,7 @@ export function useAssignments() {
       }
       const data = await response.json()
       if (data.success) {
-        // Deduplicate by exercise_id — when the same exercise is assigned
-        // through multiple classrooms, keep only one entry with best progress
-        const byExercise = new Map()
-        for (const a of data.assignments) {
-          const existing = byExercise.get(a.exercise_id)
-          if (!existing || a.attempted_boards > existing.attempted_boards) {
-            byExercise.set(a.exercise_id, a)
-          }
-        }
-        studentAssignments.value = Array.from(byExercise.values())
+        studentAssignments.value = dedupeStudentAssignments(data.assignments)
       } else {
         error.value = data.error || 'Failed to fetch assignments'
       }
