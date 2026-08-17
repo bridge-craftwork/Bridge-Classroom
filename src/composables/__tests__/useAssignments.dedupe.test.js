@@ -25,64 +25,53 @@ describe('dedupeStudentAssignments', () => {
   ]
 
   it('keeps a repeat assignment for a student who finished the earlier one', () => {
-    const out = dedupeStudentAssignments(REASSIGNED)
-    expect(out.map(a => a.id)).toContain('new')
+    expect(dedupeStudentAssignments(REASSIGNED).map(a => a.id)).toEqual(['new', 'old'])
   })
 
-  it('keeps the closed earlier assignment too, for the review list', () => {
-    const out = dedupeStudentAssignments(REASSIGNED)
-    expect(out.map(a => a.id).sort()).toEqual(['new', 'old'])
-  })
-
-  it('keeps the repeat for a student who never attempted the earlier one', () => {
-    // This student always saw it (0 vs 0 left the newest in place), which is why the
-    // bug looked like it hit only some of the class.
-    const untouched = [
-      REASSIGNED[0],
-      { ...REASSIGNED[1], attempted_boards: 0 },
-    ]
-    expect(dedupeStudentAssignments(untouched).map(a => a.id)).toContain('new')
-  })
-
-  it('still collapses one exercise reaching a student through two classrooms', () => {
+  it('keeps both when one exercise reaches a student through two classrooms', () => {
+    // Two classrooms, two assignments, two sets of progress — not a duplicate.
     const twoClassrooms = [
       mk({ id: 'a', exercise_id: 'nmf-1', classroom_id: 'noon', assigned_at: '2026-08-14T16:00:00Z', attempted_boards: 0 }),
       mk({ id: 'b', exercise_id: 'nmf-1', classroom_id: 'am', assigned_at: '2026-08-14T16:00:00Z', attempted_boards: 5 }),
     ]
-    const out = dedupeStudentAssignments(twoClassrooms)
-    expect(out).toHaveLength(1)
-    // Same moment, so progress decides — the student sees the work they have done.
-    expect(out[0].id).toBe('b')
+    expect(dedupeStudentAssignments(twoClassrooms).map(a => a.id)).toEqual(['a', 'b'])
   })
 
-  it('prefers the newer of two open assignments of the same exercise', () => {
+  it('keeps both open assignments of one exercise, whatever their dates', () => {
     const both = [
       mk({ id: 'newer', exercise_id: 'nmf-1', assigned_at: '2026-08-14T16:00:00Z', attempted_boards: 0 }),
       mk({ id: 'older', exercise_id: 'nmf-1', assigned_at: '2026-06-01T16:00:00Z', attempted_boards: 8 }),
     ]
-    const out = dedupeStudentAssignments(both)
-    expect(out).toHaveLength(1)
-    expect(out[0].id).toBe('newer')
+    expect(dedupeStudentAssignments(both)).toHaveLength(2)
   })
 
-  it('leaves distinct exercises alone', () => {
-    const distinct = [
-      mk({ id: 'a', exercise_id: 'weak-two', assigned_at: '2026-08-14T16:00:00Z' }),
-      mk({ id: 'b', exercise_id: 'nmf-1', assigned_at: '2026-07-26T20:31:56Z' }),
+  it('preserves the order the server sent (newest first)', () => {
+    const feed = [
+      mk({ id: '1', exercise_id: 'weak-two', assigned_at: '2026-08-14T16:28:16Z' }),
+      mk({ id: '2', exercise_id: 'nfm-2', assigned_at: '2026-07-26T20:31:56Z' }),
+      mk({ id: '3', exercise_id: 'nmf-1', assigned_at: '2026-07-16T04:55:19Z' }),
     ]
-    expect(dedupeStudentAssignments(distinct)).toHaveLength(2)
+    expect(dedupeStudentAssignments(feed).map(a => a.id)).toEqual(['1', '2', '3'])
+  })
+
+  it('collapses the same assignment arriving twice', () => {
+    const doubled = [
+      mk({ id: 'same', exercise_id: 'weak-two', assigned_at: '2026-08-14T16:00:00Z' }),
+      mk({ id: 'same', exercise_id: 'weak-two', assigned_at: '2026-08-14T16:00:00Z' }),
+    ]
+    expect(dedupeStudentAssignments(doubled)).toHaveLength(1)
+  })
+
+  it('keeps rows that carry no id rather than collapsing them together', () => {
+    const idless = [
+      mk({ id: undefined, exercise_id: 'e1', assigned_at: '2026-08-14T16:00:00Z' }),
+      mk({ id: undefined, exercise_id: 'e2', assigned_at: '2026-08-13T16:00:00Z' }),
+    ]
+    expect(dedupeStudentAssignments(idless)).toHaveLength(2)
   })
 
   it('handles an empty or missing list', () => {
     expect(dedupeStudentAssignments([])).toEqual([])
     expect(dedupeStudentAssignments(undefined)).toEqual([])
-  })
-
-  it('does not drop assignments with an unparseable assigned_at', () => {
-    const odd = [
-      mk({ id: 'x', exercise_id: 'e1', assigned_at: 'not-a-date' }),
-      mk({ id: 'y', exercise_id: 'e2', assigned_at: '' }),
-    ]
-    expect(dedupeStudentAssignments(odd)).toHaveLength(2)
   })
 })
