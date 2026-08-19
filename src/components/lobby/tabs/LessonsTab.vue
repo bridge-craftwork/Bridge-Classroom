@@ -22,6 +22,7 @@
 import { computed, onMounted, watch } from 'vue'
 import { useUserStore } from '../../../composables/useUserStore.js'
 import { useAssignments } from '../../../composables/useAssignments.js'
+import { useNewAssignmentAlert } from '../../../composables/useNewAssignmentAlert.js'
 import AssignmentPanel from '../AssignmentPanel.vue'
 import RecentLessons from '../RecentLessons.vue'
 import CollectionGrid from '../CollectionGrid.vue'
@@ -34,18 +35,23 @@ const emit = defineEmits(['select-collection', 'select-assignment', 'resume-less
 
 const userStore = useUserStore()
 const assignmentStore = useAssignments()
+const newAssignmentAlert = useNewAssignmentAlert()
 
 const isStudent = computed(() => (userStore.currentUser.value?.role || 'student') === 'student')
 const hasAssignments = computed(() => assignmentStore.studentAssignments.value.length > 0)
 const assignmentsLoading = computed(() => assignmentStore.loading.value)
 
-function fetchAssignmentsForCurrentUser() {
+async function fetchAssignmentsForCurrentUser() {
   const user = userStore.currentUser.value
   if (user && isStudent.value) {
-    assignmentStore.fetchStudentAssignments(user.id)
+    const data = await assignmentStore.fetchStudentAssignments(user.id)
     // Assignment mastery bars (AssignmentPanel) and RecentLessons now read
     // backend rollups (/api/assignment-status, /api/lesson-mastery) keyed by
     // effectiveUserId — no observation load needed here.
+
+    // The list is on screen, so nothing here is news any more: clear the Lobby
+    // button's new-assignment mark and move the watermark up to what they can see.
+    if (data?.success) newAssignmentAlert.markSeen(user.id, data.assignments)
   }
 }
 
