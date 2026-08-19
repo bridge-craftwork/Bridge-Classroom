@@ -33,7 +33,13 @@
         <button v-if="deals.length && currentCollection" class="lessons-btn" @click="returnToLessons" :title="'Back to ' + getCollection(currentCollection)?.name">
           {{ getCollection(currentCollection)?.name }}
         </button>
-        <button v-if="currentCollection || deals.length" class="lobby-btn" @click="returnToLobby" title="Return to lobby">
+        <button
+          v-if="currentCollection || deals.length"
+          class="lobby-btn"
+          :class="{ 'has-new': newAssignmentAlert.hasNewAssignment.value }"
+          @click="returnToLobby"
+          :title="newAssignmentAlert.hasNewAssignment.value ? 'New assignment waiting — return to lobby' : 'Return to lobby'"
+        >
           Lobby
         </button>
         <div class="stats" v-if="totalCorrect + totalWrong > 0">
@@ -57,8 +63,6 @@
     <main class="app-main">
       <!-- Announcement Banner (site-wide, admin-controlled) -->
       <AnnouncementBanner />
-      <!-- Assignment Banner -->
-      <AssignmentBanner />
       <!-- Lobby when no deals and no collection selected -->
       <LobbyView
         v-if="!deals.length && !currentCollection"
@@ -610,7 +614,6 @@ import DealNavigator from '../components/DealNavigator.vue'
 import FeedbackPanel from '../components/FeedbackPanel.vue'
 import WelcomeScreen from '../components/WelcomeScreen.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
-import AssignmentBanner from '../components/AssignmentBanner.vue'
 import AnnouncementBanner from '../components/AnnouncementBanner.vue'
 import SyncStatus from '../components/SyncStatus.vue'
 import ProgressDashboard from '../components/ProgressDashboard.vue'
@@ -619,6 +622,7 @@ import LessonBrowser from '../components/LessonBrowser.vue'
 import BoardMasteryStrip from '../components/BoardMasteryStrip.vue'
 import IntroPdfViewer from '../components/IntroPdfViewer.vue'
 import LobbyView from './LobbyView.vue'
+import { useNewAssignmentAlert } from '../composables/useNewAssignmentAlert.js'
 import BecomeTeacherModal from '../components/BecomeTeacherModal.vue'
 import ReportProblemModal from '../components/ReportProblemModal.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
@@ -637,6 +641,7 @@ const assignmentsApi = useAssignments()
 
 // Unified practice state - tag-driven, no modes
 const practice = useDealPractice()
+const newAssignmentAlert = useNewAssignmentAlert()
 // Declarer-play lessons (Hold_Up_3N, Finesse_Simple, …) run on the live
 // card-play engine instead of the step walk. Isolated path — the normal bid /
 // choose-card lessons never touch `cardplay`, so Baker Bridge is unaffected.
@@ -1012,6 +1017,13 @@ onMounted(async () => {
 
   assignmentStore.initializeFromUrl()
   practice.observationStore.initialize()
+
+  // A new assignment can land while the student is mid-lesson, where nothing would
+  // otherwise refetch and they have no reason to visit the lobby. Re-read the list
+  // periodically, and immediately whenever the tab comes back to the foreground (the
+  // common case — they switch away and back), so the Lobby button can be marked.
+  // Cheap at this scale: one small GET per student per interval.
+  startNewAssignmentWatch()
 
   // Check for collection and lesson in URL
   const collectionFromUrl = appConfig.getCollectionFromUrl()
@@ -1459,7 +1471,47 @@ function returnToLessons() {
   showIntroPdf.value = false
   introUrl.value = null
   exerciseContext.value = null
+  // Leaving the assignment's deck ends assignment mode — the same as returning to
+  // the lobby. Without this, the mode outlived the deck: the next free-form lesson
+  // was still stamped with the old assignment_id / exercise_id on every observation
+  // (and used to raise an ASSIGNMENT banner over unrelated content).
+  assignmentStore.exitAssignmentMode()
 }
+
+// --- New-assignment watch (glow on the Lobby button) -------------------------
+// Only meaningful for a student who is OUT of the lobby; in the lobby the panel
+// itself is on screen and LessonsTab clears the mark on load.
+const NEW_ASSIGNMENT_POLL_MS = 3 * 60 * 1000
+let newAssignmentTimer = null
+
+async function checkForNewAssignments() {
+  const user = userStore.currentUser.value
+  if (!user || (user.role || 'student') !== 'student') return
+  if (document.visibilityState === 'hidden') return
+  // Only while they are inside a collection/lesson — the lobby shows the real list.
+  if (!currentCollection.value && !deals.value.length) return
+
+  const data = await assignmentsApi.fetchStudentAssignments(user.id)
+  if (data?.success) newAssignmentAlert.noteAssignments(user.id, data.assignments)
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') checkForNewAssignments()
+}
+
+function startNewAssignmentWatch() {
+  stopNewAssignmentWatch()
+  newAssignmentTimer = setInterval(checkForNewAssignments, NEW_ASSIGNMENT_POLL_MS)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+}
+
+function stopNewAssignmentWatch() {
+  if (newAssignmentTimer) clearInterval(newAssignmentTimer)
+  newAssignmentTimer = null
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+}
+
+onUnmounted(stopNewAssignmentWatch)
 
 // Return to lobby (exit collection and clear deals)
 function returnToLobby() {
@@ -2266,6 +2318,33 @@ body {
 .lobby-btn:hover {
   background: #ffe0b2;
   color: #bf360c;
+}
+
+/* A new assignment landed while the student was mid-lesson. A slow breathing glow on
+   the way back to it — not a badge or a count, since the lobby carries the detail.
+   ~2.4s is deliberately unhurried: this is an "when you're ready" nudge beside a
+   lesson someone is concentrating on, and our readers are mostly seniors. */
+.lobby-btn.has-new {
+  background: #ffe0b2;
+  color: #bf360c;
+  animation: lobby-new-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes lobby-new-pulse {
+  /* Breathes between a tight bright ring and a wide soft one, rather than the usual
+     ripple that fades to nothing — at this speed a ripple is invisible for half its
+     cycle, and a signal you can miss by glancing at the wrong moment is no signal. */
+  0%, 100% { box-shadow: 0 0 0 2px rgba(230, 81, 0, 0.55); }
+  50%      { box-shadow: 0 0 0 7px rgba(230, 81, 0, 0.18); }
+}
+
+/* Anyone who has asked the OS to stop animations gets a steady ring instead — the
+   signal still reads, it just doesn't move. */
+@media (prefers-reduced-motion: reduce) {
+  .lobby-btn.has-new {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(230, 81, 0, 0.45);
+  }
 }
 
 .modal-overlay {
