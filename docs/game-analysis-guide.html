@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reading Your Game - Bridge Classroom</title>
+<meta name="description" content="How to read the board-by-board analysis of your bridge club game: what each verdict means, how to read the notes, and what the analysis cannot tell you.">
+<link rel="canonical" href="https://bridge-classroom.com/game-analysis-guide.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="styles.css">
+<style>
+.page{min-height:100vh;padding:0 0 64px}
+
+.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.nav-logo{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:500;color:var(--color-text-primary);text-decoration:none}
+.nav-logo .suit{color:#1D9E75;font-size:20px}
+.nav-links{display:flex;align-items:center;gap:24px}
+.nav-link{font-size:13px;color:var(--color-text-secondary);cursor:pointer;text-decoration:none}
+.nav-link:hover{color:var(--color-text-primary)}
+.nav-link.active{color:var(--color-text-primary);font-weight:500}
+
+.hero{max-width:680px;margin:0 auto;padding:52px 24px 36px;text-align:center}
+.hero h1{font-size:28px;font-weight:500;color:var(--color-text-primary);margin-bottom:12px;line-height:1.3}
+.hero p{font-size:15px;color:var(--color-text-secondary);line-height:1.75}
+
+.content{max-width:760px;margin:0 auto;padding:0 24px;display:flex;flex-direction:column;gap:24px}
+
+.tldr{background:#E1F5EE;border:0.5px solid #9FE1CB;border-radius:var(--border-radius-lg);padding:18px 22px}
+.tldr h2{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px}
+.tldr p{font-size:14px;color:var(--color-text-secondary);line-height:1.75;margin:0}
+
+.section-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.section-head{padding:16px 20px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:10px}
+.section-head h2{font-size:14px;font-weight:500;color:var(--color-text-primary)}
+.section-icon{font-size:16px}
+.prose{padding:18px 20px;font-size:14px;color:var(--color-text-secondary);line-height:1.75}
+.prose p{margin:0 0 12px}
+.prose p:last-child{margin-bottom:0}
+.prose ul{margin:0 0 12px;padding-left:20px}
+.prose li{margin-bottom:7px}
+.prose strong{color:var(--color-text-primary);font-weight:500}
+.prose a{color:#185FA5;text-decoration:none}
+.prose a:hover{text-decoration:underline}
+.prose code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:1px 5px;color:var(--color-text-primary)}
+
+/* Tables scroll inside themselves rather than widening the page on a phone. */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.guide{width:100%;border-collapse:collapse;font-size:13.5px}
+table.guide th{text-align:left;font-weight:500;color:var(--color-text-primary);padding:8px 12px;border-bottom:0.5px solid var(--color-border-tertiary);white-space:nowrap}
+table.guide td{padding:8px 12px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);vertical-align:top}
+table.guide tr:last-child td{border-bottom:none}
+table.guide td:first-child{white-space:nowrap;color:var(--color-text-primary);font-weight:500}
+
+/* Verdict rows, tinted to match the app's own cause colours. */
+.verdict{display:flex;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.verdict:last-child{border-bottom:none}
+.verdict-name{flex:0 0 92px;font-weight:500;font-size:13.5px}
+.verdict-body{flex:1;font-size:14px;line-height:1.7}
+.v-good{color:#16a34a}.v-lucky{color:#2563eb}.v-play{color:#dc2626}
+.v-defense{color:#b45309}.v-auction{color:#9333ea}.v-unlucky{color:#6b7280}
+
+.footer{text-align:center;margin:40px auto 0;padding-top:24px;border-top:0.5px solid var(--color-border-tertiary);max-width:760px}
+.footer-copy{font-size:13px;color:var(--color-text-tertiary)}
+.footer-copy a{color:var(--color-text-secondary);text-decoration:none}
+.footer-copy a:hover{color:var(--color-text-primary)}
+</style>
+<script data-goatcounter="https://bridge-classroom.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+
+<div class="page">
+
+<nav class="nav">
+  <a class="nav-logo" href="/"><span class="suit">&#9824;</span> Bridge Classroom</a>
+  <div class="nav-links">
+    <a class="nav-link" href="/">Home</a>
+    <a class="nav-link" href="game-analysis.html">Game Analysis</a>
+    <a class="nav-link active" href="game-analysis-guide.html">Guide</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>Reading your game</h1>
+  <p>Club Game Analysis takes a session you have already played and goes through it board by board, asking one question about each: why did this score what it did?</p>
+</div>
+
+<div class="content">
+
+  <div class="tldr">
+    <h2>&#10003; The short version</h2>
+    <p>A bad score is not the same as a mistake. You can bid and play a hand perfectly and still get 20% because the field did something odd, and you can get 80% off a misdefence by the opponents. Sorting those apart is the point &#8212; the score tells you <strong>what</strong> happened, this tells you <strong>why</strong>.</p>
+  </div>
+
+  <div class="section-block">
+    <div class="section-head"><span class="section-icon">&#128203;</span><h2>The board table</h2></div>
+    <div class="prose">
+      <p>Each row is one board you played.</p>
+      <div class="table-wrap">
+        <table class="guide">
+          <thead><tr><th>Column</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td>Board</td><td>Board number</td></tr>
+            <tr><td>Dir</td><td>Which way you sat</td></tr>
+            <tr><td>Contract</td><td>What was played at your table, and by whom</td></tr>
+            <tr><td>Score</td><td>Your side's score</td></tr>
+            <tr><td>MP%</td><td>What percentage of the field you beat on this board</td></tr>
+            <tr><td>Field</td><td>The contract most tables played. <code>=</code> means you were in it too</td></tr>
+            <tr><td>Cause</td><td>The verdict &#8212; see below</td></tr>
+            <tr><td>Notes</td><td>The short reason behind the verdict</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>MP%</strong> is recalculated from scratch rather than taken from the club's scoresheet, so it means the same thing whatever the source. 50% is exactly average: you scored the same as a typical table.</p>
+    </div>
+  </div>
+
+  <div class="section-block">
+    <div class="section-head"><span class="section-icon">&#127919;</span><h2>The six verdicts</h2></div>
+    <div class="prose">
+      <div class="verdict">
+        <div class="verdict-name v-good">Good</div>
+        <div class="verdict-body">Nothing went wrong. Either you did something better than the field, or you were in the normal contract and took the normal tricks. Note that a completely ordinary, average board also lands here: <em>good</em> means &#8220;no fault found&#8221; as often as it means &#8220;well played.&#8221;</div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-name v-lucky">Lucky</div>
+        <div class="verdict-body">You scored well, but the reason was not something you did. The opponents let you play a contract they could have competed against, or the defence let through a trick that was not available on best play. Worth reading, because these scores will not repeat.</div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-name v-play">Play</div>
+        <div class="verdict-body">You took fewer tricks than the rest of the field did in the same strain, or fewer than the hand allowed on perfect play. This is the declarer play column.</div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-name v-defense">Defense</div>
+        <div class="verdict-body">The same idea when you were defending: the contract made more tricks than it should have.</div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-name v-auction">Auction</div>
+        <div class="verdict-body">The score traces back to the contract rather than the cards. You missed a game the field bid, pushed to one they stayed out of, played the wrong strain, or competed too high.</div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-name v-unlucky">Unlucky</div>
+        <div class="verdict-body">You were in the normal contract, took the normal tricks, and still got a bad score. Nothing to fix. These are the boards worth <em>not</em> worrying about.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-block">
+    <div class="section-head"><span class="section-icon">&#128221;</span><h2>The notes column</h2></div>
+    <div class="prose">
+      <p>Short and specific:</p>
+      <ul>
+        <li><code>par (9)</code> &#8212; you took exactly the number of tricks the hand allows on perfect play by everybody.</li>
+        <li><code>field par (9)</code> &#8212; you were in the field's contract and took the same tricks it allows.</li>
+        <li><code>2 tricks fewer</code> &#8212; compared to the average at other tables in the same strain.</li>
+        <li><code>below DD (10)</code> &#8212; the hand was worth 10 tricks on perfect play; you took fewer.</li>
+        <li><code>defense slip (DD 8)</code> &#8212; you took more tricks than perfect defence allows.</li>
+        <li><code>underbid (4S)</code> / <code>overbid (2S)</code> &#8212; you stopped below, or pushed past, the contract the field chose. Only flagged when it cost a game or slam bonus; a partscore difference is not treated as an error.</li>
+        <li><code>S vs H</code> &#8212; you and the field picked different strains.</li>
+        <li><code>competed too high</code> / <code>competed successfully</code> &#8212; a contested auction that did, or did not, work out.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-block">
+    <div class="section-head"><span class="section-icon">&#128200;</span><h2>Your history</h2></div>
+    <div class="prose">
+      <p>Tracking a player keeps a running record across sessions. Each row is one event: boards played, average MP%, an <strong>Error%</strong> (the share of boards attributed to auction, play, or defence), and a count in each verdict column.</p>
+      <p>The chart plots error rate against matchpoint percentage over time. What to look for is not a single session but the shape: whether the error mix is shifting, and which column is the tall one.</p>
+      <p>The most useful reading is usually the <strong>balance between columns</strong>, not the totals. A player with lots of Auction and few Play entries has a bidding problem to work on, and vice versa &#8212; a much more actionable finding than an overall percentage.</p>
+    </div>
+  </div>
+
+  <div class="section-block">
+    <div class="section-head"><span class="section-icon">&#9888;&#65039;</span><h2>What this cannot tell you</h2></div>
+    <div class="prose">
+      <p>Being clear about the limits, because they matter for how much weight to put on a verdict:</p>
+      <ul>
+        <li><strong>It only compares you to the field that played.</strong> The comparison is against the other tables in your own event. A weak field makes a good contract look ordinary, and a strong one makes an ordinary result look bad.</li>
+        <li><strong>It does not read your auction.</strong> With rare exceptions the app sees the final contract, not the bidding that reached it. &#8220;Auction&#8221; means the contract differed from the field's in a way that cost something &#8212; not that a specific bid was wrong.</li>
+        <li><strong>It does not watch the play.</strong> &#8220;Play&#8221; means the trick count came up short against the field or against perfect play. It cannot tell you <em>which</em> trick went astray.</li>
+        <li><strong>Single-hand replays have no field at all.</strong> If you send one hand from a hand viewer, there is nothing to compare it against, so it goes to the double-dummy solver instead.</li>
+        <li><strong>Ties and near-misses are blunt.</strong> The good/bad line sits at 55% and 45%. A board at 54% is not treated as a success even though it very nearly was.</li>
+      </ul>
+      <p>When a verdict looks wrong to you, it usually is worth trusting your own judgement over the label. The categories are a way of sorting 24 boards into &#8220;look at these six&#8221; &#8212; they are not a ruling.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <div class="footer-copy"><a href="/">Bridge Classroom</a> &#183; free &amp; open source &#183; bridge-classroom.com</div>
+</div>
+
+</div>
+
+<script src="/site.js"></script>
+</body>
+</html>

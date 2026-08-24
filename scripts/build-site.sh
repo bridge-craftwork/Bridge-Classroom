@@ -47,6 +47,7 @@ cp docs/privacy.html           dist/privacy.html
 cp docs/solo-practice.html     dist/solo-practice.html
 cp docs/classrooms.html        dist/classrooms.html
 cp docs/game-analysis.html     dist/game-analysis.html
+cp docs/game-analysis-guide.html dist/game-analysis-guide.html
 cp docs/bbo-scenarios.html     dist/bbo-scenarios.html
 cp docs/lesson-materials.html  dist/lesson-materials.html
 cp docs/teacher-utilities.html dist/teacher-utilities.html
