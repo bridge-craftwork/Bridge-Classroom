@@ -523,13 +523,21 @@ const OPENERS = [
      *  re-serializes what we just decoded, which reinstates the ~5 MB ceiling
      *  the postMessage transport removed. Replace it when the analyzer grows a
      *  direct entry point; nothing else here changes when it does. */
-    async stage({ kind, envelopes, chunks, errors }) {
+    async stage({ kind, envelopes, chunks, errors, seatFixed }) {
       if (kind === 'batch') {
         // runBatch() expects gzip+base64 items. Batch chunks already arrive that
         // way; re-compress only if a producer sent plain json, so the analyzer's
         // batch path stays untouched.
-        const items = await Promise.all(chunks.map(async (c) => ({
-          compressed: c.encoding === 'gzip+base64' ? c.data : await gzipBase64(c.data),
+        //
+        // A chunk whose envelope was seat-corrected is the exception: its
+        // original bytes still hold the East-first copy, so it must be
+        // re-encoded from the fixed envelope. Only those — re-compressing a
+        // full-history batch that needed no correction is real work for nothing.
+        const fixed = new Set(seatFixed ?? []);
+        const items = await Promise.all(chunks.map(async (c, i) => ({
+          compressed: fixed.has(i)
+            ? await gzipBase64(JSON.stringify(envelopes[i]))
+            : (c.encoding === 'gzip+base64' ? c.data : await gzipBase64(c.data)),
         })));
         sessionStorage.setItem(BATCH_KEY, JSON.stringify({
           items, total: items.length, errors,
@@ -833,6 +841,35 @@ async function onFinish(m) {
     return;
   }
 
+  // Seat order, at the door (seat-order-contract.md § Consumer rule). ACBL
+  // captures from extension builds below 1.3 carry `ew_pair.players`
+  // EAST-first while documenting them as [W, E]; correct them here, before
+  // anything reads the arrays. This has to stay ABOVE dispatch(), not merely
+  // above the openers: the archive sink POSTs the envelope and runs first, so
+  // a later fix would store the broken copy and hand on the fixed one.
+  //
+  // `seatFixed` carries the chunk indexes that changed, because the batch
+  // hand-off re-uses the ORIGINAL encoded chunks and would otherwise ship the
+  // uncorrected copy.
+  const notes = [];
+  const seatFixed = [];
+  try {
+    const seat = await import('./seat-order.js');
+    envelopes.forEach((env, i) => {
+      if (!seat.needsEwSeatFix(env)) return;
+      seat.fixEwSeatOrder(env);
+      seatFixed.push(i);
+    });
+  } catch (e) {
+    // The helper is copied in beside this page at build time (build-site.sh);
+    // this is a deploy fault, not a data fault. Say so and carry on rather than
+    // stranding the capture — the archive applies the same correction on read,
+    // so a stored game still comes back right; only this hand-off is stale.
+    notes.push({ ok: false, warn: true,
+      text: 'Could not apply the E-W seat-order correction — East and West may be shown swapped.' });
+    console.error('[bc-ingest] seat-order helper unavailable', e);
+  }
+
   const errors = Array.isArray(m.errors) ? m.errors : [];
   const summary = summarize(envelopes, {
     ref, kind: meta.kind,
@@ -840,7 +877,7 @@ async function onFinish(m) {
     errors: errors.length,
   });
 
-  await dispatch({ kind: meta.kind, envelopes, chunks: present, errors, summary });
+  await dispatch({ kind: meta.kind, envelopes, chunks: present, errors, summary, seatFixed, notes });
 }
 
 // ==================== Routing ====================
@@ -849,7 +886,7 @@ async function dispatch(payload) {
   // Sinks first: archiving is destination-independent, and doing it before any
   // user choice means a capture is safe even if the tab is closed at the picker.
   showBusy('Filing…', 'Storing this capture.');
-  const reports = await runSinks(payload);
+  const reports = [...(payload.notes ?? []), ...(await runSinks(payload))];
 
   const requested = routeParam && routeParam !== 'ask' ? routeParam : null;
   if (requested) {
