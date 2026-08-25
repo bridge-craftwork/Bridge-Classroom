@@ -68,6 +68,12 @@ cp -r docs/screenshots       dist/screenshots
 # ingest content script matches the whole origin but self-gates on a path
 # ending in /ingest.
 cp -r docs/ingest            dist/ingest
+# The E-W seat-order correction the ingest page applies at the door
+# (seat-order-contract.md § Consumer rule). ONE copy of the rule, shared with
+# the SPA's archive read path, which imports it from src/ — copied in beside
+# the page because that page is static and unbundled, and dynamic-imports it
+# by this name.
+cp src/utils/seatOrder.js    dist/ingest/seat-order.js
 
 # ── Co-locate the Game Analysis app under /game-analysis/ (same-origin) ──────
 # app-architecture.md M1: serve club-game-analysis from the SPA origin so it

@@ -8,6 +8,7 @@
 import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
 import { apiFetch } from '@/utils/apiFetch.js'
+import { needsEwSeatFix, fixEwSeatOrder } from '@/utils/seatOrder.js'
 
 const games = ref([]) // metadata list for the last-fetched owner
 const loading = ref(false)
@@ -59,12 +60,33 @@ export function useClubGames() {
         error.value = data.error || 'Failed to fetch game'
         return null
       }
-      return data.game
+      return correctSeatOrder(data.game)
     } catch (err) {
       console.error('Failed to fetch club game:', err)
       error.value = 'Unable to connect to server'
       return null
     }
+  }
+
+  /** Correct E-W seat order on the way out of the archive.
+   *
+   *  Captures stored by extension builds below 1.3 are sitting on the server
+   *  East-first (seat-order-contract.md § Consumer rule), so a row read back
+   *  needs the same correction the ingest page applies at the door. Fixing on
+   *  read rather than backfilling the table costs no migration and self-heals:
+   *  the rule is version-gated and restamps, so a row written after the ingest
+   *  fix is already 1.3 and passes through untouched.
+   */
+  function correctSeatOrder(game) {
+    if (!game?.payload) return game
+    let envelope
+    try {
+      envelope = JSON.parse(game.payload)
+    } catch {
+      return game // not JSON we can read; the caller reports it
+    }
+    if (!needsEwSeatFix(envelope)) return game
+    return { ...game, payload: JSON.stringify(fixEwSeatOrder(envelope)) }
   }
 
   function reset() {
