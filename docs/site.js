@@ -13,8 +13,9 @@
     ogUrl.setAttribute('content', ogUrl.getAttribute('content').replace('bridge-classroom.com', host));
   }
 
-  // Update hrefs that point to bridge-classroom.com subdomains or paths
-  // (e.g. game-analysis.bridge-classroom.com → game-analysis.bridge-classroom.org)
+  // Update hrefs that point to bridge-classroom.com subdomains or paths.
+  // Same-origin apps are linked by path (/game-analysis/, /solo-practice-app)
+  // and need no rewriting; this catches the absolute .com links that remain.
   // Skips external domains like github.com that merely mention bridge-classroom in the path.
   document.querySelectorAll('a[href]').forEach(function (el) {
     var href = el.getAttribute('href');
