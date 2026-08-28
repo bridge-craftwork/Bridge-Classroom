@@ -553,8 +553,8 @@ const OPENERS = [
     blurb: 'Replay the hand and see every line.',
     /** Cross-origin, and legitimately so: the payload rides in the URL rather
      *  than through sessionStorage. The solver reads the first non-empty of
-     *  `hand`, `lin`, `pbn`, `url`, `board` from the query (or after the hash),
-     *  so `?lin=` is its documented front door.
+     *  `hand`, `lin`, `pbn`, `url`, `board` from the query OR from after the
+     *  hash, and we use the hash — see `target` for why.
      *
      *  Pinned to `.org`: as of 2026-08-08 no solver exists on `.com`, so this
      *  does NOT mirror the page's TLD the way bcApiBase() does. A `.com` visitor
@@ -572,7 +572,15 @@ const OPENERS = [
       if (!isSingleTableReplay(envelopes)) return '';
       const lin = linFromEnvelope(envelopes[0]);
       if (!lin) return '';
-      const sep = base.includes('?') ? '&' : '?';
+      // The hand rides in the FRAGMENT, not the query string. A fragment is
+      // never sent to the server, which buys three things: no edge rule or
+      // request-line limit can reject the hand (a real BBO capture came back
+      // 403 at the edge as a query string on 2026-08-28, while the identical
+      // LIN in the fragment loads), the four players' names stay out of the
+      // solver's server logs and any CDN cache key, and a long LIN stops
+      // being an edge concern. The solver's `readUrl` merges the params after
+      // `#?` with those in the query, so this is its documented second door.
+      const sep = base.includes('#') ? '&' : '#?';
       return `${base}${sep}lin=${encodeURIComponent(lin)}`;
     },
     cannotTake({ envelopes }) {
