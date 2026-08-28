@@ -126,6 +126,33 @@
 .cli-dl{font-size:9px;padding:2px 6px;border-radius:2px;background:#E1F5EE;color:#0F6E56;font-weight:500}
 
 .thumb-cur{background:#F0F7F4;display:flex;flex-direction:column;padding:12px;gap:5px}
+
+.thumb-dds{background:#F0F7F4;display:flex;flex-direction:column;padding:10px 12px;gap:5px}
+.dds-head{display:flex;align-items:baseline;justify-content:space-between}
+.dds-title{font-size:10px;font-weight:500;color:#0F6E56;text-transform:uppercase;letter-spacing:0.04em}
+.dds-src{font-size:8px;color:var(--color-text-tertiary)}
+.dds-grid{display:grid;grid-template-columns:16px repeat(4,1fr);gap:1px 2px;font-size:9px;line-height:1.35}
+.dds-hd{color:var(--color-text-tertiary);font-weight:500;text-align:center}
+.dds-str{color:var(--color-text-secondary);font-weight:500}
+.dds-red{color:#c0392b}
+.dds-cell{text-align:center;color:var(--color-text-primary);background:#fff;border-radius:2px}
+.dds-best{background:#C7E8DA;color:#0F6E56;font-weight:600}
+.dds-err{display:flex;align-items:center;gap:5px;margin-top:1px}
+.dds-card{font-size:9px;font-weight:600;color:#c0392b}
+.dds-lost{font-size:8px;padding:1px 5px;border-radius:2px;background:#FEE2E2;color:#991B1B}
+.dds-fix{font-size:8px;color:var(--color-text-secondary)}
+
+.thumb-gen{background:#f3f6f9;display:flex;flex-direction:column;padding:10px 12px;gap:6px}
+.gen-code{background:#fff;border:0.5px solid #e0e4ea;border-radius:4px;padding:7px 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8.5px;line-height:1.5;color:#445}
+.gen-kw{color:#0F6E56;font-weight:600}
+.gen-num{color:#185FA5}
+.gen-foot{display:flex;align-items:center;gap:4px}
+.gen-chip{font-size:8px;padding:2px 6px;border-radius:2px;background:#e4e8ee;color:#667788}
+.gen-chip.gen-on{background:#1D9E75;color:#fff}
+.gen-count{margin-left:auto;font-size:8px;color:var(--color-text-tertiary)}
+.gen-out{display:flex;flex-direction:column;gap:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8px;color:var(--color-text-secondary);line-height:1.4}
+.gen-out span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gen-out .gen-red{color:#c0392b}
 .cur-filter{display:flex;gap:4px;flex-wrap:wrap}
 .cur-chip{font-size:9px;padding:3px 6px;border-radius:2px;background:#C7E8DA;color:#0F6E56;font-weight:500}
 .cur-row{display:flex;align-items:center;justify-content:space-between;margin-top:2px}
@@ -320,6 +347,27 @@
         </div>
       </div>
 
+      <div class="tile">
+        <div class="thumb thumb-dds">
+          <div class="dds-head"><span class="dds-title">Double-dummy</span><span class="dds-src">PBN &#183; LIN &#183; BBO link</span></div>
+          <div class="dds-grid">
+            <span class="dds-hd"></span><span class="dds-hd">N</span><span class="dds-hd">S</span><span class="dds-hd">E</span><span class="dds-hd">W</span>
+            <span class="dds-str">NT</span><span class="dds-cell">7</span><span class="dds-cell">7</span><span class="dds-cell">5</span><span class="dds-cell">5</span>
+            <span class="dds-str">&#9824;</span><span class="dds-cell dds-best">10</span><span class="dds-cell dds-best">10</span><span class="dds-cell">3</span><span class="dds-cell">3</span>
+            <span class="dds-str dds-red">&#9829;</span><span class="dds-cell">6</span><span class="dds-cell">6</span><span class="dds-cell">6</span><span class="dds-cell">6</span>
+            <span class="dds-str dds-red">&#9830;</span><span class="dds-cell">8</span><span class="dds-cell">8</span><span class="dds-cell">4</span><span class="dds-cell">4</span>
+            <span class="dds-str">&#9827;</span><span class="dds-cell">5</span><span class="dds-cell">5</span><span class="dds-cell">7</span><span class="dds-cell">7</span>
+          </div>
+          <div class="dds-err"><span class="dds-card">&#9829;K</span><span class="dds-lost">&#8722;1 trick</span><span class="dds-fix">play <span class="dds-red">&#9829;</span>3</span></div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Double-Dummy Solver</div>
+          <div class="tile-desc">Paste a deal, a LIN record, or a BBO hand link and see the double-dummy table &#8212; then every card that gave a trick away, and what should have been played instead.</div>
+          <div class="tile-tags"><span class="tag tag-green">Live</span><span class="tag tag-blue">Solves in your browser</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="https://solver.bridge-classroom.org/" target="_blank" rel="noopener">Play Now</a></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -492,6 +540,32 @@
           <div class="tile-desc">Pre-bid PBN files sorted by scenario. Primary input for the Hand Curator.</div>
           <div class="tile-tags"><span class="tag tag-blue">GitHub &#183; David Bailey</span></div>
           <div class="tile-actions"><a class="tbtn tbtn-ghost" href="deal-library.html">Learn More</a></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="thumb thumb-gen">
+          <div class="gen-code">
+            <span class="gen-kw">condition</span> hcp(north) &gt;= <span class="gen-num">15</span> &amp;&amp;<br>
+            &nbsp;&nbsp;shape(north, any <span class="gen-num">4432</span>)<br>
+            <span class="gen-kw">action</span> printoneline
+          </div>
+          <div class="gen-foot">
+            <span class="gen-chip gen-on">PBN</span><span class="gen-chip">One line</span><span class="gen-chip">Print all</span>
+            <span class="gen-count">24 deals</span>
+          </div>
+          <div class="gen-out">
+            <span>&#9824;AKQ5 <span class="gen-red">&#9829;K84 &#9830;AJ7</span> &#9827;T92</span>
+            <span>&#9824;KQ74 <span class="gen-red">&#9829;AQ6 &#9830;K95</span> &#9827;AJ3</span>
+            <span>&#9824;AQ92 <span class="gen-red">&#9829;KJ5 &#9830;AQ4</span> &#9827;K76</span>
+            <span>&#9824;KJ85 <span class="gen-red">&#9829;AK7 &#9830;QJ6</span> &#9827;A94</span>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Deal Generator</div>
+          <div class="tile-desc">Write a dealer script &#8212; or start from a ready-made scenario &#8212; and generate deals that match, one per line or as PBN.</div>
+          <div class="tile-tags"><span class="tag tag-green">Live</span><span class="tag tag-blue">Scenarios &#183; David Bailey</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="https://dealer.bridge-classroom.org/" target="_blank" rel="noopener">Open generator</a></div>
         </div>
       </div>
 
