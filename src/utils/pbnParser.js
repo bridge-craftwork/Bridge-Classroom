@@ -80,9 +80,11 @@ export function parsePbn(pbnContent) {
       continue
     }
 
-    // Parse [Play "X"] — two forms:
-    //   inline  [Play "W"]H8        → single opening-lead card (defense lessons)
-    //   table   [Play "W"]\n rows…  → full recorded line (declarer-play lessons)
+    // Parse [Play "X"] — two WRITTEN forms, both able to carry either meaning:
+    //   inline  [Play "W"]H8        → card on the tag line
+    //   table   [Play "W"]\n rows…  → cards on following lines (PBN-conforming)
+    // Opening-lead vs recorded-line is decided by how many cards are inside,
+    // in finalizePlayLine() — not by which form was used.
     const playHeader = line.match(/^\s*\[Play\s+"([NESW])"\]\s*(\w+)?\s*$/)
     if (playHeader && currentDeal) {
       if (playHeader[2]) {
@@ -226,9 +228,26 @@ function finalizePlayLine(deal, leader, rows) {
       if (card && card !== '-') bySeat[seats[j]].push(normalizeCardCode(card))
     }
   }
-  deal.playLine = { leader, bySeat }
   deal.openingLeader = leader
   if (bySeat[leader].length) deal.openingLead = bySeat[leader][0]
+
+  // A section holding nothing but the opening lead is an opening LEAD, not a
+  // recorded line — what the lesson IS must follow from the section's content,
+  // never from how it was typed. Both forms below are the same board:
+  //
+  //     [Play "W"]H8          and     [Play "W"]
+  //                                   H8
+  //
+  // Baker-Bridge#42 made [Play] PBN-conforming by moving the card onto its own
+  // line, and every bidding board in the collection promptly parsed as declarer
+  // play (isDeclarerPlay hides the bidding box and reveals the whole auction at
+  // once — Bridge-Classroom, 2026-09-01). 1,173 sections changed shape; none
+  // gained a card. Leave playLine unset so the board stays a bidding lesson
+  // that happens to know its opening lead.
+  const cards = bySeat.N.length + bySeat.E.length + bySeat.S.length + bySeat.W.length
+  if (cards <= 1) return
+
+  deal.playLine = { leader, bySeat }
 }
 
 // Split the coaching comment into { stage → prose } keyed by the [STAGE x] of
