@@ -212,6 +212,18 @@
 .lll-file{display:flex;align-items:center;justify-content:space-between;background:#fff;border:0.5px solid #dbe6e1;border-radius:3px;padding:4px 8px}
 .lll-name{font-size:10px;color:#444;font-family:ui-monospace,Menlo,monospace}
 .lll-ext{font-size:8px;color:#c0392b;font-weight:600}
+.thumb-p2p{background:#F5F5F0;display:flex;flex-direction:column;padding:11px 12px;gap:6px}
+.p2p-head{font-size:10px;color:#8a8676;font-weight:500;font-family:ui-monospace,Menlo,monospace}
+.p2p-pages{display:flex;gap:6px;flex:1}
+.p2p-pg{flex:1;background:#fff;border:0.5px solid #ddd9cd;border-radius:2px;padding:5px 4px;display:flex;flex-direction:column;gap:3px;position:relative}
+.p2p-pg-on{border-color:#1D9E75;box-shadow:0 0 0 1px #1D9E75}
+.p2p-suits{font-size:8px;color:#333;line-height:1.2}
+.p2p-red{color:#c0392b}
+.p2p-line{height:3px;background:#e8e5da;border-radius:1px}
+.p2p-grid4{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3px}
+.p2p-grid4 i{background:#e8e5da;border-radius:1px}
+.p2p-tick{position:absolute;top:-4px;right:-4px;width:11px;height:11px;border-radius:50%;background:#1D9E75;color:#fff;font-size:7px;line-height:11px;text-align:center}
+.p2p-foot{font-size:8px;color:#8a8676}
 .tile-body{padding:14px 16px 16px}
 .tile-name{font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
 .tile-desc{font-size:14px;color:var(--color-text-secondary);line-height:1.5}
@@ -442,6 +454,36 @@
           <div class="tile-desc">Downloadable tools for processing deals, generating hands, and preparing handouts.</div>
           <div class="tile-tags"><span class="tag tag-gray">Mac &#183; Windows &#183; Linux</span></div>
           <div class="tile-actions"><a class="tbtn tbtn-ghost" href="teacher-utilities.html">Learn More</a></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="thumb thumb-p2p">
+          <div class="p2p-head">negative_doubles.pbn &#183; 16 boards</div>
+          <div class="p2p-pages">
+            <div class="p2p-pg p2p-pg-on">
+              <div class="p2p-suits">&#9824;A K 4 <span class="p2p-red">&#9829;Q J</span></div>
+              <div class="p2p-line" style="width:72%"></div>
+              <div class="p2p-line" style="width:54%"></div>
+              <span class="p2p-tick">&#10003;</span>
+            </div>
+            <div class="p2p-pg">
+              <div class="p2p-grid4"><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div class="p2p-pg">
+              <div class="p2p-line" style="width:84%"></div>
+              <div class="p2p-line" style="width:62%"></div>
+              <div class="p2p-line" style="width:74%"></div>
+              <div class="p2p-line" style="width:46%"></div>
+            </div>
+          </div>
+          <div class="p2p-foot">Hand diagrams &#183; Declarer&#8217;s plan &#183; Bidding sheets</div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">PBN to PDF</div>
+          <div class="tile-desc">Turn a PBN file into printable hand diagrams, declarer&#8217;s-plan worksheets, and bidding sheets. Pick a Baker Bridge lesson or open your own file.</div>
+          <div class="tile-tags"><span class="tag tag-green">Live</span><span class="tag tag-gray">Runs in your browser</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="https://pbn-to-pdf.bridge-classroom.org/" target="_blank" rel="noopener">Open tool</a></div>
         </div>
       </div>
 
