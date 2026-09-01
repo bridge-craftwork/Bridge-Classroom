@@ -556,18 +556,22 @@ const OPENERS = [
      *  `hand`, `lin`, `pbn`, `url`, `board` from the query OR from after the
      *  hash, and we use the hash — see `target` for why.
      *
-     *  Pinned to `.org`: as of 2026-08-08 no solver exists on `.com`, so this
-     *  does NOT mirror the page's TLD the way bcApiBase() does. A `.com` visitor
-     *  is therefore sent to `.org`, which is tolerable because `.org` is the
-     *  Norton *fallback* domain rather than the blocked one.
+     *  Deliberately NOT mirroring the page's TLD the way bcApiBase() does, and
+     *  no longer on a bridge-classroom host at all. As of 2026-09-01 the solver
+     *  lives at bridge-craftwork.com/bridge-solver/, with the other browser
+     *  tools, and the earlier `solver.bridge-classroom.org` is retired.
      *
-     *  TODO: solver.bridge-classroom.com is expected. Once it exists, mirror the
-     *  page host here exactly as bcApiBase() does, and delete this note —
-     *  otherwise a `.com` user keeps being bounced across domains for no reason.
+     *  It should stay there. Keeping the tools and the API endpoints off the
+     *  domain that carries the recovery email's SPF/DKIM/DMARC and the
+     *  student-facing traffic is the point of the split — so a `.com` or `.org`
+     *  visitor going to bridge-craftwork.com is the intended outcome, not a
+     *  bounce to be fixed later. (An earlier note here asked for a
+     *  solver.bridge-classroom.com to mirror the page host. That would undo the
+     *  split; it is not coming.)
      *
      *  Override for dev with:
      *    localStorage.setItem('bc-ingest-solver-url', 'http://localhost:5173/') */
-    external: 'https://solver.bridge-classroom.org/',
+    external: 'https://bridge-craftwork.com/bridge-solver/',
     target({ envelopes }, base) {
       if (!isSingleTableReplay(envelopes)) return '';
       const lin = linFromEnvelope(envelopes[0]);
