@@ -854,11 +854,17 @@ async function onFinish(m) {
   }
 
   // Seat order, at the door (seat-order-contract.md § Consumer rule). ACBL
-  // captures from extension builds below 1.3 carry `ew_pair.players`
-  // EAST-first while documenting them as [W, E]; correct them here, before
-  // anything reads the arrays. This has to stay ABOVE dispatch(), not merely
-  // above the openers: the archive sink POSTs the envelope and runs first, so
-  // a later fix would store the broken copy and hand on the fixed one.
+  // captures from older extension builds get E and W the wrong way round in
+  // two places — `ew_pair.players`, which is EAST-first below 1.3 while
+  // documenting itself as [W, E], and the board's `double_dummy` table, whose
+  // E and W rows are transposed below 1.4. Correct both here, before anything
+  // reads them. This has to stay ABOVE dispatch(), not merely above the
+  // openers: the archive sink POSTs the envelope and runs first, so a later
+  // fix would store the broken copy and hand on the fixed one.
+  //
+  // The two boundaries are not a typo. Every 1.3 envelope was stamped by this
+  // page's own earlier correction, which fixed players and not the table, so
+  // the table needs a gate the players fix has already passed.
   //
   // `seatFixed` carries the chunk indexes that changed, because the batch
   // hand-off re-uses the ORIGINAL encoded chunks and would otherwise ship the
@@ -878,7 +884,8 @@ async function onFinish(m) {
     // stranding the capture — the archive applies the same correction on read,
     // so a stored game still comes back right; only this hand-off is stale.
     notes.push({ ok: false, warn: true,
-      text: 'Could not apply the E-W seat-order correction — East and West may be shown swapped.' });
+      text: 'Could not apply the E-W seat-order correction — East and West may be shown swapped, '
+          + 'in the player names and in the double-dummy table.' });
     console.error('[bc-ingest] seat-order helper unavailable', e);
   }
 
