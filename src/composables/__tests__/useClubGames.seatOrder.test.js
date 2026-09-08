@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // The archive read path applies the same E-W seat-order correction the ingest
 // page applies at the door (seat-order-contract.md § Consumer rule), because
-// captures stored by extension builds below 1.3 are sitting on the server
-// East-first. Only the network arm is mocked.
+// captures stored by older extension builds are sitting on the server with
+// their E-W players and their double-dummy tables East-first. The stored 1.3
+// rows matter most: the ingest page wrote them itself, players already fixed
+// and table not. Only the network arm is mocked.
 
 const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }))
 vi.mock('@/utils/apiFetch.js', () => ({ apiFetch: apiFetchMock }))
@@ -11,14 +13,20 @@ vi.mock('@/utils/apiUrl.js', () => ({ API_URL: 'https://api.test/api' }))
 
 import { useClubGames } from '../useClubGames.js'
 
-function payload({ schema_version, source }) {
+// Board 4 of the extension's sample-club-game.html: East makes nine hearts,
+// West ten. A stored row carries them the wrong way round.
+const EAST_ROW = { C: 11, D: 6, H: 9, S: 11, NT: 6 }
+const WEST_ROW = { C: 11, D: 6, H: 10, S: 11, NT: 6 }
+
+function payload({ schema_version, source, ew = ['east-player', 'west-player'] }) {
   const env = {
     source,
     tournaments: [{ events: [{ sessions: [{ boards: [{
       number: 1,
+      double_dummy: { N: null, S: null, E: { ...WEST_ROW }, W: { ...EAST_ROW } },
       results: [{
         ns_pair: { players: ['north-player', 'south-player'] },
-        ew_pair: { players: ['east-player', 'west-player'] },
+        ew_pair: { players: [...ew] },
       }],
     }] }] }] }],
   }
@@ -35,8 +43,14 @@ function respondWith(game) {
 
 const seatsOf = (game) => {
   const env = JSON.parse(game.payload)
-  const result = env.tournaments[0].events[0].sessions[0].boards[0].results[0]
-  return { ew: result.ew_pair.players, ns: result.ns_pair.players, version: env.schema_version }
+  const board = env.tournaments[0].events[0].sessions[0].boards[0]
+  const result = board.results[0]
+  return {
+    ew: result.ew_pair.players,
+    ns: result.ns_pair.players,
+    east: board.double_dummy.E,
+    version: env.schema_version,
+  }
 }
 
 beforeEach(() => {
@@ -51,14 +65,32 @@ describe('useClubGames().fetchGame — seat order on read', () => {
     expect(seatsOf(game)).toEqual({
       ew: ['west-player', 'east-player'],
       ns: ['north-player', 'south-player'],
-      version: '1.3',
+      east: EAST_ROW,
+      version: '1.4',
     })
   })
 
-  it('passes a row written after the ingest fix straight through', async () => {
-    const stored = payload({ schema_version: '1.3', source: 'acbl-live-club' })
-    respondWith({ id: 8, payload: stored })
+  it('corrects the table on a stored 1.3 row, leaving its players alone', async () => {
+    // What the ingest page archived between the two fixes: players already
+    // reversed, table still transposed. The commonest row in the archive.
+    respondWith({ id: 8, payload: payload({
+      schema_version: '1.3',
+      source: 'acbl-live-club',
+      ew: ['west-player', 'east-player'],
+    }) })
     const game = await useClubGames().fetchGame(8)
+    expect(seatsOf(game)).toEqual({
+      ew: ['west-player', 'east-player'],
+      ns: ['north-player', 'south-player'],
+      east: EAST_ROW,
+      version: '1.4',
+    })
+  })
+
+  it('passes a row written after both fixes straight through', async () => {
+    const stored = payload({ schema_version: '1.4', source: 'acbl-live-club' })
+    respondWith({ id: 12, payload: stored })
+    const game = await useClubGames().fetchGame(12)
     expect(game.payload).toBe(stored) // untouched, not even re-serialized
   })
 

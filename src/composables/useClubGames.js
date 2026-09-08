@@ -70,12 +70,17 @@ export function useClubGames() {
 
   /** Correct E-W seat order on the way out of the archive.
    *
-   *  Captures stored by extension builds below 1.3 are sitting on the server
-   *  East-first (seat-order-contract.md § Consumer rule), so a row read back
-   *  needs the same correction the ingest page applies at the door. Fixing on
-   *  read rather than backfilling the table costs no migration and self-heals:
-   *  the rule is version-gated and restamps, so a row written after the ingest
-   *  fix is already 1.3 and passes through untouched.
+   *  Captures stored by older extension builds are sitting on the server
+   *  East-first (seat-order-contract.md § Consumer rule) — both the pair
+   *  players and the double-dummy table — so a row read back needs the same
+   *  correction the ingest page applies at the door. Fixing on read rather
+   *  than backfilling the table costs no migration and self-heals: the rule is
+   *  version-gated and restamps, so a row written after both fixes is already
+   *  1.4 and passes through untouched.
+   *
+   *  This is also what reaches the rows stamped 1.3, which the ingest page
+   *  wrote itself with the players corrected and the table not. They are
+   *  version-gated separately for exactly that reason.
    */
   function correctSeatOrder(game) {
     if (!game?.payload) return game
