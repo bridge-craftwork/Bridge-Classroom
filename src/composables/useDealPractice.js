@@ -59,9 +59,10 @@ export function useDealPractice() {
 
   // Track played cards { N: [{suit, card}], E: [], S: [], W: [] }
   const playedCards = ref({ N: [], E: [], S: [], W: [] })
-  // Chosen cards whose trick a later [PLAY] has gathered — off the table even when a
-  // wrong choice was struck as the expected card instead (see updateVisibilityAndPlays)
-  const gatheredChoices = ref(new Set())
+  // Steps whose chosen card's trick a later [PLAY] has gathered — that card is off the
+  // table even when a wrong choice was struck as the expected card instead (see
+  // updateVisibilityAndPlays). Keyed by step: the same wrong card can be chosen again.
+  const gatheredChoiceSteps = ref(new Set())
 
   // Timing for observations
   const promptStartTime = ref(null)
@@ -260,7 +261,7 @@ export function useDealPractice() {
     const list = steps.value
     return list.map((step, i) => {
       const chosen = cardChoiceState.chosen[i]
-      if (!chosen || !step?.chooseCard) return step
+      if (!chosen || !step?.chooseCard || gatheredChoiceSteps.value.has(i)) return step
       const seat = seatHoldingCard(chosen) || studentSeat.value
       return { ...step, showcards: { ...(step.showcards || {}), [seat]: [chosen] } }
     })
@@ -273,7 +274,7 @@ export function useDealPractice() {
     const out = {}
     for (const [seat, cards] of Object.entries(showcards)) {
       const gathered = new Set((playedCards.value[seat] || []).map((p) => p.suit + p.card))
-      const onTable = cards.filter((c) => !gathered.has(c) && !gatheredChoices.value.has(c))
+      const onTable = cards.filter((c) => !gathered.has(c))
       if (onTable.length) out[seat] = onTable
     }
     return out
@@ -527,14 +528,14 @@ export function useDealPractice() {
     // A wrong choice is gathered as the expected card, so later steps of the lesson's line
     // still find the position their prose describes.
     let chosenOnTable = []
-    const gatheredChosen = new Set()
+    const gatheredSteps = new Set()
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
       if (step?.plays?.length) {
-        for (const { chosen, played } of chosenOnTable) {
+        for (const { step: at, played } of chosenOnTable) {
           const seat = seatHoldingCard(played)
           if (seat) playedCards.value[seat].push({ suit: played[0], card: played.slice(1) })
-          gatheredChosen.add(chosen)
+          gatheredSteps.add(at)
         }
         chosenOnTable = []
       }
@@ -542,7 +543,7 @@ export function useDealPractice() {
       if (step?.chooseCard && chosen) {
         const cc = step.chooseCard
         const ok = cc.anyOf ? cc.cards.includes(chosen) : chosen === cc.card
-        chosenOnTable.push({ chosen, played: ok ? chosen : (cc.anyOf ? cc.cards[0] : cc.card) })
+        chosenOnTable.push({ step: i, played: ok ? chosen : (cc.anyOf ? cc.cards[0] : cc.card) })
       }
       if (!step?.plays?.length) continue
       for (const playStr of step.plays) {
@@ -564,7 +565,7 @@ export function useDealPractice() {
         }
       }
     }
-    gatheredChoices.value = gatheredChosen
+    gatheredChoiceSteps.value = gatheredSteps
   }
 
   // ==================== METHODS: Auction ====================

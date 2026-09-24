@@ -101,6 +101,17 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     expect(dp.struckCards.value.N).toEqual(['S7'])
   })
 
+  it('shows a wrong card chosen again on a later trick', () => {
+    dp.loadDeal(parsePbn(board('S', [
+      '[show NS] [showcards W:SK] Trick 1. [choose-card any:S7,S6]',
+      '[PLAY W:SK,E:S3,S:S2] [showcards W:SQ] Trick 2. [choose-card any:S7,S6]',
+      '[showcards E:S4] Look. [NEXT] End.',
+    ].join(' ')))[0])
+    expect(choose('SA')).toBe(false)
+    expect(choose('SA')).toBe(false)
+    expect(table()).toEqual({ W: ['SQ'], N: ['SA'], E: ['S4'] })
+  })
+
   it('un-plays a choice on Back', () => {
     choose('S6'); dp.advance()
     dp.goBack()
