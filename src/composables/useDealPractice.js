@@ -59,6 +59,9 @@ export function useDealPractice() {
 
   // Track played cards { N: [{suit, card}], E: [], S: [], W: [] }
   const playedCards = ref({ N: [], E: [], S: [], W: [] })
+  // Chosen cards whose trick a later [PLAY] has gathered — off the table even when a
+  // wrong choice was struck as the expected card instead (see updateVisibilityAndPlays)
+  const gatheredChoices = ref(new Set())
 
   // Timing for observations
   const promptStartTime = ref(null)
@@ -263,6 +266,19 @@ export function useDealPractice() {
     })
   })
 
+  // A card in a gathered trick ([PLAY], §4.3) is history, not on the table: drop it from
+  // a seat's showcards, and drop the seat if that empties it. Without this a trick's
+  // cards lingered on the table under the next trick's (showcards accumulate per seat).
+  function withoutGathered(showcards) {
+    const out = {}
+    for (const [seat, cards] of Object.entries(showcards)) {
+      const gathered = new Set((playedCards.value[seat] || []).map((p) => p.suit + p.card))
+      const onTable = cards.filter((c) => !gathered.has(c) && !gatheredChoices.value.has(c))
+      if (onTable.length) out[seat] = onTable
+    }
+    return out
+  }
+
   // Showcards - specific cards to show from otherwise hidden hands
   // Also tracks showcards for fully-shown seats (these represent already-played cards)
   const currentShowcards = computed(() => {
@@ -293,6 +309,7 @@ export function useDealPractice() {
       }
     }
 
+    showcards = withoutGathered(showcards)
     return Object.keys(showcards).length > 0 ? showcards : null
   })
 
@@ -324,7 +341,7 @@ export function useDealPractice() {
 
     // Return showcards only for seats that are fully shown
     const played = {}
-    for (const [seat, cards] of Object.entries(showcards)) {
+    for (const [seat, cards] of Object.entries(withoutGathered(showcards))) {
       if (shownSeats.has(seat)) {
         played[seat] = cards
       }
@@ -504,8 +521,29 @@ export function useDealPractice() {
     // Recalculate played cards by walking steps
     playedCards.value = { N: [], E: [], S: [], W: [] }
     const stepsList = steps.value
+    // A card the student chose stays played: it sits in the trick until the next step
+    // that gathers tricks with [PLAY], and is struck from then on. The PBN can't name it
+    // in that [PLAY] itself — with an any: list only the app knows which card was chosen.
+    // A wrong choice is gathered as the expected card, so later steps of the lesson's line
+    // still find the position their prose describes.
+    let chosenOnTable = []
+    const gatheredChosen = new Set()
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
+      if (step?.plays?.length) {
+        for (const { chosen, played } of chosenOnTable) {
+          const seat = seatHoldingCard(played)
+          if (seat) playedCards.value[seat].push({ suit: played[0], card: played.slice(1) })
+          gatheredChosen.add(chosen)
+        }
+        chosenOnTable = []
+      }
+      const chosen = cardChoiceState.chosen[i]
+      if (step?.chooseCard && chosen) {
+        const cc = step.chooseCard
+        const ok = cc.anyOf ? cc.cards.includes(chosen) : chosen === cc.card
+        chosenOnTable.push({ chosen, played: ok ? chosen : (cc.anyOf ? cc.cards[0] : cc.card) })
+      }
       if (!step?.plays?.length) continue
       for (const playStr of step.plays) {
         const bySeat = { N: [], E: [], S: [], W: [] }
@@ -526,6 +564,7 @@ export function useDealPractice() {
         }
       }
     }
+    gatheredChoices.value = gatheredChosen
   }
 
   // ==================== METHODS: Auction ====================

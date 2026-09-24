@@ -169,6 +169,20 @@ the student can see which cards the prose already spent — without cluttering t
 with cards from a finished trick. (`[PLAY]` does **not** remove the card from the hand;
 live *declarer* play removes cards through a separate engine path, not `[PLAY]`.)
 
+### R-CP3a — A gathered card leaves the table; a chosen card stays played
+
+A card named in `[PLAY]` is off the table from that step on, even if an earlier
+`[showcards]` put it there — so a board that walks several tricks gathers each finished
+trick with `[PLAY]` (all its cards) before the next trick's `[showcards]`.
+
+The card a student plays at a `[choose-card]` sits in the trick until the next step that
+carries a `[PLAY]`, and is struck in its hand from then on. **Don't name it in that
+`[PLAY]`** — with an `any:` list only the app knows which card was chosen. A wrong choice
+is gathered as the first expected card, so the lesson's later positions still match its
+prose. An `any:` list may repeat cards an earlier `any:` choice might have used (dummy's
+two small spades on consecutive tricks): the one already played is struck, and struck
+cards can't be clicked.
+
 ### R-CP4 — A whole played trick is accounted for in all four hands
 
 If the prose says a **complete trick** has been played, every one of its four cards must
