@@ -102,7 +102,7 @@ control tags is a display-only deal (no interaction).
 | Directive | Syntax | Effect |
 |---|---|---|
 | `[BID x]` | `[BID 3NT]`, `[BID 4S]` | Bidding-quiz step. Text *before* the tag is the prompt; text *after* (until the next control tag) is the post-answer explanation. The `x` is the recorded correct call. |
-| `[choose-card X]` | `[choose-card D2]` · `[choose-card any:DK,DA]` | Cardplay step; blocks until the student clicks a correct card. `any:` lists several equally-correct cards. **On answer, the chosen card is implicitly played** — it acts as a `[showcards STUDENT:card]` (joins the centre trick, highlights in the student's hand), so you do **not** author a separate `[showcards]` for the student's own card. Going Back un-plays it. |
+| `[choose-card X]` | `[choose-card D2]` · `[choose-card any:DK,DA]` | Cardplay step; blocks until the student clicks a correct card. `any:` lists several equally-correct cards. The hand made clickable is the one that **holds the expected card** (the first card of an `any:` list), so a declarer can be asked to play from dummy with no extra syntax; every card of an `any:` list must be in that one hand. **On answer, the chosen card is implicitly played** — it acts as a `[showcards SEAT:card]` for the hand it came from (joins the centre trick, highlights in that hand), so you do **not** author a separate `[showcards]` for it. Going Back un-plays it. |
 | `[NEXT]` | `[NEXT]` | Advance-on-click; ends the current step, no answer required. |
 | `[ROTATE]` | `[ROTATE]` | As `[NEXT]`, for seat-rotation views. |
 | `[ACCEPT call …]` | `[ACCEPT 4S Pass]` | On a `[BID]` step, extra call(s) scored correct alongside the recorded one (judgment boards with more than one defensible call). Multiple tags accumulate. |

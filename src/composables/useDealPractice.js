@@ -193,6 +193,27 @@ export function useDealPractice() {
 
   const currentChooseCard = computed(() => currentStep.value?.chooseCard || null)
 
+  // The seat whose original hand holds `code` (e.g. 'S6'), or null. A card lives in
+  // exactly one hand, so the answer card itself names the hand being played from —
+  // the student's own, or dummy's when the student is declarer.
+  function seatHoldingCard(code) {
+    const hands = currentDeal.value?.hands
+    if (!hands || !code) return null
+    const suitKey = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }[code[0]]
+    for (const seat of ['N', 'E', 'S', 'W']) {
+      if (hands[seat]?.[suitKey]?.includes(code.slice(1))) return seat
+    }
+    return null
+  }
+
+  // The hand the student plays from on an unanswered [choose-card] step: whichever hand
+  // holds the expected card (the first of an any: list). Deal frame; null otherwise.
+  const cardChoiceSeat = computed(() => {
+    if (!hasCardChoice.value) return null
+    const cc = currentChooseCard.value
+    return seatHoldingCard(cc.anyOf ? cc.cards[0] : cc.card) || studentSeat.value
+  })
+
   // ==================== COMPUTED: Hand Visibility ====================
   // Walk steps[0..currentStepIndex], applying showSeats with REPLACEMENT semantics
   const hiddenSeats = computed(() => {
@@ -227,16 +248,18 @@ export function useDealPractice() {
   })
 
   // Steps with the student's answered [choose-card] folded in as an implicit
-  // [showcards STUDENT:card] on that step — so the chosen card flows through the SAME
+  // [showcards SEAT:card] on that step — so the chosen card flows through the SAME
   // showcards wiring (centre trick + in-hand highlight) as an explicit directive, with
-  // no special-casing downstream (2026-07-14 report). Keyed on cardChoiceState.chosen so
-  // it clears on reset/Back with the rest of the choice state.
+  // no special-casing downstream (2026-07-14 report). SEAT is the hand the card came
+  // from (dummy's, for a declarer). Keyed on cardChoiceState.chosen so it clears on
+  // reset/Back with the rest of the choice state.
   const stepsWithChoices = computed(() => {
     const list = steps.value
     return list.map((step, i) => {
       const chosen = cardChoiceState.chosen[i]
       if (!chosen || !step?.chooseCard) return step
-      return { ...step, showcards: { ...(step.showcards || {}), [studentSeat.value]: [chosen] } }
+      const seat = seatHoldingCard(chosen) || studentSeat.value
+      return { ...step, showcards: { ...(step.showcards || {}), [seat]: [chosen] } }
     })
   })
 
@@ -405,6 +428,8 @@ export function useDealPractice() {
   const displayAuctionDealer = computed(() =>
     turnedSeat(currentDeal.value?.auctionDealer || currentDeal.value?.dealer || 'N'))
   const displayDeclarer = computed(() => turnedSeat(currentDeal.value?.declarer || ''))
+  const displayCardChoiceSeat = computed(() =>
+    cardChoiceSeat.value ? turnedSeat(cardChoiceSeat.value) : null)
 
   // Show HCP?
   const showHcp = computed(() => {
@@ -1036,6 +1061,9 @@ export function useDealPractice() {
     // Computed: Card Choice
     hasCardChoice,
     currentChooseCard,
+    // The hand to make clickable for the choice (display frame) — the one holding the
+    // expected card, so a declarer can be asked to play from dummy.
+    cardChoiceSeat: displayCardChoiceSeat,
 
     // Computed: Display — all in the display frame (turned after [ROTATE])
     hiddenSeats: displayHiddenSeats,
