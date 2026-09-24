@@ -102,7 +102,7 @@ control tags is a display-only deal (no interaction).
 | Directive | Syntax | Effect |
 |---|---|---|
 | `[BID x]` | `[BID 3NT]`, `[BID 4S]` | Bidding-quiz step. Text *before* the tag is the prompt; text *after* (until the next control tag) is the post-answer explanation. The `x` is the recorded correct call. |
-| `[choose-card X]` | `[choose-card D2]` · `[choose-card any:DK,DA]` | Cardplay step; blocks until the student clicks a correct card. `any:` lists several equally-correct cards. **On answer, the chosen card is implicitly played** — it acts as a `[showcards STUDENT:card]` (joins the centre trick, highlights in the student's hand), so you do **not** author a separate `[showcards]` for the student's own card. Going Back un-plays it. |
+| `[choose-card X]` | `[choose-card D2]` · `[choose-card any:DK,DA]` | Cardplay step; blocks until the student clicks a correct card. `any:` lists several equally-correct cards. The hand made clickable is the one that **holds the expected card** (the first card of an `any:` list), so a declarer can be asked to play from dummy with no extra syntax; every card of an `any:` list must be in that one hand. **On answer, the chosen card is implicitly played** — it acts as a `[showcards SEAT:card]` for the hand it came from (joins the centre trick, highlights in that hand), so you do **not** author a separate `[showcards]` for it. Going Back un-plays it. |
 | `[NEXT]` | `[NEXT]` | Advance-on-click; ends the current step, no answer required. |
 | `[ROTATE]` | `[ROTATE]` | As `[NEXT]`, for seat-rotation views. |
 | `[ACCEPT call …]` | `[ACCEPT 4S Pass]` | On a `[BID]` step, extra call(s) scored correct alongside the recorded one (judgment boards with more than one defensible call). Multiple tags accumulate. |
@@ -168,6 +168,20 @@ stays visible, so the board keeps its full size and the played history is legibl
 the student can see which cards the prose already spent — without cluttering the table
 with cards from a finished trick. (`[PLAY]` does **not** remove the card from the hand;
 live *declarer* play removes cards through a separate engine path, not `[PLAY]`.)
+
+### R-CP3a — A gathered card leaves the table; a chosen card stays played
+
+A card named in `[PLAY]` is off the table from that step on, even if an earlier
+`[showcards]` put it there — so a board that walks several tricks gathers each finished
+trick with `[PLAY]` (all its cards) before the next trick's `[showcards]`.
+
+The card a student plays at a `[choose-card]` sits in the trick until the next step that
+carries a `[PLAY]`, and is struck in its hand from then on. **Don't name it in that
+`[PLAY]`** — with an `any:` list only the app knows which card was chosen. A wrong choice
+is gathered as the first expected card, so the lesson's later positions still match its
+prose. An `any:` list may repeat cards an earlier `any:` choice might have used (dummy's
+two small spades on consecutive tricks): the one already played is struck, and struck
+cards can't be clicked.
 
 ### R-CP4 — A whole played trick is accounted for in all four hands
 

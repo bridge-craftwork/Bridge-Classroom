@@ -137,7 +137,7 @@
               :hiddenSeats="practice.hiddenSeats.value"
               :showHcp="practice.showHcp.value"
               :compact="true"
-              :clickableSeat="practice.hasCardChoice.value ? practice.studentSeat.value : null"
+              :clickableSeat="practice.cardChoiceSeat.value"
               :playedCards="practice.struckCards.value"
               :currentCards="practice.showcardsPlayedCards.value"
               @card-click="onCardClick"
@@ -350,7 +350,7 @@
               :hands="isDeclarerPlay ? currentDeal.hands : practice.hands.value"
               :hidden-seats="gridHiddenSeats"
               :show-hcp="isDeclarerPlay ? true : (defenceScene ? false : practice.showHcp.value)"
-              :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : (practice.hasCardChoice.value ? practice.studentSeat.value : null)"
+              :clickable-seat="isDeclarerPlay ? cardplay.clickableSeat.value : practice.cardChoiceSeat.value"
               :played-cards="isDeclarerPlay ? cardplay.playedBySeat.value : practice.struckCards.value"
               :current-cards="isDeclarerPlay ? null : practice.showcardsPlayedCards.value"
               :hide-played-cards="isDeclarerPlay"
@@ -1972,7 +1972,7 @@ function a1Fixture() {
     // Effective hidden seats the grid renders (adds the played-card-only seats in a
     // defensive-signals scene, whose card lives in the centre trick).
     hiddenSeats: gridHiddenSeats.value || [],
-    clickableSeat: play ? cardplay.clickableSeat?.value : (practice.hasCardChoice?.value ? practice.studentSeat?.value : null),
+    clickableSeat: play ? cardplay.clickableSeat?.value : (practice.cardChoiceSeat?.value ?? null),
     playedCards: play ? cardplay.playedBySeat?.value : practice.showcardsPlayedCards?.value,
     bids: deal.auction || [],
     // The centre trick — the live cardplay engine's, or (defensive signals) the one built
