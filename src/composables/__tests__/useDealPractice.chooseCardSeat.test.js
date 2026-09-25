@@ -141,6 +141,18 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     expect(dp.currentShowcards.value).toEqual({ W: ['SK'], E: ['S3'] })
   })
 
+  it('clears the table at [RESET]', () => {
+    dp.loadDeal(parsePbn(board('S', [
+      '[show NS] [showcards W:SK] Trick. [choose-card any:S7,S6]',
+      '[showcards E:S3 S:S2] Rest of the trick. [NEXT]',
+      '[PLAY W:SK,E:S3,S:S2] Gathered. [NEXT]',
+      '[RESET] [show NESW] Full deal. [NEXT] End.',
+    ].join(' ')))[0])
+    choose('S6'); dp.advance(); dp.advance()
+    expect(dp.currentShowcards.value).toBeNull()
+    expect(dp.showcardsPlayedCards.value).toEqual({})
+  })
+
   it('un-plays a choice on Back', () => {
     choose('S6'); dp.advance()
     dp.goBack()

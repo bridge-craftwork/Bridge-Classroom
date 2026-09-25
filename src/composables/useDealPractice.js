@@ -290,6 +290,8 @@ export function useDealPractice() {
 
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
+      // [RESET] restores the original deal, so the table starts empty again.
+      if (step?.reset) showcards = {}
 
       if (step?.showcards) {
         for (const [seat, cards] of Object.entries(step.showcards)) {
@@ -336,6 +338,7 @@ export function useDealPractice() {
 
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
+      if (step?.reset) showcards = {}
 
       if (step?.showcards) {
         for (const [seat, cards] of Object.entries(step.showcards)) {
