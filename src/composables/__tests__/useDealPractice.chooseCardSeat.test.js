@@ -112,6 +112,23 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     expect(table()).toEqual({ W: ['SQ'], N: ['SA'], E: ['S4'] })
   })
 
+  it('gathers two wrong answers on an any: pair as two different cards', () => {
+    expect(choose('SA')).toBe(false)
+    dp.advance()
+    expect(choose('SA')).toBe(false)
+    expect(dp.struckCards.value.N).toEqual(['S7', 'S6'])
+  })
+
+  it('clears [PLAY] marks at [RESET]', () => {
+    dp.loadDeal(parsePbn(board('S', [
+      '[show NS] [PLAY W:SK,N:S6,E:S3,S:S2] Played. [NEXT]',
+      '[RESET] [show NESW] Full deal. [NEXT] End.',
+    ].join(' ')))[0])
+    expect(dp.struckCards.value.N).toEqual(['S6'])
+    dp.advance()
+    expect(dp.struckCards.value).toEqual({})
+  })
+
   it('un-plays a choice on Back', () => {
     choose('S6'); dp.advance()
     dp.goBack()
