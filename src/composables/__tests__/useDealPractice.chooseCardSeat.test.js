@@ -93,15 +93,15 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     expect(table()).toEqual({})
   })
 
-  it('gathers a wrong choice as the expected card, so later tricks stay consistent', () => {
+  it('plays the expected card after a wrong choice, so later tricks stay consistent', () => {
     expect(choose('SA')).toBe(false)
-    expect(table().N).toEqual(['SA'])
+    expect(table().N).toEqual(['S7'])
     dp.advance()
     expect(table()).toEqual({ W: ['SQ'] })
     expect(dp.struckCards.value.N).toEqual(['S7'])
   })
 
-  it('shows a wrong card chosen again on a later trick', () => {
+  it('plays the next unplayed expected card for a second wrong answer', () => {
     dp.loadDeal(parsePbn(board('S', [
       '[show NS] [showcards W:SK] Trick 1. [choose-card any:S7,S6]',
       '[PLAY W:SK,E:S3,S:S2] [showcards W:SQ] Trick 2. [choose-card any:S7,S6]',
@@ -109,7 +109,7 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     ].join(' ')))[0])
     expect(choose('SA')).toBe(false)
     expect(choose('SA')).toBe(false)
-    expect(table()).toEqual({ W: ['SQ'], N: ['SA'], E: ['S4'] })
+    expect(table()).toEqual({ W: ['SQ'], N: ['S6'], E: ['S4'] })
   })
 
   it('gathers two wrong answers on an any: pair as two different cards', () => {

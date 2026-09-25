@@ -793,7 +793,11 @@ export function useDealPractice() {
     let expectedDisplay = ''
     if (chooseCard.anyOf) {
       isCorrect = chooseCard.cards.includes(chosen)
-      expectedDisplay = chooseCard.cards[0]
+      // The first expected card still in hand: an any: list can repeat cards an
+      // earlier choice may already have played.
+      const gone = new Set(Object.values(struckCards.value).flat())
+      for (const [i, c] of Object.entries(cardChoiceState.chosen)) if (+i < stepIdx) gone.add(c)
+      expectedDisplay = chooseCard.cards.find((c) => !gone.has(c)) || chooseCard.cards[0]
     } else {
       isCorrect = chosen === chooseCard.card
       expectedDisplay = chooseCard.card
@@ -824,9 +828,12 @@ export function useDealPractice() {
     }
 
     // Mark step as answered, and remember the card played (drives the implicit
-    // showcards — the chosen card joins the trick + highlights in-hand).
+    // showcards — the card joins the trick + highlights in-hand). A wrong answer plays
+    // the expected card instead: the lesson's later steps describe the position its own
+    // line reaches, so the table has to follow that line. The feedback still names the
+    // student's card (wrongCard) and the answer is recorded as wrong above.
     cardChoiceState.answered[stepIdx] = true
-    cardChoiceState.chosen[stepIdx] = chosen
+    cardChoiceState.chosen[stepIdx] = isCorrect ? chosen : expectedDisplay
 
     if (isCorrect) {
       cardChoiceState.wrongCard = null
