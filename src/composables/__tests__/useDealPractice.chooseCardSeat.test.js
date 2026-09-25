@@ -153,6 +153,15 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     expect(dp.showcardsPlayedCards.value).toEqual({})
   })
 
+  it('strikes a chosen card once when a later [PLAY] also names it', () => {
+    dp.loadDeal(parsePbn(board('S', [
+      '[show NS] [showcards W:SK] Trick. [choose-card any:S7,S6]',
+      '[PLAY W:SK,E:S3,S:S2,N:S7,N:S6] Both small spades are gone. [NEXT] End.',
+    ].join(' ')))[0])
+    choose('S6')
+    expect(dp.struckCards.value.N).toEqual(['S6', 'S7'])
+  })
+
   it('un-plays a choice on Back', () => {
     choose('S6'); dp.advance()
     dp.goBack()

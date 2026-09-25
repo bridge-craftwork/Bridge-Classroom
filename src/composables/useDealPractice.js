@@ -542,6 +542,7 @@ export function useDealPractice() {
     // later steps of the lesson's line still find the position their prose describes.
     let chosenOnTable = []
     const gatheredSteps = new Set()
+    const isStruck = (seat, code) => playedCards.value[seat].some((p) => p.suit + p.card === code)
     const isPlayed = (code) => {
       const seat = seatHoldingCard(code)
       return (seat && playedCards.value[seat].some((p) => p.suit + p.card === code))
@@ -557,7 +558,7 @@ export function useDealPractice() {
       if (step?.plays?.length) {
         for (const { step: at, played } of chosenOnTable) {
           const seat = seatHoldingCard(played)
-          if (seat) playedCards.value[seat].push({ suit: played[0], card: played.slice(1) })
+          if (seat && !isStruck(seat, played)) playedCards.value[seat].push({ suit: played[0], card: played.slice(1) })
           gatheredSteps.add(at)
         }
         chosenOnTable = []
@@ -585,7 +586,11 @@ export function useDealPractice() {
         }
         for (const seat of ['N', 'E', 'S', 'W']) {
           if (bySeat[seat].length >= FULL_HAND) continue
-          playedCards.value[seat].push(...bySeat[seat])
+          // A [PLAY] may name the student's own card once its trick is gathered (e.g. both
+          // small hearts after an any: exit); it is struck once, not twice.
+          for (const p of bySeat[seat]) {
+            if (!isStruck(seat, p.suit + p.card)) playedCards.value[seat].push(p)
+          }
         }
       }
     }
