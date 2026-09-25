@@ -525,12 +525,22 @@ export function useDealPractice() {
     // A card the student chose stays played: it sits in the trick until the next step
     // that gathers tricks with [PLAY], and is struck from then on. The PBN can't name it
     // in that [PLAY] itself — with an any: list only the app knows which card was chosen.
-    // A wrong choice is gathered as the expected card, so later steps of the lesson's line
-    // still find the position their prose describes.
+    // A wrong choice is gathered as the expected card (the first one not yet played), so
+    // later steps of the lesson's line still find the position their prose describes.
     let chosenOnTable = []
     const gatheredSteps = new Set()
+    const isPlayed = (code) => {
+      const seat = seatHoldingCard(code)
+      return (seat && playedCards.value[seat].some((p) => p.suit + p.card === code))
+        || chosenOnTable.some((c) => c.played === code)
+    }
     for (let i = 0; i <= currentStepIndex.value && i < stepsList.length; i++) {
       const step = stepsList[i]
+      // [RESET] restores the original deal: every earlier [PLAY] mark is cleared (§4.3).
+      if (step?.reset) {
+        playedCards.value = { N: [], E: [], S: [], W: [] }
+        chosenOnTable = []
+      }
       if (step?.plays?.length) {
         for (const { step: at, played } of chosenOnTable) {
           const seat = seatHoldingCard(played)
@@ -543,7 +553,8 @@ export function useDealPractice() {
       if (step?.chooseCard && chosen) {
         const cc = step.chooseCard
         const ok = cc.anyOf ? cc.cards.includes(chosen) : chosen === cc.card
-        chosenOnTable.push({ step: i, played: ok ? chosen : (cc.anyOf ? cc.cards[0] : cc.card) })
+        const expected = cc.anyOf ? (cc.cards.find((c) => !isPlayed(c)) || cc.cards[0]) : cc.card
+        chosenOnTable.push({ step: i, played: ok ? chosen : expected })
       }
       if (!step?.plays?.length) continue
       for (const playStr of step.plays) {
