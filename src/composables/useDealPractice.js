@@ -310,6 +310,16 @@ export function useDealPractice() {
       }
     }
 
+    // A fully shown hand's single showcard is its card in the current trick, highlighted
+    // within the whole hand (showcardsPlayedCards), not a replacement for the hand.
+    // Without this, a later step's [showcards N:SQ] for a dummy shown steps earlier
+    // collapsed dummy to that one card. (Several cards for a shown seat are an older
+    // end-position display, "these are the cards left", which still replaces the hand.)
+    const hidden = new Set(hiddenSeats.value)
+    for (const [seat, cards] of Object.entries(showcards)) {
+      if (!hidden.has(seat) && cards.length === 1) delete showcards[seat]
+    }
+
     showcards = withoutGathered(showcards)
     return Object.keys(showcards).length > 0 ? showcards : null
   })

@@ -129,6 +129,18 @@ describe('useDealPractice — multi-trick [choose-card] boards', () => {
     expect(dp.struckCards.value).toEqual({})
   })
 
+  it('keeps a shown hand whole when a later step puts one of its cards on the table', () => {
+    dp.loadDeal(parsePbn(board('S', [
+      '[show NS] Plan. [NEXT]',
+      '[showcards W:SK N:S6 E:S3] Trick. [NEXT] End.',
+    ].join(' ')))[0])
+    dp.advance()
+    expect(dp.hands.value.N.spades).toEqual(['A', '7', '6'])
+    expect(dp.hands.value.N.hearts.length).toBe(5)
+    expect(dp.showcardsPlayedCards.value.N).toEqual(['S6'])
+    expect(dp.currentShowcards.value).toEqual({ W: ['SK'], E: ['S3'] })
+  })
+
   it('un-plays a choice on Back', () => {
     choose('S6'); dp.advance()
     dp.goBack()
