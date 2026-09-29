@@ -780,7 +780,7 @@
           <span>Bidding bot</span>
           <select class="bp-bot-select" v-model="biddingEngine" data-testid="bidding-engine-select">
             <option value="bba">BBA</option>
-            <option value="rusty" :disabled="!rustyReady">{{ rustyReady ? 'Rusty' : 'Rusty — needs a newer engine build' }}</option>
+            <option v-if="rustyReady" value="rusty">Rusty</option>
           </select>
         </label>
         <p v-if="currentDeal && effectiveBidder !== boardBidder" class="bp-setting-note">Takes effect on the next board.</p>
