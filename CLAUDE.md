@@ -368,6 +368,30 @@ The server-side twin is `bridge-table-service/src/bots.rs` (BBA bidding + BEN ca
 
 **`bridge-rulebot`** (sibling Rust repo, github.com/bridge-craftwork/bridge-rulebot) is the in-between bot: deterministic rule-based cardplay — opening leads, second-hand-low/third-hand-high, and defensive signals (attitude/count, standard or upside-down) — where every decision returns a reason code + student-facing explanation, plus `legal_count` and `duration_micros`. It's stateless (full play history passed each call). The table service consumes it natively (dependency wired 2026-07-02; bots.rs integration pending); this frontend will consume it via a planned `bridge-rulebot-wasm` wrapper adapted to the `cardplayBots.js` interface. Requirements + architecture live in that repo's `docs/`.
 
+### Bidding Bots (BBA or Rusty)
+
+The solo table's bot seats bid with **BBA** (default) or **Rusty**, the rule-based
+engine of the sibling repo `rusty-bidding-bot`, chosen in Table settings → "Bidding
+bot" (`bp.biddingEngine` in localStorage; `?bidder=bba|rusty` overrides it for one
+page load; embedded tables keep BBA unless the host passes `bidder`). One engine
+bids every bot seat; the student is still marked against BBA's auction.
+
+- Rusty runs in a module Web Worker ([rbbWorker.js](src/workers/rbbWorker.js)) behind
+  [rbbClient.js](src/utils/rbbClient.js); LocalEngine drives it through
+  [rustyBidder.js](src/composables/engines/rustyBidder.js). Where Rusty has no rule,
+  the table takes BBA's call for that seat, unflagged, and logs it (`[rusty] no rule`
+  in the console, `rusty_no_rule_fallback` diagnostics, and the bug-report context).
+- **The WASM is not committed.** `scripts/fetch-rbb-wasm.mjs` (run by `predev` /
+  `prebuild`) downloads `rbb-wasm.tar.gz` from the rusty-bidding-bot release pinned in
+  `scripts/rbb-wasm.release.json` (tag + SHA-256; a wrong hash fails the build) into
+  `public/rbb-wasm/` (gitignored). Upgrading = change tag and hash there.
+- **Local engine build** (before a release carries what you need):
+  `(cd ../rusty-bidding-bot && crates/wasm/build.sh)`, then
+  `RBB_WASM_LOCAL=../rusty-bidding-bot/crates/wasm/pkg npm run dev`. A plain
+  `npm run dev` afterwards reinstalls the pinned release.
+- The Rusty option is disabled unless the installed package has the `auction` entry
+  point (rusty-bidding-bot v0.2.0+; the pinned v0.1.0-rc1 does not).
+
 ### Convention Card
 
 Issue #8 Phase 1. A single Vue view ([src/views/ConventionCardView.vue](src/views/ConventionCardView.vue)) mounts at two places: standalone route `/convention-card` (no auth required — falls back to the public "2/1 Intermediate" system card) and inline as the Convention Card lobby tab via `<ConventionCardView embedded />`. The view is read-only in Phase 1; Phase 2 makes it editable.

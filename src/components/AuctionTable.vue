@@ -34,7 +34,7 @@
             >
               <span class="stacked-head">
                 <span class="stacked-marker">{{ divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)][kind] === bid ? '●' : '○' }}</span>
-                <span class="stacked-label">{{ kind === 'user' ? 'You' : 'BBA' }}</span>
+                <span class="stacked-label">{{ kind === 'user' ? 'You' : referenceLabel }}</span>
               </span>
               <span class="stacked-bid" v-html="formatBidHtml(divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)][kind])"></span>
             </div>
@@ -102,6 +102,7 @@ function formatMeaningHtml(text) {
     .replace(/!D/gi, '<span class="t-suit-d">&diams;</span>')
     .replace(/!H/gi, '<span class="t-suit-h">&hearts;</span>')
     .replace(/!S/gi, '<span class="t-suit-s">&spades;</span>')
+    .replace(/\n/g, '<br>')
 }
 
 // Useless meanings to skip: empty, natural/pass/double/redouble, or repeating the bid.
@@ -146,7 +147,8 @@ const props = defineProps({
     default: false
   },
   meanings: {
-    // Optional [{position, bid, meaning, isAlert}, ...]; enables per-cell hover tooltip.
+    // Optional [{position, bid, meaning, meaningExtended?, tooltip?, isAlert}, ...];
+    // enables per-cell hover tooltip. `tooltip` (Rusty's meanings) wins when set.
     type: Array,
     default: () => []
   },
@@ -155,6 +157,12 @@ const props = defineProps({
     // bids stacked in the cell with the rejected one struck-through.
     type: Object,
     default: () => ({})
+  },
+  referenceLabel: {
+    // Who the stacked row's other call comes from: the reference the student is
+    // marked against (BBA today, whichever engine bids the bot seats).
+    type: String,
+    default: 'BBA'
   },
   allowDivergenceToggle: {
     // When true, clicking a stacked bid emits `toggle-bid` so the parent can
@@ -258,13 +266,14 @@ function formatBidHtml(bid) {
 }
 
 // Returns HTML-ready tooltip content, or '' to suppress the tooltip entirely.
-// Prefers the longer `meaningExtended` (richer context: point ranges, suit
-// lengths, etc.) when BBA returns it; falls back to the short `meaning`.
+// Prefers a composed `tooltip` (Rusty: the call's meaning, then what the hand
+// has shown), else the longer `meaningExtended` (richer context: point ranges,
+// suit lengths, etc.) when BBA returns it; falls back to the short `meaning`.
 function tooltipFor(bidIdx) {
   if (!props.meanings || !props.meanings.length) return ''
   const m = props.meanings.find(x => x.position === bidIdx)
   if (!m) return ''
-  const raw = m.meaningExtended || m.meaning
+  const raw = m.tooltip || m.meaningExtended || m.meaning
   if (!raw) return ''
   const text = raw.trim()
   const bid = props.bids[bidIdx]
