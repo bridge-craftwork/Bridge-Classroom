@@ -22,12 +22,24 @@ function appVersion() {
   }
 }
 
+// The Rusty bidder's package, as scripts/fetch-rbb-wasm.mjs installed it
+// (release tag + hash or a local build; api, version, rules_id, and whether it
+// has the `auction` entry point). null when it is not installed.
+function rbbWasmInfo() {
+  try {
+    return JSON.parse(readFileSync(new URL('./public/rbb-wasm/build-info.json', import.meta.url)))
+  } catch {
+    return null
+  }
+}
+
 export default defineConfig({
   plugins: [vue()],
   base: '/',
   define: {
     __APP_COMMIT__: JSON.stringify(appCommit()),
-    __APP_VERSION__: JSON.stringify(appVersion())
+    __APP_VERSION__: JSON.stringify(appVersion()),
+    __RBB_WASM__: JSON.stringify(rbbWasmInfo())
   },
   resolve: {
     alias: {
