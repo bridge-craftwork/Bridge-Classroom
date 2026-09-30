@@ -56,6 +56,7 @@ rsa = { version = "0.9", features = ["sha2"] }
 
 # HTTP client (for Resend API)
 reqwest = { version = "0.11", features = ["json"] }
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-native-tls", "hostname"] }
 
 [dev-dependencies]
 # Testing

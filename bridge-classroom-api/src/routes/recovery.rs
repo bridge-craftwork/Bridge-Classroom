@@ -25,10 +25,15 @@ const CODE_RATE_LIMIT_SECS: u64 = 900; // 15 minutes
 /// device (e.g. types the code on their phone) re-use the same code on another
 /// (e.g. their laptop) without it reading as "Invalid or expired code." Measured
 /// from first use and bounded, so a used code is not valid indefinitely. Layered
-/// on latest-only supersession (each new request deletes prior tokens), the 24h
-/// expiry, and the 5-attempts/15min limiter — a small, deliberate relaxation for
-/// the classroom cross-device flow.
+/// on the LIVE_CODES_PER_USER cap, the 24h expiry, and the 5-attempts/15min
+/// limiter — a small, deliberate relaxation for the classroom cross-device flow.
 const CLAIM_REUSE_GRACE_SECS: i64 = 3600; // 1 hour
+
+/// How many unexpired codes a user may hold at once. A new request no longer
+/// cancels earlier ones (mail can arrive hours late), so whichever email lands
+/// first still works. Matches REQUEST_MAX_PER_EMAIL; a successful claim revokes
+/// the others. Guess odds scale with this: 3 live codes × 5 tries/15min.
+const LIVE_CODES_PER_USER: i64 = 3;
 
 /// In-memory rate limiter for recovery code attempts
 /// Key: email (lowercase), Value: (window_start, attempt_count)
@@ -246,17 +251,81 @@ struct ResendEmailRequest {
     html: String,
 }
 
-/// Send recovery email via Resend API
+const RECOVERY_SUBJECT: &str = "Restore your Bridge Classroom account";
+
+/// Send the recovery email, via Gmail SMTP when configured, else Resend.
+/// Gmail is preferred because Comcast/AT&T/Yahoo refuse connections from
+/// Resend's shared SES servers (421 4.4.1 "Unable to connect"), which held a
+/// code for 4h on 2026-09-29. If Gmail fails, fall back to Resend rather than
+/// leave the student with no email. Returns the provider that accepted it.
 async fn send_recovery_email(
-    api_key: &str,
-    from_email: &str,
+    config: &crate::config::Config,
     to_email: &str,
     first_name: &str,
     recovery_code: &str,
-) -> Result<(), String> {
-    let client = Client::new();
+) -> Result<&'static str, String> {
+    let html_body = recovery_email_html(first_name, recovery_code);
 
-    let html_body = format!(
+    let mut gmail_error = None;
+    if let (Some(user), Some(password)) = (&config.gmail_smtp_user, &config.gmail_app_password) {
+        match send_via_gmail(user, password, to_email, &html_body).await {
+            Ok(()) => return Ok("gmail"),
+            Err(e) => {
+                tracing::error!("Gmail send failed, falling back to Resend: {}", e);
+                gmail_error = Some(e);
+            }
+        }
+    }
+
+    match &config.resend_api_key {
+        Some(api_key) => send_via_resend(api_key, &config.from_email, to_email, &html_body)
+            .await
+            .map(|()| "resend"),
+        None => Err(gmail_error.unwrap_or_else(|| "no email provider configured".to_string())),
+    }
+}
+
+/// Send via Gmail's SMTP relay (STARTTLS on 587), authenticated with an app password.
+async fn send_via_gmail(
+    user: &str,
+    app_password: &str,
+    to_email: &str,
+    html_body: &str,
+) -> Result<(), String> {
+    use lettre::message::header::ContentType;
+    use lettre::transport::smtp::authentication::Credentials;
+    use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+
+    let from = format!("Bridge Classroom <{}>", user)
+        .parse()
+        .map_err(|e| format!("bad GMAIL_SMTP_USER {}: {}", user, e))?;
+    let to = to_email
+        .parse()
+        .map_err(|e| format!("bad recipient {}: {}", to_email, e))?;
+    let message = Message::builder()
+        .from(from)
+        .to(to)
+        .subject(RECOVERY_SUBJECT)
+        .header(ContentType::TEXT_HTML)
+        .body(html_body.to_string())
+        .map_err(|e| format!("failed to build email: {}", e))?;
+
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay("smtp.gmail.com")
+        .map_err(|e| format!("SMTP setup failed: {}", e))?
+        .credentials(Credentials::new(user.to_string(), app_password.to_string()))
+        .timeout(Some(std::time::Duration::from_secs(20)))
+        .build();
+
+    mailer
+        .send(message)
+        .await
+        .map_err(|e| format!("Gmail SMTP error: {}", e))?;
+    tracing::info!("Recovery email sent to {} via Gmail", to_email);
+    Ok(())
+}
+
+fn recovery_email_html(first_name: &str, recovery_code: &str) -> String {
+    format!(
         r#"<!DOCTYPE html>
 <html>
 <head>
@@ -285,13 +354,22 @@ async fn send_recovery_email(
 </html>"#,
         first_name = first_name,
         recovery_code = recovery_code,
-    );
+    )
+}
 
+/// Send via the Resend API.
+async fn send_via_resend(
+    api_key: &str,
+    from_email: &str,
+    to_email: &str,
+    html_body: &str,
+) -> Result<(), String> {
+    let client = Client::new();
     let email_request = ResendEmailRequest {
         from: from_email.to_string(),
         to: vec![to_email.to_string()],
-        subject: "Restore your Bridge Classroom account".to_string(),
-        html: html_body,
+        subject: RECOVERY_SUBJECT.to_string(),
+        html: html_body.to_string(),
     };
 
     let response = client
@@ -304,7 +382,7 @@ async fn send_recovery_email(
         .map_err(|e| format!("Failed to send email request: {}", e))?;
 
     if response.status().is_success() {
-        tracing::info!("Recovery email sent to {}", to_email);
+        tracing::info!("Recovery email sent to {} via Resend", to_email);
         Ok(())
     } else {
         let status = response.status();
@@ -405,12 +483,33 @@ pub async fn request_recovery(
     // turned the API log into a credential store. Log only a non-sensitive marker.
     tracing::info!("Creating recovery token for user {}", user_id);
 
-    // Delete any existing tokens for this user
-    sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ?")
-        .bind(&user_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Keep the newest few live codes instead of superseding them. Some receivers
+    // (Comcast, AT&T/sbcglobal, Yahoo) defer our mail for hours; a student who
+    // re-requested meanwhile used to find the late email's code already deleted
+    // (2026-09-29: a Comcast email deferred 10:37→2:47 PM arrived dead because
+    // of a 4:07 re-request). Prune expired tokens and all but the newest
+    // LIVE_CODES_PER_USER - 1, so this request leaves at most LIVE_CODES_PER_USER.
+    sqlx::query(
+        r#"
+        DELETE FROM recovery_tokens
+        WHERE user_id = ?
+          AND (expires_at <= ?
+               OR id NOT IN (
+                   SELECT id FROM recovery_tokens
+                   WHERE user_id = ? AND expires_at > ?
+                   ORDER BY created_at DESC
+                   LIMIT ?
+               ))
+        "#,
+    )
+    .bind(&user_id)
+    .bind(now.to_rfc3339())
+    .bind(&user_id)
+    .bind(now.to_rfc3339())
+    .bind(LIVE_CODES_PER_USER - 1)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Store new token with recovery code hash
     let token_id = uuid::Uuid::new_v4().to_string();
@@ -446,23 +545,18 @@ pub async fn request_recovery(
     // still prints it as a deliberate operational escape hatch when email is
     // down; that path is rare and is the only manual recovery channel.)
 
-    // Send recovery email via Resend if API key is configured
+    // Send recovery email (Gmail preferred, Resend fallback) if either is configured
     let mut email_sent = false;
-    if let Some(ref api_key) = state.config.resend_api_key {
-        match send_recovery_email(
-            api_key,
-            &state.config.from_email,
-            &req.email,
-            &first_name,
-            &recovery_code,
-        )
-        .await
-        {
-            Ok(_) => {
+    let email_configured = state.config.resend_api_key.is_some()
+        || (state.config.gmail_smtp_user.is_some() && state.config.gmail_app_password.is_some());
+    if email_configured {
+        match send_recovery_email(&state.config, &req.email, &first_name, &recovery_code).await {
+            Ok(provider) => {
                 tracing::info!(
-                    "Recovery email sent to {} for user {}",
+                    "Recovery email sent to {} for user {} (via {})",
                     req.email,
-                    first_name
+                    first_name,
+                    provider
                 );
                 email_sent = true;
             }
@@ -481,8 +575,8 @@ pub async fn request_recovery(
             }
         }
     } else {
-        // Fallback to logging if Resend not configured
-        tracing::warn!("RESEND_API_KEY not configured - logging recovery link instead");
+        // Fallback to logging if no email provider is configured
+        tracing::warn!("No email provider configured (RESEND_API_KEY / GMAIL_*) - logging recovery link instead");
         println!("\n{}", "=".repeat(70));
         println!("RECOVERY LINK (email not configured)");
         println!("{}", "=".repeat(70));
@@ -606,6 +700,16 @@ async fn claim_recovery_inner(
     // claim of the same code/link succeeds instead of failing as "expired."
     sqlx::query("UPDATE recovery_tokens SET used = 1, used_at = COALESCE(used_at, ?) WHERE id = ?")
         .bind(&now)
+        .bind(&token_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Signed in — revoke this user's other outstanding codes (kept live only so a
+    // late-arriving email would still work; see LIVE_CODES_PER_USER). The claimed
+    // token itself stays for the CLAIM_REUSE_GRACE_SECS second-device window.
+    sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ? AND id != ?")
+        .bind(&user_id)
         .bind(&token_id)
         .execute(&state.db)
         .await
@@ -834,6 +938,16 @@ async fn claim_by_code_inner(
     // claim of the same code/link succeeds instead of failing as "expired."
     sqlx::query("UPDATE recovery_tokens SET used = 1, used_at = COALESCE(used_at, ?) WHERE id = ?")
         .bind(&now_str)
+        .bind(&token_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Signed in — revoke this user's other outstanding codes (kept live only so a
+    // late-arriving email would still work; see LIVE_CODES_PER_USER). The claimed
+    // token itself stays for the CLAIM_REUSE_GRACE_SECS second-device window.
+    sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ? AND id != ?")
+        .bind(&user_id)
         .bind(&token_id)
         .execute(&state.db)
         .await

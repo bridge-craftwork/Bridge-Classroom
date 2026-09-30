@@ -39,6 +39,15 @@ pub struct Config {
     /// From email address for recovery emails
     pub from_email: String,
 
+    /// Gmail account that sends recovery emails over SMTP (optional). Preferred
+    /// over Resend when set with `gmail_app_password`: Comcast/AT&T/Yahoo refuse
+    /// connections from Resend's shared SES servers (421 4.4.1), delaying codes
+    /// by hours, but accept Gmail's. Resend stays as the fallback.
+    pub gmail_smtp_user: Option<String>,
+
+    /// Google app password for `gmail_smtp_user` (needs 2-Step Verification).
+    pub gmail_app_password: Option<String>,
+
     /// Default GitHub token for "Report a Problem" issues (optional). Owned by
     /// the platform maintainer (Rick); files baker-bridge + default-repo reports,
     /// so those issues are authored by Rick. Scoped to Issues:write on those
@@ -133,6 +142,15 @@ impl Config {
         let resend_api_key = env::var("RESEND_API_KEY").ok();
         let from_email = env::var("FROM_EMAIL")
             .unwrap_or_else(|_| "Bridge Classroom <noreply@mail.bridge-classroom.org>".to_string());
+        let gmail_smtp_user = env::var("GMAIL_SMTP_USER")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        // Google shows app passwords in groups of four ("abcd efgh ..."); accept
+        // them pasted with the spaces.
+        let gmail_app_password = env::var("GMAIL_APP_PASSWORD")
+            .ok()
+            .map(|s| s.split_whitespace().collect::<String>())
+            .filter(|s| !s.is_empty());
 
         // Treat an empty GITHUB_ISSUES_TOKEN the same as unset.
         let github_issues_token = env::var("GITHUB_ISSUES_TOKEN")
@@ -185,6 +203,8 @@ impl Config {
             admin_secret,
             resend_api_key,
             from_email,
+            gmail_smtp_user,
+            gmail_app_password,
             github_issues_token,
             github_issues_token_pbs,
             github_issues_repo,
