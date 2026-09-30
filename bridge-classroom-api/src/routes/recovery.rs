@@ -247,29 +247,56 @@ fn generate_recovery_code() -> String {
 struct ResendEmailRequest {
     from: String,
     to: Vec<String>,
+    reply_to: String,
     subject: String,
     html: String,
+    text: String,
 }
 
-const RECOVERY_SUBJECT: &str = "Restore your Bridge Classroom account";
+/// Where replies to a code email go. Gmail sends from the service account and
+/// the Resend fallback from a no-reply address, so point both at the inbox a
+/// person reads.
+const RECOVERY_REPLY_TO: &str = "Bridge Classroom <bridge-craftwork@gmail.com>";
+
+/// Plain wording, not "Restore your account": Gmail spam-foldered the first
+/// Gmail-sent code (2026-09-30), and "restore your account" + a code is the
+/// phishing template spam filters are trained on.
+const RECOVERY_SUBJECT: &str = "Your Bridge Classroom sign-in code";
+
+/// One code email, in both forms. HTML-only mail is itself a spam signal, so
+/// every send carries the plain-text alternative too.
+struct RecoveryEmail {
+    html: String,
+    text: String,
+}
+
+impl RecoveryEmail {
+    fn new(first_name: &str, recovery_code: &str) -> Self {
+        Self {
+            html: recovery_email_html(first_name, recovery_code),
+            text: recovery_email_text(first_name, recovery_code),
+        }
+    }
+}
 
 /// Send the recovery email, via Gmail SMTP when configured, else Resend.
 /// Gmail is preferred because Comcast/AT&T/Yahoo refuse connections from
 /// Resend's shared SES servers (421 4.4.1 "Unable to connect"), which held a
 /// code for 4h on 2026-09-29. If Gmail fails, fall back to Resend rather than
-/// leave the student with no email. Returns the provider that accepted it.
+/// leave the student with no email. Returns the provider that accepted it and
+/// the address it came from (so the student is told what to look for).
 async fn send_recovery_email(
     config: &crate::config::Config,
     to_email: &str,
     first_name: &str,
     recovery_code: &str,
-) -> Result<&'static str, String> {
-    let html_body = recovery_email_html(first_name, recovery_code);
+) -> Result<(&'static str, String), String> {
+    let email = RecoveryEmail::new(first_name, recovery_code);
 
     let mut gmail_error = None;
     if let (Some(user), Some(password)) = (&config.gmail_smtp_user, &config.gmail_app_password) {
-        match send_via_gmail(user, password, to_email, &html_body).await {
-            Ok(()) => return Ok("gmail"),
+        match send_via_gmail(user, password, to_email, &email).await {
+            Ok(()) => return Ok(("gmail", user.clone())),
             Err(e) => {
                 tracing::error!("Gmail send failed, falling back to Resend: {}", e);
                 gmail_error = Some(e);
@@ -278,10 +305,18 @@ async fn send_recovery_email(
     }
 
     match &config.resend_api_key {
-        Some(api_key) => send_via_resend(api_key, &config.from_email, to_email, &html_body)
+        Some(api_key) => send_via_resend(api_key, &config.from_email, to_email, &email)
             .await
-            .map(|()| "resend"),
+            .map(|()| ("resend", bare_address(&config.from_email).to_string())),
         None => Err(gmail_error.unwrap_or_else(|| "no email provider configured".to_string())),
+    }
+}
+
+/// "Name <addr@host>" → "addr@host"; a bare address passes through.
+fn bare_address(mailbox: &str) -> &str {
+    match (mailbox.find('<'), mailbox.rfind('>')) {
+        (Some(open), Some(close)) if open < close => mailbox[open + 1..close].trim(),
+        _ => mailbox.trim(),
     }
 }
 
@@ -290,9 +325,9 @@ async fn send_via_gmail(
     user: &str,
     app_password: &str,
     to_email: &str,
-    html_body: &str,
+    email: &RecoveryEmail,
 ) -> Result<(), String> {
-    use lettre::message::header::ContentType;
+    use lettre::message::MultiPart;
     use lettre::transport::smtp::authentication::Credentials;
     use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
@@ -302,12 +337,18 @@ async fn send_via_gmail(
     let to = to_email
         .parse()
         .map_err(|e| format!("bad recipient {}: {}", to_email, e))?;
+    let reply_to = RECOVERY_REPLY_TO
+        .parse()
+        .map_err(|e| format!("bad reply-to: {}", e))?;
     let message = Message::builder()
         .from(from)
+        .reply_to(reply_to)
         .to(to)
         .subject(RECOVERY_SUBJECT)
-        .header(ContentType::TEXT_HTML)
-        .body(html_body.to_string())
+        .multipart(MultiPart::alternative_plain_html(
+            email.text.clone(),
+            email.html.clone(),
+        ))
         .map_err(|e| format!("failed to build email: {}", e))?;
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay("smtp.gmail.com")
@@ -324,36 +365,45 @@ async fn send_via_gmail(
     Ok(())
 }
 
+fn recovery_email_text(first_name: &str, recovery_code: &str) -> String {
+    format!(
+        "Hi {first_name},
+
+Here is your code for signing in to Bridge Classroom:
+
+    {recovery_code}
+
+Type it into the sign-in screen to pick up your practice where you left off. \
+The code works for 24 hours.
+
+If you didn't ask to sign in, you can ignore this email. Nobody can get into \
+your account without this code.
+
+Questions? Just reply to this email.
+
+-- Bridge Classroom
+https://bridge-classroom.com
+"
+    )
+}
+
 fn recovery_email_html(first_name: &str, recovery_code: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 14px; color: #666; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Account Recovery</h2>
-        <p>Hi {first_name},</p>
-        <p>You requested to recover your Bridge Classroom account. Enter this code in the app to restore your practice history:</p>
-        <div style="text-align: center; margin: 24px 0; padding: 20px; background: #f0f4ff; border-radius: 8px;">
-            <p style="margin: 0; font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #1a237e; font-family: monospace;">{recovery_code}</p>
-        </div>
-        <p><strong>This code expires in 24 hours.</strong></p>
-        <div class="footer">
-            <p>If you didn't request this, you can safely ignore this email.</p>
-            <p>— Bridge Classroom</p>
-        </div>
-    </div>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <p>Hi {first_name},</p>
+    <p>Here is your code for signing in to Bridge Classroom:</p>
+    <p style="margin: 24px 0; font-size: 32px; font-weight: bold; letter-spacing: 6px; font-family: monospace;">{recovery_code}</p>
+    <p>Type it into the sign-in screen to pick up your practice where you left off. The code works for 24 hours.</p>
+    <p>If you didn't ask to sign in, you can ignore this email. Nobody can get into your account without this code.</p>
+    <p>Questions? Just reply to this email.</p>
+    <p style="color: #666;">&mdash; Bridge Classroom<br><a href="https://bridge-classroom.com" style="color: #666;">bridge-classroom.com</a></p>
+  </div>
 </body>
-</html>"#,
-        first_name = first_name,
-        recovery_code = recovery_code,
+</html>"#
     )
 }
 
@@ -362,14 +412,16 @@ async fn send_via_resend(
     api_key: &str,
     from_email: &str,
     to_email: &str,
-    html_body: &str,
+    email: &RecoveryEmail,
 ) -> Result<(), String> {
     let client = Client::new();
     let email_request = ResendEmailRequest {
         from: from_email.to_string(),
         to: vec![to_email.to_string()],
+        reply_to: RECOVERY_REPLY_TO.to_string(),
         subject: RECOVERY_SUBJECT.to_string(),
-        html: html_body.to_string(),
+        html: email.html.clone(),
+        text: email.text.clone(),
     };
 
     let response = client
@@ -546,19 +598,19 @@ pub async fn request_recovery(
     // down; that path is rare and is the only manual recovery channel.)
 
     // Send recovery email (Gmail preferred, Resend fallback) if either is configured
-    let mut email_sent = false;
+    let mut sent_from: Option<String> = None;
     let email_configured = state.config.resend_api_key.is_some()
         || (state.config.gmail_smtp_user.is_some() && state.config.gmail_app_password.is_some());
     if email_configured {
         match send_recovery_email(&state.config, &req.email, &first_name, &recovery_code).await {
-            Ok(provider) => {
+            Ok((provider, sender)) => {
                 tracing::info!(
                     "Recovery email sent to {} for user {} (via {})",
                     req.email,
                     first_name,
                     provider
                 );
-                email_sent = true;
+                sent_from = Some(sender);
             }
             Err(e) => {
                 // Log error but don't fail - still tell frontend the account exists
@@ -587,8 +639,8 @@ pub async fn request_recovery(
         println!("{}\n", "=".repeat(70));
     }
 
-    let message = if email_sent {
-        format!("Recovery code sent to {}. Check your email.", req.email)
+    let message = if let Some(sender) = &sent_from {
+        format!("We sent a 6-digit code to {} from {}.", req.email, sender)
     } else {
         format!(
             "Account found for {}. Email delivery failed - please contact your teacher for a recovery code.",
@@ -1088,5 +1140,29 @@ mod tests {
         let result = decrypt_for_recovery(&encrypted, wrong_secret);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn bare_address_strips_display_name() {
+        assert_eq!(
+            bare_address("Bridge Classroom <noreply@mail.bridge-classroom.org>"),
+            "noreply@mail.bridge-classroom.org"
+        );
+        assert_eq!(
+            bare_address("  someone@example.com "),
+            "someone@example.com"
+        );
+    }
+
+    #[test]
+    fn recovery_email_carries_code_in_both_forms() {
+        let email = RecoveryEmail::new("Pat", "042917");
+        for body in [&email.text, &email.html] {
+            assert!(body.contains("Hi Pat,"));
+            assert!(body.contains("042917"));
+            assert!(body.contains("24 hours"));
+        }
+        // The plain-text part must be real text, not markup.
+        assert!(!email.text.contains('<'));
     }
 }
