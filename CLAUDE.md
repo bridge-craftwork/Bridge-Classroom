@@ -377,7 +377,9 @@ The server-side twin is `bridge-table-service/src/bots.rs` (BBA bidding + BEN ca
 
 ### Convention Card
 
-Issue #8 Phase 1. A single Vue view ([src/views/ConventionCardView.vue](src/views/ConventionCardView.vue)) mounts at two places: standalone route `/convention-card` (no auth required — falls back to the public "2/1 Intermediate" system card) and inline as the Convention Card lobby tab via `<ConventionCardView embedded />`. The view is read-only in Phase 1; Phase 2 makes it editable.
+Issue #8. A single Vue view ([src/views/ConventionCardView.vue](src/views/ConventionCardView.vue)) mounts at two places: standalone route `/convention-card` (no auth required — falls back to the public "2/1 Intermediate" system card) and inline as the Convention Card lobby tab via `<ConventionCardView embedded />`.
+
+**It is a full editor, not the Phase-1 read-only viewer** — it saves, imports, and exports. Backing store is [convention_cards.rs](bridge-classroom-api/src/routes/convention_cards.rs): `list` / `get` / `create` / `update` / `delete` plus `get_user_cards` / `link_card_to_user` / `unlink_card_from_user`, role-checked. Editing state (dirty tracking, save, errors) lives in [useConventionCard.js](src/composables/useConventionCard.js).
 
 **Data flow**:
 1. [src/utils/conventionCatalog.js](src/utils/conventionCatalog.js) is the presentation catalog of conventions — each entry maps a dotted `card_data` path to a display name, description, section, and underlying `skillPath`.
@@ -387,11 +389,22 @@ Issue #8 Phase 1. A single Vue view ([src/views/ConventionCardView.vue](src/view
 
 **Subfolder/PBN basename join**: the lesson-mastery endpoint keys by `deal_subfolder`; the taxonomy keys by skill_path with a `pbn` filename. We bridge them via `getSubfolderForSkill(skillPath)` in `bakerBridgeTaxonomy.js`, which strips `.pbn`. If any lesson ever stores a subfolder that diverges from its PBN basename, promote `subfolder` to an explicit field on the taxonomy entry.
 
-**Visual structure** (matches the user's prototype at `/Users/rick/Desktop/bridge_convention_card_editor_v3.html`):
-- Header with card title + subtitle + Save/Export buttons (disabled in Phase 1).
-- Control bar with `SHOW` skill-level pills (multi-select; default `{basic}`) and `OVERLAYS` toggles for "Solo practice coverage" and "My proficiency".
-- Two-column grid: left section tree with `selected/total` counts, right detail panel (structured fields + conventions list).
+**Visual structure** (originally from the user's prototype at `/Users/rick/Desktop/bridge_convention_card_editor_v3.html`):
+- Header with card title + subtitle, an `unsaved` pill, Save, import buttons, **Export PDF**, and **Export Content**.
+- Control bar with `SHOW` skill-level pills (multi-select; default `{basic}`) and `OVERLAYS` toggles for "Solo practice coverage" and "My proficiency" (proficiency requires auth).
+- Two-column grid: left section tree with `selected/total` counts, right detail panel. [CardDetail.vue](src/components/conventionCard/CardDetail.vue) is the generic renderer; several areas have purpose-built panels — [CardingSignalsPanel](src/components/conventionCard/CardingSignalsPanel.vue), [OpeningLeadsPanel](src/components/conventionCard/OpeningLeadsPanel.vue), [VsNtDefense](src/components/conventionCard/VsNtDefense.vue), [VsTakeoutDoublePanel](src/components/conventionCard/VsTakeoutDoublePanel.vue), [VsPreemptsPanel](src/components/conventionCard/VsPreemptsPanel.vue), [DirectCuebidsMatrix](src/components/conventionCard/DirectCuebidsMatrix.vue), plus [RichSuitField](src/components/conventionCard/RichSuitField.vue) / [PatternSelector](src/components/conventionCard/PatternSelector.vue) inputs.
 - Footer with `N conventions selected` + last-saved timestamp.
+
+**Import / export**:
+- **PDF export** fills the *official ACBL fillable PDFs* rather than drawing a card from scratch — templates at `public/templates/acbl-classic-2023.pdf` (Classic) and `acbl-new.pdf`, fetched on demand. [acblClassicFillPdf.js](src/utils/acblClassicFillPdf.js) walks a static `FIELD_MAP` pairing each PDF field name with a `card_data` path, then flattens the form. `Shift`+click Export produces a **field-debug PDF** with every field name drawn in place — that's how the map was built and how you identify Acrobat's auto-generated names (`undefined_8`, `to_12`). [acblCardPdf.js](src/utils/acblCardPdf.js) is the from-scratch drawn variant.
+- Exported PDFs **embed the source `card_data` as JSON** in the PDF Info dict under `BridgeClassroomCard`, so a generated PDF re-imports into the editor losslessly (`extractCardDataFromPdf`).
+- Text is sanitized to WinAnsi because the ACBL form fields use standard Helvetica — the suit glyphs ♣♦♥♠ become C/D/H/S.
+- Other importers: [bridgeodexImport.js](src/utils/bridgeodexImport.js) (bridgeodex.com JSON), [bboImport.js](src/utils/bboImport.js).
+
+**Field text legibility.** The ACBL templates' fields all carry `/Helv 0 Tf` (auto-size, one line), which left a typical value at ~5pt. The export now re-typesets every filled field ([acblClassicFillPdf.js](src/utils/acblClassicFillPdf.js) `applyTypography`): **Barlow Condensed** (SIL OFL, `public/fonts/`, fetched on demand; the template's own condensed subset is missing glyphs), a 9pt target, wrapping onto a second line, and growing a box into free space. Three things keep that honest, each covered by [acblClassicFillPdf.layout.test.js](src/utils/__tests__/acblClassicFillPdf.layout.test.js), which reads back what each field actually draws on both templates:
+- **Ink metrics.** pdf-lib lays text out from a font's *declared* ascent (1.00em for Barlow) and centres single lines ignoring the descender, which dropped text so low the clip cut off g/j/p/y. `useInkMetrics()` gives pdf-lib the measured ink (0.77 / 0.21em) instead; the fitting maths (`inkHeight`, `linesThatFit`, `stackHeight`) must stay the inverse of pdf-lib's layout.
+- **Printed ink is an obstacle.** A box may only grow into space clear of the card's printed words, checkboxes, rules and other rows' underlines, measured off the blank templates into [acblTemplateInk.js](src/utils/acblTemplateInk.js) by `scripts/measure-acbl-template-ink.mjs` (needs `pdftoppm`; **re-run if ACBL revises a template**). A field's own underline is exempt.
+- **Grown or created boxes paint nothing but text**: no fill, no border. pdf-lib gives created fields a white fill and black border by default, and strokes a 0-width (= hairline) border whenever a field has a border colour but no fill; both erased printed art. Text-field borders are zeroed on the widget (`getOrCreateBorderStyle().setWidth(0)`) before fitting, since pdf-lib insets text by border width + 1. `PDFTextField` has no `setBorderWidth`; calls to it are silent no-ops.
 
 ### User Role Sync
 
@@ -429,7 +442,7 @@ src/
 ├── views/
 │   ├── MainLayout.vue          # Top-level app shell, route orchestration, header greeting
 │   ├── LobbyView.vue           # Tab orchestrator (visible tabs by role, active tab content)
-│   ├── ConventionCardView.vue  # Convention Card editor / viewer (Phase 1 read-only)
+│   ├── ConventionCardView.vue  # Convention Card editor (save/import/export)
 │   └── JoinClassroomView.vue   # /join/:code handler
 ├── components/
 │   ├── conventionCard/
