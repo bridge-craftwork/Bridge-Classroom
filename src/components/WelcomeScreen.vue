@@ -498,8 +498,8 @@ function toggleClassroom(classroomId) {
             <p class="subtitle">We found an existing account for <strong>{{ recoveryEmail }}</strong>.</p>
             <div class="recovery-info">
               <p>{{ recoveryMessage }}</p>
-              <p class="recovery-note">Click the link in the email, or enter the 6-digit code below.</p>
-              <p class="recovery-note spam-note">Don't see it? It can take a minute to arrive — be sure to check your spam or junk folder.</p>
+              <p class="recovery-note">Enter the 6-digit code from that email below.</p>
+              <p class="recovery-note spam-note">Don't see it? Check your spam or junk folder. If it's there, mark it "Not spam" so the next one reaches your inbox.</p>
             </div>
             <div class="code-entry">
               <label for="recoveryCode">Recovery Code</label>
