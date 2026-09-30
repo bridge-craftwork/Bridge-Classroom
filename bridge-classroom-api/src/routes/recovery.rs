@@ -25,10 +25,15 @@ const CODE_RATE_LIMIT_SECS: u64 = 900; // 15 minutes
 /// device (e.g. types the code on their phone) re-use the same code on another
 /// (e.g. their laptop) without it reading as "Invalid or expired code." Measured
 /// from first use and bounded, so a used code is not valid indefinitely. Layered
-/// on latest-only supersession (each new request deletes prior tokens), the 24h
-/// expiry, and the 5-attempts/15min limiter — a small, deliberate relaxation for
-/// the classroom cross-device flow.
+/// on the LIVE_CODES_PER_USER cap, the 24h expiry, and the 5-attempts/15min
+/// limiter — a small, deliberate relaxation for the classroom cross-device flow.
 const CLAIM_REUSE_GRACE_SECS: i64 = 3600; // 1 hour
+
+/// How many unexpired codes a user may hold at once. A new request no longer
+/// cancels earlier ones (mail can arrive hours late), so whichever email lands
+/// first still works. Matches REQUEST_MAX_PER_EMAIL; a successful claim revokes
+/// the others. Guess odds scale with this: 3 live codes × 5 tries/15min.
+const LIVE_CODES_PER_USER: i64 = 3;
 
 /// In-memory rate limiter for recovery code attempts
 /// Key: email (lowercase), Value: (window_start, attempt_count)
@@ -405,12 +410,33 @@ pub async fn request_recovery(
     // turned the API log into a credential store. Log only a non-sensitive marker.
     tracing::info!("Creating recovery token for user {}", user_id);
 
-    // Delete any existing tokens for this user
-    sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ?")
-        .bind(&user_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Keep the newest few live codes instead of superseding them. Some receivers
+    // (Comcast, AT&T/sbcglobal, Yahoo) defer our mail for hours; a student who
+    // re-requested meanwhile used to find the late email's code already deleted
+    // (2026-09-29: a Comcast email deferred 10:37→2:47 PM arrived dead because
+    // of a 4:07 re-request). Prune expired tokens and all but the newest
+    // LIVE_CODES_PER_USER - 1, so this request leaves at most LIVE_CODES_PER_USER.
+    sqlx::query(
+        r#"
+        DELETE FROM recovery_tokens
+        WHERE user_id = ?
+          AND (expires_at <= ?
+               OR id NOT IN (
+                   SELECT id FROM recovery_tokens
+                   WHERE user_id = ? AND expires_at > ?
+                   ORDER BY created_at DESC
+                   LIMIT ?
+               ))
+        "#,
+    )
+    .bind(&user_id)
+    .bind(now.to_rfc3339())
+    .bind(&user_id)
+    .bind(now.to_rfc3339())
+    .bind(LIVE_CODES_PER_USER - 1)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Store new token with recovery code hash
     let token_id = uuid::Uuid::new_v4().to_string();
@@ -606,6 +632,16 @@ async fn claim_recovery_inner(
     // claim of the same code/link succeeds instead of failing as "expired."
     sqlx::query("UPDATE recovery_tokens SET used = 1, used_at = COALESCE(used_at, ?) WHERE id = ?")
         .bind(&now)
+        .bind(&token_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Signed in — revoke this user's other outstanding codes (kept live only so a
+    // late-arriving email would still work; see LIVE_CODES_PER_USER). The claimed
+    // token itself stays for the CLAIM_REUSE_GRACE_SECS second-device window.
+    sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ? AND id != ?")
+        .bind(&user_id)
         .bind(&token_id)
         .execute(&state.db)
         .await
@@ -834,6 +870,16 @@ async fn claim_by_code_inner(
     // claim of the same code/link succeeds instead of failing as "expired."
     sqlx::query("UPDATE recovery_tokens SET used = 1, used_at = COALESCE(used_at, ?) WHERE id = ?")
         .bind(&now_str)
+        .bind(&token_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Signed in — revoke this user's other outstanding codes (kept live only so a
+    // late-arriving email would still work; see LIVE_CODES_PER_USER). The claimed
+    // token itself stays for the CLAIM_REUSE_GRACE_SECS second-device window.
+    sqlx::query("DELETE FROM recovery_tokens WHERE user_id = ? AND id != ?")
+        .bind(&user_id)
         .bind(&token_id)
         .execute(&state.db)
         .await
