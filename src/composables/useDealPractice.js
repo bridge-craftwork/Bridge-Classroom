@@ -1087,6 +1087,13 @@ export function useDealPractice() {
       if (deal.steps[0]?.type === 'bid') {
         advanceAuctionToNextPrompt()
       }
+
+      // Start timing a leading card-choice step — advance() only starts the
+      // clock on steps it lands on, so an opening-lead board ([choose-card] as
+      // step 0) otherwise recorded time_taken_ms = 0.
+      if (deal.steps[0]?.type === 'choose-card') {
+        promptStartTime.value = Date.now()
+      }
     }
   }
 
