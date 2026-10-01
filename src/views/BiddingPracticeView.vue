@@ -561,6 +561,7 @@
                   :show-turn-indicator="!auctionComplete"
                   :meanings="meanings"
                   :diverged-bids="shownDivergedBids"
+                  :reference-label="referenceName"
                   :allow-divergence-toggle="!auctionLoading"
                   @toggle-bid="toggleDivergedBid"
                 />
@@ -574,6 +575,7 @@
                   :wrong-bid-indices="shownWrongIndices"
                   :meanings="meanings"
                   :diverged-bids="shownDivergedBids"
+                  :reference-label="referenceName"
                   :show-turn-indicator="false"
                   :allow-divergence-toggle="false"
                 />
@@ -774,9 +776,17 @@
           <h3>Table settings</h3>
           <button class="bp-settings-x" @click="showTableSettings = false" title="Close">&times;</button>
         </div>
+        <label class="bp-setting-row" title="The engine that bids every bot seat. Your own calls are still compared with BBA's.">
+          <span>Bidding bot</span>
+          <select class="bp-bot-select" v-model="biddingEngine" data-testid="bidding-engine-select">
+            <option value="bba">BBA</option>
+            <option v-if="rustyReady" value="rusty">Rusty</option>
+          </select>
+        </label>
+        <p v-if="currentDeal && effectiveBidder !== boardBidder" class="bp-setting-note">Takes effect on the next board.</p>
         <label class="bp-setting-row"><input type="checkbox" v-model="rotateDeals"> Rotate deals randomly</label>
         <label class="bp-setting-row"><input type="checkbox" v-model="playCardplay"> Play the hand after bidding</label>
-        <label v-if="playCardplay" class="bp-setting-row" title="The bots always BID with BBA — this picks the CARDPLAY bot only.">
+        <label v-if="playCardplay" class="bp-setting-row" title="The bots BID with the bidding bot above — this picks the CARDPLAY bot only.">
           <span>Play bot</span>
           <select class="bp-bot-select" v-model="cardplayBotName">
             <option v-for="o in botOptions" :key="o.value" :value="o.value" :disabled="o.disabled">{{ o.label }}</option>
@@ -835,7 +845,9 @@ import { fetchScenarioMeta } from '../utils/pbsScenarios.js'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
-import { useLocalEngine } from '../composables/engines/localEngine.js'
+import { useLocalEngine, BIDDERS } from '../composables/engines/localEngine.js'
+import { loadBiddingEngine, saveBiddingEngine, rustyAvailable } from '../utils/biddingEngineSetting.js'
+import { RBB_WASM_INFO } from '../utils/rbbClient.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { useServerEngine } from '../composables/engines/serverEngine.js'
@@ -1074,6 +1086,19 @@ watch(showBbaCompare, (v) => {
   try { localStorage.setItem(SHOW_BBA_COMPARE_KEY, v ? '1' : '0') } catch {}
 })
 
+// Bidding engine (C2): which engine bids every bot seat — BBA (default) or Rusty.
+// Remembered in bp.biddingEngine; ?bidder= overrides it for a page load; embedded
+// tables keep BBA unless the host passes bidder. Rusty needs a package with the
+// `auction` entry point (rusty-bidding-bot v0.2.0+): without one the table bids
+// with BBA whatever is saved. Read per board: a change applies to the next board.
+const biddingEngine = ref(loadBiddingEngine({ embedded: EMBEDDED }))
+const rustyReady = rustyAvailable()
+const effectiveBidder = computed(() => (biddingEngine.value === 'rusty' && rustyReady ? 'rusty' : 'bba'))
+if (biddingEngine.value === 'rusty' && !rustyReady) {
+  console.warn('[rusty] this build has no Rusty package with `auction`; bidding with BBA')
+}
+watch(biddingEngine, (v) => { if (!EMBEDDED) saveBiddingEngine(v) })
+
 // ── The board-manager engine (LocalEngine) ─────────────────────────────
 // Owns the deal source, the auction/board flow, AND cardplay (useCardPlay).
 // The shell reads engine.yourSeat / engine.capabilities (seat-agnostic) and
@@ -1084,12 +1109,14 @@ const engine = useLocalEngine({
   embedded: EMBEDDED,
   embeddedCards: embeddedParams?.cards || null,
   rotate: () => rotateDeals.value,
+  bidder: () => effectiveBidder.value,
 })
 const {
   capabilities, yourSeat, cardplay,
   selection, hasSelection, sourceSummary: poolSummary,
   currentDeal, dealsDrawn, boardNumber: localBoardNumber, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
+  boardBidder, bidderName, referenceName, rustyInfo, rustyFallbacks,
   finalContract, doubleDummy,
   auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
   phase: enginePhase,
@@ -1157,7 +1184,18 @@ function tableReportContext() {
           showAllHands: cardplayShowAll.value,
           showBbaCompare: served ? srv.showBbaCompare : showBbaCompare.value,
           showDdErrors: cardplayShowDdErrors.value,
+          biddingEngine: served ? null : biddingEngine.value,
         },
+        // Who bid the bot seats of this board (solo): BBA, or Rusty with its
+        // rules/cards and the calls BBA made where Rusty had no rule.
+        bidder: served
+          ? null
+          : {
+              engine: boardBidder.value,
+              rbbPackage: RBB_WASM_INFO,
+              rusty: rustyInfo.value,
+              fallbacks: rustyFallbacks.value.slice(-10),
+            },
         dealSource: {
           summary: served ? (srv.dealSource?.label?.() || null) : (poolSummary.value || null),
           scenario: currentScenarioLabel?.value || currentScenario?.value || null,
@@ -1264,7 +1302,7 @@ function openReportProblem(e) {
 // lines apply is a per-surface question (a served table has no local pool summary).
 const scenarioMetaLines = computed(() => {
   if (!currentDeal.value) {
-    return ['You sit South; three BBA bots fill the other seats.', 'Pick a deal source to start bidding.']
+    return [`You sit South; three ${botBidderName.value} bots fill the other seats.`, 'Pick a deal source to start bidding.']
   }
   const out = []
   const cc = conventionsUsed.value
@@ -1288,12 +1326,15 @@ function botDisplayName(b) {
 }
 
 // Solo seat identities: you sit `yourSeat`; the other three seats are the
-// practice bots. They always BID with BBA; when you play the hand they also play
-// with the selected cardplay bot — so "BBA" alone in bidding-only, else e.g.
-// "BBA+BEN". Feeds BridgeTable `:occupants` so the seats are named (player + bot),
-// mirroring the host table.
+// practice bots. They BID with the board's bidding engine (BBA or Rusty); when
+// you play the hand they also play with the selected cardplay bot — so "BBA" /
+// "Rusty" alone in bidding-only, else e.g. "Rusty+BEN". Feeds BridgeTable
+// `:occupants` so the seats are named (player + bot), mirroring the host table.
+// Before a board is dealt the name follows the setting; after, the board's bidder.
+const botBidderName = computed(() =>
+  currentDeal.value ? bidderName.value : BIDDERS[effectiveBidder.value])
 const soloBotSeatName = computed(() =>
-  playCardplay.value ? `BBA+${botDisplayName(cardplayBotName.value)}` : 'BBA')
+  playCardplay.value ? `${botBidderName.value}+${botDisplayName(cardplayBotName.value)}` : botBidderName.value)
 // Cardplay-bot dropdown options. All registered bots are selectable; the
 // disabled "coming soon" row only appears if `rules` somehow isn't registered
 // (e.g. the wasm failed to load), so the option never silently vanishes.
@@ -1318,14 +1359,14 @@ const soloOccupants = computed(() => {
   const u = currentUser.value
   const myName = u ? `${u.firstName} ${u.lastName}`.trim() : 'You'
   // Solo supports South-as-declarer only, so North is the dummy South plays — it's
-  // NEVER a cardplay bot. So North toggles "BBA" (bidding) ↔ "Dummy" (play), with
-  // no "+play-bot" suffix. E/W are bid by BBA and played by the cardplay bot.
+  // NEVER a cardplay bot. So North toggles the bidder (bidding) ↔ "Dummy" (play),
+  // with no "+play-bot" suffix. E/W are bid by the bidder, played by the cardplay bot.
   const inPlay = localCenterSlot.value === 'trick-area' || localCenterSlot.value === 'review'
   const out = {}
   for (const s of ['N', 'E', 'S', 'W']) {
     let name
     if (s === yourSeat.value) name = myName
-    else if (s === 'N') name = inPlay ? 'Dummy' : 'BBA'
+    else if (s === 'N') name = inPlay ? 'Dummy' : botBidderName.value
     else name = soloBotSeatName.value
     out[s] = { name }
   }

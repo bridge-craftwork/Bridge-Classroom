@@ -233,3 +233,34 @@ export function dealToMinimalPbn(deal, boardNumber = 1) {
 export function randomItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)]
 }
+
+// A PBS convention card's `.bbsa` text (bbsa/<name>.bbsa) — for the Rusty
+// bidder, when a scenario names a card its engine does not have built in.
+export async function fetchPbsBbsa(name) {
+  if (!/^[A-Za-z0-9_.-]+$/.test(name || '')) throw new Error(`not a card name: ${name}`)
+  const resp = await fetch(`${PBS.RAW_BASE}/bbsa/${name}.bbsa`)
+  if (!resp.ok) throw new Error(`card ${name}: HTTP ${resp.status}`)
+  return resp.text()
+}
+
+// The cards a scenario plays, `{ns, ew}` names (its CC1/CC2), from the release
+// manifest (conventionCardNS/EW — the same cards the scenario's PBN headers name,
+// and the ones BBA resolves the scenario name to). null when the manifest does
+// not list the scenario. The manifest is fetched once per page.
+let manifestCardsPromise = null
+export async function fetchScenarioCards(file) {
+  manifestCardsPromise ??= (async () => {
+    const resp = await fetch(`${PBS.RAW_BASE}${PBS.MANIFEST_DIR}/manifest-release.json`)
+    if (!resp.ok) throw new Error(`manifest fetch failed (${resp.status})`)
+    const m = await resp.json()
+    const cards = {}
+    for (const [name, sc] of Object.entries(m.scenarios || {})) {
+      if (sc.conventionCardNS || sc.conventionCardEW) {
+        cards[name] = { ns: sc.conventionCardNS || sc.conventionCardEW, ew: sc.conventionCardEW || sc.conventionCardNS }
+      }
+    }
+    return cards
+  })()
+  manifestCardsPromise.catch(() => { manifestCardsPromise = null })
+  return (await manifestCardsPromise)[file] || null
+}

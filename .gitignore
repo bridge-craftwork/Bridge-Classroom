@@ -65,3 +65,7 @@ dist-harness/
 # Bug-report dev sink (local capture bundles — never committed)
 dev-reports/
 gallery-a1/
+
+# Rusty bidder WASM package: fetched from rusty-bidding-bot's pinned release
+# (scripts/fetch-rbb-wasm.mjs, run by predev/prebuild), never committed.
+public/rbb-wasm/
