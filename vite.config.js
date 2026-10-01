@@ -33,5 +33,10 @@ export default defineConfig({
     alias: {
       '@': '/src'
     }
+  },
+  // The convention card library ships its editor as Vue source, compiled by
+  // this build; esbuild's dependency pre-bundling can't read .vue files.
+  optimizeDeps: {
+    exclude: ['@bridge-craftwork/convention-card']
   }
 })
