@@ -96,7 +96,10 @@ export const bridgeClassroomStorage = {
     if (!res.ok) await fail(res, 'Overwrite')
   },
 
-  async create({ name, description = null, cardData = {}, visibility = 'private' }) {
+  // `primary`: whether the new card becomes the one that opens first. The
+  // editor asks for it only for a person's first card (convention-card
+  // 0.4.3); "Make primary" uses setPrimary below.
+  async create({ name, description = null, cardData = {}, visibility = 'private', primary = true }) {
     const userId = currentUserId()
     const res = await apiFetch(`${API_URL}/cards`, {
       method: 'POST',
@@ -105,13 +108,27 @@ export const bridgeClassroomStorage = {
     })
     if (!res.ok) await fail(res, 'Create')
     const { card_id } = await res.json()
-    // Link as primary, as the lobby tab always has.
     await apiFetch(`${API_URL}/users/${encodeURIComponent(userId)}/cards`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ card_id, is_primary: true, acting_user_id: userId })
+      body: JSON.stringify({ card_id, is_primary: !!primary, acting_user_id: userId })
     })
     return card_id
+  },
+
+  // Make a card the one that opens first. The link endpoint upserts and
+  // also writes `label`, so the link's current label is sent back as it is.
+  async setPrimary(cardId) {
+    const userId = currentUserId()
+    const links = await fetchLinks(userId)
+    const link = links.find(l => (l.card_id || l.id) === cardId)
+    if (!link) throw new Error('That card is not in your list')
+    const res = await apiFetch(`${API_URL}/users/${encodeURIComponent(userId)}/cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ card_id: cardId, is_primary: true, label: link.label ?? null, acting_user_id: userId })
+    })
+    if (!res.ok) await fail(res, 'Make primary')
   },
 
   async remove(cardId) {
