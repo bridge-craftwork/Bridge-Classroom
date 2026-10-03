@@ -4,23 +4,46 @@
       {{ handoff.message }}
       <a v-if="handoff.needsSignIn" href="#/">Sign in</a>
     </div>
-    <ConventionCardEditor
-      :embedded="embedded"
-      :storage="bridgeClassroomStorage"
-      :overlays="bridgeClassroomOverlays"
-    />
+    <!-- One card, in the editor (?card=<id>). -->
+    <template v-if="cardId">
+      <a class="back" :href="homeHref" @click.prevent="goHome">← All cards</a>
+      <ConventionCardEditor
+        :embedded="embedded"
+        :storage="bridgeClassroomStorage"
+        :overlays="bridgeClassroomOverlays"
+      />
+    </template>
+
+    <!-- Home: the player's cards, from the convention-card package. -->
+    <template v-else>
+      <p v-if="!signedIn" class="handoff-note">
+        Sign in to see and keep your convention cards.
+        <a href="#/">Sign in</a>
+      </p>
+      <CardCatalog
+        :key="userStore.currentUser.value?.id || 'signed-out'"
+        :storage="bridgeClassroomStorage"
+        :overlays="bridgeClassroomOverlays"
+        :embedded="embedded"
+        storage-place="account"
+        :card-link="cardHref"
+        @open="openCard"
+      />
+    </template>
   </div>
 </template>
 
 <script setup>
 // The convention card editor moved to github.com/bridge-craftwork/convention-card
-// (its Phase 3). This view embeds it with Bridge Classroom's adapters (cards in
-// this API, the lesson-mastery overlay), and receives cards the standalone
+// (its Phase 3). This view shows its home page (a table of the player's
+// cards) and, for ?card=<id>, the editor, with Bridge Classroom's adapters
+// (cards in this API, the lesson-mastery overlay); and it receives cards the standalone
 // editor at bridge-craftwork.com/card/ hands over in the URL
 // (#/convention-card?import=…; its DECISIONS.md, 20).
-import { onMounted, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConventionCardEditor from '@bridge-craftwork/convention-card/web/src/editor/ConventionCardEditor.vue'
+import CardCatalog from '@bridge-craftwork/convention-card/web/src/editor/CardCatalog.vue'
 import { useCardEditor } from '@bridge-craftwork/convention-card/web/src/editor/useCardEditor.js'
 import { decodeCardFromUrl } from '@bridge-craftwork/convention-card/js/handoff.js'
 import '../utils/conventionCardLibrary.js' // where the PDF export's template and font are served
@@ -39,6 +62,39 @@ const router = useRouter()
 const userStore = useUserStore()
 const editor = useCardEditor(bridgeClassroomStorage, bridgeClassroomOverlays)
 const handoff = reactive({ message: '', needsSignIn: false, error: false })
+const signedIn = computed(() => !!userStore.currentUser.value?.id)
+
+// ─── Home or one card, by the `card` query ─────────────────────
+// This view is the /convention-card page and the lobby's Convention Card
+// tab; either way the query says which card is open (none: the table).
+const cardId = computed(() => (typeof route.query.card === 'string' ? route.query.card : null))
+const queryWith = card => {
+  const { card: _, ...rest } = route.query
+  return card ? { ...rest, card } : rest
+}
+const cardHref = id => router.resolve({ query: queryWith(id) }).href
+const homeHref = computed(() => router.resolve({ query: queryWith(null) }).href)
+function openCard(id) { router.push({ query: queryWith(id) }) }
+function goHome() { router.push({ query: queryWith(null) }) }
+
+// Load the card the address names, before the editor mounts where it can,
+// so the editor does not load the primary card over it.
+let routeLoading = false
+watch(cardId, async id => {
+  if (!id || editor.currentCard.value?.id === id) return
+  routeLoading = true
+  try {
+    if (!editor.userCardLinks.value.length) editor.loadUserCardLinks()
+    await editor.switchCard(id)
+  } finally {
+    routeLoading = false
+  }
+}, { immediate: true })
+
+// The editor's own card picker switches cards: keep the address in step.
+watch(() => editor.currentCard.value?.id, id => {
+  if (cardId.value && id && id !== cardId.value && !routeLoading) router.replace({ query: queryWith(id) })
+})
 
 function readPending() {
   try { return localStorage.getItem(PENDING) } catch { return null }
@@ -67,8 +123,9 @@ async function importPending() {
     const record = await decodeCardFromUrl(text)
     clearPending()
     const name = record.name || 'Imported convention card'
-    await editor.createCard({ name, description: record.description || null, cardData: record.card_data })
+    const id = await editor.createCard({ name, description: record.description || null, cardData: record.card_data })
     Object.assign(handoff, { message: `Saved “${name}” to your cards.`, needsSignIn: false, error: false })
+    openCard(id)
   } catch (err) {
     clearPending()
     Object.assign(handoff, { message: `Could not save the card you sent: ${err.message}`, needsSignIn: false, error: true })
@@ -112,6 +169,14 @@ watch(() => userStore.currentUser.value?.id, uid => { if (uid) importPending() }
 .handoff-note.error {
   background: var(--red-light);
 }
+.back {
+  display: inline-block;
+  margin: 4px 0 8px;
+  font-weight: 600;
+  color: var(--green-dark);
+  text-decoration: none;
+}
+.back:hover { text-decoration: underline; }
 .handoff-note a {
   margin-left: 8px;
   font-weight: 600;
