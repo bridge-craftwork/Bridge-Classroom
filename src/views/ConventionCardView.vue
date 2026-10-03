@@ -11,11 +11,12 @@
         :embedded="embedded"
         :storage="bridgeClassroomStorage"
         :overlays="bridgeClassroomOverlays"
+        @deleted="goHome"
       />
     </template>
 
     <!-- Home: the player's cards, from the convention-card package. -->
-    <template v-else>
+    <div v-else class="card-home">
       <p v-if="!signedIn" class="handoff-note">
         Sign in to see and keep your convention cards.
         <a href="#/">Sign in</a>
@@ -29,7 +30,7 @@
         :card-link="cardHref"
         @open="openCard"
       />
-    </template>
+    </div>
   </div>
 </template>
 
@@ -168,6 +169,11 @@ watch(() => userStore.currentUser.value?.id, uid => { if (uid) importPending() }
 }
 .handoff-note.error {
   background: var(--red-light);
+}
+.card-home {
+  max-width: var(--max-width, 1200px);
+  margin: 0 auto;
+  padding: 12px 16px 32px;
 }
 .back {
   display: inline-block;
