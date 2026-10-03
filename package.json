@@ -20,7 +20,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@bridge-craftwork/convention-card": "github:bridge-craftwork/convention-card#v0.5.0",
+    "@bridge-craftwork/convention-card": "github:bridge-craftwork/convention-card#v0.6.0",
     "modern-screenshot": "^4.7.0",
     "vue": "^3.4.0",
     "vue-router": "^4.6.4"
