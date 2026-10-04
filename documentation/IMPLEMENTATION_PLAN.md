@@ -12,7 +12,7 @@ This document outlines the staged implementation plan for the Bridge Classroom p
 - Tests: Vitest configured
 
 **Content Source:** Baker Bridge deals (1,173 deals across 49 categories)
-- CSV available at: /Users/rick/Development/GitHub/Baker-Bridge/Tools/BakerBridgeFull.csv
+- CSV available at: /Volumes/Express2T/Development/GitHub/Baker-Bridge/Tools/BakerBridgeFull.csv
 - PBN files also available
 
 ---
