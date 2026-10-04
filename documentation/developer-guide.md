@@ -379,7 +379,7 @@ The Bridge Classroom app fetches lesson content (PBN files) from the Baker-Bridg
 ### Repository Location
 
 ```
-/Users/rick/Development/GitHub/Baker-Bridge/
+/Volumes/Express2T/Development/GitHub/Baker-Bridge/
 ```
 
 ### Source Files
@@ -411,7 +411,7 @@ HTML Files → bbparse.py → CSV → CSV_to_PBN.py → PBN Files
 > authority for its pipeline — check there before running any of this.
 
 ```bash
-cd /Users/rick/Development/GitHub/Baker-Bridge/Tools
+cd /Volumes/Express2T/Development/GitHub/Baker-Bridge/Tools
 
 # Step 1: Parse HTML to CSV
 python3 bbparse.py
@@ -512,7 +512,7 @@ Lesson names are the subfolder names from the original HTML structure (e.g., "De
 1. **Edit the source HTML** file
 2. **Re-run the build pipeline**:
    ```bash
-   cd /Users/rick/Development/GitHub/Baker-Bridge/Tools
+   cd /Volumes/Express2T/Development/GitHub/Baker-Bridge/Tools
    python3 bbparse.py
    python3 CSV_to_PBN.py BakerBridge.csv
    cp pbns/*.pbn ../Package/
