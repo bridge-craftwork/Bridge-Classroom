@@ -7,9 +7,21 @@ use axum::{
 use crate::models::{
     AssignmentActionResponse, AssignmentDetail, AssignmentDetailResponse, AssignmentInfo,
     AssignmentListResponse, AssignmentQuery, CreateAssignmentRequest, CreateAssignmentResponse,
-    SetAssignmentClosedRequest, StudentAssignmentProgress,
+    SetAssignmentClosedRequest, SetAssignmentDueRequest, StudentAssignmentProgress,
 };
 use crate::AppState;
+
+/// Normalise a due date from the client: `YYYY-MM-DD`, or `None` for no due
+/// date (null, empty or blank). Anything else is rejected rather than stored,
+/// because the student panel and dashboard parse this string as a local date.
+fn parse_due_date(raw: Option<&str>) -> Result<Option<String>, String> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .map(|d| Some(d.format("%Y-%m-%d").to_string()))
+            .map_err(|_| format!("Due date must be YYYY-MM-DD, got {s:?}")),
+    }
+}
 
 /// Validate API key from request headers
 fn validate_api_key(headers: &HeaderMap, expected_key: &str) -> bool {
@@ -968,4 +980,77 @@ pub async fn set_assignment_closed(
         success: true,
         error: None,
     }))
+}
+
+/// PUT /api/assignments/:id/due — Change or remove an assignment's due date.
+///
+/// Only `due_at` changes; the assignment's boards and results are untouched.
+/// API-key gated, to match `set_assignment_closed` and `delete_assignment`.
+pub async fn set_assignment_due(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(assignment_id): Path<String>,
+    Json(req): Json<SetAssignmentDueRequest>,
+) -> Result<Json<AssignmentActionResponse>, (StatusCode, String)> {
+    if !validate_api_key(&headers, &state.config.api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+    }
+
+    let due_at = parse_due_date(req.due_at.as_deref()).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    let result = sqlx::query("UPDATE assignments SET due_at = ? WHERE id = ?")
+        .bind(&due_at)
+        .bind(&assignment_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update assignment due date: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Assignment not found".to_string()));
+    }
+
+    tracing::info!(
+        "Assignment {} due date set to {}",
+        assignment_id,
+        due_at.as_deref().unwrap_or("(none)")
+    );
+
+    Ok(Json(AssignmentActionResponse {
+        success: true,
+        error: None,
+    }))
+}
+
+#[cfg(test)]
+mod due_date_tests {
+    use super::parse_due_date;
+
+    #[test]
+    fn accepts_a_calendar_date() {
+        assert_eq!(
+            parse_due_date(Some("2026-10-09")),
+            Ok(Some("2026-10-09".to_string()))
+        );
+        assert_eq!(
+            parse_due_date(Some(" 2026-10-09 ")),
+            Ok(Some("2026-10-09".to_string()))
+        );
+    }
+
+    #[test]
+    fn treats_missing_or_blank_as_no_due_date() {
+        assert_eq!(parse_due_date(None), Ok(None));
+        assert_eq!(parse_due_date(Some("")), Ok(None));
+        assert_eq!(parse_due_date(Some("   ")), Ok(None));
+    }
+
+    #[test]
+    fn rejects_anything_else() {
+        assert!(parse_due_date(Some("10/09/2026")).is_err());
+        assert!(parse_due_date(Some("2026-02-30")).is_err());
+        assert!(parse_due_date(Some("2026-10-09T00:00:00Z")).is_err());
+    }
 }

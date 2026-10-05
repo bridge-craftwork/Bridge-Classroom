@@ -32,6 +32,14 @@ pub struct SetAssignmentClosedRequest {
     pub closed: bool,
 }
 
+/// Request to change an assignment's due date (`PUT /api/assignments/:id/due`).
+#[derive(Debug, Deserialize)]
+pub struct SetAssignmentDueRequest {
+    /// The new due date as `YYYY-MM-DD` (what the create form stores), or
+    /// null / empty to remove it.
+    pub due_at: Option<String>,
+}
+
 /// Query parameters for listing assignments
 #[derive(Debug, Deserialize)]
 pub struct AssignmentQuery {

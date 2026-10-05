@@ -57,10 +57,31 @@
             </div>
             <div class="assignment-meta">
               <span class="assignment-boards">{{ a.total_boards }} {{ a.total_boards === 1 ? 'board' : 'boards' }}</span>
-              <span v-if="a.due_at" class="assignment-due" :class="{ overdue: isOverdue(a) && !a.closed_at }">
-                Due {{ formatDate(a.due_at) }}
+              <!-- Due date: click it to change or remove it. -->
+              <span v-if="editingDueId === a.id" class="due-editor" @click.stop>
+                <input
+                  v-model="dueDraft"
+                  type="date"
+                  class="due-input"
+                  :aria-label="`Due date for ${a.exercise_name}`"
+                  @keyup.enter="saveDue(a, dueDraft)"
+                  @keyup.esc="cancelDue"
+                />
+                <button class="due-btn save" :disabled="busyId === a.id || !dueDraft" @click="saveDue(a, dueDraft)">Save</button>
+                <button v-if="a.due_at" class="due-btn" :disabled="busyId === a.id" @click="saveDue(a, null)">Remove</button>
+                <button class="due-btn" :disabled="busyId === a.id" @click="cancelDue">Cancel</button>
+                <span v-if="dueError" class="due-error">{{ dueError }}</span>
               </span>
-              <span v-else class="assignment-due no-due">No due date</span>
+              <button
+                v-else
+                class="assignment-due"
+                :class="{ overdue: a.due_at && isOverdue(a) && !a.closed_at, 'no-due': !a.due_at }"
+                title="Change due date"
+                @click.stop="startEditDue(a)"
+              >
+                {{ a.due_at ? `Due ${formatDate(a.due_at)}` : 'No due date' }}
+                <span class="due-edit-hint" aria-hidden="true">✎</span>
+              </button>
               <button
                 class="close-toggle"
                 :class="{ reopen: a.closed_at }"
@@ -130,6 +151,35 @@ const visibleAssignments = computed(() => {
     : assignments.value.filter(a => !a.closed_at)
   return [...list].sort((a, b) => (a.closed_at ? 1 : 0) - (b.closed_at ? 1 : 0))
 })
+
+// Inline due-date editor: one row at a time.
+const editingDueId = ref(null)
+const dueDraft = ref('')
+const dueError = ref('')
+
+function startEditDue(a) {
+  editingDueId.value = a.id
+  // The date input wants YYYY-MM-DD, which is how due dates are stored.
+  dueDraft.value = a.due_at || ''
+  dueError.value = ''
+}
+
+function cancelDue() {
+  editingDueId.value = null
+  dueError.value = ''
+}
+
+async function saveDue(a, dueAt) {
+  busyId.value = a.id
+  dueError.value = ''
+  try {
+    const result = await assignmentStore.setAssignmentDue(a.id, dueAt)
+    if (result?.success) editingDueId.value = null
+    else dueError.value = result?.error || 'Could not save the due date'
+  } finally {
+    busyId.value = null
+  }
+}
 
 async function toggleClosed(a) {
   busyId.value = a.id
@@ -343,6 +393,78 @@ onMounted(loadAssignments)
   font-size: 13px;
   color: var(--text-secondary, #6b7280);
   white-space: nowrap;
+}
+
+.assignment-due {
+  /* A button that reads as the plain label it replaced. */
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 4px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.assignment-due:hover {
+  background: #eef6f1;
+  color: var(--green-dark, #2d6a4f);
+}
+
+.due-edit-hint {
+  margin-left: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.assignment-due:hover .due-edit-hint,
+.assignment-due:focus-visible .due-edit-hint {
+  opacity: 0.8;
+}
+
+.due-editor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.due-input {
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 6px;
+  border: 1px solid var(--card-border, #e0ddd7);
+  border-radius: var(--radius-button, 6px);
+}
+
+.due-btn {
+  border: 1px solid var(--card-border, #e0ddd7);
+  background: white;
+  color: var(--text-secondary, #6b7280);
+  padding: 3px 10px;
+  border-radius: var(--radius-button, 6px);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+}
+
+.due-btn.save {
+  background: #2d6a4f;
+  border-color: #2d6a4f;
+  color: white;
+}
+
+.due-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.due-error {
+  color: #c62828;
+  font-size: 12px;
+  white-space: normal;
 }
 
 .assignment-due.overdue {
