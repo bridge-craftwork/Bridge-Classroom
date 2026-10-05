@@ -137,6 +137,15 @@ export const bridgeClassroomStorage = {
     if (!res.ok) await fail(res, 'Delete')
   },
 
+  // Take a card off the player's list without deleting it (a built-in or
+  // public card, or one shared with them); convention-card 0.8.4.
+  async unlink(cardId) {
+    const userId = currentUserId()
+    const url = `${API_URL}/users/${encodeURIComponent(userId)}/cards/${encodeURIComponent(cardId)}?acting_user_id=${encodeURIComponent(userId)}`
+    const res = await apiFetch(url, { method: 'DELETE' })
+    if (!res.ok) await fail(res, 'Remove from list')
+  },
+
   canEdit(card, user) {
     if (!user || !card) return false
     if (user.role === 'admin') return true
