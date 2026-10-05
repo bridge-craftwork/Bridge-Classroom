@@ -783,7 +783,7 @@
             <option v-if="rustyReady" value="rusty">Rusty</option>
           </select>
         </label>
-        <p v-if="currentDeal && effectiveBidder !== boardBidder" class="bp-setting-note">Takes effect on the next board.</p>
+        <p v-if="bidderPending" class="bp-setting-note">You've already bid on this board, so {{ BIDDERS[effectiveBidder] }} takes over from the next board.</p>
         <label class="bp-setting-row"><input type="checkbox" v-model="rotateDeals"> Rotate deals randomly</label>
         <label class="bp-setting-row"><input type="checkbox" v-model="playCardplay"> Play the hand after bidding</label>
         <label v-if="playCardplay" class="bp-setting-row" title="The bots BID with the bidding bot above — this picks the CARDPLAY bot only.">
@@ -1090,7 +1090,8 @@ watch(showBbaCompare, (v) => {
 // Remembered in bp.biddingEngine; ?bidder= overrides it for a page load; embedded
 // tables keep BBA unless the host passes bidder. Rusty needs a package with the
 // `auction` entry point (rusty-bidding-bot v0.2.0+): without one the table bids
-// with BBA whatever is saved. Read per board: a change applies to the next board.
+// with BBA whatever is saved. A board keeps its bidder once you've called on it;
+// before that, a change re-bids the current board (applyBidderNow, below).
 const biddingEngine = ref(loadBiddingEngine({ embedded: EMBEDDED }))
 const rustyReady = rustyAvailable()
 const effectiveBidder = computed(() => (biddingEngine.value === 'rusty' && rustyReady ? 'rusty' : 'bba'))
@@ -1111,6 +1112,13 @@ const engine = useLocalEngine({
   rotate: () => rotateDeals.value,
   bidder: () => effectiveBidder.value,
 })
+// Switch the current board to a newly chosen bidder if you haven't called yet.
+// The table deals board 1 as soon as it opens, which is usually before anyone
+// looks at Table settings, so waiting for the next board made the choice seem
+// ignored (bug-report 2026-10-05). After your first call, the board keeps its
+// bidder: re-bidding would throw away your calls.
+watch(effectiveBidder, () => { engine.applyBidderNow() })
+
 const {
   capabilities, yourSeat, cardplay,
   selection, hasSelection, sourceSummary: poolSummary,
@@ -1300,6 +1308,11 @@ function openReportProblem(e) {
 
 // The scenario bar's sub-lines. Composed here, not inside the component: WHICH
 // lines apply is a per-surface question (a served table has no local pool summary).
+// The chosen bidder differs from this board's: you'd already called when it
+// changed, so it waits for the next board. Said on the table, not only in the
+// settings panel, so the seat labels still reading the old engine make sense.
+const bidderPending = computed(() => !!currentDeal.value && effectiveBidder.value !== boardBidder.value)
+
 const scenarioMetaLines = computed(() => {
   if (!currentDeal.value) {
     return [`You sit South; three ${botBidderName.value} bots fill the other seats.`, 'Pick a deal source to start bidding.']
@@ -1308,6 +1321,7 @@ const scenarioMetaLines = computed(() => {
   const cc = conventionsUsed.value
   if (cc) out.push(`CC · NS: ${cc.ns} · EW: ${cc.ew}`)
   if (poolSummary.value) out.push(`Source: ${poolSummary.value}`)
+  if (bidderPending.value) out.push(`Bidding bot: ${BIDDERS[effectiveBidder.value]} from the next board (this board: ${bidderName.value})`)
   return out
 })
 

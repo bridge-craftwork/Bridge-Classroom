@@ -363,9 +363,16 @@ export function useLocalEngine(config = {}) {
     // 50% chance of 180° rotation when enabled — standalone only; embedded keeps
     // the deal's actual compass frame (the host's studentSeat/DD table assume it).
     if (!embedded && rotate() && Math.random() < 0.5) deal = rotateDeal(deal)
+    dealsDrawn.value += 1
+    return startBoard(deal)
+  }
+
+  // Start (or restart) a board's auction on `deal` with the bidder the setting
+  // names now. Shared by loadDeal (a new board) and applyBidderNow (the same
+  // board, re-bid by another engine), so neither draws, rotates nor counts.
+  async function startBoard(deal) {
     runGen++
     currentDeal.value = deal
-    dealsDrawn.value += 1
     bids.value = []
     divergedBids.value = {}
     expectedAuction.value = []
@@ -503,6 +510,33 @@ export function useLocalEngine(config = {}) {
     } finally {
       auctionLoading.value = false
     }
+  }
+
+  // Has the human made a call on this board? Bot calls before their first turn
+  // don't count: a new engine re-bids those anyway.
+  const humanHasCalled = computed(() => {
+    if (!currentDeal.value) return false
+    const dealer = currentDeal.value.dealer
+    return bids.value.some((_, i) => seatAtIndex(dealer, i) === yourSeat.value)
+  })
+
+  // Switch the CURRENT board to the bidder the setting names now, if the human
+  // hasn't called yet: re-run its auction on the same deal (same rotation, same
+  // board number). People pick the bidding bot right after opening the table,
+  // and the table has already dealt board 1 by then; without this the change
+  // waited a whole board (bug-report 2026-10-05, "i set Rusty… still shows BBA").
+  // After the human's first call the board keeps its bidder and the change
+  // applies to the next board. Returns whether it switched.
+  async function applyBidderNow() {
+    const deal = currentDeal.value
+    if (!deal || humanHasCalled.value) return false
+    if (normBidder(bidderSetting()) === boardBidder.value) return false
+    // A shallow copy, not the same object: every staleness guard here compares
+    // deal identity (`currentDeal.value !== dealRef`), so a BBA answer still in
+    // flight from the first start would otherwise pass them and bid onto the
+    // re-bid board. Same cards, rotation and board number.
+    await startBoard({ ...deal })
+    return true
   }
 
   // Restart the current board's auction from BBA's original (no-prefix) line.
@@ -654,6 +688,7 @@ export function useLocalEngine(config = {}) {
     onUserBid,
     toggleDivergedBid,
     resetAuction,
+    applyBidderNow,
     undo,
 
     // ── Analysis hooks (also usable directly by other engines/views) ───────

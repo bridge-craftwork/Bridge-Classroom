@@ -172,4 +172,74 @@ describe('LocalEngine with the Rusty bidder', () => {
     expect(engine.boardBidder.value).toBe('rusty')
     expect(engine.bids.value).toEqual(['1C', 'Pass'])
   })
+
+  // Bug-report 2026-10-05: the table deals board 1 on opening, before anyone
+  // opens Table settings, so a bidder chosen then has to apply to THIS board.
+  it('a bidder change before your first call re-bids the same board with the new engine', async () => {
+    let bidder = 'bba'
+    const rbbClient = makeFakeRusty(['1C', 'Pass'])
+    const fetchAuction = makeFakeBba(['1NT', 'Pass', '2C'])
+    const engine = useLocalEngine({ yourSeat: 'S', bidder: () => bidder, rbbClient, fetchAuction, paceMs: 0 })
+    await engine.loadDeal(DEAL)
+    expect(engine.bids.value).toEqual(['1NT', 'Pass']) // the bots (N, E) have called; you (S) haven't
+    const hands = engine.currentDeal.value.hands
+
+    bidder = 'rusty'
+    expect(await engine.applyBidderNow()).toBe(true)
+    expect(engine.boardBidder.value).toBe('rusty')
+    expect(engine.bids.value).toEqual(['1C', 'Pass']) // Rusty's calls, not BBA's
+    expect(engine.currentDeal.value.hands).toEqual(hands) // same board
+    expect(engine.dealsDrawn.value).toBe(1) // not counted as a new board
+  })
+
+  it('once you have called, a bidder change waits for the next board', async () => {
+    let bidder = 'bba'
+    const rbbClient = makeFakeRusty(['1C', 'Pass'])
+    const fetchAuction = makeFakeBba(['1NT', 'Pass', '2C', 'Pass', '2H', 'Pass', 'Pass', 'Pass'])
+    const engine = useLocalEngine({ yourSeat: 'S', bidder: () => bidder, rbbClient, fetchAuction, paceMs: 0 })
+    await engine.loadDeal(DEAL)
+    await engine.onUserBid('2C')
+    const before = engine.bids.value.slice()
+    expect(before.slice(0, 3)).toEqual(['1NT', 'Pass', '2C'])
+
+    bidder = 'rusty'
+    expect(await engine.applyBidderNow()).toBe(false)
+    expect(engine.boardBidder.value).toBe('bba')
+    expect(engine.bids.value).toEqual(before) // your calls are kept
+    expect(rbbClient.requests).toHaveLength(0)
+
+    await engine.loadDeal(DEAL)
+    expect(engine.boardBidder.value).toBe('rusty')
+  })
+
+  it('a Rusty start still in flight when you switch back to BBA does not bid onto the BBA board', async () => {
+    let bidder = 'rusty'
+    const rbbClient = makeFakeRusty(['1C', 'Pass'])
+    let release
+    const engineReady = new Promise((r) => { release = r })
+    const realEngineFor = rbbClient.engineFor
+    let starts = 0
+    rbbClient.engineFor = async (cards) => {
+      starts++
+      if (starts === 1) await engineReady // the first board start's Rusty setup hangs
+      return realEngineFor(cards)
+    }
+    const fetchAuction = makeFakeBba(['1NT', 'Pass', '2C'])
+    // Real pacing: BBA bids the bot seats one at a time, so the late Rusty
+    // setup lands while BBA is mid-way through them.
+    const engine = useLocalEngine({ yourSeat: 'S', bidder: () => bidder, rbbClient, fetchAuction, paceMs: 20 })
+    const firstStart = engine.loadDeal(DEAL)
+    await new Promise((r) => setTimeout(r, 5))
+    expect(engine.boardBidder.value).toBe('rusty')
+
+    bidder = 'bba'
+    const switched = engine.applyBidderNow()
+    await new Promise((r) => setTimeout(r, 5)) // BBA has answered and is pausing before its first call
+    release()
+    await Promise.all([firstStart, switched])
+    await new Promise((r) => setTimeout(r, 60)) // let any stray loop finish
+
+    expect(engine.boardBidder.value).toBe('bba')
+    expect(engine.bids.value).toEqual(['1NT', 'Pass']) // BBA's calls only: the late Rusty setup was dropped
+  })
 })
