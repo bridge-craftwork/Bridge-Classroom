@@ -265,6 +265,42 @@ export function useAssignments() {
     }
   }
 
+  /**
+   * Change or remove an assignment's due date. `dueAt` is `YYYY-MM-DD` (what
+   * the create form's date input gives) or null for no due date. Updates the
+   * matching row in place so the UI reflects it without a refetch.
+   */
+  async function setAssignmentDue(assignmentId, dueAt) {
+    try {
+      const response = await apiFetch(
+        `${API_URL}/assignments/${encodeURIComponent(assignmentId)}/due`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ due_at: dueAt || null })
+        }
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        error.value = text || `Server error (${response.status})`
+        return { success: false, error: error.value }
+      }
+      const data = await response.json()
+      if (data.success) {
+        const apply = (list) => {
+          const a = list.value.find(x => x.id === assignmentId)
+          if (a) a.due_at = dueAt || null
+        }
+        apply(teacherAssignments)
+        apply(studentAssignments)
+      }
+      return data
+    } catch (err) {
+      console.error('Failed to update assignment due date:', err)
+      return { success: false, error: 'Unable to connect to server' }
+    }
+  }
+
   /** Fetch exercise boards for loading into practice mode */
   async function fetchExerciseBoards(exerciseId) {
     try {
@@ -305,6 +341,7 @@ export function useAssignments() {
     createAssignment,
     deleteAssignment,
     setAssignmentClosed,
+    setAssignmentDue,
     fetchExerciseBoards,
     reset
   }

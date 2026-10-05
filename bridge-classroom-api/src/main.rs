@@ -257,6 +257,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/assignments/:id/closed",
             put(routes::set_assignment_closed),
         )
+        .route("/api/assignments/:id/due", put(routes::set_assignment_due))
         // Board status routes
         .route("/api/board-status", get(routes::get_board_status))
         .route("/api/assignment-status", get(routes::get_assignment_status))
