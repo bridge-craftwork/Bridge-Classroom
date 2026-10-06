@@ -1,4 +1,7 @@
 <template>
+  <!-- App-wide: says so when this network or device can't reach our API
+       (otherwise assignments just look empty). Kept out of the harness build. -->
+  <ApiUnreachableBanner v-if="!isHarness" />
   <router-view />
   <!-- The beetle is app chrome, not a component under test — keep it out of the
        VITE_HARNESS build so it doesn't float over every live gallery tile. -->
@@ -59,6 +62,7 @@ import { useTableSocket } from './composables/useTableSocket.js'
 import { useInvitationJoin } from './composables/useInvitationJoin.js'
 import { useAppToast } from './composables/useAppToast.js'
 import { apiFetch, API_URL } from './utils/apiFetch.js'
+import ApiUnreachableBanner from './components/ApiUnreachableBanner.vue'
 // Grid-arranger bounding-box diagnostic overlay styles (grid-arranger-spec §5.1),
 // available live in the app — inert unless `data-bounding-boxes` is set on <html>, and
 // only styles `.grid-table`, so it does nothing on the legacy arrangement.
