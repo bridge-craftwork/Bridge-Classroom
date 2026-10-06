@@ -166,6 +166,23 @@ No header back → that port isn't allow-listed.
     exactly when something failed. `RUST_LOG=bridge_classroom_api=debug,tower_http=debug`
     restores the firehose locally.
 - **Service management**: `launchctl list | grep -E "bridge|cloudflare"`
+- **This Mac must never system-sleep.** A sleep drops its network, the Cloudflare
+  Tunnel goes down (visitors get **Error 1033**, the app an empty lobby), and remote
+  Claude Code sessions lose it too. Three layers, all set up 2026-10-06:
+  - **`pmset -c sleep 0`** (mains-power system sleep off; display and disk still sleep
+    after 10 min). This is the real fix. Check with `pmset -g custom`.
+  - **`com.bridgeclassroom.keepawake`** (`~/Library/LaunchAgents`): runs `caffeinate -is`,
+    KeepAlive, as a backup if the setting is ever reset.
+  - **`com.bridgeclassroom.sleepcheck`**: daily 7:30 AM,
+    `bridge-classroom-api/scripts/check-mac-sleep.sh` alerts via `~/bin/notify` (Pushover)
+    if the Mac slept since the last run, the setting isn't 0, or keepawake isn't running.
+    Log: `~/Library/Logs/bridge-classroom-sleepcheck.log`; `--dry-run` prints instead.
+  - **What happened:** the stored setting had been "sleep after 1 minute" since January.
+    The Mac only stayed awake because a Windows 11 VM in Parallels (auto-started at
+    login) held an audio stream open. Moving the VM to the Express2T drive on 10/4
+    broke that, and from 10/5 the Mac slept ~95 times a day for two days, silently.
+    Diagnose with `pmset -g log | grep "Entering Sleep"` (daily files in
+    `/var/log/powermanagement`) and "network is down" in the tunnel log.
 - **Deploying API changes** — ⚠️ **merging Rust code does NOT deploy it.** Unlike the
   frontend (which both domains rebuild from `main` on every push), the API is a
   **release binary** that launchd runs from
