@@ -16,6 +16,7 @@
 // single module.
 
 import { API_URL } from './apiUrl.js'
+import { noteApiResponse, noteApiFailure } from '../composables/useApiReachability.js'
 
 const API_KEY = import.meta.env.VITE_API_KEY || ''
 
@@ -45,7 +46,12 @@ export function apiFetch(url, options = {}) {
     // CORS branch (both prod domains + dev origins), which reflects the caller's
     // Origin rather than `*`. Callers may still override via `options.credentials`.
     credentials: options.credentials || 'include',
-  })
+  }).then(
+    // Report reachability (useApiReachability), then hand back the same result.
+    // Any response means the server was reached; a throw means it wasn't.
+    (res) => { noteApiResponse(); return res },
+    (err) => { noteApiFailure(err); throw err },
+  )
 }
 
 export { API_URL }
