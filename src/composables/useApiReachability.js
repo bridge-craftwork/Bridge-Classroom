@@ -1,11 +1,12 @@
 // Can this device reach our API right now?
 //
-// When a network, a building's web filter, or security software blocks
-// api.bridge-classroom.{org,com}, every API call fails at the network level.
-// Practice keeps working (results queue in the browser), so the app used to
-// stay quiet, and a student simply saw no assignments, with no hint why
-// (Stoneridge Creek and Tuesday Noon Zoom, Oct 2026). This tracks that state
-// so the app can say so (ApiUnreachableBanner).
+// When the API can't be reached, every API call fails at the network level:
+// our server down (on 2026-10-05/06 its Mac kept sleeping and the Cloudflare
+// Tunnel dropped, Error 1033), or a network filter or security software
+// blocking api.bridge-classroom.{org,com}. Practice keeps working (results
+// queue in the browser), so the app used to stay quiet, and a student simply
+// saw no assignments, with no hint why. This tracks that state so the app can
+// say so (ApiUnreachableBanner).
 //
 // apiFetch reports every outcome here. Any HTTP response, even an error
 // status, means the server was reached. A network-level failure doesn't
