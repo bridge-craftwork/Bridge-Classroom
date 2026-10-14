@@ -16,7 +16,7 @@
     </template>
 
     <!-- Cards side by side (?compare=<id>,<id>…). -->
-    <template v-else-if="compareIds.length">
+    <div v-else-if="compareIds.length" class="card-home">
       <a class="back" :href="homeHref" @click.prevent="goHome">← All cards</a>
       <CardCompare
         :storage="bridgeClassroomStorage"
@@ -25,7 +25,7 @@
         :card-link="cardHref"
         @open="openCard"
       />
-    </template>
+    </div>
 
     <!-- Home: the player's cards, from the convention-card package. -->
     <div v-else class="card-home">
