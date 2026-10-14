@@ -15,6 +15,18 @@
       />
     </template>
 
+    <!-- Cards side by side (?compare=<id>,<id>…). -->
+    <template v-else-if="compareIds.length">
+      <a class="back" :href="homeHref" @click.prevent="goHome">← All cards</a>
+      <CardCompare
+        :storage="bridgeClassroomStorage"
+        :ids="compareIds"
+        :embedded="embedded"
+        :card-link="cardHref"
+        @open="openCard"
+      />
+    </template>
+
     <!-- Home: the player's cards, from the convention-card package. -->
     <div v-else class="card-home">
       <p v-if="!signedIn" class="handoff-note">
@@ -28,7 +40,9 @@
         :embedded="embedded"
         storage-place="account"
         :card-link="cardHref"
+        compare
         @open="openCard"
+        @compare="openCompare"
       />
     </div>
   </div>
@@ -45,6 +59,7 @@ import { computed, onMounted, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConventionCardEditor from '@bridge-craftwork/convention-card/web/src/editor/ConventionCardEditor.vue'
 import CardCatalog from '@bridge-craftwork/convention-card/web/src/editor/CardCatalog.vue'
+import CardCompare from '@bridge-craftwork/convention-card/web/src/editor/CardCompare.vue'
 import { useCardEditor } from '@bridge-craftwork/convention-card/web/src/editor/useCardEditor.js'
 import { decodeCardFromUrl } from '@bridge-craftwork/convention-card/js/handoff.js'
 import '../utils/conventionCardLibrary.js' // where the PDF export's template and font are served
@@ -65,17 +80,22 @@ const editor = useCardEditor(bridgeClassroomStorage, bridgeClassroomOverlays)
 const handoff = reactive({ message: '', needsSignIn: false, error: false })
 const signedIn = computed(() => !!userStore.currentUser.value?.id)
 
-// ─── Home or one card, by the `card` query ─────────────────────
+// ─── Home, one card, or cards compared, by the query ───────────
 // This view is the /convention-card page and the lobby's Convention Card
-// tab; either way the query says which card is open (none: the table).
+// tab; either way the query says which card is open (`card`), or which
+// cards are side by side (`compare`, ids joined by commas); neither: the table.
 const cardId = computed(() => (typeof route.query.card === 'string' ? route.query.card : null))
-const queryWith = card => {
-  const { card: _, ...rest } = route.query
-  return card ? { ...rest, card } : rest
+const compareIds = computed(() =>
+  (!cardId.value && typeof route.query.compare === 'string' ? route.query.compare.split(',').filter(Boolean) : []))
+const queryWith = (card, compare = null) => {
+  const { card: _, compare: __, ...rest } = route.query
+  if (card) return { ...rest, card }
+  return compare ? { ...rest, compare: compare.join(',') } : rest
 }
 const cardHref = id => router.resolve({ query: queryWith(id) }).href
 const homeHref = computed(() => router.resolve({ query: queryWith(null) }).href)
 function openCard(id) { router.push({ query: queryWith(id) }) }
+function openCompare(ids) { router.push({ query: queryWith(null, ids) }) }
 function goHome() { router.push({ query: queryWith(null) }) }
 
 // Load the card the address names, before the editor mounts where it can,
