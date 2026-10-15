@@ -273,6 +273,10 @@ function onSaved(payload) {
 </script>
 
 <style scoped>
+/* App chrome: never on paper. */
+@media print {
+  .beetle-root { display: none !important; }
+}
 .beetle-root {
   position: fixed;
   right: 16px;

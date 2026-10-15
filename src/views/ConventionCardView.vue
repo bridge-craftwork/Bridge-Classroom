@@ -203,6 +203,10 @@ watch(() => userStore.currentUser.value?.id, uid => { if (uid) importPending() }
   text-decoration: none;
 }
 .back:hover { text-decoration: underline; }
+/* A printed card or comparison is the page alone: no way back, no notes. */
+@media print {
+  .back, .handoff-note { display: none; }
+}
 .handoff-note a {
   margin-left: 8px;
   font-weight: 600;
