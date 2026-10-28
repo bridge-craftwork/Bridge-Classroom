@@ -609,7 +609,7 @@
                   <ActionCluster
                     v-if="seSlot !== 'double-dummy'"
                     :can-undo="canUndo"
-                    :show-claim="seSlot === 'cardplay' && !claimFormOpen"
+                    :show-claim="seSlot === 'cardplay' && !claimFormOpen && cardplay.isActive.value && !cardplay.playComplete.value"
                     :can-claim="!cardplay.botLoading.value && cardplay.remainingTricks.value !== 0"
                     :bot-status="cardplay.botLoading.value ? botName + ' thinking…' : (cardplayLineNote ? '↝ ' + cardplayLineNote : null)"
                     :bot-error="cardplay.botError.value || null"
@@ -617,32 +617,15 @@
                     @claim="openClaimForm"
                   />
 
-                  <div v-if="claimFormOpen" class="bp-claim-form">
-                    <div class="bp-claim-prompt">Claim how many of the {{ cardplay.remainingTricks.value }} remaining?</div>
-                    <div class="bp-claim-buttons">
-                      <button
-                        v-for="n in claimOptions"
-                        :key="n"
-                        class="bp-claim-btn"
-                        :disabled="claimValidating"
-                        @click="confirmClaim(n)"
-                      >{{ n }}</button>
-                    </div>
-                    <div v-if="claimValidating" class="bp-claim-validating">
-                      {{ botName }} checking claim&hellip;
-                    </div>
-                    <div v-if="claimRejection" class="bp-claim-rejection">
-                      <div class="bp-claim-rejection-msg">
-                        <strong>{{ botName }} rejected the claim of {{ claimRejection.tricks }} trick{{ claimRejection.tricks === 1 ? '' : 's' }}.</strong>
-                        <span v-if="claimRejection.message">{{ claimRejection.message }}</span>
-                      </div>
-                      <div class="bp-claim-rejection-actions">
-                        <button class="bp-btn bp-claim-override" @click="overrideClaim">Override &amp; claim anyway</button>
-                        <button class="bp-btn" @click="claimRejection = null">Try a different count</button>
-                      </div>
-                    </div>
-                    <button v-if="!claimValidating" class="bp-btn bp-claim-cancel" @click="cancelClaim">Cancel</button>
-                  </div>
+                  <ClaimPanel
+                    v-if="claimFormOpen"
+                    :remaining="cardplay.remainingTricks.value"
+                    :checking="claimValidating"
+                    :rejection="claimRejection"
+                    :limit="claimRejectionLimit"
+                    @claim="confirmClaim"
+                    @cancel="cancelClaim"
+                  />
                 </div>
               </template>
 
@@ -684,7 +667,7 @@
                     <span :class="cardplayResult.made ? 'bp-made' : 'bp-down'">— {{ cardplayResult.made ? 'made' : 'down ' + (cardplayResult.needed - cardplayResult.took) }}</span>
                   </span>
                   <span v-if="cardplay.claim.value" class="bp-claim-tag">
-                    (claimed at trick {{ cardplay.claim.value.atTrick }}<span v-if="cardplay.claim.value.overridden">, override</span>)
+                    (claimed at trick {{ cardplay.claim.value.atTrick }})
                   </span>
                 </div>
                 <div v-if="cardplayLineNote" class="bp-cardplay-line-note">↝ {{ cardplayLineNote }}</div>
@@ -820,6 +803,7 @@ import ScenarioBar from '../components/table/ScenarioBar.vue'
 import RailCard from '../components/table/RailCard.vue'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
 import ActionCluster from '../components/table/ActionCluster.vue'
+import ClaimPanel from '../components/table/ClaimPanel.vue'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
 import { stackedRoundCount } from '../components/auctionMetrics.js'
@@ -1387,54 +1371,54 @@ const soloOccupants = computed(() => {
   return out
 })
 
-// Claim form: shown inline in the Cardplay status card when the user
-// clicks "Claim…". The user picks how many of the remaining tricks they
-// claim for the declaring side; defenders implicitly get the rest. If the
-// active bot supports claim validation (BenBot does, RandomLegalBot
-// doesn't) the engine asks the bot first; a rejection surfaces the bot's
-// message and an Override button.
+// Claim form (ClaimPanel in the SE action cluster), opened by "Claim…". The
+// user picks how many of the remaining tricks they claim for the declaring
+// side; defenders get the rest. bridge-solver's claim checker (WASM, in the
+// browser) must prove it against every lie of the unseen cards; a rejection
+// shows why, and then the most the user could have guaranteed. No override.
 const claimFormOpen = ref(false)
 const claimValidating = ref(false)
-const claimRejection = ref(null)  // { tricks, message } when the bot rejected
-const claimOptions = computed(() => {
-  const r = cardplay.remainingTricks.value
-  const out = []
-  for (let i = 0; i <= r; i++) out.push(i)
-  return out
-})
+const claimRejection = ref(null)       // { additional, message } after a rejection
+const claimRejectionLimit = ref(null)  // { claimable, undecided } once known
+let claimToken = 0
 function openClaimForm() {
   claimFormOpen.value = true
   claimRejection.value = null
+  claimRejectionLimit.value = null
 }
 function cancelClaim() {
+  claimToken++
   claimFormOpen.value = false
   claimRejection.value = null
+  claimRejectionLimit.value = null
   claimValidating.value = false
 }
 async function confirmClaim(declarerTricks) {
+  const mine = ++claimToken
   claimValidating.value = true
   claimRejection.value = null
+  claimRejectionLimit.value = null
   try {
     const result = await cardplay.validateClaim(declarerTricks)
+    if (mine !== claimToken) return
     if (result.accepted) {
-      cardplay.claimTricks(declarerTricks)
-      claimFormOpen.value = false
-    } else {
-      // Stash the rejection; user can override or cancel.
-      claimRejection.value = { tricks: declarerTricks, message: result.message }
+      try {
+        cardplay.claimTricks(declarerTricks, { stamp: result.stamp })
+        claimFormOpen.value = false
+      } catch (err) {
+        // The play moved on while the check ran: check again at the new card.
+        claimRejection.value = { additional: declarerTricks, message: 'The play moved on while the claim was checked. Try again.' }
+      }
+      return
+    }
+    claimRejection.value = { additional: declarerTricks, message: result.message }
+    if (result.verdict === 'invalid') {
+      const limit = await cardplay.claimLimit()
+      if (mine === claimToken && claimRejection.value) claimRejectionLimit.value = limit
     }
   } finally {
-    claimValidating.value = false
+    if (mine === claimToken) claimValidating.value = false
   }
-}
-function overrideClaim() {
-  if (!claimRejection.value) return
-  cardplay.claimTricks(claimRejection.value.tricks, {
-    overridden: true,
-    rejectionMessage: claimRejection.value.message,
-  })
-  claimRejection.value = null
-  claimFormOpen.value = false
 }
 
 // Keep the engine's autoplay-singletons ref synced to a persisted user pref.
@@ -2203,74 +2187,12 @@ async function restartCardplay() {
   flex-wrap: wrap;
 }
 
-.bp-claim-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  background: #f0fdf6;
-  border: 0.5px solid #c8e8d6;
-  border-radius: 6px;
-}
-.bp-claim-prompt {
-  font-size: 12px;
-  color: #444;
-}
-.bp-claim-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.bp-claim-btn {
-  min-width: 30px;
-  padding: 4px 8px;
-  font-size: 13px;
-  border: 1px solid #1D9E75;
-  background: #fff;
-  color: #1D9E75;
-  border-radius: 4px;
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.bp-claim-btn:hover { background: #1D9E75; color: #fff; }
-.bp-claim-cancel { align-self: flex-start; font-size: 11px; padding: 3px 8px; }
 .bp-claim-tag {
   font-size: 12px;
   color: #1D9E75;
   font-style: italic;
   margin-left: 4px;
 }
-.bp-claim-validating {
-  font-size: 11px;
-  color: #1D9E75;
-  font-style: italic;
-}
-.bp-claim-rejection {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  background: #fee;
-  border: 0.5px solid #fbb;
-  border-radius: 4px;
-}
-.bp-claim-rejection-msg {
-  font-size: 12px;
-  color: #6e1f1f;
-  line-height: 1.4;
-}
-.bp-claim-rejection-msg strong { display: block; margin-bottom: 4px; }
-.bp-claim-rejection-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.bp-claim-override {
-  color: #fff;
-  background: #b00;
-  border-color: #b00;
-}
-.bp-claim-override:hover { background: #900; border-color: #900; }
 .bp-cardplay-notice {
   background: #fff8e6;
   border: 0.5px solid #ead38d;

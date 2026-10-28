@@ -5,9 +5,9 @@
   "description": "Bridge teaching platform with student progress tracking",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/fetch-rbb-wasm.mjs --soft",
+    "predev": "node scripts/fetch-rbb-wasm.mjs --soft && node scripts/fetch-solver-wasm.mjs --soft",
     "dev": "vite",
-    "prebuild": "node scripts/fetch-rbb-wasm.mjs",
+    "prebuild": "node scripts/fetch-rbb-wasm.mjs && node scripts/fetch-solver-wasm.mjs",
     "build": "vite build",
     "fetch:rbb-wasm": "node scripts/fetch-rbb-wasm.mjs",
     "preview": "vite preview",

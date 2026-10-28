@@ -33,13 +33,24 @@ function rbbWasmInfo() {
   }
 }
 
+// bridge-solver's package (claim checker + double dummy), as
+// scripts/fetch-solver-wasm.mjs installed it. null when it is not installed.
+function solverWasmInfo() {
+  try {
+    return JSON.parse(readFileSync(new URL('./public/solver-wasm/build-info.json', import.meta.url)))
+  } catch {
+    return null
+  }
+}
+
 export default defineConfig({
   plugins: [vue()],
   base: '/',
   define: {
     __APP_COMMIT__: JSON.stringify(appCommit()),
     __APP_VERSION__: JSON.stringify(appVersion()),
-    __RBB_WASM__: JSON.stringify(rbbWasmInfo())
+    __RBB_WASM__: JSON.stringify(rbbWasmInfo()),
+    __SOLVER_WASM__: JSON.stringify(solverWasmInfo())
   },
   resolve: {
     alias: {

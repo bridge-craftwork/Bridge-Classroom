@@ -246,35 +246,58 @@ describe('useCardPlay', () => {
     expect(cp.claim.value).toEqual({
       declarerTricks: 9,
       atTrick: 13 - remainingBefore + 1,
-      overridden: false,
-      rejectionMessage: '',
     })
     expect(cp.tricksTaken.value.NS).toBe(NS_before + 9)
     expect(cp.tricksTaken.value.NS + cp.tricksTaken.value.EW).toBe(13)
   })
 
-  it('validateClaim accepts when bot has no validator (random bot)', async () => {
+  it('validateClaim asks the claim checker with the solver position, and passes its stamp on', async () => {
     await cp.startPlay({
       ...FIXTURE,
       bot: RandomLegalBot,
       userSeats: ['N', 'S'],
       pacing: { betweenPlays: 0, betweenTricks: 0 },
     })
-    const result = await cp.validateClaim(9)
-    expect(result.accepted).toBe(true)
-    expect(result.validated).toBe(false)  // no validator was actually consulted
+    const calls = []
+    const checker = { checkClaim: async (args) => { calls.push(args); return { verdict: 'valid' } } }
+    const result = await cp.validateClaim(9, { checker })
+    expect(result).toMatchObject({ accepted: true, verdict: 'valid', message: '', stamp: cp.played.value.length })
+    expect(calls[0]).toMatchObject({
+      claimer: 'S',
+      additional: 9,
+      tricksTaken: cp.tricksTaken.value,
+      play: { declarer: 'S', leader: 'W', trump: 'S', plays: cp.played.value.map(p => p.suit + p.rank) },
+    })
   })
 
-  it('claimTricks records overridden=true when passed', async () => {
+  it('validateClaim rejects an invalid or undecided claim with a reason, and never waves one through', async () => {
     await cp.startPlay({
       ...FIXTURE,
       bot: RandomLegalBot,
       userSeats: ['N', 'S'],
       pacing: { betweenPlays: 0, betweenTricks: 0 },
     })
-    cp.claimTricks(5, { overridden: true, rejectionMessage: 'no way' })
-    expect(cp.claim.value.overridden).toBe(true)
-    expect(cp.claim.value.rejectionMessage).toBe('no way')
+    const invalid = await cp.validateClaim(9, { checker: { checkClaim: async () => ({ verdict: 'invalid' }) } })
+    expect(invalid.accepted).toBe(false)
+    expect(invalid.message).toMatch(/9 more tricks/)
+    const undecided = await cp.validateClaim(9, { checker: { checkClaim: async () => ({ verdict: 'undecided' }) } })
+    expect(undecided).toMatchObject({ accepted: false, verdict: 'undecided' })
+    const broken = await cp.validateClaim(9, { checker: { checkClaim: async () => { throw new Error('no wasm') } } })
+    expect(broken).toMatchObject({ accepted: false, verdict: 'error' })
+    expect(cp.playComplete.value).toBe(false)
+  })
+
+  it('claimTricks refuses a claim checked at a different card', async () => {
+    await cp.startPlay({
+      ...FIXTURE,
+      bot: RandomLegalBot,
+      userSeats: ['N', 'S'],
+      pacing: { betweenPlays: 0, betweenTricks: 0 },
+    })
+    const n = cp.played.value.length
+    expect(() => cp.claimTricks(5, { stamp: n + 1 })).toThrow(/checked at card/)
+    cp.claimTricks(5, { stamp: n })
+    expect(cp.claim.value.declarerTricks).toBe(5)
   })
 
   it('claimTricks rejects out-of-range counts', async () => {

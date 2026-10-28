@@ -112,11 +112,4 @@ describe('makeCardplayFirstBot (composite: recorded line first, real bot on dive
     expect(card).toEqual({ suit: 'S', rank: 'A' })
     expect(spy.chooseOpeningLead).toHaveBeenCalledOnce()
   })
-
-  it('exposes validateClaim only when the fallback bot supports it', () => {
-    const withClaim = makeCardplayFirstBot(bySeat, { name: 'b', chooseCard: vi.fn(), chooseOpeningLead: vi.fn(), validateClaim: vi.fn() })
-    const without = makeCardplayFirstBot(bySeat, makeSpyBot())
-    expect(typeof withClaim.validateClaim).toBe('function')
-    expect(without.validateClaim).toBeUndefined()
-  })
 })
