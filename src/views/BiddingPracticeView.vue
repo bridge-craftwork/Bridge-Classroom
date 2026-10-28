@@ -1740,8 +1740,8 @@ const srvSeSlot = computed(() => {
   if (!srv) return null
   if (srv.yourSeat && srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode !== 'play-only') return 'bidding'
   if (srvCenterSlot?.value === 'review' && srv.capabilities?.doubleDummy && srv.doubleDummy) return 'double-dummy'
-  // Cardplay: Claim (any seated player) and the host's Undo.
-  if (srv.phase === 'play' && (srv.canClaim || srv.claimFlow.open || srv.canManageSeats)) return 'cardplay'
+  // Cardplay: Claim, for any seated player (with the host's Undo beside it).
+  if (srv.phase === 'play' && (srv.canClaim || srv.claimFlow.open)) return 'cardplay'
   return null
 })
 
