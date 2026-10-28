@@ -197,6 +197,11 @@ export const bridgeClassroomOverlays = {
       const json = JSON.parse(JSON.stringify(cardData))
       return (await getRbbClient().coverage({ cards: { ns: { json } } })).ns
     },
+    // The conventions its rules implement: each module names its skills
+    async skills() {
+      const { modules = [] } = await getRbbClient().conventions()
+      return [...new Set(modules.flatMap(m => m.skills || []))]
+    },
   },
 
   covered: skillPath => !!getTaxonomyEntry(skillPath),
