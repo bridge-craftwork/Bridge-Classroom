@@ -17,13 +17,15 @@ export const RUSTY_SCORING = 'MP' // as bbaClient.fetchAuction (BBA is always as
  * Everything the loop needs for one board: an engine for the card pair, the
  * bot seats (every seat but the humans') and their hands.
  *   cardNames: {ns, ew} card names (built in, or fetched from PBS as .bbsa)
+ *   cardSpecs: optional {ns?, ew?} ready card specs, e.g. a user's card as
+ *              { json }; a side given here is used as-is, its name a label
  */
-export async function prepareRustyBoard({ client, deal, humanSeats, cardNames, fetchBbsa }) {
+export async function prepareRustyBoard({ client, deal, humanSeats, cardNames, cardSpecs = null, fetchBbsa }) {
   const info = await client.info()
-  const [ns, ew] = await Promise.all([
-    cardSpecFor(cardNames.ns, info.stock_cards, fetchBbsa),
-    cardSpecFor(cardNames.ew, info.stock_cards, fetchBbsa),
-  ])
+  const specOf = (side) => (cardSpecs?.[side] && typeof cardSpecs[side] === 'object'
+    ? cardSpecs[side]
+    : cardSpecFor(cardNames[side], info.stock_cards, fetchBbsa))
+  const [ns, ew] = await Promise.all([specOf('ns'), specOf('ew')])
   const engine = await client.engineFor({ ns, ew })
   const bots = SEATS.filter((s) => !humanSeats.includes(s))
   const hands = {}

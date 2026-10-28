@@ -575,6 +575,7 @@
                   :wrong-bid-indices="shownWrongIndices"
                   :show-turn-indicator="!auctionComplete"
                   :meanings="meanings"
+                  :flagged-bids="flaggedBids"
                   :diverged-bids="shownDivergedBids"
                   :reference-label="referenceName"
                   :allow-divergence-toggle="!auctionLoading"
@@ -589,6 +590,7 @@
                   :current-bid-index="bids.length"
                   :wrong-bid-indices="shownWrongIndices"
                   :meanings="meanings"
+                  :flagged-bids="flaggedBids"
                   :diverged-bids="shownDivergedBids"
                   :reference-label="referenceName"
                   :show-turn-indicator="false"
@@ -782,6 +784,25 @@
           </select>
         </label>
         <p v-if="bidderPending" class="bp-setting-note">You've already bid on this board, so {{ BIDDERS[effectiveBidder] }} takes over from the next board.</p>
+        <template v-if="!EMBEDDED">
+          <div class="bp-setting-sep">Convention cards</div>
+          <template v-for="side in CARD_SIDES" :key="side.key">
+            <label class="bp-setting-row" :title="`The card ${side.label} bid with: the bots, and BBA's auction your calls are marked against.`">
+              <span>{{ side.label }}</span>
+              <select class="bp-bot-select bp-card-select" v-model="tableCards[side.key]" :data-testid="`table-card-${side.key}`">
+                <option value="">Scenario default</option>
+                <optgroup v-if="myCardOptions.length" label="My cards">
+                  <option v-for="c in myCardOptions" :key="c.id" :value="`mine:${c.id}`">{{ c.name }}</option>
+                </optgroup>
+                <optgroup label="BBA cards">
+                  <option v-for="n in bbaCardOptions" :key="n" :value="`bba:${n}`">{{ n }}</option>
+                </optgroup>
+              </select>
+            </label>
+            <p v-if="coverageLine(side.key)" class="bp-setting-note bp-coverage" :data-testid="`table-card-coverage-${side.key}`">{{ coverageLine(side.key) }}</p>
+          </template>
+          <p v-if="cardsPending && currentDeal" class="bp-setting-note">You've already bid on this board, so the new cards take over from the next board.</p>
+        </template>
         <label class="bp-setting-row"><input type="checkbox" v-model="rotateDeals"> Rotate deals randomly</label>
         <label class="bp-setting-row"><input type="checkbox" v-model="playCardplay"> Play the hand after bidding</label>
         <label v-if="playCardplay" class="bp-setting-row" title="The bots BID with the bidding bot above — this picks the CARDPLAY bot only.">
@@ -800,6 +821,10 @@
         <div class="bp-setting-sep">Auction</div>
         <label class="bp-setting-row" title="Show the BBA expected-auction comparison in the bidding grid.">
           <input type="checkbox" v-model="showBbaCompare"> Show BBA auction comparison
+        </label>
+        <div class="bp-setting-sep">Testing</div>
+        <label class="bp-setting-row" title="Tint the calls BBA made for a Rusty bot where Rusty has no rule.">
+          <input type="checkbox" v-model="flagFallbacks" data-testid="flag-fallbacks"> Flag BBA fallback calls
         </label>
       </div>
     </div>
@@ -847,6 +872,7 @@ import { useUserStore } from '../composables/useUserStore.js'
 import { useTableHandoff } from '../composables/useTableHandoff.js'
 import { useLocalEngine, BIDDERS } from '../composables/engines/localEngine.js'
 import { loadBiddingEngine, saveBiddingEngine, rustyAvailable } from '../utils/biddingEngineSetting.js'
+import { loadTableCards, saveTableCards, listBbaCards, parseCardKey, cardCoverage } from '../utils/tableCards.js'
 import { RBB_WASM_INFO } from '../utils/rbbClient.js'
 import { useTableSlots } from '../composables/engines/tableSlots.js'
 import { useTableStatus } from '../composables/engines/useTableStatus.js'
@@ -1100,6 +1126,57 @@ if (biddingEngine.value === 'rusty' && !rustyReady) {
 }
 watch(biddingEngine, (v) => { if (!EMBEDDED) saveBiddingEngine(v) })
 
+// Convention cards per partnership ("play my card"): the scenario's (default),
+// a BBA card, or one of the user's saved cards (tableCards.js). Remembered in
+// bp.tableCards; embedded tables keep the host's cards. Like the bidder, a
+// change re-bids the current board until you've called on it.
+const CARD_SIDES = [{ key: 'ns', label: 'N/S card' }, { key: 'ew', label: 'E/W card' }]
+const tableCards = ref(loadTableCards())
+watch(tableCards, (v) => { if (!EMBEDDED) saveTableCards(v) }, { deep: true })
+const bbaCardOptions = ref([])
+const myCards = ref([])
+// The user's cards, plus a chosen one that isn't listed (signed out, unlinked)
+const myCardOptions = computed(() => {
+  const out = [...myCards.value]
+  for (const side of ['ns', 'ew']) {
+    const c = parseCardKey(tableCards.value[side])
+    if (c.kind === 'mine' && !out.some((m) => m.id === c.id)) out.push({ id: c.id, name: 'Saved card (not in your list)' })
+  }
+  return out
+})
+const cardAdapters = () => import('../utils/conventionCardAdapters.js').then((m) => m.bridgeClassroomStorage)
+async function loadCardLists() {
+  listBbaCards().then((names) => { bbaCardOptions.value = names })
+  try {
+    const links = await (await cardAdapters()).listLinks()
+    myCards.value = links.map((l) => ({ id: l.card_id, name: l.label || l.card_name }))
+  } catch { myCards.value = [] }
+}
+// Coverage of a chosen card of the user's: { rusty, bba } fractions, by card id
+// ('loading' while worked out, 'error' when it can't be).
+const cardCoverageById = reactive({})
+async function ensureCoverage(id) {
+  if (cardCoverageById[id]) return
+  cardCoverageById[id] = 'loading'
+  try {
+    const card = await (await cardAdapters()).load(id)
+    cardCoverageById[id] = await cardCoverage(card.card_data)
+  } catch (err) {
+    console.warn('[cards] coverage unavailable:', err?.message || err)
+    cardCoverageById[id] = 'error'
+  }
+}
+function coverageLine(side) {
+  const c = parseCardKey(tableCards.value[side])
+  if (c.kind !== 'mine') return ''
+  const cov = cardCoverageById[c.id]
+  if (cov === 'loading') return 'Working out how much of this card the bots play…'
+  if (!cov || cov === 'error') return ''
+  const pct = (x) => `${Math.round(x * 100)}%`
+  const order = effectiveBidder.value === 'rusty' ? ['rusty', 'bba'] : ['bba', 'rusty']
+  return 'Plays ' + order.map((b) => `${pct(cov[b])} with ${BIDDERS[b]}`).join(' · ') + ' of its bidding settings'
+}
+
 // ── The board-manager engine (LocalEngine) ─────────────────────────────
 // Owns the deal source, the auction/board flow, AND cardplay (useCardPlay).
 // The shell reads engine.yourSeat / engine.capabilities (seat-agnostic) and
@@ -1111,6 +1188,7 @@ const engine = useLocalEngine({
   embeddedCards: embeddedParams?.cards || null,
   rotate: () => rotateDeals.value,
   bidder: () => effectiveBidder.value,
+  cards: () => tableCards.value,
 })
 // Switch the current board to a newly chosen bidder if you haven't called yet.
 // The table deals board 1 as soon as it opens, which is usually before anyone
@@ -1118,13 +1196,22 @@ const engine = useLocalEngine({
 // ignored (bug-report 2026-10-05). After your first call, the board keeps its
 // bidder: re-bidding would throw away your calls.
 watch(effectiveBidder, () => { engine.applyBidderNow() })
+watch(() => JSON.stringify(tableCards.value), () => { engine.applyBidderNow() })
+watch(showTableSettings, (open) => { if (open && !EMBEDDED) loadCardLists() })
+watch([showTableSettings, () => tableCards.value.ns, () => tableCards.value.ew], ([open]) => {
+  if (!open) return
+  for (const side of ['ns', 'ew']) {
+    const c = parseCardKey(tableCards.value[side])
+    if (c.kind === 'mine') ensureCoverage(c.id)
+  }
+})
 
 const {
   capabilities, yourSeat, cardplay,
   selection, hasSelection, sourceSummary: poolSummary,
   currentDeal, dealsDrawn, boardNumber: localBoardNumber, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
-  boardBidder, bidderName, referenceName, rustyInfo, rustyFallbacks,
+  boardBidder, bidderName, referenceName, rustyInfo, rustyFallbacks, fallbackCalls, cardsPending,
   finalContract, doubleDummy,
   auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
   phase: enginePhase,
@@ -1312,6 +1399,12 @@ function openReportProblem(e) {
 // changed, so it waits for the next board. Said on the table, not only in the
 // settings panel, so the seat labels still reading the old engine make sense.
 const bidderPending = computed(() => !!currentDeal.value && effectiveBidder.value !== boardBidder.value)
+
+// Testing aid: tint the calls BBA made in a Rusty bot's place (bp.flagFallbacks).
+const FLAG_FALLBACKS_KEY = 'bp.flagFallbacks'
+const flagFallbacks = ref((() => { try { return localStorage.getItem(FLAG_FALLBACKS_KEY) === '1' } catch { return false } })())
+watch(flagFallbacks, (v) => { try { localStorage.setItem(FLAG_FALLBACKS_KEY, v ? '1' : '0') } catch {} })
+const flaggedBids = computed(() => (flagFallbacks.value ? fallbackCalls.value : []))
 
 const scenarioMetaLines = computed(() => {
   if (!currentDeal.value) {
@@ -2277,6 +2370,8 @@ async function restartCardplay() {
 .bp-setting-row { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .bp-setting-row > span { margin-right: auto; }
 .bp-setting-note { font-size: 12px; color: #667; margin: 4px 0 8px; line-height: 1.4; }
+.bp-coverage { margin-top: -2px; color: #889; }
+.bp-card-select { max-width: 190px; }
 .bp-setting-sep {
   margin-top: 6px;
   padding-top: 10px;

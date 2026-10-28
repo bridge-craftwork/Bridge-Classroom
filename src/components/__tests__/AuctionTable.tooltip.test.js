@@ -33,3 +33,13 @@ describe('AuctionTable bid tooltip', () => {
     expect(document.body.querySelector('.bid-tooltip')).toBeNull()
   })
 })
+
+describe('AuctionTable flagged calls', () => {
+  it('tints the flagged calls only', () => {
+    const w = mount(AuctionTable, { props: { bids: ['1S', 'Pass', '2S', 'Pass'], dealer: 'N', flaggedBids: [2] } })
+    const flagged = w.findAll('.bid-cell.fallback-bid')
+    expect(flagged).toHaveLength(1)
+    expect(flagged[0].text()).toContain('2')
+    w.unmount()
+  })
+})

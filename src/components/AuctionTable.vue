@@ -17,6 +17,7 @@
             'wrong-bid': isWrongBid(roundIdx, bidIdx),
             'correct-bid': isCorrectBid(roundIdx, bidIdx),
             'stacked': bid && divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)],
+            'fallback-bid': bid && flaggedSet.has(getBidIndexFromPosition(roundIdx, bidIdx)),
           }"
           @mouseenter="bid && showTip($event, getBidIndexFromPosition(roundIdx, bidIdx))"
           @mouseleave="hideTip"
@@ -218,6 +219,12 @@ const props = defineProps({
     type: String,
     default: 'BBA'
   },
+  flaggedBids: {
+    // Optional call indices to tint as "BBA bid this in the bot's place" (a
+    // Rusty no-rule fallback). A testing aid, off unless the table turns it on.
+    type: Array,
+    default: () => []
+  },
   allowDivergenceToggle: {
     // When true, clicking a stacked bid emits `toggle-bid` so the parent can
     // swap which is live. Off by default — toggling is only safe in review.
@@ -229,6 +236,7 @@ const props = defineProps({
 defineEmits(['toggle-bid'])
 
 const seatOrder = computed(() => getSeatOrder(props.dealer))
+const flaggedSet = computed(() => new Set(props.flaggedBids))
 
 // Figure out which column the dealer is in (0-3 for W-N-E-S display order)
 const dealerColumn = computed(() => {
@@ -587,5 +595,22 @@ function tooltipFor(bidIdx) {
 
 .correct-bid {
   background: #c8e6c9;
+}
+
+/* A Rusty no-rule call that BBA made instead (flaggedBids): a violet tint, apart
+   from the green/red marking, with a corner tag so it reads without colour. */
+.fallback-bid {
+  background: #ede7f6;
+}
+.fallback-bid::before {
+  content: 'BBA';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: calc(8px * var(--table-scale));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #5e35b1;
+  line-height: 1;
 }
 </style>

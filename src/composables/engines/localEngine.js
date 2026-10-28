@@ -13,7 +13,13 @@
 // caller passes the seat; this engine only references `yourSeat`.
 //
 // Config: { yourSeat='S', embedded=false, embeddedCards=null, rotate=()=>false,
-//           bidder=()=>'bba' }
+//           bidder=()=>'bba', cards=()=>({ns:'', ew:''}) }
+//
+// CARDS: `cards()` is the table's convention-card choice per partnership
+// (tableCards.js keys: the scenario's, a BBA card, or one of the user's), read
+// once per board like the bidder. Both bots and BBA's reference play it; the
+// default ('' both ways) is the old behaviour, BBA resolving the scenario name.
+// Embedded tables keep the host's cards.
 //
 // BIDDERS (C1/C2, rusty-bidding-bot's integration plan): `bidder()` names the
 // engine that bids EVERY bot seat, read once per board (a change takes effect on
@@ -30,7 +36,7 @@
 // auction has left BBA's line by the human's turn.
 //
 // Test seams (config): rbbClient, fetchAuction, fetchScenarioCards, fetchBbsa,
-// logFallback, paceMs.
+// loadCard, logFallback, paceMs.
 //
 // CARDPLAY: the engine now owns the in-browser cardplay engine (useCardPlay, a
 // module singleton) and exposes it as `cardplay` plus the unified `play()` /
@@ -41,6 +47,7 @@ import { ref, computed } from 'vue'
 import { LOCAL_CAPABILITIES, derivePhase, deriveWantsCall } from './tableEngine.js'
 import { fetchAuction as bbaFetchAuction } from '../../utils/bbaClient.js'
 import { getRbbClient, normalizeCall } from '../../utils/rbbClient.js'
+import { isScenarioDefault, resolveSide } from '../../utils/tableCards.js'
 import { prepareRustyBoard, runRustyBots, logRustyFallback } from './rustyBidder.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchScenarioMeta, fetchScenarioCards as pbsScenarioCards } from '../../utils/pbsScenarios.js'
@@ -80,6 +87,10 @@ export function useLocalEngine(config = {}) {
   const embeddedCards = config.embeddedCards || null
   const rotate = typeof config.rotate === 'function' ? config.rotate : () => false
   const bidderSetting = typeof config.bidder === 'function' ? config.bidder : () => config.bidder || 'bba'
+  const cardSetting = typeof config.cards === 'function' ? config.cards : () => config.cards || {}
+  // A saved card of the user's, { name, card_data } (loaded only when chosen)
+  const loadCard = config.loadCard ||
+    (async (id) => (await import('../../utils/conventionCardAdapters.js')).bridgeClassroomStorage.load(id))
   const fetchAuction = config.fetchAuction || bbaFetchAuction
   const rbb = () => config.rbbClient || getRbbClient()
   const scenarioCardsOf = config.fetchScenarioCards || pbsScenarioCards
@@ -130,6 +141,15 @@ export function useLocalEngine(config = {}) {
   let rustyFallbackMeanings = {}
   const rustyFallbacks = ref([])
   const rustyInfo = ref(null) // { rulesId, version, cards: {ns, ew} } of the current board
+  // Indices of this board's calls BBA made where Rusty had no rule
+  const fallbackCalls = ref([])
+
+  // This board's cards, fixed at load like the bidder: the choice (as a key, to
+  // tell when the setting has moved on) and its resolution, a promise of null
+  // (the scenario's cards, BBA resolving the name) or
+  // { names, rusty, conventions, content } (resolveBoardCards).
+  const boardCardKey = ref(JSON.stringify(cardSetting()))
+  let boardCardsP = Promise.resolve(null)
   let runGen = 0 // bumps on every load/rewind; a stale Rusty run stops
 
   // Contract + double-dummy overlay (engine-agnostic composable).
@@ -207,10 +227,14 @@ export function useLocalEngine(config = {}) {
   // ── BBA client (scenario name, or default card for non-scenario sources) ─
   // Also the cards of BBA's fallback calls on a Rusty table (Q11): the scenario's
   // own (BBA resolves the name to its CC1/CC2), the embedded host's, or 21GF-DEFAULT.
-  function generateAuction(deal, scenarioName, auctionPrefix = null) {
+  async function generateAuction(deal, scenarioName, auctionPrefix = null) {
     const opts = { deal, auctionPrefix }
+    const cards = embedded ? null : await boardCardsP
     if (embedded) opts.conventions = embeddedCards
-    else if (scenarioName) opts.scenario = scenarioName
+    else if (cards) {
+      opts.conventions = cards.conventions
+      if (Object.keys(cards.content).length) opts.conventionContent = cards.content
+    } else if (scenarioName) opts.scenario = scenarioName
     else opts.conventions = { ns: DEFAULT_CARD, ew: DEFAULT_CARD }
     return fetchAuction(opts)
   }
@@ -237,6 +261,31 @@ export function useLocalEngine(config = {}) {
       await sleep(paceMs)
       if (currentDeal.value !== dealRef) return
       bids.value.push(bid)
+    }
+  }
+
+  // The board's cards for a choice that isn't the scenario's both ways. A side
+  // left on the scenario default takes the scenario's card by name (or
+  // DEFAULT_CARD when it lists none), since BBA is then sent names, not the
+  // scenario. Rejects when a card of the user's can't be loaded.
+  async function resolveBoardCards(choice, scenarioName) {
+    let base = null
+    if (scenarioName) {
+      try { base = await scenarioCardsOf(scenarioName) } catch { /* manifest unavailable */ }
+    }
+    const baseOf = (side) => base?.[side] || base?.ns || DEFAULT_CARD
+    const [ns, ew] = await Promise.all([
+      resolveSide(choice.ns, baseOf('ns'), loadCard),
+      resolveSide(choice.ew, baseOf('ew'), loadCard),
+    ])
+    const content = {}
+    if (ns.bba.content) content.ns = ns.bba.content
+    if (ew.bba.content) content.ew = ew.bba.content
+    return {
+      names: { ns: ns.name, ew: ew.name },
+      rusty: { ns: ns.rusty, ew: ew.rusty },
+      conventions: { ns: ns.bba.name, ew: ew.bba.name },
+      content,
     }
   }
 
@@ -306,6 +355,7 @@ export function useLocalEngine(config = {}) {
   // Forget the fallback calls at or after `from` (the auction was rewound).
   function pruneFallbacks(from) {
     for (const k of Object.keys(rustyFallbackMeanings)) if (Number(k) >= from) delete rustyFallbackMeanings[k]
+    fallbackCalls.value = fallbackCalls.value.filter((i) => i < from)
   }
 
   // Bid Rusty's seats (and BBA's fallbacks) until the human is to call or the
@@ -324,6 +374,7 @@ export function useLocalEngine(config = {}) {
         onMeanings: (m) => { meanings.value = m },
         onFallback: (record) => {
           rustyFallbacks.value = [...rustyFallbacks.value, record]
+          fallbackCalls.value = [...fallbackCalls.value, record.index]
           logFallback(record)
         },
         onCall: async (call) => {
@@ -381,8 +432,15 @@ export function useLocalEngine(config = {}) {
     auctionLoading.value = true
     cardplay.reset()
     boardBidder.value = normBidder(bidderSetting())
+    const cardChoice = cardSetting()
+    boardCardKey.value = JSON.stringify(cardChoice)
+    boardCardsP = embedded || isScenarioDefault(cardChoice)
+      ? Promise.resolve(null)
+      : resolveBoardCards(cardChoice, currentScenario.value)
+    boardCardsP.catch(() => {}) // reported by whichever request awaits it
     rustyBoard = null
     rustyFallbackMeanings = {}
+    fallbackCalls.value = []
     rustyInfo.value = null
 
     const dealRef = currentDeal.value
@@ -416,9 +474,11 @@ export function useLocalEngine(config = {}) {
       (err) => { console.warn('[rusty] BBA reference unavailable:', err.message); return null },
     )
     try {
-      const cardNames = await rustyCardNames(currentScenario.value)
+      const cards = embedded ? null : await boardCardsP
+      const cardNames = cards ? cards.names : await rustyCardNames(currentScenario.value)
       const board = await prepareRustyBoard({
-        client: rbb(), deal: dealRef, humanSeats: [yourSeat.value], cardNames, fetchBbsa: config.fetchBbsa,
+        client: rbb(), deal: dealRef, humanSeats: [yourSeat.value], cardNames,
+        cardSpecs: cards?.rusty || null, fetchBbsa: config.fetchBbsa,
       })
       const ref = await refP
       if (currentDeal.value !== dealRef) return
@@ -514,6 +574,9 @@ export function useLocalEngine(config = {}) {
 
   // Has the human made a call on this board? Bot calls before their first turn
   // don't count: a new engine re-bids those anyway.
+  // The card setting differs from the one this board was dealt with.
+  const cardsPending = computed(() => JSON.stringify(cardSetting()) !== boardCardKey.value)
+
   const humanHasCalled = computed(() => {
     if (!currentDeal.value) return false
     const dealer = currentDeal.value.dealer
@@ -526,11 +589,12 @@ export function useLocalEngine(config = {}) {
   // and the table has already dealt board 1 by then; without this the change
   // waited a whole board (bug-report 2026-10-05, "i set Rusty… still shows BBA").
   // After the human's first call the board keeps its bidder and the change
-  // applies to the next board. Returns whether it switched.
+  // applies to the next board. A changed card choice re-bids the same way.
+  // Returns whether it switched.
   async function applyBidderNow() {
     const deal = currentDeal.value
     if (!deal || humanHasCalled.value) return false
-    if (normBidder(bidderSetting()) === boardBidder.value) return false
+    if (normBidder(bidderSetting()) === boardBidder.value && !cardsPending.value) return false
     // A shallow copy, not the same object: every staleness guard here compares
     // deal identity (`currentDeal.value !== dealRef`), so a BBA answer still in
     // flight from the first start would otherwise pass them and bid onto the
@@ -689,6 +753,8 @@ export function useLocalEngine(config = {}) {
     toggleDivergedBid,
     resetAuction,
     applyBidderNow,
+    cardsPending,
+    fallbackCalls,
     undo,
 
     // ── Analysis hooks (also usable directly by other engines/views) ───────
