@@ -142,6 +142,21 @@ export async function fetchScenarioManifest(tier = 'release') {
   return { sections, meta }
 }
 
+// Which scenarios practise each skill (the manifest's `scenarios[name].skills`,
+// convention-card skill IDs: PBS btn/-scenario-skills.txt), for the convention
+// card's Solo practice report: { skills: { skillPath: [{ name, file }] }, version }.
+export async function fetchScenarioSkills(tier = 'release') {
+  const resp = await fetch(`${PBS.RAW_BASE}${PBS.MANIFEST_DIR}/manifest-${tier}.json`)
+  if (!resp.ok) throw new Error(`manifest fetch failed (${resp.status})`)
+  const m = await resp.json()
+  const skills = {}
+  for (const [file, sc] of Object.entries(m.scenarios || {})) {
+    if (sc.missing) continue
+    for (const id of sc.skills || []) (skills[id] ||= []).push({ name: prettifyLabel(file), file })
+  }
+  return { skills, version: m.generatedAtCommit?.slice(0, 7) }
+}
+
 // The curated menu is its own manifest (coaching-curated/toc.json) — a distinct,
 // much smaller hand-picked set with built-in display names + descriptions.
 // Normalized to the same section shape as the button layout.
