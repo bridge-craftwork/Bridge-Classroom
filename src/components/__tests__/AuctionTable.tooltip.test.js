@@ -1,0 +1,35 @@
+import { describe, it, expect, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import AuctionTable from '../AuctionTable.vue'
+
+const MEANINGS = [
+  { position: 0, bid: '1S', tooltip: 'Opening bid: 11-15 HCP, 5+ spades, unbalanced' },
+]
+
+describe('AuctionTable bid tooltip', () => {
+  let w
+  afterEach(() => w?.unmount())
+
+  it('renders the meaning in <body>, outside the clipped table', async () => {
+    w = mount(AuctionTable, { props: { bids: ['1S', 'Pass'], dealer: 'N', meanings: MEANINGS }, attachTo: document.body })
+    const cell = w.findAll('.bid-cell').find(c => c.text().includes('1'))
+    await cell.trigger('mouseenter')
+    await flushPromises()
+    const tip = document.body.querySelector(':scope > .bid-tooltip')
+    expect(tip).not.toBeNull()
+    expect(tip.textContent).toContain('11-15 HCP')
+    expect(w.element.contains(tip)).toBe(false)
+    expect(tip.classList.contains('placed')).toBe(true)
+
+    await cell.trigger('mouseleave')
+    expect(document.body.querySelector('.bid-tooltip')).toBeNull()
+  })
+
+  it('shows nothing for a bid without a meaning', async () => {
+    w = mount(AuctionTable, { props: { bids: ['1S', 'Pass'], dealer: 'N', meanings: MEANINGS }, attachTo: document.body })
+    const pass = w.findAll('.bid-cell').find(c => c.text() === 'Pass')
+    await pass.trigger('mouseenter')
+    await flushPromises()
+    expect(document.body.querySelector('.bid-tooltip')).toBeNull()
+  })
+})

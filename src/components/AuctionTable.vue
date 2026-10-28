@@ -18,8 +18,8 @@
             'correct-bid': isCorrectBid(roundIdx, bidIdx),
             'stacked': bid && divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)],
           }"
-          @mouseenter="bid ? hoveredIdx = getBidIndexFromPosition(roundIdx, bidIdx) : null"
-          @mouseleave="hoveredIdx = null"
+          @mouseenter="bid && showTip($event, getBidIndexFromPosition(roundIdx, bidIdx))"
+          @mouseleave="hideTip"
         >
           <template v-if="bid && divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)]">
             <div
@@ -41,24 +41,73 @@
           </template>
           <span v-else-if="bid" v-html="formatBidHtml(bid)"></span>
           <span v-else-if="showTurnIndicator && isCurrentTurn(roundIdx, bidIdx)" class="turn-indicator">?</span>
-          <div
-            v-if="bid && hoveredIdx === getBidIndexFromPosition(roundIdx, bidIdx) && tooltipFor(getBidIndexFromPosition(roundIdx, bidIdx))"
-            class="bid-tooltip"
-            v-html="tooltipFor(getBidIndexFromPosition(roundIdx, bidIdx))"
-          ></div>
         </div>
       </div>
     </div>
+    <!-- Teleported to body: the table's overflow:hidden (and any narrow host
+         around it) would otherwise clip a long Rusty/BBA meaning. -->
+    <Teleport to="body">
+      <div
+        v-if="tip"
+        ref="tipEl"
+        class="bid-tooltip"
+        :class="{ below: tip.below, placed: tip.placed }"
+        :style="{
+          '--table-scale': uiScale,
+          '--arrow-x': tip.arrowX + 'px',
+          top: tip.top + 'px',
+          left: tip.left + 'px',
+        }"
+        v-html="tip.html"
+      ></div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { formatBid } from '../utils/cardFormatting.js'
 import { getSeatOrder } from '../utils/pbnParser.js'
 import { AUCTION_UNIT } from './auctionMetrics.js'
 
-const hoveredIdx = ref(null)
+// The hovered bid's tooltip, positioned in viewport coordinates (it lives in
+// <body>, see the template). Rendered hidden first, then measured and placed:
+// above the bid, flipped below when there's no room, and clamped to the window.
+const tip = ref(null)
+const tipEl = ref(null)
+const TIP_GAP = 6
+const TIP_MARGIN = 8
+
+function showTip(event, bidIdx) {
+  const html = tooltipFor(bidIdx)
+  if (!html) { tip.value = null; return }
+  const cell = event.currentTarget.getBoundingClientRect()
+  tip.value = { html, cell, top: 0, left: 0, arrowX: 0, below: false, placed: false }
+  nextTick(placeTip)
+}
+
+function placeTip() {
+  const el = tipEl.value
+  if (!el || !tip.value) return
+  const { cell } = tip.value
+  const w = el.offsetWidth
+  const h = el.offsetHeight
+  const vw = document.documentElement.clientWidth
+  const below = cell.top - h - TIP_GAP < TIP_MARGIN &&
+    cell.bottom + h + TIP_GAP <= window.innerHeight - TIP_MARGIN
+  const center = cell.left + cell.width / 2
+  const left = Math.max(TIP_MARGIN, Math.min(center - w / 2, vw - w - TIP_MARGIN))
+  tip.value = {
+    ...tip.value,
+    below,
+    top: below ? cell.bottom + TIP_GAP : cell.top - h - TIP_GAP,
+    left,
+    arrowX: center - left,
+    placed: true,
+  }
+}
+
+function hideTip() { tip.value = null }
 
 // Density sensor: the auction reserves big, senior-legible bids at the rail
 // width it actually ships at, but in a narrow console tile the full-size grid
@@ -89,7 +138,12 @@ onMounted(() => {
   ro = new ResizeObserver((entries) => { tableWidth.value = entries[0].contentRect.width })
   ro.observe(el)
 })
-onBeforeUnmount(() => ro?.disconnect())
+// A fixed-position tooltip would drift off its bid on scroll; just drop it.
+onMounted(() => window.addEventListener('scroll', hideTip, true))
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  window.removeEventListener('scroll', hideTip, true)
+})
 const dense = computed(() => tableWidth.value < 280 * uiScale.value)
 
 // Render BBOalert suit codes (!C !D !H !S) as colored unicode symbols.
@@ -370,10 +424,8 @@ function tooltipFor(bidIdx) {
 }
 
 .bid-tooltip {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
+  visibility: hidden;
   background: #fffbe6;
   color: #222;
   padding: calc(6px * var(--table-scale)) calc(10px * var(--table-scale));
@@ -383,20 +435,27 @@ function tooltipFor(bidIdx) {
   line-height: 1.45;
   white-space: pre-line;
   pointer-events: none;
-  z-index: 20;
+  z-index: 1000;
   min-width: calc(90px * var(--table-scale));
-  max-width: calc(240px * var(--table-scale));
+  max-width: min(calc(280px * var(--table-scale)), calc(100vw - 16px));
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
+.bid-tooltip.placed { visibility: visible; }
 
 .bid-tooltip::after {
   content: '';
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: var(--arrow-x);
   transform: translateX(-50%);
   border: 5px solid transparent;
   border-top-color: #d4c97a;
+}
+.bid-tooltip.below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #d4c97a;
 }
 
 .bid-tooltip :deep(.t-suit-c),
