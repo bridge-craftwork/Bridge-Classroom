@@ -193,7 +193,9 @@ export const bridgeClassroomOverlays = {
       return { version: i.tag || `v${i.version}`, rules: i.rules_id?.slice(0, 8), statusUrl: RUSTY_STATUS_URL }
     },
     async coverage(cardData) {
-      return (await getRbbClient().coverage({ cards: { ns: { json: cardData } } })).ns
+      // The editor's card is a Vue proxy, which a Worker can't be sent: a plain copy
+      const json = JSON.parse(JSON.stringify(cardData))
+      return (await getRbbClient().coverage({ cards: { ns: { json } } })).ns
     },
   },
 
