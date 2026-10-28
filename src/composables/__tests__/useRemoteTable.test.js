@@ -239,6 +239,7 @@ describe('useRemoteTable', () => {
       bidOnly: false,
       contract: { text: '4S', declarer: 'S', declarerTricks: 11, made: 1 },
       tricks: { NS: 11, EW: 2 },
+      claim: null,
     })
 
     table._handleMessage({

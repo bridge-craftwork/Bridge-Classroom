@@ -208,8 +208,9 @@
             <!-- SE — the action corner, mirroring the solo table (2026-07-29):
                  bidding box with Undo underneath, then the double-dummy table at
                  review. Undo is host-gated (the served Undo rewinds shared state),
-                 so a guest sees the box alone. No Claim on a served table — claiming
-                 is a solo-cardplay affordance today. -->
+                 so a guest sees the box alone. During the play every seated player
+                 gets Claim (checked in their browser by bridge-solver's WASM claim
+                 checker, then applied by the table service). -->
             <template v-if="srvSeSlot" #se>
               <div class="tv-se-stack">
                 <BiddingBox
@@ -227,10 +228,23 @@
                   :final-contract="srv.ddFinalContract"
                 />
                 <ActionCluster
-                  v-if="srvSeSlot !== 'double-dummy' && srv.canManageSeats"
+                  v-if="srvSeSlot !== 'double-dummy' && (srv.canManageSeats || srvSeSlot === 'cardplay')"
+                  :show-undo="srv.canManageSeats"
                   :can-undo="srv.seq !== 0 && srv.connectionStatus === 'connected' && (srv.hasHumanSeat || srv.botsPaused)"
+                  :show-claim="srvSeSlot === 'cardplay' && srv.canClaim && !srv.claimFlow.open"
+                  :can-claim="srv.connectionStatus === 'connected' && srv.remainingTricks > 0"
                   :bot-status="srv.botThinking ? 'Bot thinking… (up to ~20s)' : null"
                   @undo="srv.onUndo"
+                  @claim="srv.claimFlow.openForm"
+                />
+                <ClaimPanel
+                  v-if="srvSeSlot === 'cardplay' && srv.claimFlow.open"
+                  :remaining="srv.remainingTricks"
+                  :checking="srv.claimFlow.checking"
+                  :rejection="srv.claimFlow.rejection"
+                  :limit="srv.claimFlow.limit"
+                  @claim="srv.claimFlow.confirm"
+                  @cancel="srv.claimFlow.cancel"
                 />
               </div>
             </template>
@@ -609,22 +623,22 @@
                   <ActionCluster
                     v-if="seSlot !== 'double-dummy'"
                     :can-undo="canUndo"
-                    :show-claim="seSlot === 'cardplay' && !claimFormOpen && cardplay.isActive.value && !cardplay.playComplete.value"
+                    :show-claim="seSlot === 'cardplay' && !soloClaim.open.value && cardplay.isActive.value && !cardplay.playComplete.value"
                     :can-claim="!cardplay.botLoading.value && cardplay.remainingTricks.value !== 0"
                     :bot-status="cardplay.botLoading.value ? botName + ' thinking…' : (cardplayLineNote ? '↝ ' + cardplayLineNote : null)"
                     :bot-error="cardplay.botError.value || null"
                     @undo="undo"
-                    @claim="openClaimForm"
+                    @claim="soloClaim.openForm"
                   />
 
                   <ClaimPanel
-                    v-if="claimFormOpen"
+                    v-if="soloClaim.open.value"
                     :remaining="cardplay.remainingTricks.value"
-                    :checking="claimValidating"
-                    :rejection="claimRejection"
-                    :limit="claimRejectionLimit"
-                    @claim="confirmClaim"
-                    @cancel="cancelClaim"
+                    :checking="soloClaim.checking.value"
+                    :rejection="soloClaim.rejection.value"
+                    :limit="soloClaim.limit.value"
+                    @claim="soloClaim.confirm"
+                    @cancel="soloClaim.cancel"
                   />
                 </div>
               </template>
@@ -804,6 +818,7 @@ import RailCard from '../components/table/RailCard.vue'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import ClaimPanel from '../components/table/ClaimPanel.vue'
+import { useClaimFlow } from '../composables/useClaimFlow.js'
 import { dealControlsReservePx, actionClusterReservePx, doubleDummyReservePx } from '../components/table/clusterMetrics.js'
 import { biddingBoxReservePx } from '../components/biddingBoxMetrics.js'
 import { stackedRoundCount } from '../components/auctionMetrics.js'
@@ -1376,50 +1391,17 @@ const soloOccupants = computed(() => {
 // side; defenders get the rest. bridge-solver's claim checker (WASM, in the
 // browser) must prove it against every lie of the unseen cards; a rejection
 // shows why, and then the most the user could have guaranteed. No override.
-const claimFormOpen = ref(false)
-const claimValidating = ref(false)
-const claimRejection = ref(null)       // { additional, message } after a rejection
-const claimRejectionLimit = ref(null)  // { claimable, undecided } once known
-let claimToken = 0
-function openClaimForm() {
-  claimFormOpen.value = true
-  claimRejection.value = null
-  claimRejectionLimit.value = null
-}
-function cancelClaim() {
-  claimToken++
-  claimFormOpen.value = false
-  claimRejection.value = null
-  claimRejectionLimit.value = null
-  claimValidating.value = false
-}
-async function confirmClaim(declarerTricks) {
-  const mine = ++claimToken
-  claimValidating.value = true
-  claimRejection.value = null
-  claimRejectionLimit.value = null
-  try {
-    const result = await cardplay.validateClaim(declarerTricks)
-    if (mine !== claimToken) return
-    if (result.accepted) {
-      try {
-        cardplay.claimTricks(declarerTricks, { stamp: result.stamp })
-        claimFormOpen.value = false
-      } catch (err) {
-        // The play moved on while the check ran: check again at the new card.
-        claimRejection.value = { additional: declarerTricks, message: 'The play moved on while the claim was checked. Try again.' }
-      }
-      return
+const soloClaim = useClaimFlow({
+  check: (n) => cardplay.validateClaim(n),
+  limit: () => cardplay.claimLimit(),
+  commit: (n, stamp) => {
+    try {
+      cardplay.claimTricks(n, { stamp })
+    } catch {
+      throw new Error('The play moved on while the claim was checked. Try again.')
     }
-    claimRejection.value = { additional: declarerTricks, message: result.message }
-    if (result.verdict === 'invalid') {
-      const limit = await cardplay.claimLimit()
-      if (mine === claimToken && claimRejection.value) claimRejectionLimit.value = limit
-    }
-  } finally {
-    if (mine === claimToken) claimValidating.value = false
-  }
-}
+  },
+})
 
 // Keep the engine's autoplay-singletons ref synced to a persisted user pref.
 cardplay.autoplayUserSingletons.value = (
@@ -1758,6 +1740,8 @@ const srvSeSlot = computed(() => {
   if (!srv) return null
   if (srv.yourSeat && srv.dealLoaded && srv.phase === 'bidding' && srv.boardMode !== 'play-only') return 'bidding'
   if (srvCenterSlot?.value === 'review' && srv.capabilities?.doubleDummy && srv.doubleDummy) return 'double-dummy'
+  // Cardplay: Claim (any seated player) and the host's Undo.
+  if (srv.phase === 'play' && (srv.canClaim || srv.claimFlow.open || srv.canManageSeats)) return 'cardplay'
   return null
 })
 
@@ -1776,6 +1760,7 @@ const srvRegionReserves = computed(() => {
   let se = 0
   if (srvSeSlot.value === 'bidding') se = Math.max(biddingBoxReservePx(), undo)
   else if (srvSeSlot.value === 'double-dummy') se = doubleDummyReservePx()
+  else if (srvSeSlot.value === 'cardplay') se = actionClusterReservePx({ showUndo: !!srv.canManageSeats, showClaim: !!srv.canClaim })
   return se > 0 ? { nw, se } : { nw }
 })
 

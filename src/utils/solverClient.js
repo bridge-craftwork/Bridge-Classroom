@@ -192,3 +192,38 @@ export function getSolverClient() {
   shared ??= createSolverClient()
   return shared
 }
+
+// ── A claim at a table position ─────────────────────────────────────────
+// `pos` = { play, claimer, tricksTaken, stamp } — what useCardPlay's
+// claimPosition() and useRemoteTable's claimPosition produce. Shared by every
+// table so they all accept, refuse and explain a claim the same way.
+
+/**
+ * Check a claim of `additional` more tricks. Resolves
+ *   { accepted, verdict, message, stamp }
+ * verdict ∈ 'valid' | 'invalid' | 'undecided' | 'error'. Anything but 'valid'
+ * is a refusal with a reason; a checker that can't run refuses rather than
+ * waving the claim through.
+ */
+export async function validateClaimAt(pos, additional, checker = getSolverClient()) {
+  try {
+    const { verdict } = await checker.checkClaim({ ...pos, additional })
+    return { accepted: verdict === 'valid', verdict, message: claimRejectionMessage(verdict, additional), stamp: pos.stamp }
+  } catch (err) {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn('[claim] check failed:', err.message)
+    }
+    return { accepted: false, verdict: 'error', message: claimRejectionMessage('error', additional), stamp: pos.stamp }
+  }
+}
+
+/** The most the claimer could claim at `pos`: { claimable, undecided }, or null. */
+export async function claimLimitAt(pos, checker = getSolverClient()) {
+  try {
+    const r = await checker.maxClaim(pos)
+    return { claimable: r.claimable, undecided: r.undecided }
+  } catch {
+    return null
+  }
+}

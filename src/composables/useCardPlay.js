@@ -13,7 +13,7 @@ import {
   trickWinner,
   computeRemaining,
 } from '../utils/cardplayRules.js'
-import { getSolverClient, claimRejectionMessage } from '../utils/solverClient.js'
+import { getSolverClient, validateClaimAt, claimLimitAt } from '../utils/solverClient.js'
 
 const SEAT_ORDER = ['N', 'E', 'S', 'W']
 const SIDE_OF = { N: 'NS', S: 'NS', E: 'EW', W: 'EW' }
@@ -206,17 +206,7 @@ export function claimPosition() {
 export async function validateClaim(declarerTricks, { checker = getSolverClient() } = {}) {
   if (!isActive.value) throw new Error('validateClaim: cardplay not active')
   if (playComplete.value) throw new Error('validateClaim: cardplay already complete')
-  const pos = claimPosition()
-  try {
-    const { verdict } = await checker.checkClaim({ ...pos, additional: declarerTricks })
-    return { accepted: verdict === 'valid', verdict, message: claimRejectionMessage(verdict, declarerTricks), stamp: pos.stamp }
-  } catch (err) {
-    if (typeof console !== 'undefined') {
-      // eslint-disable-next-line no-console
-      console.warn('[cardplay] claim check failed:', err.message)
-    }
-    return { accepted: false, verdict: 'error', message: claimRejectionMessage('error', declarerTricks), stamp: pos.stamp }
-  }
+  return validateClaimAt(claimPosition(), declarerTricks, checker)
 }
 
 // The most tricks declarer could claim right now: { claimable, undecided } or
@@ -225,12 +215,8 @@ export async function validateClaim(declarerTricks, { checker = getSolverClient(
 export async function claimLimit({ checker = getSolverClient() } = {}) {
   if (!isActive.value || playComplete.value) return null
   const pos = claimPosition()
-  try {
-    const r = await checker.maxClaim(pos)
-    return claimPosition()?.stamp === pos.stamp ? { claimable: r.claimable, undecided: r.undecided } : null
-  } catch {
-    return null
-  }
+  const r = await claimLimitAt(pos, checker)
+  return claimPosition()?.stamp === pos.stamp ? r : null
 }
 
 // Award `declarerTricks` of the remaining tricks to the declaring side and
