@@ -43,3 +43,18 @@ describe('AuctionTable flagged calls', () => {
     w.unmount()
   })
 })
+
+describe('AuctionTable meaning suits', () => {
+  it('colours suit symbols written as text, as well as !H-style codes', async () => {
+    const meanings = [{ position: 0, bid: '4D', tooltip: 'Splinter: 4+ ♥, at most one ♦; !S stopper, ♣ length' }]
+    const w = mount(AuctionTable, { props: { bids: ['4D'], dealer: 'N', meanings }, attachTo: document.body })
+    await w.findAll('.bid-cell').find(c => c.text().includes('4')).trigger('mouseenter')
+    await flushPromises()
+    const tip = document.body.querySelector(':scope > .bid-tooltip')
+    expect(tip.querySelectorAll('.t-suit-h')).toHaveLength(1)
+    expect(tip.querySelectorAll('.t-suit-d')).toHaveLength(1)
+    expect(tip.querySelectorAll('.t-suit-s')).toHaveLength(1)
+    expect(tip.querySelectorAll('.t-suit-c')).toHaveLength(1)
+    w.unmount()
+  })
+})

@@ -147,7 +147,8 @@ onBeforeUnmount(() => {
 })
 const dense = computed(() => tableWidth.value < 280 * uiScale.value)
 
-// Render BBOalert suit codes (!C !D !H !S) as colored unicode symbols.
+// Render suits in a meaning as colored symbols: BBOalert codes (!C !D !H !S)
+// and the symbols themselves.
 function formatMeaningHtml(text) {
   const escaped = text.replace(/[&<>"']/g, c => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -157,6 +158,11 @@ function formatMeaningHtml(text) {
     .replace(/!D/gi, '<span class="t-suit-d">&diams;</span>')
     .replace(/!H/gi, '<span class="t-suit-h">&hearts;</span>')
     .replace(/!S/gi, '<span class="t-suit-s">&spades;</span>')
+    // Rusty writes the symbols themselves
+    .replace(/[♣♧]/g, '<span class="t-suit-c">&clubs;</span>')
+    .replace(/[♦♢]/g, '<span class="t-suit-d">&diams;</span>')
+    .replace(/[♥♡]/g, '<span class="t-suit-h">&hearts;</span>')
+    .replace(/[♠♤]/g, '<span class="t-suit-s">&spades;</span>')
     .replace(/\n/g, '<br>')
 }
 
