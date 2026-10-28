@@ -10,7 +10,7 @@
 // diagnostics, rusty-bidding-bot docs/WASM.md); `error` is only for the cases
 // above, and the client turns both into rejections.
 
-export const FUNCTIONS = ['info', 'createEngine', 'freeEngine', 'auction', 'meaning', 'interpret', 'bid', 'coverage', 'validate']
+export const FUNCTIONS = ['info', 'createEngine', 'freeEngine', 'auction', 'meaning', 'interpret', 'bid', 'coverage', 'conventions', 'validate']
 
 // loadGlue: () => Promise<module> — the package's JS glue, initialised.
 export function createRbbDispatcher(loadGlue) {

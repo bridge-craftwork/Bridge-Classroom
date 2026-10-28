@@ -48,6 +48,7 @@ export function diagnosticsError(res, what) {
  *   client.auction(request)    auction(); rejects with the diagnostics when !ok
  *   client.meaning(request)    meaning(); rejects with the diagnostics when !ok
  *   client.coverage(request)   coverage(); rejects with the diagnostics when !ok
+ *   client.conventions()       the rules as data (modules and the skills each implements)
  *   client.terminate()
  */
 export function createRbbClient({ createWorker = defaultWorker, base = null } = {}) {
@@ -128,6 +129,7 @@ export function createRbbClient({ createWorker = defaultWorker, base = null } = 
     auction: (request) => checked('auction', request),
     meaning: (request) => checked('meaning', request),
     coverage: (request) => checked('coverage', request),
+    conventions: (request = {}) => checked('conventions', request),
     terminate() {
       failAll('Rusty worker terminated')
       if (worker) worker.terminate()
