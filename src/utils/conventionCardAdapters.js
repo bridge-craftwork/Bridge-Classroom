@@ -9,6 +9,7 @@ import { apiFetch } from '@/utils/apiFetch.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { BAKER_BRIDGE_TAXONOMY, getTaxonomyEntry, getSubfolderForSkill } from './bakerBridgeTaxonomy.js'
+import { RBB_WASM_INFO, getRbbClient } from './rbbClient.js'
 
 const userStore = useUserStore()
 const currentUserId = () => userStore.currentUser.value?.id
@@ -154,8 +155,26 @@ export const bridgeClassroomStorage = {
   }
 }
 
-/** Solo-practice coverage (Baker Bridge deals) and the user's lesson mastery. */
+// Rusty's status page: what each convention's tile there says.
+const RUSTY_STATUS_URL = 'https://bridge-craftwork.com/rusty-bidding-bot/status'
+
+/**
+ * Practice deals (Baker Bridge), the user's lesson mastery, and Rusty, the
+ * solo table's bidding bot, for the editor's bot report: the installed
+ * package's version, and which of a card's settings its rules read.
+ */
 export const bridgeClassroomOverlays = {
+  bot: {
+    name: 'Rusty',
+    async info() {
+      const i = RBB_WASM_INFO || await getRbbClient().info()
+      return { version: i.tag || `v${i.version}`, rules: i.rules_id?.slice(0, 8), statusUrl: RUSTY_STATUS_URL }
+    },
+    async coverage(cardData) {
+      return (await getRbbClient().coverage({ cards: { ns: { json: cardData } } })).ns
+    },
+  },
+
   covered: skillPath => !!getTaxonomyEntry(skillPath),
 
   async mastery(user) {
