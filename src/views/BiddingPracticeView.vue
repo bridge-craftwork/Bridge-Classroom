@@ -303,6 +303,7 @@
               <template v-else-if="srv.contract && srv.boardPlayed">
                 <span v-html="srv.contractHtml"></span> by {{ srv.declarer }} —
                 declarer took {{ srv.declarerTricks }} trick{{ srv.declarerTricks === 1 ? '' : 's' }}.
+                {{ srv.claimNote }}
               </template>
               <!-- Bid-only: complete, but nothing was played. Say so rather than
                    reporting the zeroed trick counts as if it had been. -->

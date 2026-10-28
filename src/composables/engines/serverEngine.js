@@ -372,6 +372,14 @@ export function useServerEngine() {
   // have been someone else's, or the teacher's).
   watch(phase, (p) => { if (p !== 'play') claimFlow.cancel() })
 
+  // How the play ended, when a claim ended it — from the live board_complete
+  // or, after a (re)join, the snapshot.
+  const claimNote = computed(() => {
+    const k = boardComplete.value?.claim || claim.value
+    if (!k) return ''
+    return `${k.ruling ? 'Teacher ruled' : `${k.seat} claimed`} at trick ${k.at_trick}.`
+  })
+
   const resultBanner = computed(() => {
     const r = boardComplete.value
     if (!r) return ''
@@ -387,12 +395,9 @@ export function useServerEngine() {
       : made === 0
         ? 'made exactly'
         : `down ${-made}`
-    const k = r.claim
-    const claimed = k
-      ? ` ${k.ruling ? 'Teacher ruled' : `${k.seat} claimed`} at trick ${k.at_trick}.`
-      : ''
     return `${formatContract(c.text)} by ${c.declarer} — ${outcome} ` +
-      `(${c.declarerTricks} trick${c.declarerTricks === 1 ? '' : 's'}).` + claimed
+      `(${c.declarerTricks} trick${c.declarerTricks === 1 ? '' : 's'}).` +
+      (claimNote.value ? ` ${claimNote.value}` : '')
   })
 
   function seatLabel(seat) {
@@ -543,7 +548,7 @@ export function useServerEngine() {
     boardComplete, sessionClosed,
     dealLoaded, setLabel, clickableSeat, hasHumanSeat,
     canDouble, canRedouble, errorMessage, undoBy,
-    remainingTricks, claim, canClaim, claimFlow,
+    remainingTricks, claim, canClaim, claimFlow, claimNote,
     // analysis
     capabilities, doubleDummy, ddFinalContract,
     expectedAuction, divergedBids, showBbaCompare, toggleBbaCompare,
