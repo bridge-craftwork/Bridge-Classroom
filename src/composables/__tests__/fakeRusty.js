@@ -54,7 +54,7 @@ export function makeFakeRusty(script, { rulesId = 'test-rules', stock = ['21GF-D
 export function makeFakeBba(line, { fail = false } = {}) {
   const requests = []
   async function fetchAuction(opts) {
-    requests.push({ prefix: opts.auctionPrefix ? opts.auctionPrefix.slice() : null, scenario: opts.scenario || null, conventions: opts.conventions || null })
+    requests.push({ prefix: opts.auctionPrefix ? opts.auctionPrefix.slice() : null, scenario: opts.scenario || null, conventions: opts.conventions || null, content: opts.conventionContent || null })
     if (fail) throw new Error('Failed to fetch')
     const prefix = opts.auctionPrefix || []
     const auction = prefix.concat(line.slice(prefix.length))

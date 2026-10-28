@@ -22,9 +22,14 @@ export function getBbaUrl() {
 //   deal:         { hands:{N,E,S,W→{spades,...}}, dealer, vulnerable }
 //   scenario:     PBS scenario name (selects BBA's system)   — OR —
 //   conventions:  { ns, ew } explicit convention-card ids
+//   conventionContent: optional { ns?, ew? } .bbsa text bid instead of the
+//                 named card for that side (a user's own card; the name is then
+//                 its label). Needs bba-server 2.2+, which lists those sides in
+//                 `customCards`; an older one ignores the text, so its answer
+//                 is refused rather than passed off as the user's card.
 //   auctionPrefix: optional string[] of leading calls BBA must continue from
 // Returns { auction: string[], meanings: string[], conventionsUsed }.
-export async function fetchAuction({ deal, scenario, conventions, auctionPrefix } = {}) {
+export async function fetchAuction({ deal, scenario, conventions, conventionContent, auctionPrefix } = {}) {
   const vul = deal.vulnerable === 'All' ? 'Both' : deal.vulnerable
   const body = {
     deal: {
@@ -36,6 +41,8 @@ export async function fetchAuction({ deal, scenario, conventions, auctionPrefix 
   }
   if (conventions) body.conventions = conventions
   else if (scenario) body.scenario = scenario
+  const customSides = Object.keys(conventionContent || {}).filter((s) => conventionContent[s])
+  if (customSides.length) body.conventionContent = conventionContent
   if (auctionPrefix && auctionPrefix.length > 0) body.auctionPrefix = auctionPrefix
 
   const resp = await fetch(getBbaUrl() + '/api/auction/generate', {
@@ -50,6 +57,9 @@ export async function fetchAuction({ deal, scenario, conventions, auctionPrefix 
   }
   const j = await resp.json()
   if (!j.success) throw new Error(j.error || 'BBA returned success=false')
+  if (customSides.some((s) => !(j.customCards || []).includes(s))) {
+    throw new Error("this BBA server can't bid with your own convention card yet")
+  }
   return {
     auction: j.auction,
     meanings: j.meanings || [],
