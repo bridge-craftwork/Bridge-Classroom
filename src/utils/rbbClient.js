@@ -47,6 +47,7 @@ export function diagnosticsError(res, what) {
  *   client.engineFor(cards)    createEngine handle for {ns, ew} card specs, cached
  *   client.auction(request)    auction(); rejects with the diagnostics when !ok
  *   client.meaning(request)    meaning(); rejects with the diagnostics when !ok
+ *   client.coverage(request)   coverage(); rejects with the diagnostics when !ok
  *   client.terminate()
  */
 export function createRbbClient({ createWorker = defaultWorker, base = null } = {}) {
@@ -126,6 +127,7 @@ export function createRbbClient({ createWorker = defaultWorker, base = null } = 
     engineFor,
     auction: (request) => checked('auction', request),
     meaning: (request) => checked('meaning', request),
+    coverage: (request) => checked('coverage', request),
     terminate() {
       failAll('Rusty worker terminated')
       if (worker) worker.terminate()
