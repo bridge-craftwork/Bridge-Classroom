@@ -188,7 +188,17 @@
             :loaded="deck.loaded"
             @kibitz="watchTable(t.table_id)"
             @advance="console_.forceAdvance(t.table_id)"
+            @claim="claimTableId = claimTableId === t.table_id ? null : t.table_id"
             @seat-click="(seat) => toggleMenu(t.table_id, seat)"
+          />
+
+          <!-- Teacher's claim (Claimable / Makable / All), a director's ruling -->
+          <TeacherClaimMenu
+            v-if="claimTableId === t.table_id && t.phase === 'play'"
+            :t="t"
+            :name="tableName(t.table_id)"
+            @claim="(c) => doClaimRuling(t.table_id, c)"
+            @close="claimTableId = null"
           />
 
           <!-- Seat action menu -->
@@ -278,6 +288,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UnifiedTable from './BiddingPracticeView.vue'
 import MiniTable from '../components/table/MiniTable.vue'
+import TeacherClaimMenu from '../components/table/TeacherClaimMenu.vue'
 import DealSourcePicker from '../components/dealSource/DealSourcePicker.vue'
 import { useRemoteTable } from '../composables/useRemoteTable.js'
 import { useTeacherConsole } from '../composables/useTeacherConsole.js'
@@ -298,6 +309,13 @@ const console_ = useTeacherConsole()
 const { materialize } = useDealSourceResolver()
 
 const { connectionStatus, sessionClosed } = table
+
+// The table whose claim menu is open (one at a time), or null.
+const claimTableId = ref(null)
+function doClaimRuling(tableId, { seat, tricks, playsSeen }) {
+  console_.claimRuling(tableId, seat, tricks, playsSeen)
+  claimTableId.value = null
+}
 const { lobby, deck, settings, kibitzTableId } = console_
 const currentUser = userStore.currentUser
 

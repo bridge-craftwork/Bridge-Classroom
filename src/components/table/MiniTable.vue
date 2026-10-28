@@ -16,6 +16,12 @@
       <span v-else class="mt-chip mt-chip-nodeal">no deal</span>
       <span class="mt-head-spacer"></span>
       <button
+        v-if="loaded && t.phase === 'play' && t.deal"
+        class="mt-claim"
+        title="End the play with a claim (Claimable / Makable / All)"
+        @click="$emit('claim')"
+      >Claim</button>
+      <button
         class="mt-icon"
         title="Move this table to its next board now"
         @click="$emit('advance')"
@@ -122,7 +128,7 @@ const props = defineProps({
   // (the lobby still carries a placeholder board server-side).
   loaded: { type: Boolean, default: true },
 })
-defineEmits(['kibitz', 'advance', 'seat-click'])
+defineEmits(['kibitz', 'advance', 'claim', 'seat-click'])
 
 // `result.contract.made` is a RELATIVE figure from the service (0 = made
 // exactly, +N overtricks, -N down), so the obvious `made ? 'Made' : 'Down'`
@@ -224,6 +230,16 @@ const lastCallCol = computed(() => {
 </script>
 
 <style scoped>
+.mt-claim {
+  font-size: 11px;
+  padding: 1px 7px;
+  border: 1px solid #1D9E75;
+  border-radius: 4px;
+  background: #fff;
+  color: #1D9E75;
+  cursor: pointer;
+}
+.mt-claim:hover { background: #1D9E75; color: #fff; }
 .mt {
   background: #fff;
   border: 1px solid #dde3e8;

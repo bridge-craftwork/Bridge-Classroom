@@ -148,6 +148,15 @@ function forceAdvance(tableId) {
   return socket.send({ t: 'force_advance', table: tableId })
 }
 
+// A teacher-directed claim at one table (a director's ruling, not checked by
+// the server): `seat`'s side takes `tricks` of those still to play. The
+// console works the number out (Claimable / Makable / All, TeacherClaimMenu)
+// and passes `playsSeen`, the card count it was worked out at — the server
+// refuses it as stale if the table has played on since.
+function claimRuling(tableId, seat, tricks, playsSeen) {
+  return socket.send({ t: 'claim_ruling', table: tableId, seat, tricks, plays_seen: playsSeen })
+}
+
 // Seat a known participant (seated elsewhere or kibitzing) at table/seat.
 function assignSeat(tableId, seat, sub) {
   return socket.send({ t: 'assign_seat', table: tableId, seat, sub })
@@ -193,6 +202,7 @@ export function useTeacherConsole() {
     setBoardMode,
     pauseBots,
     forceAdvance,
+    claimRuling,
     assignSeat,
     boot,
     kibitz,

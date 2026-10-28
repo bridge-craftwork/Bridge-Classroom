@@ -39,8 +39,9 @@ describe('useRemoteTable fixture driver (Phase 0.2)', () => {
     srv.loadFixture(serverMidplay.snapshot)
     const captured = srv.captureFixture()
 
-    // capture reproduces every field the fixture set
-    expect(captured).toEqual(serverMidplay.snapshot)
+    // capture reproduces every field the fixture set (the fixture predates the
+    // claim position fields, which capture as their empty defaults)
+    expect(captured).toEqual({ ...serverMidplay.snapshot, originalDeal: null, plays: [], claim: null })
 
     // and reloading the capture yields identical derivations (no drift)
     srv._resetTableState()

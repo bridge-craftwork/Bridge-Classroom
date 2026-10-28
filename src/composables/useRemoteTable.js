@@ -11,6 +11,7 @@
 import { ref, reactive, computed } from 'vue'
 import { useTableSocket } from './useTableSocket.js'
 import { getLegalCards, handToCards } from '../utils/cardplayRules.js'
+import { buildClaimPosition } from '../utils/claimPosition.js'
 
 const SEAT_ORDER = ['N', 'E', 'S', 'W']
 const SUIT_KEY = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }
@@ -67,6 +68,12 @@ const handCounts = ref({ N: 0, E: 0, S: 0, W: 0 })
 const currentTrick = reactive({ leader: null, plays: [] }) // plays: [{seat, suit, rank}]
 const lastFinishedTrick = ref(null) // { leader, plays, winner }
 const tricksTaken = ref({ NS: 0, EW: 0 })
+// The original deal (PBN) and every card played, in order, from the snapshot
+// (+ card_played events): the position a claim is checked against.
+const originalDeal = ref(null)
+const plays = ref([])
+// The claim that ended the play: { seat, tricks, ruling, at_trick, at_card }.
+const claim = ref(null)
 // { N: {kind:'human',name,connected} | {kind:'empty'}, ... } — empty seats
 // are played by the server's bots.
 const seats = ref({})
@@ -102,6 +109,10 @@ let undoTimer = null
 // One dummy-reveal resync per opening lead (see below).
 let dummyResyncRequested = false
 let unsubscribe = null
+// The claim this connection sent and is waiting on: { resolve, reject, timer }.
+// Settled by the server's `claim` event or by an error frame.
+let pendingClaim = null
+const CLAIM_TIMEOUT_MS = 15000
 
 // ── Small pure helpers ─────────────────────────────────────────────────
 
@@ -252,6 +263,31 @@ const legalCards = computed(() => {
   return getLegalCards(handToCards(hands.value[seat]), currentTrick.plays)
 })
 
+// Tricks still to play, counting the one in progress.
+const remainingTricks = computed(() =>
+  phase.value === 'play' ? 13 - tricksTaken.value.NS - tricksTaken.value.EW : 0)
+
+// The seat this viewer claims for: declarer when they hold it, else their own
+// seat (a dummy's claim is declarer's side's claim). Kibitzers can't claim.
+const claimSeat = computed(() => {
+  const mine = yourSeats.value
+  if (!mine.length) return null
+  return mine.includes(declarer.value) ? declarer.value : mine[0]
+})
+
+// The claim position for solverClient.validateClaimAt / claimLimitAt, or null
+// when there's nothing to claim (not in the play, no seat, no deal yet).
+const claimPosition = computed(() => {
+  if (phase.value !== 'play') return null
+  return buildClaimPosition({
+    deal: originalDeal.value,
+    contract: contract.value,
+    plays: plays.value,
+    tricks: tricksTaken.value,
+    claimer: claimSeat.value,
+  })
+})
+
 const isYourBid = computed(() =>
   phase.value === 'bidding' && yourSeats.value.includes(nextToAct.value))
 
@@ -330,6 +366,9 @@ function applySnapshot(state) {
     currentTrick.plays = []
   }
   tricksTaken.value = { NS: state.tricks?.ns ?? 0, EW: state.tricks?.ew ?? 0 }
+  originalDeal.value = state.deal || null
+  plays.value = [...(state.plays || [])]
+  claim.value = state.claim || null
   if (state.your_seats) yourSeats.value = state.your_seats
   else if (state.your_seat) yourSeats.value = [state.your_seat]
 
@@ -379,6 +418,7 @@ function handleCardPlayed(ev) {
   if (!guardSeq(ev)) return
   clearTrickLinger() // an incoming play must never hide behind a lingering trick
   const play = codeToPlay(ev.seat, ev.card)
+  plays.value = [...plays.value, ev.card]
   if (currentTrick.plays.length === 0) currentTrick.leader = play.seat
   currentTrick.plays.push(play)
 
@@ -423,6 +463,26 @@ function handleCardPlayed(ev) {
     dummyResyncRequested = true
     socket.resync()
   }
+}
+
+// A claim ended the play (any seat's, or the teacher's ruling). The result
+// and a fresh snapshot follow.
+function handleClaim(ev) {
+  if (!guardSeq(ev)) return
+  claim.value = ev.claim || null
+  if (ev.tricks) tricksTaken.value = { NS: ev.tricks.ns, EW: ev.tricks.ew }
+  nextToAct.value = null
+  phase.value = 'complete'
+  settleClaim(null)
+}
+
+function settleClaim(error) {
+  if (!pendingClaim) return
+  const { resolve, reject, timer } = pendingClaim
+  pendingClaim = null
+  clearTimeout(timer)
+  if (error) reject(error)
+  else resolve()
 }
 
 function handleMessage(msg) {
@@ -485,6 +545,9 @@ function handleMessage(msg) {
         case 'card_played':
           handleCardPlayed(msg)
           break
+        case 'claim':
+          handleClaim(msg)
+          break
         case 'boards_open':
           boardsOpen.value = { open: msg.open, total: msg.total }
           break
@@ -512,6 +575,7 @@ function handleMessage(msg) {
                 }
               : null,
             tricks: { NS: msg.tricks?.ns ?? 0, EW: msg.tricks?.ew ?? 0 },
+            claim: msg.claim || null,
           }
           phase.value = 'complete'
           break
@@ -540,6 +604,12 @@ function handleMessage(msg) {
         // the service restarted). Same UX as an explicit close.
         sessionClosed.value = true
         socket.disconnect()
+        break
+      }
+      // An error while our claim is in flight is the answer to it (errors go
+      // to the sender only): the claim panel shows it, not the toast.
+      if (pendingClaim) {
+        settleClaim(new Error(msg.msg || msg.code || 'The claim was not accepted.'))
         break
       }
       showError(msg.msg || msg.code || 'Server rejected the request')
@@ -591,6 +661,22 @@ function sendCard(seat, suit, rank) {
   }
   const ok = socket.send({ t: 'play', card: `${suit}${rank}` })
   return { ok, reason: ok ? '' : 'not connected' }
+}
+
+// Claim `tricks` of the remaining tricks for claimSeat's side. Check it first
+// (solverClient.validateClaimAt on claimPosition) and pass the stamp it was
+// checked at; the server refuses a claim whose stamp no longer matches the
+// table (claim_stale). Resolves when the server applies it, rejects with the
+// server's reason.
+function sendClaim(tricks, stamp = plays.value.length) {
+  if (!claimSeat.value) return Promise.reject(new Error('Only a seated player can claim.'))
+  if (pendingClaim) return Promise.reject(new Error('A claim is already being checked.'))
+  const ok = socket.send({ t: 'claim', seat: claimSeat.value, tricks, plays_seen: stamp })
+  if (!ok) return Promise.reject(new Error('Not connected.'))
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => settleClaim(new Error('The table did not answer the claim. Try again.')), CLAIM_TIMEOUT_MS)
+    pendingClaim = { resolve, reject, timer }
+  })
 }
 
 // Deal-source controls (demo room; the server rejects on session tables).
@@ -677,6 +763,10 @@ function resetBoardState() {
   currentTrick.plays = []
   clearTrickLinger()
   tricksTaken.value = { NS: 0, EW: 0 }
+  originalDeal.value = null
+  plays.value = []
+  claim.value = null
+  settleClaim(new Error('The board changed.'))
   boardComplete.value = null
   dummyResyncRequested = false
 }
@@ -732,6 +822,9 @@ function captureFixture() {
     currentTrick: { leader: currentTrick.leader, plays: currentTrick.plays },
     lastFinishedTrick: lastFinishedTrick.value,
     tricksTaken: tricksTaken.value,
+    originalDeal: originalDeal.value,
+    plays: plays.value,
+    claim: claim.value,
     seats: seats.value,
     boardsOpen: boardsOpen.value,
     boardComplete: boardComplete.value,
@@ -765,6 +858,9 @@ function loadFixture(snap) {
   currentTrick.plays = [...(snap.currentTrick?.plays ?? [])]
   lastFinishedTrick.value = snap.lastFinishedTrick ?? null
   tricksTaken.value = snap.tricksTaken ?? { NS: 0, EW: 0 }
+  originalDeal.value = snap.originalDeal ?? null
+  plays.value = [...(snap.plays ?? [])]
+  claim.value = snap.claim ?? null
   seats.value = snap.seats ?? {}
   boardsOpen.value = snap.boardsOpen ?? null
   boardComplete.value = snap.boardComplete ?? null
@@ -822,6 +918,9 @@ export function useRemoteTable() {
     currentTrick,
     lastFinishedTrick,
     tricksTaken,
+    originalDeal,
+    plays,
+    claim,
     seats,
     passSides,
     botsPaused,
@@ -841,6 +940,9 @@ export function useRemoteTable() {
     lastSuitBid,
     canDouble,
     canRedouble,
+    remainingTricks,
+    claimSeat,
+    claimPosition,
     // feedback
     errorMessage,
     undoBy,
@@ -856,6 +958,7 @@ export function useRemoteTable() {
     sendPassSides,
     sendPauseBots,
     sendDeal,
+    sendClaim,
     // Fixture driver (Phase 0.2): render the server path from a frozen snapshot.
     loadFixture,
     captureFixture,

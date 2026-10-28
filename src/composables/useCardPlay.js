@@ -13,6 +13,7 @@ import {
   trickWinner,
   computeRemaining,
 } from '../utils/cardplayRules.js'
+import { getSolverClient, validateClaimAt, claimLimitAt } from '../utils/solverClient.js'
 
 const SEAT_ORDER = ['N', 'E', 'S', 'W']
 const SIDE_OF = { N: 'NS', S: 'NS', E: 'EW', W: 'EW' }
@@ -174,47 +175,60 @@ export function startPlay({
   return advanceBotsIfTheirTurn()
 }
 
-// Ask the active bot whether a claim of `declarerTricks` is achievable. If
-// the bot has no validator (e.g. RandomLegalBot), returns { accepted: true,
-// message: '', validated: false } so the caller can commit unconditionally.
-// On network/bot errors, also accepts silently — claim validation should
-// never block the user.
-export async function validateClaim(declarerTricks) {
-  if (!isActive.value) throw new Error('validateClaim: cardplay not active')
-  if (playComplete.value) throw new Error('validateClaim: cardplay already complete')
-  const bot = dealCtx.value.bot
-  if (!bot || typeof bot.validateClaim !== 'function') {
-    return { accepted: true, message: '', validated: false }
-  }
-  try {
-    const result = await bot.validateClaim({
-      tricks: declarerTricks,
-      declarerHand: dealCtx.value.hands[dealCtx.value.declarer],
-      dummyHand: dealCtx.value.hands[dealCtx.value.dummySeat],
-      declarer: dealCtx.value.declarer,
-      dealer: dealCtx.value.dealer,
-      vulnerable: dealCtx.value.vulnerable,
-      bids: dealCtx.value.bids,
-      played: played.value,
-    })
-    return { ...result, validated: true }
-  } catch (err) {
-    if (typeof console !== 'undefined') {
-      // eslint-disable-next-line no-console
-      console.warn('[cardplay] claim validation failed; accepting silently:', err.message)
-    }
-    return { accepted: true, message: '', validated: false }
+// The claim position as the solver reads it: the original deal and every card
+// played so far, plus the completed tricks per side. `stamp` is the number of
+// cards played — a claim checked at one stamp may only be committed at the same
+// one (the served table enforces the same rule; see claims design 2026-10-27).
+export function claimPosition() {
+  if (!isActive.value) return null
+  const ctx = dealCtx.value
+  return {
+    play: {
+      hands: ctx.hands,
+      trump: ctx.trump || 'NT',
+      declarer: ctx.declarer,
+      leader: ctx.openingLeader,
+      plays: played.value.map(p => p.suit + p.rank),
+    },
+    claimer: ctx.declarer,
+    tricksTaken: { ...tricksTaken.value },
+    stamp: played.value.length,
   }
 }
 
+// Check a claim of `declarerTricks` more tricks with bridge-solver's claim
+// checker (WASM, in the browser): valid only if declarer has a line that takes
+// them however the defenders' cards lie. Resolves
+//   { accepted, verdict, message, stamp }
+// verdict ∈ 'valid' | 'invalid' | 'undecided' | 'error'. Anything but 'valid'
+// is a rejection with a reason: there is no override, and a checker that can't
+// run refuses rather than waves the claim through.
+export async function validateClaim(declarerTricks, { checker = getSolverClient() } = {}) {
+  if (!isActive.value) throw new Error('validateClaim: cardplay not active')
+  if (playComplete.value) throw new Error('validateClaim: cardplay already complete')
+  return validateClaimAt(claimPosition(), declarerTricks, checker)
+}
+
+// The most tricks declarer could claim right now: { claimable, undecided } or
+// null when the checker can't run. Shown after a rejection ("you can
+// guarantee N"); slow early in a hand, so never on the critical path.
+export async function claimLimit({ checker = getSolverClient() } = {}) {
+  if (!isActive.value || playComplete.value) return null
+  const pos = claimPosition()
+  const r = await claimLimitAt(pos, checker)
+  return claimPosition()?.stamp === pos.stamp ? r : null
+}
+
 // Award `declarerTricks` of the remaining tricks to the declaring side and
-// the rest to the defenders, then end cardplay. No DD validation in v1 — we
-// trust the declarer's claim. Future enhancement: pass remaining hands +
-// contract through libdds (already used elsewhere for the DD table) to
-// verify the claim is achievable.
-export function claimTricks(declarerTricks, { overridden = false, rejectionMessage = '' } = {}) {
+// the rest to the defenders, then end cardplay. Callers check the claim first
+// (validateClaim); pass its `stamp` so a claim checked against an earlier
+// position can't be committed after the play moved on.
+export function claimTricks(declarerTricks, { stamp = null } = {}) {
   if (!isActive.value) throw new Error('claimTricks: cardplay not active')
   if (playComplete.value) throw new Error('claimTricks: cardplay already complete')
+  if (stamp != null && stamp !== played.value.length) {
+    throw new Error(`claimTricks: checked at card ${stamp}, but ${played.value.length} have been played`)
+  }
   const remaining = remainingTricks.value
   if (declarerTricks < 0 || declarerTricks > remaining) {
     throw new Error(`claimTricks: must be between 0 and ${remaining}`)
@@ -229,8 +243,6 @@ export function claimTricks(declarerTricks, { overridden = false, rejectionMessa
   claim.value = {
     declarerTricks,
     atTrick: completedTricks.value.length + 1,
-    overridden,
-    rejectionMessage,
   }
 }
 
@@ -511,6 +523,8 @@ export function useCardPlay() {
     onUserCard,
     claimTricks,
     validateClaim,
+    claimLimit,
+    claimPosition,
     undo,
     canUndo,
   }

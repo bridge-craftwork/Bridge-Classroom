@@ -24,6 +24,8 @@ import { SERVER_CAPABILITIES } from './tableEngine.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
 import { firstNewDivergence } from '../../utils/handAnalysis.js'
+import { useClaimFlow } from '../useClaimFlow.js'
+import { validateClaimAt, claimLimitAt } from '../../utils/solverClient.js'
 
 // Default convention card for the BBA reference auction on a shared table (no
 // scenario context server-side) — mirrors LocalEngine's non-scenario default.
@@ -91,6 +93,7 @@ export function useServerEngine() {
     clickableSeat, activeSeat,
     isYourBid, lastSuitBid, canDouble, canRedouble,
     errorMessage, undoBy,
+    remainingTricks, claimPosition, claim,
   } = table
 
   const capabilities = SERVER_CAPABILITIES
@@ -355,6 +358,28 @@ export function useServerEngine() {
       : tricksTaken.value.EW
   })
 
+  // Claims (claims design, 2026-10-27): the claimer's browser checks the claim
+  // with bridge-solver's WASM checker, then sends it with the card count it
+  // was checked at; the table service applies it (or refuses it as stale).
+  const canClaim = computed(() =>
+    phase.value === 'play' && boardMode.value !== 'bid-only' && claimPosition.value != null)
+  const claimFlow = useClaimFlow({
+    check: (n) => validateClaimAt(claimPosition.value, n),
+    limit: () => claimLimitAt(claimPosition.value),
+    commit: (n, stamp) => table.sendClaim(n, stamp),
+  })
+  // A claim ends the play: close any claim form still open (the claim may
+  // have been someone else's, or the teacher's).
+  watch(phase, (p) => { if (p !== 'play') claimFlow.cancel() })
+
+  // How the play ended, when a claim ended it — from the live board_complete
+  // or, after a (re)join, the snapshot.
+  const claimNote = computed(() => {
+    const k = boardComplete.value?.claim || claim.value
+    if (!k) return ''
+    return `${k.ruling ? 'Teacher ruled' : `${k.seat} claimed`} at trick ${k.at_trick}.`
+  })
+
   const resultBanner = computed(() => {
     const r = boardComplete.value
     if (!r) return ''
@@ -371,7 +396,8 @@ export function useServerEngine() {
         ? 'made exactly'
         : `down ${-made}`
     return `${formatContract(c.text)} by ${c.declarer} — ${outcome} ` +
-      `(${c.declarerTricks} trick${c.declarerTricks === 1 ? '' : 's'}).`
+      `(${c.declarerTricks} trick${c.declarerTricks === 1 ? '' : 's'}).` +
+      (claimNote.value ? ` ${claimNote.value}` : '')
   })
 
   function seatLabel(seat) {
@@ -522,6 +548,7 @@ export function useServerEngine() {
     boardComplete, sessionClosed,
     dealLoaded, setLabel, clickableSeat, hasHumanSeat,
     canDouble, canRedouble, errorMessage, undoBy,
+    remainingTricks, claim, canClaim, claimFlow, claimNote,
     // analysis
     capabilities, doubleDummy, ddFinalContract,
     expectedAuction, divergedBids, showBbaCompare, toggleBbaCompare,
