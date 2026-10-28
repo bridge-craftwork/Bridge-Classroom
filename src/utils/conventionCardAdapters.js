@@ -10,6 +10,7 @@ import { useUserStore } from '../composables/useUserStore.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { BAKER_BRIDGE_TAXONOMY, getTaxonomyEntry, getSubfolderForSkill } from './bakerBridgeTaxonomy.js'
 import { RBB_WASM_INFO, getRbbClient } from './rbbClient.js'
+import { fetchScenarioSkills } from './pbsScenarios.js'
 
 const userStore = useUserStore()
 const currentUserId = () => userStore.currentUser.value?.id
@@ -157,15 +158,36 @@ export const bridgeClassroomStorage = {
 
 // Rusty's status page: what each convention's tile there says.
 const RUSTY_STATUS_URL = 'https://bridge-craftwork.com/rusty-bidding-bot/status'
+const PBS_URL = 'https://bridge-craftwork.github.io/Practice-Bidding-Scenarios/'
 
 /**
- * Practice deals (Baker Bridge), the user's lesson mastery, and Rusty, the
- * solo table's bidding bot, for the editor's bot report: the installed
- * package's version, and which of a card's settings its rules read.
+ * Practice deals (Baker Bridge), the user's lesson mastery, and the ways to
+ * practise alone for the editor's Solo practice report: the Baker Bridge
+ * lessons and PBS scenarios for each skill, and Rusty, the solo table's
+ * bidding bot (the installed package's version, and which of a card's
+ * settings its rules read).
  */
 export const bridgeClassroomOverlays = {
+  practice: [
+    {
+      id: 'bb', name: 'Baker Bridge', short: 'BB', unit: 'lessons',
+      async load() {
+        const skills = {}
+        for (const t of BAKER_BRIDGE_TAXONOMY) (skills[t.path] ||= []).push({ name: `${t.name} (${t.dealCount} deals)` })
+        return { skills }
+      },
+    },
+    {
+      id: 'pbs', name: 'Practice Bidding Scenarios', short: 'PBS', unit: 'scenarios',
+      async load() {
+        return { ...(await fetchScenarioSkills()), url: PBS_URL }
+      },
+    },
+  ],
+
   bot: {
     name: 'Rusty',
+    short: 'Rusty',
     async info() {
       const i = RBB_WASM_INFO || await getRbbClient().info()
       return { version: i.tag || `v${i.version}`, rules: i.rules_id?.slice(0, 8), statusUrl: RUSTY_STATUS_URL }
