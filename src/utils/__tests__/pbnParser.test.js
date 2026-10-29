@@ -200,6 +200,51 @@ Pass
     })
   })
 
+  describe('auction notes', () => {
+    const DEAL = '[Deal "N:AKQ.JT9.876.5432 T98.876.KQJ.AKQ J76.543.AT9.JT9 543.AKQ2.532.876"]'
+
+    it('pairs =N= marks with [Note "N:text"] on the call before each mark', () => {
+      const [deal] = parsePbn(`
+[Board "8"]
+[Dealer "S"]
+${DEAL}
+[Auction "S"]
+1D pass 2C pass 3D pass 4NT =1= pass 5D =2= pass 6D pass pass pass
+[Note "1:Blackwood"]
+[Note "2:1 ace"]
+`)
+      expect(deal.auction).toEqual(['1D', 'Pass', '2C', 'Pass', '3D', 'Pass', '4NT', 'Pass', '5D', 'Pass', '6D', 'Pass', 'Pass', 'Pass'])
+      expect(deal.auctionNotes).toEqual([
+        { position: 6, bid: '4NT', meaning: 'Blackwood', isAlert: true },
+        { position: 8, bid: '5D', meaning: '1 ace', isAlert: true },
+      ])
+      expect(deal).not.toHaveProperty('auctionNoteMarks')
+    })
+
+    it('keeps a mark that opens a line with the call that ended the last one', () => {
+      const [deal] = parsePbn(`
+[Board "1"]
+${DEAL}
+[Auction "N"]
+1NT pass 2C
+=1= pass 2H pass pass pass
+[Note "1:Stayman"]
+`)
+      expect(deal.auctionNotes).toEqual([{ position: 2, bid: '2C', meaning: 'Stayman', isAlert: true }])
+    })
+
+    it('skips a mark with no note text', () => {
+      const [deal] = parsePbn(`
+[Board "1"]
+${DEAL}
+[Auction "N"]
+1NT pass 2C =3= pass 2H pass pass pass
+`)
+      expect(deal.auction[2]).toBe('2C')
+      expect(deal.auctionNotes).toEqual([])
+    })
+  })
+
   describe('getSeatOrder', () => {
     it('should return correct order starting from North', () => {
       expect(getSeatOrder('N')).toEqual(['N', 'E', 'S', 'W'])

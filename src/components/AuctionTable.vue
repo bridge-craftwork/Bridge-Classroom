@@ -18,6 +18,7 @@
             'correct-bid': isCorrectBid(roundIdx, bidIdx),
             'stacked': bid && divergedBids[getBidIndexFromPosition(roundIdx, bidIdx)],
             'fallback-bid': bid && flaggedSet.has(getBidIndexFromPosition(roundIdx, bidIdx)),
+            'alerted': bid && alertSet.has(getBidIndexFromPosition(roundIdx, bidIdx)),
           }"
           @mouseenter="bid && showTip($event, getBidIndexFromPosition(roundIdx, bidIdx))"
           @mouseleave="hideTip"
@@ -243,6 +244,11 @@ defineEmits(['toggle-bid'])
 
 const seatOrder = computed(() => getSeatOrder(props.dealer))
 const flaggedSet = computed(() => new Set(props.flaggedBids))
+// Alerted calls with something to say on hover (a PBN [Note], Rusty's alerts):
+// marked so the student knows there's a meaning to look at.
+const alertSet = computed(() => new Set((props.meanings || [])
+  .filter(m => m.isAlert && tooltipFor(m.position))
+  .map(m => m.position)))
 
 // Figure out which column the dealer is in (0-3 for W-N-E-S display order)
 const dealerColumn = computed(() => {
@@ -607,6 +613,12 @@ function tooltipFor(bidIdx) {
    from the green/red marking, with a corner tag so it reads without colour. */
 .fallback-bid {
   background: #ede7f6;
+}
+/* A border, not text-decoration: a bid mixes a digit and a suit glyph in
+   different fonts, and an underline breaks its dots at the join. */
+.alerted > span {
+  border-bottom: 2px dotted #1565c0;
+  cursor: help;
 }
 .fallback-bid::before {
   content: 'BBA';

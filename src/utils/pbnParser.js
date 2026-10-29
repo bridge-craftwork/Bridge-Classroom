@@ -168,6 +168,12 @@ export function parsePbn(pbnContent) {
             // unchanged by the rename, so previously recorded tokens still match.
             currentDeal.boardVersionToken = tagValue
             break
+          case 'Note': {
+            // [Note "N:text"] explains the auction call marked =N= (PBN 3.5).
+            const note = tagValue.match(/^\s*(\d+)\s*:(.*)$/)
+            if (note) currentDeal.auctionNoteText[note[1]] = note[2].trim()
+            break
+          }
           case 'Category':
             currentDeal.category = tagValue
             break
@@ -184,7 +190,9 @@ export function parsePbn(pbnContent) {
       const trimmed = line.trim()
       if (trimmed && !trimmed.startsWith('[') && !trimmed.startsWith('{')) {
         // Append bids from this line to the auction
-        const bids = parseAuctionString(trimmed)
+        const marks = []
+        const bids = parseAuctionString(trimmed, marks)
+        for (const m of marks) currentDeal.auctionNoteMarks.push({ index: currentDeal.auction.length + m.index, n: m.n })
         currentDeal.auction.push(...bids)
       }
     }
@@ -654,6 +662,9 @@ function finalizeDeal(deal, commentaryParts) {
   deal.commentary = formatCommentary(commentaryParts)
   deal.steps = parseUnifiedSteps(commentaryParts)
   deal.auction = trimAuction(deal.auction)
+  deal.auctionNotes = joinAuctionNotes(deal)
+  delete deal.auctionNoteMarks
+  delete deal.auctionNoteText
   deal.playCoaching = parsePlayCoaching(commentaryParts)
   deal.isDeclarerPlay = !!deal.playLine
   normalizeRotateFrame(deal)
@@ -675,6 +686,11 @@ function createEmptyDeal() {
     dealString: '',       // raw [Deal] PBN string — stable key for the Report button
     auction: [],
     auctionDealer: '',
+    // Alerts on auction calls: [{position, bid, meaning, isAlert}], AuctionTable's
+    // meanings shape. Built from the =N= marks and [Note "N:text"] tags below.
+    auctionNotes: [],
+    auctionNoteMarks: [],  // {index, n}: call index and its =N= note number
+    auctionNoteText: {},   // note number → text
     result: '',
     commentary: '',
     steps: [],  // Unified array of {type, text, bid, showSeats, ...} parsed from control tags
@@ -793,21 +809,39 @@ function trimAuction(bids) {
   return bids.slice(0, lastNonPassIndex + 4)
 }
 
+/** Pair each =N= mark with its [Note] text, for the calls left after trimming. */
+function joinAuctionNotes(deal) {
+  const out = []
+  for (const { index, n } of deal.auctionNoteMarks) {
+    const text = deal.auctionNoteText[n]
+    if (!text || index < 0 || index >= deal.auction.length) continue
+    out.push({ position: index, bid: deal.auction[index], meaning: text, isAlert: true })
+  }
+  return out
+}
+
 /**
  * Parse the auction string into an array of bids
- * @param {string} auctionString e.g., "1S 2H 3H pass 4S pass pass pass"
+ * @param {string} auctionString e.g., "1S 2H 3H pass 4NT =1= pass 5D =2= pass"
+ * @param {Array} [marks] receives {index, n} for each =N= note mark: the
+ *   index (in the returned bids) of the call it follows, and the note number
  * @returns {Array} Array of bid strings
  */
-function parseAuctionString(auctionString) {
+function parseAuctionString(auctionString, marks = null) {
   const tokens = auctionString
     .split(/\s+/)
     .filter(bid => bid.length > 0)
-    // Filter out PBN annotation markers like =1=, =2=, etc.
-    .filter(bid => !/^=\d+=?$/.test(bid))
 
   // Expand AP (All Pass) into individual Pass entries
   const bids = []
   for (const token of tokens) {
+    const mark = token.match(/^=(\d+)=?$/)
+    if (mark) {
+      // PBN note reference, e.g. =1=: belongs to the call before it (index -1
+      // when that call ended the previous line)
+      if (marks) marks.push({ index: bids.length - 1, n: mark[1] })
+      continue
+    }
     if (token.toUpperCase() === 'AP') {
       // AP means all remaining players pass — need 3 passes to close the auction
       bids.push('Pass', 'Pass', 'Pass')

@@ -58,3 +58,17 @@ describe('AuctionTable meaning suits', () => {
     w.unmount()
   })
 })
+
+describe('AuctionTable alerted calls', () => {
+  it('marks alerted calls that have a meaning to show', () => {
+    const meanings = [
+      { position: 0, bid: '4NT', meaning: 'Blackwood', isAlert: true },
+      { position: 2, bid: '5D', meaning: '1 ace' },
+    ]
+    const w = mount(AuctionTable, { props: { bids: ['4NT', 'Pass', '5D'], dealer: 'N', meanings } })
+    const alerted = w.findAll('.bid-cell.alerted')
+    expect(alerted).toHaveLength(1)
+    expect(alerted[0].text()).toContain('4')
+    w.unmount()
+  })
+})
