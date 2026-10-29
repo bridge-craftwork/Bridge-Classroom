@@ -194,16 +194,26 @@ export function normalizeCall(call) {
 
 export const NO_MEANING = 'Rusty has no meaning for this call'
 
+// Suit words as symbols, for display only: Rusty writes words because Brill's
+// parser reads them ("5+ spades" → "5+ ♠"). AuctionTable colours the symbols.
+const SUIT_WORD = { club: '♣', diamond: '♦', heart: '♥', spade: '♠' }
+export function suitWordsToSymbols(text) {
+  return String(text || '').replace(/\b(club|diamond|heart|spade)s?\b/gi, (_, w) => SUIT_WORD[w.toLowerCase()])
+}
+
 /**
  * One Rusty auction step (docs/WASM.md "A step") as AuctionTable's meaning
- * object. `explanation` → meaning, `knowledge.summary` → meaningExtended,
- * alerts and announcements, `artificial`, `rule` → ruleRef. A step no rule
- * gives a meaning (`rule: null`) reads NO_MEANING, never the engine's
- * "No rule applies" (that is its reason for passing, not what a call shows).
+ * object. `announcement` (what the table is told: the call's description and
+ * what it newly showed; v0.11.2+) → meaning, falling back to `explanation`;
+ * `knowledge.summary` (everything the hand has shown) → meaningExtended, kept
+ * off the tooltip. Alerts and announcements, `artificial`, `rule` → ruleRef.
+ * A step no rule gives a meaning (`rule: null`) reads NO_MEANING, never the
+ * engine's "No rule applies" (its reason for passing, not what a call shows).
  */
 export function stepToMeaning(step) {
-  const known = !!step.rule && !!step.explanation
-  const meaning = known ? step.explanation : NO_MEANING
+  const text = step.announcement || step.explanation
+  const known = !!step.rule && !!text
+  const meaning = known ? text : NO_MEANING
   const summary = step.knowledge?.summary || ''
   const alert = step.alert || null
   const out = {
@@ -220,10 +230,9 @@ export function stepToMeaning(step) {
     fallback: false,
     source: 'rusty',
   }
-  // The tooltip names the call's meaning first, then what the hand has shown.
-  const lines = [out.announce ? `${out.announce}${meaning === out.announce ? '' : ' — ' + meaning}` : meaning]
-  if (known && summary && summary !== meaning) lines.push(summary)
-  out.tooltip = lines.join('\n')
+  // An announcement ("15 to 17", "Transfer") leads, then the call's meaning.
+  const line = out.announce ? `${out.announce}${meaning === out.announce ? '' : ' — ' + meaning}` : meaning
+  out.tooltip = known ? suitWordsToSymbols(line) : line
   return out
 }
 
