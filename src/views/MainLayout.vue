@@ -174,6 +174,7 @@
               v-if="practice.showAuctionTable.value"
               :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
               :dealer="practice.displayAuctionDealer.value"
+              :meanings="currentDeal?.auctionNotes || []"
               :currentBidIndex="practice.hasBidSteps.value ? practice.auctionState.currentBidIndex : -1"
               :wrongBidIndex="practice.auctionState.wrongBidIndex"
               :correctBidIndex="practice.auctionState.correctBidIndex"
@@ -402,6 +403,7 @@
                   <AuctionTable
                     :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
                     :dealer="practice.displayAuctionDealer.value"
+                    :meanings="currentDeal?.auctionNotes || []"
                     :currentBidIndex="practice.hasBidSteps.value ? practice.auctionState.currentBidIndex : -1"
                     :wrongBidIndex="practice.auctionState.wrongBidIndex"
                     :correctBidIndex="practice.auctionState.correctBidIndex"
@@ -412,7 +414,7 @@
               <!-- NE: the completed auction pinned during declarer play. -->
               <template v-if="pinnedAuction" #ne>
                 <div class="a1-grid-ne">
-                  <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :currentBidIndex="-1" />
+                  <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
                 </div>
               </template>
               <!-- SE (hero's corner): the bidding box, clustered with the hand. -->
@@ -433,7 +435,7 @@
             <!-- Defence scenes: the completed auction rides atop the companion (above the
                  narrative), matching prod, instead of pinned tiny at NE. -->
             <div v-if="companionAuction" class="a1-companion-auction">
-              <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :currentBidIndex="-1" />
+              <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
             </div>
             <!-- Blue context ribbon (the bridgeContext note that lived in DealInfo before
                  #nw went compact) — reunited with the coaching prose it belongs beside. -->
