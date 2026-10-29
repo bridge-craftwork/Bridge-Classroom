@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   createRbbClient, handToRbb, vulToRbb, cardNameFromHeader, cardsFromPbnHeader, cardSpecFor,
-  normalizeCall, stepToMeaning, meaningsFromSteps, NO_MEANING,
+  normalizeCall, stepToMeaning, meaningsFromSteps, NO_MEANING, suitWordsToSymbols,
 } from '../rbbClient.js'
 import { createRbbDispatcher } from '../../workers/rbbDispatch.js'
 
@@ -134,7 +134,23 @@ describe('rbbClient — adapters', () => {
       isAlert: true, alertText: null, announce: null, artificial: true, known: true, fallback: false,
       ruleRef: { module: 'stayman', file: 'conventions/notrump/stayman.bid', line: 12 },
     })
-    expect(m.tooltip).toBe('Stayman: asks for a 4-card major\n8+ HCP')
+    expect(m.tooltip).toBe('Stayman: asks for a 4-card major')
+  })
+
+  it('shows the announcement, not the whole knowledge summary, with suits as symbols', () => {
+    const m = stepToMeaning({
+      index: 0, call: '1S', explanation: '5-4-2-2 with a five-card minor', announcement: '5+ spades; 10-21 HCP',
+      rule: { module: 'open' }, knowledge: { summary: '10-21 HCP, 5+ S, 0-6 H, 0-6 D, 0-6 C' },
+    })
+    expect(m.meaning).toBe('5+ spades; 10-21 HCP')
+    expect(m.meaningExtended).toBe('10-21 HCP, 5+ S, 0-6 H, 0-6 D, 0-6 C')
+    expect(m.tooltip).toBe('5+ ♠; 10-21 HCP')
+  })
+
+  it('suit words become symbols, singular or plural', () => {
+    expect(suitWordsToSymbols('Splinter: 4+ hearts, at most one spade; 0-1 Diamonds, clubs'))
+      .toBe('Splinter: 4+ ♥, at most one ♠; 0-1 ♦, ♣')
+    expect(suitWordsToSymbols('asks for a 4-card major')).toBe('asks for a 4-card major')
   })
 
   it('an announcement leads the tooltip', () => {
