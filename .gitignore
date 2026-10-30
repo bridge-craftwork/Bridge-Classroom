@@ -73,3 +73,6 @@ public/rbb-wasm/
 # bridge-solver WASM package (claim checker + double dummy): fetched from
 # bridge-solver's pinned release (scripts/fetch-solver-wasm.mjs), never committed.
 public/solver-wasm/
+
+# Local wrangler dev state (Worker cache, etc.)
+.wrangler/

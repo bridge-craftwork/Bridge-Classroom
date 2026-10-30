@@ -16,6 +16,10 @@ pub struct ConventionCard {
     pub updated_at: String,
     /// Save counter: 1 when created, +1 on every update.
     pub version: i64,
+    /// The print link's token (#482), once a member has asked for it.
+    pub print_token: Option<String>,
+    /// The ACBL layout the print link renders: "classic" or "new".
+    pub print_template: String,
 }
 
 /// User-card link stored in the database
@@ -191,6 +195,8 @@ impl ConventionCard {
             created_at: now.clone(),
             updated_at: now,
             version: 1,
+            print_token: None,
+            print_template: "classic".to_string(),
         }
     }
 }

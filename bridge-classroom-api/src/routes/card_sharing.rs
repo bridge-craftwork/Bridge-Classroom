@@ -18,9 +18,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use crate::{
-    routes::convention_cards::{fetch_card, is_admin, require_acting, standing},
+    routes::convention_cards::{can_read, fetch_card, is_admin, require_acting, standing},
     AppState,
 };
+
+/// Where a print link points: the .org Worker renders the PDF there.
+const PRINT_URL_BASE: &str = "https://bridge-classroom.org/card/print/";
 
 /// How long an invitation link works.
 const INVITATION_DAYS: i64 = 30;
@@ -483,6 +486,123 @@ pub async fn remove_card_member(
         q.acting_user_id
     );
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Print links (#482)
+// ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct PrintLinkRequest {
+    pub acting_user_id: String,
+    /// "classic" or "new": change the layout the link prints (owners and
+    /// editors). Omitted: keep it.
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PrintLinkResponse {
+    pub url: String,
+    pub template: String,
+}
+
+/// POST /api/cards/:card_id/print-link — the card's read-only PDF link, for
+/// anyone who can read the card. The token is minted on first ask and never
+/// changes or expires; the PDF always shows the card as it is now.
+pub async fn card_print_link(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(card_id): Path<String>,
+    Json(req): Json<PrintLinkRequest>,
+) -> Result<Json<PrintLinkResponse>, ApiError> {
+    require_acting(&state, &headers, &req.acting_user_id).await?;
+    let card = fetch_card(&state.db, &card_id).await?;
+    let who = standing(&state.db, &card, Some(&req.acting_user_id)).await?;
+    if !can_read(&card, &who) {
+        return Err(forbidden("Not allowed to read this card"));
+    }
+    if let Some(t) = req
+        .template
+        .as_deref()
+        .filter(|t| *t != card.print_template)
+    {
+        if !matches!(t, "classic" | "new") {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "template must be classic or new".to_string(),
+            ));
+        }
+        let writer = is_admin(&who.site_role)
+            || (card.visibility != "public"
+                && matches!(who.member_role.as_deref(), Some("owner" | "editor")));
+        if !writer {
+            return Err(forbidden(
+                "Only the card's owners and editors can change its layout",
+            ));
+        }
+        sqlx::query("UPDATE convention_cards SET print_template = ? WHERE id = ?")
+            .bind(t)
+            .bind(&card_id)
+            .execute(&state.db)
+            .await
+            .map_err(db_err)?;
+    }
+    if card.print_token.is_none() {
+        // Guarded, so two first asks at once settle on one token.
+        sqlx::query(
+            "UPDATE convention_cards SET print_token = ? WHERE id = ? AND print_token IS NULL",
+        )
+        .bind(new_token())
+        .bind(&card_id)
+        .execute(&state.db)
+        .await
+        .map_err(db_err)?;
+    }
+    let card = fetch_card(&state.db, &card_id).await?;
+    let token = card.print_token.unwrap_or_default();
+    Ok(Json(PrintLinkResponse {
+        url: format!("{PRINT_URL_BASE}{token}.pdf"),
+        template: card.print_template,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct PrintCard {
+    pub name: String,
+    pub template: String,
+    pub card_data: serde_json::Value,
+    pub updated_at: String,
+}
+
+/// GET /api/cards/print/:token — the card behind a print link, for the
+/// Worker that renders it. No sign-in: the token is the permission. Returns
+/// only what the PDF needs (no ids, no owner).
+pub async fn print_card(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<PrintCard>, ApiError> {
+    let token = token.trim_end_matches(".pdf");
+    let card = sqlx::query_as::<_, crate::models::ConventionCard>(
+        "SELECT * FROM convention_cards WHERE print_token = ?",
+    )
+    .bind(token)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(db_err)?
+    .ok_or((StatusCode::NOT_FOUND, "No card for this link".to_string()))?;
+    let card_data = serde_json::from_str(&card.card_data).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to parse card data: {}", e),
+        )
+    })?;
+    Ok(Json(PrintCard {
+        name: card.name,
+        template: card.print_template,
+        card_data,
+        updated_at: card.updated_at,
+    }))
 }
 
 #[cfg(test)]

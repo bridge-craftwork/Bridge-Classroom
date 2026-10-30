@@ -214,6 +214,11 @@ async fn main() -> anyhow::Result<()> {
             patch(routes::change_card_member_role).delete(routes::remove_card_member),
         )
         .route(
+            "/api/cards/:card_id/print-link",
+            post(routes::card_print_link),
+        )
+        .route("/api/cards/print/:token", get(routes::print_card))
+        .route(
             "/api/cards/join/:token",
             get(routes::preview_card_invitation).post(routes::join_card),
         )
