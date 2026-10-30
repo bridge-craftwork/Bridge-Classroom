@@ -11,6 +11,7 @@
 #   dist/<page>.html          — static detail pages (from docs/)
 #   dist/solo-practice-app/   — Vue SPA (the renamed dist/index.html)
 #   dist/bidding-practice/    — redirect into the SPA
+#   dist/convention-card/     — redirect into the SPA
 #   dist/curator/, dist/screenshots/, dist/site.js, dist/styles.css, etc.
 #
 # Used by both .github/workflows/deploy.yml (GitHub Pages → .com) and the
@@ -60,6 +61,7 @@ cp docs/robots.txt             dist/robots.txt
 # Static directories.
 cp -r docs/curator           dist/curator
 cp -r docs/bidding-practice  dist/bidding-practice
+cp -r docs/convention-card   dist/convention-card
 cp -r docs/screenshots       dist/screenshots
 # The bc-ingest receiver — the extension's hand-off target. Top-level and
 # use-case neutral by design (ADR 0001 Decision 2): the extension points at
