@@ -20,6 +20,24 @@ async function fail(res, what) {
   throw new Error(text || `${what} failed (${res.status})`)
 }
 
+const cardUrl = (cardId, rest = '') => `${API_URL}/cards/${encodeURIComponent(cardId)}${rest}`
+const q = (name, value) => `?${name}=${encodeURIComponent(value)}`
+
+async function sendJson(url, method, body, what) {
+  const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) await fail(res, what)
+  return res.json().catch(() => ({}))
+}
+
+async function getJson(url, what) {
+  const res = await apiFetch(url)
+  if (!res.ok) await fail(res, what)
+  return res.json()
+}
+
+// An invitation's link, as the API makes it (its list gives only the token)
+const JOIN_URL_BASE = 'https://bridge-classroom.org/solo-practice-app/#/cards/join/'
+
 async function fetchCardById(cardId) {
   const viewerId = currentUserId()
   const url = viewerId
@@ -76,19 +94,55 @@ export const bridgeClassroomStorage = {
   },
 
   // Sends the version the card was loaded at: if someone else (a partner on a
-  // shared card) has saved since, the API refuses with 409 rather than
-  // overwrite their changes. Merging the two lands with the share UI.
+  // shared card) has saved since, the API refuses with 409 and the card as it
+  // is now, and the editor merges the two (convention-card 0.29, mergeCards).
   async save(card, cardData) {
-    const res = await apiFetch(`${API_URL}/cards/${encodeURIComponent(card.id)}`, {
+    const res = await apiFetch(cardUrl(card.id), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acting_user_id: currentUserId(), card_data: cardData, base_version: card.version ?? undefined })
     })
     if (res.status === 409) {
-      throw new Error('Someone else saved this card since you opened it. Reload it to see their changes, then make yours again.')
+      const current = (await res.json().catch(() => null))?.current
+      const err = new Error('Someone else saved this card since you opened it. Reload it to see their changes, then make yours again.')
+      if (current?.card_data && current.version != null) err.conflict = { version: current.version, card_data: current.card_data }
+      throw err
     }
     if (!res.ok) await fail(res, 'Save')
   },
+
+  // A saved version's card_data: the base the editor merges two edits from
+  async loadVersion(cardId, version) {
+    const data = await getJson(cardUrl(cardId, `/versions/${encodeURIComponent(version)}${q('viewer_id', currentUserId())}`), 'Load version')
+    return data.card_data
+  },
+
+  // ─── Sharing (#436): members, invitations, the PDF link (#482) ───
+  members: cardId => getJson(cardUrl(cardId, `/members${q('viewer_id', currentUserId())}`), 'Load members'),
+
+  setRole: (cardId, userId, role) =>
+    sendJson(cardUrl(cardId, `/members/${encodeURIComponent(userId)}`), 'PATCH', { acting_user_id: currentUserId(), role }, 'Change role'),
+
+  async removeMember(cardId, userId) {
+    const res = await apiFetch(cardUrl(cardId, `/members/${encodeURIComponent(userId)}${q('acting_user_id', currentUserId())}`), { method: 'DELETE' })
+    if (!res.ok) await fail(res, 'Remove member')
+  },
+
+  async invitations(cardId) {
+    const list = await getJson(cardUrl(cardId, `/invitations${q('acting_user_id', currentUserId())}`), 'Load invitations')
+    return list.map(i => ({ ...i, url: i.url || `${JOIN_URL_BASE}${i.token}` }))
+  },
+
+  invite: (cardId, role) =>
+    sendJson(cardUrl(cardId, '/invitations'), 'POST', { acting_user_id: currentUserId(), role }, 'Make invitation'),
+
+  async revokeInvitation(cardId, token) {
+    const res = await apiFetch(cardUrl(cardId, `/invitations/${encodeURIComponent(token)}${q('acting_user_id', currentUserId())}`), { method: 'DELETE' })
+    if (!res.ok) await fail(res, 'Revoke invitation')
+  },
+
+  printLink: (cardId, template) =>
+    sendJson(cardUrl(cardId, '/print-link'), 'POST', { acting_user_id: currentUserId(), template }, 'Get PDF link'),
 
   async overwrite(cardId, { name, description, cardData }) {
     const res = await apiFetch(`${API_URL}/cards/${encodeURIComponent(cardId)}`, {
