@@ -617,6 +617,43 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Card versions and history (#436, no lost edits) ----
+    // `version` counts saves; a save names the version it started from and is
+    // refused (409) when the card has moved on. `card_versions` keeps every
+    // saved card_data: history for members, and the common base for merging.
+    add_column_if_missing(
+        pool,
+        "convention_cards",
+        "version",
+        "INTEGER NOT NULL DEFAULT 1",
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS card_versions (
+            card_id TEXT NOT NULL REFERENCES convention_cards(id),
+            version INTEGER NOT NULL,
+            card_data TEXT NOT NULL,
+            saved_by TEXT REFERENCES users(id),
+            saved_at TEXT NOT NULL,
+            PRIMARY KEY (card_id, version)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+    // Each card's current state as its first recorded version (idempotent).
+    sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO card_versions (card_id, version, card_data, saved_by, saved_at)
+        SELECT id, version, card_data, owner_id, updated_at FROM convention_cards
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ---- Role column on users table ----
     let has_role_column: bool = sqlx::query_scalar(
         r#"SELECT COUNT(*) > 0 FROM pragma_table_info('users') WHERE name = 'role'"#,

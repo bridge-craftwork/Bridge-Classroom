@@ -193,6 +193,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/cards/:card_id", get(routes::get_card))
         .route("/api/cards/:card_id", put(routes::update_card))
         .route("/api/cards/:card_id", delete(routes::delete_card))
+        .route(
+            "/api/cards/:card_id/versions",
+            get(routes::list_card_versions),
+        )
+        .route(
+            "/api/cards/:card_id/versions/:version",
+            get(routes::get_card_version),
+        )
         .route("/api/users/:user_id/cards", get(routes::get_user_cards))
         .route("/api/users/:user_id/cards", post(routes::link_card_to_user))
         .route(
