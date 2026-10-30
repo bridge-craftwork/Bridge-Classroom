@@ -157,8 +157,10 @@ export const bridgeClassroomStorage = {
   canEdit(card, user) {
     if (!user || !card) return false
     if (user.role === 'admin') return true
-    // Owner of a private card may edit; public cards locked to admins
-    return card.visibility !== 'public' && card.owner_id === user.id
+    // A private card's owners and editors may edit (card.role is the reader's
+    // role on a shared card); public cards locked to admins
+    if (card.visibility === 'public') return false
+    return card.owner_id === user.id || card.role === 'owner' || card.role === 'editor'
   }
 }
 
