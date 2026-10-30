@@ -127,6 +127,13 @@
 
 .thumb-cur{background:#F0F7F4;display:flex;flex-direction:column;padding:12px;gap:5px}
 
+.thumb-card{background:#F4F5F7;padding:9px 10px}
+.cc-sheet{background:#fff;border:0.5px solid #dcdee3;border-radius:2px;height:100%;padding:6px 8px;display:flex;flex-direction:column;gap:3.5px;font-size:8px;color:#333}
+.cc-head{font-size:7px;color:#8a8f98;letter-spacing:0.06em;border-bottom:0.5px solid #e6e8ec;padding-bottom:2px}
+.cc-row{display:flex;align-items:center;gap:5px}
+.cc-box{width:7px;height:7px;border:0.5px solid #9aa0a8;border-radius:1px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:6.5px;line-height:1;color:#0F6E56}
+.cc-fill{background:#E1F5EE;color:#0F6E56;border-radius:2px;padding:0 4px;font-weight:600}
+.cc-sheet .red{color:#c0392b}
 .thumb-dds{background:#F0F7F4;display:flex;flex-direction:column;padding:10px 12px;gap:5px}
 .dds-head{display:flex;align-items:baseline;justify-content:space-between}
 .dds-title{font-size:10px;font-weight:500;color:#0F6E56;text-transform:uppercase;letter-spacing:0.04em}
@@ -321,6 +328,28 @@
           <div class="tile-desc">Play against three bots or with friends. Sit South, pick a topic, bid the deals, play them out, and get instant feedback.</div>
           <div class="tile-tags"><span class="tag tag-amber">Prototype</span><span class="tag tag-purple">BBA-powered</span></div>
           <div class="tile-actions"><a class="tbtn tbtn-play" href="/bidding-practice/">Play Now</a><a class="tbtn tbtn-ghost" href="bidding-practice.html">Learn More</a></div>
+        </div>
+      </div>
+
+      <!-- Convention card: the same editor as bridge-craftwork.com/card/ (the
+           convention-card package), here saving to the user's account. Its
+           thumbnail is that site's tile. -->
+      <div class="tile">
+        <div class="thumb thumb-card">
+          <div class="cc-sheet">
+            <div class="cc-head">NOTRUMP OPENING BIDS</div>
+            <div class="cc-row">1NT <span class="cc-fill">15</span> to <span class="cc-fill">17</span></div>
+            <div class="cc-row"><span class="cc-box">&#10003;</span><span>2&#9827; Stayman</span> <span class="cc-box">&#10003;</span><span>2<span class="red">&#9830;</span>/2<span class="red">&#9829;</span> Transfer</span></div>
+            <div class="cc-row"><span class="cc-box">&#10003;</span><span>Smolen</span> <span class="cc-box"></span><span>Puppet</span></div>
+            <div class="cc-head" style="margin-top:3px">DEFENSE VS NOTRUMP</div>
+            <div class="cc-row">vs strong <span class="cc-fill">DONT</span> vs weak <span class="cc-fill">X = pen</span></div>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Convention Card</div>
+          <div class="tile-desc">Make, import and print your partnership&#8217;s ACBL convention card. Imports BBO, Bridgodex and BBA cards.</div>
+          <div class="tile-tags"><span class="tag tag-green">Live</span><span class="tag tag-blue">Saves to your account</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-play" href="/convention-card/">Open</a><a class="tbtn tbtn-ghost" href="https://bridge-craftwork.com/docs/card/" target="_blank" rel="noopener">Docs</a></div>
         </div>
       </div>
 
