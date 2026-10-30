@@ -12,6 +12,7 @@
 #   dist/solo-practice-app/   — Vue SPA (the renamed dist/index.html)
 #   dist/bidding-practice/    — redirect into the SPA
 #   dist/convention-card/     — redirect into the SPA
+#   dist/card-print-assets/   — PDF templates + font for the print-link Worker
 #   dist/curator/, dist/screenshots/, dist/site.js, dist/styles.css, etc.
 #
 # Used by both .github/workflows/deploy.yml (GitHub Pages → .com) and the
@@ -62,6 +63,13 @@ cp docs/robots.txt             dist/robots.txt
 cp -r docs/curator           dist/curator
 cp -r docs/bidding-practice  dist/bidding-practice
 cp -r docs/convention-card   dist/convention-card
+# The ACBL templates and font, at fixed paths, for the Worker that renders a
+# card's print link (worker/index.js). From the convention-card package.
+mkdir -p dist/card-print-assets
+cp node_modules/@bridge-craftwork/convention-card/assets/templates/acbl-classic-2023.pdf \
+   node_modules/@bridge-craftwork/convention-card/assets/templates/acbl-new.pdf \
+   node_modules/@bridge-craftwork/convention-card/assets/fonts/BarlowCondensed-Regular.ttf \
+   dist/card-print-assets/
 cp -r docs/screenshots       dist/screenshots
 # The bc-ingest receiver — the extension's hand-off target. Top-level and
 # use-case neutral by design (ADR 0001 Decision 2): the extension points at

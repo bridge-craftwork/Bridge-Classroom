@@ -668,6 +668,22 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // Print links (#482): one permanent, unguessable token per card, minted
+    // the first time a member asks for the link, and the ACBL layout it
+    // prints. The .org Worker renders the PDF from the card as it is now.
+    add_column_if_missing(pool, "convention_cards", "print_token", "TEXT").await?;
+    add_column_if_missing(
+        pool,
+        "convention_cards",
+        "print_template",
+        "TEXT NOT NULL DEFAULT 'classic'",
+    )
+    .await?;
+    sqlx::query(r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_print_token ON convention_cards(print_token)"#)
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Each card's current state as its first recorded version (idempotent).
     sqlx::query(
         r#"
