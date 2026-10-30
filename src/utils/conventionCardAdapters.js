@@ -75,12 +75,18 @@ export const bridgeClassroomStorage = {
     return userId ? fetchLinks(userId) : []
   },
 
+  // Sends the version the card was loaded at: if someone else (a partner on a
+  // shared card) has saved since, the API refuses with 409 rather than
+  // overwrite their changes. Merging the two lands with the share UI.
   async save(card, cardData) {
     const res = await apiFetch(`${API_URL}/cards/${encodeURIComponent(card.id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acting_user_id: currentUserId(), card_data: cardData })
+      body: JSON.stringify({ acting_user_id: currentUserId(), card_data: cardData, base_version: card.version ?? undefined })
     })
+    if (res.status === 409) {
+      throw new Error('Someone else saved this card since you opened it. Reload it to see their changes, then make yours again.')
+    }
     if (!res.ok) await fail(res, 'Save')
   },
 

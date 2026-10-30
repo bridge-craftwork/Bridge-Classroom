@@ -8,9 +8,10 @@ use sqlx::SqlitePool;
 
 use crate::{
     models::{
-        ConventionCard, ConventionCardFull, ConventionCardInfo, CreateConventionCardRequest,
-        CreateConventionCardResponse, LinkCardRequest, LinkCardResponse,
-        UpdateConventionCardRequest, UpdateConventionCardResponse, UserCardInfo, UserCardsResponse,
+        CardVersionData, CardVersionInfo, CardVersionsResponse, ConventionCard, ConventionCardFull,
+        ConventionCardInfo, CreateConventionCardRequest, CreateConventionCardResponse,
+        LinkCardRequest, LinkCardResponse, UpdateConventionCardRequest,
+        UpdateConventionCardResponse, UserCardInfo, UserCardsResponse,
     },
     routes::session::require_roster_member,
     AppState,
@@ -275,6 +276,15 @@ pub async fn create_card(
     .execute(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    record_version(
+        &state.db,
+        &card.id,
+        1,
+        &card.card_data,
+        &req.acting_user_id,
+        &card.created_at,
+    )
+    .await?;
 
     tracing::info!(
         "Created convention card: {} ({}) owner={} visibility={}",
@@ -334,6 +344,14 @@ pub async fn update_card(
         }
     }
 
+    // Started from an older version: refuse, and hand back the card as it is
+    // now so the editor can merge (base = that older version, from history).
+    if let Some(base) = req.base_version {
+        if base != card.version {
+            return Err(version_conflict(&card));
+        }
+    }
+
     let now = chrono::Utc::now().to_rfc3339();
     let new_name = req.name.unwrap_or_else(|| card.name.clone());
     let new_desc = req.description.or(card.description.clone());
@@ -342,12 +360,15 @@ pub async fn update_card(
         Some(v) => v.to_string(),
         None => card.card_data.clone(),
     };
+    let new_version = card.version + 1;
 
-    sqlx::query(
+    // Guarded on the version read above, so two saves racing from the same
+    // version can't both land: the loser gets the 409.
+    let written = sqlx::query(
         r#"
         UPDATE convention_cards
-        SET name = ?, description = ?, card_data = ?, visibility = ?, updated_at = ?
-        WHERE id = ?
+        SET name = ?, description = ?, card_data = ?, visibility = ?, updated_at = ?, version = ?
+        WHERE id = ? AND version = ?
         "#,
     )
     .bind(&new_name)
@@ -355,18 +376,37 @@ pub async fn update_card(
     .bind(&new_card_data)
     .bind(&new_visibility)
     .bind(&now)
+    .bind(new_version)
     .bind(&card_id)
+    .bind(card.version)
     .execute(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if written.rows_affected() == 0 {
+        let current = fetch_card(&state.db, &card_id).await?;
+        return Err(version_conflict(&current));
+    }
+    record_version(
+        &state.db,
+        &card_id,
+        new_version,
+        &new_card_data,
+        &req.acting_user_id,
+        &now,
+    )
+    .await?;
 
     tracing::info!(
-        "Updated convention card {} by user {}",
+        "Updated convention card {} to version {} by user {}",
         card_id,
+        new_version,
         req.acting_user_id
     );
 
-    Ok(Json(UpdateConventionCardResponse { success: true }))
+    Ok(Json(UpdateConventionCardResponse {
+        success: true,
+        version: new_version,
+    }))
 }
 
 /// DELETE /api/cards/:card_id?acting_user_id=...
@@ -404,7 +444,12 @@ pub async fn delete_card(
         ));
     }
 
-    // Cascade: remove user-card links first, then the card.
+    // Cascade: remove the card's history and user-card links, then the card.
+    sqlx::query("DELETE FROM card_versions WHERE card_id = ?")
+        .bind(&card_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     sqlx::query("DELETE FROM user_convention_cards WHERE card_id = ?")
         .bind(&card_id)
         .execute(&state.db)
@@ -423,6 +468,133 @@ pub async fn delete_card(
     );
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn fetch_card(
+    db: &SqlitePool,
+    card_id: &str,
+) -> Result<ConventionCard, (StatusCode, String)> {
+    sqlx::query_as::<_, ConventionCard>("SELECT * FROM convention_cards WHERE id = ?")
+        .bind(card_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Card not found".to_string()))
+}
+
+/// The 409 for a save that started from an older version. The body is JSON:
+/// `{ "error": "version_conflict", "current": <the card as it is now> }`.
+fn version_conflict(card: &ConventionCard) -> (StatusCode, String) {
+    let current = card
+        .to_full()
+        .ok()
+        .map(|c| serde_json::to_value(c).unwrap_or_default());
+    (
+        StatusCode::CONFLICT,
+        serde_json::json!({ "error": "version_conflict", "current": current }).to_string(),
+    )
+}
+
+async fn record_version(
+    db: &SqlitePool,
+    card_id: &str,
+    version: i64,
+    card_data: &str,
+    saved_by: &str,
+    saved_at: &str,
+) -> Result<(), (StatusCode, String)> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO card_versions (card_id, version, card_data, saved_by, saved_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(card_id)
+    .bind(version)
+    .bind(card_data)
+    .bind(saved_by)
+    .bind(saved_at)
+    .execute(db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(())
+}
+
+/// A card a session's user may read, or the error to return.
+async fn readable_card(
+    state: &AppState,
+    headers: &HeaderMap,
+    card_id: &str,
+    viewer_id: Option<&str>,
+) -> Result<ConventionCard, (StatusCode, String)> {
+    if let Some(v) = viewer_id {
+        require_acting(state, headers, v).await?;
+    }
+    let card = fetch_card(&state.db, card_id).await?;
+    let who = standing(&state.db, &card, viewer_id).await?;
+    if !can_read(&card, &who) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Not allowed to read this card".to_string(),
+        ));
+    }
+    Ok(card)
+}
+
+/// GET /api/cards/:card_id/versions?viewer_id=...
+/// The card's saved versions, newest first: who saved each and when.
+pub async fn list_card_versions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(card_id): Path<String>,
+    Query(query): Query<CardReadQuery>,
+) -> Result<Json<CardVersionsResponse>, (StatusCode, String)> {
+    readable_card(&state, &headers, &card_id, query.viewer_id.as_deref()).await?;
+    let versions = sqlx::query_as::<_, CardVersionInfo>(
+        r#"
+        SELECT v.version, v.saved_by,
+               NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), '') AS saved_by_name,
+               v.saved_at
+        FROM card_versions v LEFT JOIN users u ON u.id = v.saved_by
+        WHERE v.card_id = ?
+        ORDER BY v.version DESC
+        "#,
+    )
+    .bind(&card_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(CardVersionsResponse { versions }))
+}
+
+/// GET /api/cards/:card_id/versions/:version?viewer_id=...
+/// One saved version's card_data: the common base for merging two edits.
+pub async fn get_card_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((card_id, version)): Path<(String, i64)>,
+    Query(query): Query<CardReadQuery>,
+) -> Result<Json<CardVersionData>, (StatusCode, String)> {
+    readable_card(&state, &headers, &card_id, query.viewer_id.as_deref()).await?;
+    let row: Option<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT card_data, saved_by, saved_at FROM card_versions WHERE card_id = ? AND version = ?",
+    )
+    .bind(&card_id)
+    .bind(version)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (data, saved_by, saved_at) =
+        row.ok_or((StatusCode::NOT_FOUND, "No such version".to_string()))?;
+    let card_data = serde_json::from_str(&data).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to parse card data: {}", e),
+        )
+    })?;
+    Ok(Json(CardVersionData {
+        version,
+        card_data,
+        saved_by,
+        saved_at,
+    }))
 }
 
 /// GET /api/users/:user_id/cards

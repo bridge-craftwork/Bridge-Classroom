@@ -14,6 +14,8 @@ pub struct ConventionCard {
     pub visibility: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Save counter: 1 when created, +1 on every update.
+    pub version: i64,
 }
 
 /// User-card link stored in the database
@@ -55,12 +57,45 @@ pub struct UpdateConventionCardRequest {
     pub description: Option<String>,
     pub card_data: Option<serde_json::Value>,
     pub visibility: Option<String>,
+    /// The card version this edit started from. When given and the card has
+    /// been saved since, the update is refused with 409 and the current card,
+    /// so the editor can merge. Omitted: the update overwrites (an import or a
+    /// rename that means to replace).
+    #[serde(default)]
+    pub base_version: Option<i64>,
 }
 
 /// Response after updating a convention card.
 #[derive(Debug, Serialize)]
 pub struct UpdateConventionCardResponse {
     pub success: bool,
+    /// The card's version after this save.
+    pub version: i64,
+}
+
+/// One saved version in a card's history.
+#[derive(Debug, Serialize, FromRow)]
+pub struct CardVersionInfo {
+    pub version: i64,
+    pub saved_by: Option<String>,
+    /// The saver's name, when they're still a known user.
+    pub saved_by_name: Option<String>,
+    pub saved_at: String,
+}
+
+/// A card's history, newest first.
+#[derive(Debug, Serialize)]
+pub struct CardVersionsResponse {
+    pub versions: Vec<CardVersionInfo>,
+}
+
+/// One saved version's card_data.
+#[derive(Debug, Serialize)]
+pub struct CardVersionData {
+    pub version: i64,
+    pub card_data: serde_json::Value,
+    pub saved_by: Option<String>,
+    pub saved_at: String,
 }
 
 /// Request to link a card to a user
@@ -110,6 +145,7 @@ pub struct ConventionCardFull {
     pub created_at: String,
     pub updated_at: String,
     pub is_system_card: bool,
+    pub version: i64,
 }
 
 /// User's linked cards response
@@ -151,6 +187,7 @@ impl ConventionCard {
                 .unwrap_or_else(|| "private".to_string()),
             created_at: now.clone(),
             updated_at: now,
+            version: 1,
         }
     }
 }
@@ -186,6 +223,7 @@ impl ConventionCard {
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
             is_system_card: self.owner_id.is_none(),
+            version: self.version,
         })
     }
 }
