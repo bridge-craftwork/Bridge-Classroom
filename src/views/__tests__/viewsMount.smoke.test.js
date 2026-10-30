@@ -64,6 +64,8 @@ describe('top-level views survive setup()', () => {
       expect(errors, `${name} threw during setup: ${errors[0]?.message}`).toEqual([])
       expect(wrapper.exists()).toBe(true)
       wrapper.unmount()
-    })
+    // The first import of a view (MainLayout brings the whole card editor)
+    // can pass 5s when the full suite runs alongside it
+    }, 20_000)
   }
 })

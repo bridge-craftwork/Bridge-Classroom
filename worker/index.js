@@ -42,12 +42,12 @@ async function renderPrint(token, request, env) {
   setAssetLoader({ template: (name) => asset(TEMPLATE_FILES[name]), font: () => asset(FONT_FILE) })
 
   const template = card.template === 'new' ? 'new' : 'classic'
-  // Not flattened, like the editor's own export: the library's flatten drops
-  // the checkmarks (and leaves dangling objects). The link is still
-  // read-only in the sense that matters: editing a copy changes nothing here.
+  // Flattened: a read-only link serves a card that looks the same in every
+  // viewer and can't be typed into (convention-card 0.27.3 keeps its ticks).
   const bytes = await renderAcblPdfBytes(
     { name: card.name, updated_at: card.updated_at, card_data: card.card_data || {} },
     template,
+    { flatten: true },
   )
   return new Response(bytes, {
     headers: {
