@@ -575,6 +575,48 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // ---- Card members' roles (#436, shared cards) ----
+    // A card's links are its members: owner, editor or viewer. Existing links
+    // are the owner's own (owner) or a public card on someone's list (viewer).
+    // Idempotent: only rows still on the column default are classified, and
+    // every owned card gets an owner row.
+    let had_member_role: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) > 0 FROM pragma_table_info('user_convention_cards') WHERE name = 'role'"#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    add_column_if_missing(
+        pool,
+        "user_convention_cards",
+        "role",
+        "TEXT NOT NULL DEFAULT 'viewer'",
+    )
+    .await?;
+    if !had_member_role {
+        sqlx::query(
+            r#"
+            UPDATE user_convention_cards SET role = 'owner'
+            WHERE user_id = (SELECT owner_id FROM convention_cards c WHERE c.id = card_id)
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::Migration(e.to_string()))?;
+    }
+    sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO user_convention_cards (id, user_id, card_id, is_primary, label, linked_at, role)
+        SELECT lower(hex(randomblob(16))), c.owner_id, c.id, 0, NULL, c.created_at, 'owner'
+        FROM convention_cards c
+        WHERE c.owner_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM user_convention_cards u WHERE u.card_id = c.id AND u.user_id = c.owner_id)
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // ---- Role column on users table ----
     let has_role_column: bool = sqlx::query_scalar(
         r#"SELECT COUNT(*) > 0 FROM pragma_table_info('users') WHERE name = 'role'"#,

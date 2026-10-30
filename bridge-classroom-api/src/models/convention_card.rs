@@ -127,6 +127,10 @@ pub struct UserCardInfo {
     pub is_primary: bool,
     pub label: Option<String>,
     pub linked_at: String,
+    /// The user's role on the card: owner, editor or viewer.
+    pub role: String,
+    /// How many people have the card on their list (1 = not shared).
+    pub member_count: i64,
 }
 
 impl ConventionCard {

@@ -71,32 +71,65 @@ fn is_admin(role: &Option<String>) -> bool {
     role.as_deref() == Some("admin")
 }
 
-/// Read-side check: who can see this card?
-fn can_read(card: &ConventionCard, viewer_id: Option<&str>, viewer_role: &Option<String>) -> bool {
-    if card.visibility == "public" {
-        return true;
-    }
-    if is_admin(viewer_role) {
-        return true;
-    }
-    match (viewer_id, &card.owner_id) {
-        (Some(v), Some(o)) => v == o,
-        _ => false,
-    }
+/// The caller's standing on a card: their site role (admin?) and their
+/// membership role on it ("owner" | "editor" | "viewer", from
+/// `user_convention_cards`). The card's `owner_id` (its creator) is always an
+/// owner.
+struct Standing {
+    site_role: Option<String>,
+    member_role: Option<String>,
 }
 
-/// Write-side check: who can update / delete this card?
-fn can_write(card: &ConventionCard, viewer_id: Option<&str>, viewer_role: &Option<String>) -> bool {
-    if is_admin(viewer_role) {
+async fn standing(
+    db: &SqlitePool,
+    card: &ConventionCard,
+    user_id: Option<&str>,
+) -> Result<Standing, (StatusCode, String)> {
+    let Some(user_id) = user_id else {
+        return Ok(Standing {
+            site_role: None,
+            member_role: None,
+        });
+    };
+    let site_role = fetch_caller_role(db, user_id).await;
+    let member_role = if card.owner_id.as_deref() == Some(user_id) {
+        Some("owner".to_string())
+    } else {
+        sqlx::query_scalar::<_, String>(
+            "SELECT role FROM user_convention_cards WHERE card_id = ? AND user_id = ?",
+        )
+        .bind(&card.id)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
+    Ok(Standing {
+        site_role,
+        member_role,
+    })
+}
+
+/// Read-side check: public cards, admins, and any member.
+fn can_read(card: &ConventionCard, who: &Standing) -> bool {
+    card.visibility == "public" || is_admin(&who.site_role) || who.member_role.is_some()
+}
+
+/// Write-side check: admins, and a private card's owners and editors.
+fn can_write(card: &ConventionCard, who: &Standing) -> bool {
+    if is_admin(&who.site_role) {
         return true;
     }
     if card.visibility == "public" {
         return false; // only admin can change public cards
     }
-    match (viewer_id, &card.owner_id) {
-        (Some(v), Some(o)) => v == o,
-        _ => false,
-    }
+    matches!(who.member_role.as_deref(), Some("owner" | "editor"))
+}
+
+/// Delete check: admins, and a private card's owners (editors can't).
+fn can_delete(card: &ConventionCard, who: &Standing) -> bool {
+    is_admin(&who.site_role)
+        || (card.visibility != "public" && who.member_role.as_deref() == Some("owner"))
 }
 
 /// GET /api/cards
@@ -160,11 +193,8 @@ pub async fn get_card(
 
     let card = card.ok_or((StatusCode::NOT_FOUND, "Card not found".to_string()))?;
 
-    let viewer_role = match &query.viewer_id {
-        Some(id) => fetch_caller_role(&state.db, id).await,
-        None => None,
-    };
-    if !can_read(&card, query.viewer_id.as_deref(), &viewer_role) {
+    let who = standing(&state.db, &card, query.viewer_id.as_deref()).await?;
+    if !can_read(&card, &who) {
         return Err((
             StatusCode::FORBIDDEN,
             "Not allowed to read this card".to_string(),
@@ -263,7 +293,7 @@ pub async fn create_card(
 /// PUT /api/cards/:card_id
 /// Update an existing convention card. Body must include
 /// `acting_user_id`. Admins can update any card; non-admins can only
-/// update private cards they own.
+/// update private cards they own or edit.
 pub async fn update_card(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -286,8 +316,8 @@ pub async fn update_card(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let card = card.ok_or((StatusCode::NOT_FOUND, "Card not found".to_string()))?;
 
-    let role = fetch_caller_role(&state.db, &req.acting_user_id).await;
-    if !can_write(&card, Some(&req.acting_user_id), &role) {
+    let who = standing(&state.db, &card, Some(&req.acting_user_id)).await?;
+    if !can_write(&card, &who) {
         return Err((
             StatusCode::FORBIDDEN,
             "Not allowed to edit this card".to_string(),
@@ -296,7 +326,7 @@ pub async fn update_card(
 
     // Visibility changes (public ↔ private) require admin.
     if let Some(new_vis) = &req.visibility {
-        if new_vis != &card.visibility && !is_admin(&role) {
+        if new_vis != &card.visibility && !is_admin(&who.site_role) {
             return Err((
                 StatusCode::FORBIDDEN,
                 "Only admins can change card visibility".to_string(),
@@ -340,8 +370,9 @@ pub async fn update_card(
 }
 
 /// DELETE /api/cards/:card_id?acting_user_id=...
-/// Delete a convention card. Admin: any card. Non-admin: own private
-/// cards only. Cascade-deletes user_convention_cards rows.
+/// Delete a convention card. Admin: any card. Non-admin: private cards
+/// they own (not ones they only edit). Cascade-deletes
+/// user_convention_cards rows.
 pub async fn delete_card(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -365,8 +396,8 @@ pub async fn delete_card(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let card = card.ok_or((StatusCode::NOT_FOUND, "Card not found".to_string()))?;
 
-    let role = fetch_caller_role(&state.db, &acting_user_id).await;
-    if !can_write(&card, Some(&acting_user_id), &role) {
+    let who = standing(&state.db, &card, Some(&acting_user_id)).await?;
+    if !can_delete(&card, &who) {
         return Err((
             StatusCode::FORBIDDEN,
             "Not allowed to delete this card".to_string(),
@@ -404,9 +435,21 @@ pub async fn get_user_cards(
     require_acting(&state, &headers, &user_id).await?;
 
     // Query user_convention_cards joined with convention_cards
-    let rows: Vec<(String, String, String, bool, Option<String>, String)> = sqlx::query_as(
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        bool,
+        Option<String>,
+        String,
+        String,
+        i64,
+    )> = sqlx::query_as(
         r#"
-        SELECT ucc.id, ucc.card_id, cc.name, ucc.is_primary, ucc.label, ucc.linked_at
+        SELECT ucc.id, ucc.card_id, cc.name, ucc.is_primary, ucc.label, ucc.linked_at,
+               CASE WHEN cc.owner_id = ucc.user_id THEN 'owner' ELSE ucc.role END,
+               (SELECT COUNT(*) FROM user_convention_cards m WHERE m.card_id = ucc.card_id)
         FROM user_convention_cards ucc
         JOIN convention_cards cc ON ucc.card_id = cc.id
         WHERE ucc.user_id = ?
@@ -421,13 +464,17 @@ pub async fn get_user_cards(
     let cards: Vec<UserCardInfo> = rows
         .into_iter()
         .map(
-            |(link_id, card_id, card_name, is_primary, label, linked_at)| UserCardInfo {
-                link_id,
-                card_id,
-                card_name,
-                is_primary,
-                label,
-                linked_at,
+            |(link_id, card_id, card_name, is_primary, label, linked_at, role, member_count)| {
+                UserCardInfo {
+                    link_id,
+                    card_id,
+                    card_name,
+                    is_primary,
+                    label,
+                    linked_at,
+                    role,
+                    member_count,
+                }
             },
         )
         .collect();
@@ -471,8 +518,8 @@ pub async fn link_card_to_user(
 
     // Private cards: the acting user must be able to read it
     if card.visibility != "public" {
-        let role = fetch_caller_role(&state.db, acting).await;
-        if !can_read(&card, Some(acting), &role) {
+        let who = standing(&state.db, &card, Some(acting)).await?;
+        if !can_read(&card, &who) {
             return Err((
                 StatusCode::FORBIDDEN,
                 "Not allowed to link this card".to_string(),
@@ -495,8 +542,8 @@ pub async fn link_card_to_user(
 
     sqlx::query(
         r#"
-        INSERT INTO user_convention_cards (id, user_id, card_id, is_primary, label, linked_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO user_convention_cards (id, user_id, card_id, is_primary, label, linked_at, role)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, card_id) DO UPDATE SET
             is_primary = excluded.is_primary,
             label = excluded.label
@@ -508,6 +555,14 @@ pub async fn link_card_to_user(
     .bind(is_primary)
     .bind(&req.label)
     .bind(&now)
+    // A new link is a membership: the card's owner links as owner; anyone else
+    // (a public card on their list, or an admin's link) as viewer. An existing
+    // link keeps its role.
+    .bind(if card.owner_id.as_deref() == Some(user_id.as_str()) {
+        "owner"
+    } else {
+        "viewer"
+    })
     .execute(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
