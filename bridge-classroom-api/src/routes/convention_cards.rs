@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
@@ -12,6 +12,7 @@ use crate::{
         CreateConventionCardResponse, LinkCardRequest, LinkCardResponse,
         UpdateConventionCardRequest, UpdateConventionCardResponse, UserCardInfo, UserCardsResponse,
     },
+    routes::session::require_roster_member,
     AppState,
 };
 
@@ -52,6 +53,20 @@ async fn fetch_caller_role(db: &SqlitePool, user_id: &str) -> Option<String> {
         .flatten()
 }
 
+/// The caller really is `user_id`: the session cookie's device roster holds
+/// them (ADR-0004 §S7). The ids these routes take are self-asserted, so every
+/// id that grants access goes through here first; 401 without a session, 403
+/// when the session isn't theirs.
+async fn require_acting(
+    state: &AppState,
+    headers: &HeaderMap,
+    user_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    require_roster_member(state, headers, user_id)
+        .await
+        .map(|_| ())
+}
+
 fn is_admin(role: &Option<String>) -> bool {
     role.as_deref() == Some("admin")
 }
@@ -88,8 +103,12 @@ fn can_write(card: &ConventionCard, viewer_id: Option<&str>, viewer_role: &Optio
 /// List convention cards (public cards or filtered by owner_id)
 pub async fn list_cards(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<CardQuery>,
 ) -> Result<Json<Vec<ConventionCardInfo>>, (StatusCode, String)> {
+    if let Some(owner_id) = &query.owner_id {
+        require_acting(&state, &headers, owner_id).await?;
+    }
     let cards: Vec<ConventionCard> = if let Some(owner_id) = query.owner_id {
         // Get cards owned by specific user OR public cards
         sqlx::query_as::<_, ConventionCard>(
@@ -125,9 +144,13 @@ pub async fn list_cards(
 /// owner or an admin.
 pub async fn get_card(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(card_id): Path<String>,
     Query(query): Query<CardReadQuery>,
 ) -> Result<Json<ConventionCardFull>, (StatusCode, String)> {
+    if let Some(viewer_id) = &query.viewer_id {
+        require_acting(&state, &headers, viewer_id).await?;
+    }
     let card: Option<ConventionCard> =
         sqlx::query_as::<_, ConventionCard>("SELECT * FROM convention_cards WHERE id = ?")
             .bind(&card_id)
@@ -169,6 +192,7 @@ fn c_to_full(card: &ConventionCard) -> Result<ConventionCardFull, String> {
 /// further require the caller to be an admin.
 pub async fn create_card(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateConventionCardRequest>,
 ) -> Result<Json<CreateConventionCardResponse>, (StatusCode, String)> {
     if req.name.is_empty() {
@@ -180,6 +204,7 @@ pub async fn create_card(
             "acting_user_id is required".to_string(),
         ));
     }
+    require_acting(&state, &headers, &req.acting_user_id).await?;
 
     let role = fetch_caller_role(&state.db, &req.acting_user_id).await;
     if role.is_none() {
@@ -241,6 +266,7 @@ pub async fn create_card(
 /// update private cards they own.
 pub async fn update_card(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(card_id): Path<String>,
     Json(req): Json<UpdateConventionCardRequest>,
 ) -> Result<Json<UpdateConventionCardResponse>, (StatusCode, String)> {
@@ -250,6 +276,7 @@ pub async fn update_card(
             "acting_user_id is required".to_string(),
         ));
     }
+    require_acting(&state, &headers, &req.acting_user_id).await?;
 
     let card: Option<ConventionCard> =
         sqlx::query_as::<_, ConventionCard>("SELECT * FROM convention_cards WHERE id = ?")
@@ -317,6 +344,7 @@ pub async fn update_card(
 /// cards only. Cascade-deletes user_convention_cards rows.
 pub async fn delete_card(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(card_id): Path<String>,
     Query(query): Query<ActingUserQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -327,6 +355,7 @@ pub async fn delete_card(
             "acting_user_id is required".to_string(),
         ));
     }
+    require_acting(&state, &headers, &acting_user_id).await?;
 
     let card: Option<ConventionCard> =
         sqlx::query_as::<_, ConventionCard>("SELECT * FROM convention_cards WHERE id = ?")
@@ -366,11 +395,14 @@ pub async fn delete_card(
 }
 
 /// GET /api/users/:user_id/cards
-/// Get cards linked to a user
+/// Get cards linked to a user. Only that user's own session may list them.
 pub async fn get_user_cards(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Result<Json<UserCardsResponse>, (StatusCode, String)> {
+    require_acting(&state, &headers, &user_id).await?;
+
     // Query user_convention_cards joined with convention_cards
     let rows: Vec<(String, String, String, bool, Option<String>, String)> = sqlx::query_as(
         r#"
@@ -404,14 +436,31 @@ pub async fn get_user_cards(
 }
 
 /// POST /api/users/:user_id/cards
-/// Link a card to a user. Linking a private card requires the
-/// `acting_user_id` body field, which must be either the card's owner
-/// or an admin. Linking a public card is open to anyone.
+/// Link a card to a user. `acting_user_id` is required and must be the
+/// user themselves or an admin; a private card must also be readable by
+/// them (its owner, or an admin).
 pub async fn link_card_to_user(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(req): Json<LinkCardRequest>,
 ) -> Result<Json<LinkCardResponse>, (StatusCode, String)> {
+    let acting = req
+        .acting_user_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            "acting_user_id is required".to_string(),
+        ))?;
+    require_acting(&state, &headers, acting).await?;
+    if acting != user_id && !is_admin(&fetch_caller_role(&state.db, acting).await) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only the user themselves or an admin can link a card".to_string(),
+        ));
+    }
+
     let card: Option<ConventionCard> =
         sqlx::query_as::<_, ConventionCard>("SELECT * FROM convention_cards WHERE id = ?")
             .bind(&req.card_id)
@@ -420,16 +469,8 @@ pub async fn link_card_to_user(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let card = card.ok_or((StatusCode::NOT_FOUND, "Card not found".to_string()))?;
 
-    // Private cards: require authz from acting_user_id
+    // Private cards: the acting user must be able to read it
     if card.visibility != "public" {
-        let acting = req
-            .acting_user_id
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .ok_or((
-                StatusCode::FORBIDDEN,
-                "acting_user_id is required to link a private card".to_string(),
-            ))?;
         let role = fetch_caller_role(&state.db, acting).await;
         if !can_read(&card, Some(acting), &role) {
             return Err((
@@ -484,6 +525,7 @@ pub async fn link_card_to_user(
 /// user OR an admin.
 pub async fn unlink_card_from_user(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path((user_id, card_id)): Path<(String, String)>,
     Query(query): Query<ActingUserQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -494,6 +536,7 @@ pub async fn unlink_card_from_user(
             "acting_user_id is required".to_string(),
         ));
     }
+    require_acting(&state, &headers, &acting_user_id).await?;
     if acting_user_id != user_id {
         let role = fetch_caller_role(&state.db, &acting_user_id).await;
         if !is_admin(&role) {
