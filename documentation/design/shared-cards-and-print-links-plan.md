@@ -1,6 +1,6 @@
 # Shared cards and print links — plan (#436 + #482)
 
-**Status:** draft for review, 2026-10-30.
+**Status:** for review, 2026-10-30. Decided: the .org Worker makes the PDF; all links are on `.org`.
 **Issues:** [#436](https://github.com/bridge-craftwork/Bridge-Classroom/issues/436) (partners share a card: members, roles, invitation links) and [#482](https://github.com/bridge-craftwork/Bridge-Classroom/issues/482) (a read-only link to a card's PDF, for RealBridge etc.).
 **Design source:** convention-card `docs/DESIGN.md` "Shared cards" and `docs/DECISIONS.md` decision 18. This plan is the Bridge Classroom side of them, plus the print link.
 
@@ -19,8 +19,12 @@ Both features hang off the same saved card, so they share one migration, one acc
 1. **Do #436 and #482 together.**
 2. **A print link is not revocable.** Each card has one permanent read-only token, minted the first time anyone asks for the link. The link always shows the card as it is now.
 3. The print token is **separate from the card id**: once cards have members, the id is known to every member and appears in their API traffic; the token is the one thing that grants anonymous read.
+4. **The PDF is made by the .org Worker** (option A below).
+5. **Every link is on `bridge-classroom.org`**: print links and invitation links alike, as PR #367 already does for other shareable links (`.com` is blocked by some filters).
 
-## Open decision: where the PDF is made
+**Consequence of 5 (#368):** sessions don't cross TLDs. A partner who only ever signs in on `.com` arrives at a `.org` invitation signed out, and has to sign in on `.org` (the 6-digit code) before joining. They join as the same account, since the code is sent to their email, so nothing is lost. The join page should say so plainly ("Sign in to join this card. Use the email you use for Bridge Classroom."). Print links need no sign-in, so they are unaffected.
+
+## Where the PDF is made (decided: A)
 
 RealBridge wants a direct PDF URL. The PDF code is JavaScript (pdf-lib); the API is Rust.
 
@@ -30,9 +34,9 @@ RealBridge wants a direct PDF URL. The PDF code is JavaScript (pdf-lib); the API
 | B. A small Node service on the droplet behind Caddy | Any hostname; no Worker code. | One more service to run and deploy; still calls the Mac API. |
 | C. A page that renders in the browser | Simplest. | Not a direct PDF URL; RealBridge may not accept it. |
 
-With A, the link is `https://bridge-classroom.org/card/print/<token>.pdf` (the `.pdf` suffix helps sites that check the extension). Shown to `.com` users too; it works for anyone.
+The link is `https://bridge-classroom.org/card/print/<token>.pdf` (the `.pdf` suffix helps sites that check the extension). `.com` users are given the same `.org` link; it works for anyone.
 
-Worker sketch: `wrangler.jsonc` gains `"main": "worker/index.js"` and `"assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/card/print/*"] }`. The script handles only that path: fetch `GET https://api.bridge-classroom.com/api/cards/print/<token>`, load the template and font via `env.ASSETS`, `renderAcblPdfBytes`, return `application/pdf` with `Content-Disposition: inline; filename="<card name>.pdf"` and a short cache (`max-age=300`, so edits show within minutes). Everything else falls through to static assets as today. Check the pdf-lib bundle against the Worker size limit (free plan 3 MB compressed) in the first slice.
+Worker sketch: `wrangler.jsonc` gains `"main": "worker/index.js"` and `"assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/card/print/*"] }`. The script handles only that path: fetch `GET https://api.bridge-classroom.org/api/cards/print/<token>`, load the template and font via `env.ASSETS`, `renderAcblPdfBytes`, return `application/pdf` with `Content-Disposition: inline; filename="<card name>.pdf"` and a short cache (`max-age=300`, so edits show within minutes). Everything else falls through to static assets as today. Check the pdf-lib bundle against the Worker size limit (free plan 3 MB compressed) in the first slice.
 
 ## Database (one migration, idempotent like the others in `db.rs`)
 
@@ -79,7 +83,7 @@ Existing routes move to cookie auth (`require_roster_member` on `acting_user_id`
 | `PUT /api/cards/:id` | owner, editor | body adds `base_version`; mismatch → **409** with the current card and version; success bumps `version` and writes `card_versions` |
 | `DELETE /api/cards/:id` | owner | unchanged (soft delete is out of scope) |
 | `GET /api/users/:id/cards` | self | adds `role`, member count |
-| `POST /api/cards/:id/invitations {role}` | owner | → `{ token, url, expires_at }`; url `https://bridge-classroom.com/cards/join/<token>` |
+| `POST /api/cards/:id/invitations {role}` | owner | → `{ token, url, expires_at }`; url `https://bridge-classroom.org/solo-practice-app/#/cards/join/<token>` |
 | `GET /api/cards/:id/invitations` | owner | live invitations |
 | `DELETE /api/cards/:id/invitations/:token` | owner | revoke |
 | `POST /api/cards/join/:token` | signed in | adds the caller as a member with the link's role; repeat is harmless; never downgrades an existing role; expired/revoked → 410 |
@@ -116,4 +120,4 @@ Slices 1–5 are API work and need the API deploy (rebuild, then restart); 5 als
 
 ## Out of scope
 
-Soft-deleting cards, notifying members of changes, sharing with a classroom as a whole, and print links on `.com`.
+Soft-deleting cards, notifying members of changes, sharing with a classroom as a whole, links on `.com`, and the cross-TLD sign-in hand-off (#368).
