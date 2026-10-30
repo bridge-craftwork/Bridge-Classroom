@@ -1081,6 +1081,14 @@ async function handleUserReady(user) {
     router.push({ name: 'join', params: { joinCode: pendingJoinCode } })
     return
   }
+
+  // Or a pending card invitation (/cards/join/:token)
+  const pendingCardInvite = sessionStorage.getItem('pendingCardInvite')
+  if (pendingCardInvite) {
+    sessionStorage.removeItem('pendingCardInvite')
+    router.push({ name: 'join-card', params: { token: pendingCardInvite } })
+    return
+  }
 }
 
 async function handleSwitchUser() {

@@ -198,6 +198,26 @@ async fn main() -> anyhow::Result<()> {
             get(routes::list_card_versions),
         )
         .route(
+            "/api/cards/:card_id/invitations",
+            get(routes::list_card_invitations).post(routes::create_card_invitation),
+        )
+        .route(
+            "/api/cards/:card_id/invitations/:token",
+            delete(routes::revoke_card_invitation),
+        )
+        .route(
+            "/api/cards/:card_id/members",
+            get(routes::list_card_members),
+        )
+        .route(
+            "/api/cards/:card_id/members/:user_id",
+            patch(routes::change_card_member_role).delete(routes::remove_card_member),
+        )
+        .route(
+            "/api/cards/join/:token",
+            get(routes::preview_card_invitation).post(routes::join_card),
+        )
+        .route(
             "/api/cards/:card_id/versions/:version",
             get(routes::get_card_version),
         )

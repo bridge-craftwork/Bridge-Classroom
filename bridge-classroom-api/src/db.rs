@@ -643,6 +643,31 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .execute(pool)
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
+    // Invitation links: an owner shares a card with a role; whoever opens the
+    // link while signed in joins with it. 30 days, revocable.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS card_invitations (
+            token TEXT PRIMARY KEY,
+            card_id TEXT NOT NULL REFERENCES convention_cards(id),
+            role TEXT NOT NULL,
+            created_by TEXT NOT NULL REFERENCES users(id),
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_card_invitations_card ON card_invitations(card_id)"#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Each card's current state as its first recorded version (idempotent).
     sqlx::query(
         r#"

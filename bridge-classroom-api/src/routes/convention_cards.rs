@@ -58,7 +58,7 @@ async fn fetch_caller_role(db: &SqlitePool, user_id: &str) -> Option<String> {
 /// them (ADR-0004 §S7). The ids these routes take are self-asserted, so every
 /// id that grants access goes through here first; 401 without a session, 403
 /// when the session isn't theirs.
-async fn require_acting(
+pub(crate) async fn require_acting(
     state: &AppState,
     headers: &HeaderMap,
     user_id: &str,
@@ -68,7 +68,7 @@ async fn require_acting(
         .map(|_| ())
 }
 
-fn is_admin(role: &Option<String>) -> bool {
+pub(crate) fn is_admin(role: &Option<String>) -> bool {
     role.as_deref() == Some("admin")
 }
 
@@ -76,12 +76,12 @@ fn is_admin(role: &Option<String>) -> bool {
 /// membership role on it ("owner" | "editor" | "viewer", from
 /// `user_convention_cards`). The card's `owner_id` (its creator) is always an
 /// owner.
-struct Standing {
-    site_role: Option<String>,
-    member_role: Option<String>,
+pub(crate) struct Standing {
+    pub(crate) site_role: Option<String>,
+    pub(crate) member_role: Option<String>,
 }
 
-async fn standing(
+pub(crate) async fn standing(
     db: &SqlitePool,
     card: &ConventionCard,
     user_id: Option<&str>,
@@ -112,7 +112,7 @@ async fn standing(
 }
 
 /// Read-side check: public cards, admins, and any member.
-fn can_read(card: &ConventionCard, who: &Standing) -> bool {
+pub(crate) fn can_read(card: &ConventionCard, who: &Standing) -> bool {
     card.visibility == "public" || is_admin(&who.site_role) || who.member_role.is_some()
 }
 
@@ -202,12 +202,13 @@ pub async fn get_card(
         ));
     }
 
-    let full = c_to_full(&card).map_err(|e| {
+    let mut full = c_to_full(&card).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to parse card data: {}", e),
         )
     })?;
+    full.role = who.member_role;
     Ok(Json(full))
 }
 
@@ -444,7 +445,13 @@ pub async fn delete_card(
         ));
     }
 
-    // Cascade: remove the card's history and user-card links, then the card.
+    // Cascade: remove the card's history, invitations and user-card links,
+    // then the card.
+    sqlx::query("DELETE FROM card_invitations WHERE card_id = ?")
+        .bind(&card_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     sqlx::query("DELETE FROM card_versions WHERE card_id = ?")
         .bind(&card_id)
         .execute(&state.db)
@@ -470,7 +477,7 @@ pub async fn delete_card(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
-async fn fetch_card(
+pub(crate) async fn fetch_card(
     db: &SqlitePool,
     card_id: &str,
 ) -> Result<ConventionCard, (StatusCode, String)> {

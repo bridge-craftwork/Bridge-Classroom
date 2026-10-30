@@ -3,6 +3,7 @@ import MainLayout from '../views/MainLayout.vue'
 import ConventionCardView from '../views/ConventionCardView.vue'
 
 const JoinClassroomView = () => import('../views/JoinClassroomView.vue')
+const JoinCardView = () => import('../views/JoinCardView.vue')
 const TableLobbyView = () => import('../views/TableLobbyView.vue')
 const TeacherConsoleView = () => import('../views/TeacherConsoleView.vue')
 const TableView = () => import('../views/TableView.vue')
@@ -25,6 +26,12 @@ const routes = [
     path: '/convention-card',
     name: 'convention-card',
     component: ConventionCardView
+  },
+  {
+    // A partner's invitation to share a convention card (#436).
+    path: '/cards/join/:token',
+    name: 'join-card',
+    component: JoinCardView
   },
   {
     // Multiplayer tables: teacher's evergreen class URL. Bare /play shows

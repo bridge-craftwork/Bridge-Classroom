@@ -146,6 +146,9 @@ pub struct ConventionCardFull {
     pub updated_at: String,
     pub is_system_card: bool,
     pub version: i64,
+    /// The reader's role on the card (owner, editor, viewer), when they're a
+    /// member. Set by GET /api/cards/:id.
+    pub role: Option<String>,
 }
 
 /// User's linked cards response
@@ -224,6 +227,7 @@ impl ConventionCard {
             updated_at: self.updated_at.clone(),
             is_system_card: self.owner_id.is_none(),
             version: self.version,
+            role: None,
         })
     }
 }
