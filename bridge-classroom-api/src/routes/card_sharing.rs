@@ -757,7 +757,7 @@ pub async fn store_card_print_pdf(
 }
 
 /// The card's PDF from card-pdf-service: POST /pdf?template= with the
-/// card as `{ name, card_data }`.
+/// card as `{ name, card_data, updated_at }` (the PDF prints its last edit).
 async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Vec<u8>, ApiError> {
     let unavailable = |why: String| {
         tracing::warn!("card print: {why}");
@@ -777,7 +777,11 @@ async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Vec<u8>, ApiEr
             state.config.card_pdf_url.trim_end_matches('/')
         ))
         .query(&[("template", card.template.as_str())])
-        .json(&serde_json::json!({ "name": card.name, "card_data": card.card_data }));
+        .json(&serde_json::json!({
+            "name": card.name,
+            "card_data": card.card_data,
+            "updated_at": card.updated_at,
+        }));
     if let Some(key) = &state.config.card_pdf_key {
         req = req.header("X-Render-Key", key);
     }
