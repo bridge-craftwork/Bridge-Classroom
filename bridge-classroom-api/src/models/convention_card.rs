@@ -153,6 +153,10 @@ pub struct ConventionCardFull {
     /// The reader's role on the card (owner, editor, viewer), when they're a
     /// member. Set by GET /api/cards/:id.
     pub role: Option<String>,
+    /// The layout of the card's print link (`classic` | `new`), when it has
+    /// one: a member's browser stores the PDF it makes in that layout on
+    /// each save, so the link opens at once. Not the link's token.
+    pub print_template: Option<String>,
 }
 
 /// User's linked cards response
@@ -234,6 +238,10 @@ impl ConventionCard {
             is_system_card: self.owner_id.is_none(),
             version: self.version,
             role: None,
+            print_template: self
+                .print_token
+                .as_ref()
+                .map(|_| self.print_template.clone()),
         })
     }
 }
