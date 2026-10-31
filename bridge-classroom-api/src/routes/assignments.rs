@@ -762,7 +762,7 @@ pub async fn get_assignment(
             FROM classroom_members cm
             JOIN users u ON u.id = cm.student_id
             WHERE cm.classroom_id = ?
-            ORDER BY u.last_name, u.first_name
+            ORDER BY u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE
             "#,
         )
         .bind(classroom_id)

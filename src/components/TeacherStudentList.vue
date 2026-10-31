@@ -203,7 +203,7 @@ const filteredStudents = computed(() => {
 function sortValue(student, key) {
   const s = summaries.value[student.id]
   switch (key) {
-    case 'name': return studentName(student).toLowerCase()
+    case 'name': return nameSortKey(student)
     case 'mastery': return s?.green || 0
     case 'lessons': return recentLessons.value[student.id]?.length || 0
     case 'active':
@@ -222,7 +222,7 @@ const sortedStudents = computed(() => {
     else cmp = String(av).localeCompare(String(bv))
     if (cmp !== 0) return cmp * dir
     // Stable, intuitive tiebreaker: name A→Z
-    return studentName(a).localeCompare(studentName(b))
+    return nameSortKey(a).localeCompare(nameSortKey(b))
   })
 })
 
@@ -269,6 +269,13 @@ const recentLessons = computed(() => {
 
 function studentName(student) {
   return anon.displayFullName(student)
+}
+
+// Names sort "last, first", ignoring case, so a student who typed their name
+// in lowercase doesn't land at the end of the list.
+function nameSortKey(student) {
+  const { firstName, lastName } = anon.displayName(student)
+  return `${lastName || ''}, ${firstName || ''}`.toLowerCase()
 }
 
 function initials(student) {
