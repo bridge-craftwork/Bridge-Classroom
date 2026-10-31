@@ -91,6 +91,16 @@ pub struct Config {
     /// thin: this plus the ticket mint are the only integration points.
     pub table_service_url: String,
 
+    /// Base URL of card-pdf-service, the generic convention card renderer
+    /// (POST a card, get its ACBL PDF). A print link's PDF is made there:
+    /// GET /api/cards/print/:token.pdf.
+    pub card_pdf_url: String,
+
+    /// This API's key for card-pdf-service (optional), sent as
+    /// `X-Render-Key`: it exempts the API's calls from the per-IP rate limit
+    /// the service puts on everyone else.
+    pub card_pdf_key: Option<String>,
+
     /// Whether the durable session cookie (ADR-0004) is marked `Secure` and
     /// uses the `__Host-` prefix. True in prod (behind Cloudflare HTTPS).
     /// Set `COOKIE_SECURE=false` for plain-http local dev if the browser
@@ -186,6 +196,15 @@ impl Config {
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "https://tables.bridge-craftwork.com".to_string());
 
+        let card_pdf_url = env::var("CARD_PDF_URL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "https://card-pdf.bridge-craftwork.com".to_string());
+
+        let card_pdf_key = env::var("CARD_PDF_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         // Defaults to true (prod). Only an explicit "false"/"0" disables it.
         let cookie_secure = env::var("COOKIE_SECURE")
             .map(|v| !matches!(v.trim(), "false" | "0"))
@@ -212,6 +231,8 @@ impl Config {
             bug_artifacts_repo,
             table_ticket_secret,
             table_service_url,
+            card_pdf_url,
+            card_pdf_key,
             cookie_secure,
         })
     }

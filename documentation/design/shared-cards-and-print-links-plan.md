@@ -26,7 +26,13 @@ Both features hang off the same saved card, so they share one migration, one acc
 
 ## Where the PDF is made (decided: A, then B)
 
-**Changed 2026-10-30:** in production the Worker failed with Error 1102: a render takes 200–300 ms of CPU and the free Workers plan allows 10 ms. Rather than pay for Workers Paid, the PDF is now made on the droplet by `card-print-service` (`card-print.bridge-craftwork.com`, port 8007; bridge-craftwork-platform). The Worker only forwards `/card/print/*` there and caches the answer, so the link (`bridge-classroom.org/card/print/<token>.pdf`) is unchanged.
+**Changed 2026-10-30:** in production the Worker failed with Error 1102: a render takes 200–300 ms of CPU and the free Workers plan allows 10 ms. Rather than pay for Workers Paid:
+
+- **`card-pdf-service`** (bridge-craftwork, on the droplet, `card-pdf.bridge-craftwork.com`, port 8007) is a generic renderer: POST a card's JSON, get its ACBL PDF. Any tool can use it; it caps body size and rate-limits by IP, and a trusted caller's `X-Render-Key` skips the rate limit.
+- **The API** answers `GET /api/cards/print/:token.pdf`: it reads the card and posts it to the renderer (`CARD_PDF_URL`, `CARD_PDF_KEY`). Without `.pdf` the route still returns the card's JSON.
+- **The Worker** only forwards `/card/print/*` to that route and caches the answer at the edge.
+
+The link (`bridge-classroom.org/card/print/<token>.pdf`) is unchanged, and stays so wherever the API or the renderer move.
 
 
 RealBridge wants a direct PDF URL. The PDF code is JavaScript (pdf-lib); the API is Rust.
