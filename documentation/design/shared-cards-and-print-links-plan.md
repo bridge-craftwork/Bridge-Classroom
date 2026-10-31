@@ -1,6 +1,7 @@
 # Shared cards and print links — plan (#436 + #482)
 
 **Status:** for review, 2026-10-30. Decided: the .org Worker makes the PDF; all links are on `.org`.
+**Superseded for print links:** the design as built is in [convention-card-print-links.md](convention-card-print-links.md).
 **Issues:** [#436](https://github.com/bridge-craftwork/Bridge-Classroom/issues/436) (partners share a card: members, roles, invitation links) and [#482](https://github.com/bridge-craftwork/Bridge-Classroom/issues/482) (a read-only link to a card's PDF, for RealBridge etc.).
 **Design source:** convention-card `docs/DESIGN.md` "Shared cards" and `docs/DECISIONS.md` decision 18. This plan is the Bridge Classroom side of them, plus the print link.
 
@@ -30,7 +31,7 @@ Both features hang off the same saved card, so they share one migration, one acc
 
 - **`card-pdf-service`** (bridge-craftwork, on the droplet, `card-pdf.bridge-craftwork.com`, port 8007) is a generic renderer: POST a card's JSON, get its ACBL PDF. Any tool can use it; it caps body size and rate-limits by IP, and a trusted caller's `X-Render-Key` skips the rate limit.
 - **The API** answers `GET /api/cards/print/:token.pdf`: it reads the card and posts it to the renderer (`CARD_PDF_URL`, `CARD_PDF_KEY`). Without `.pdf` the route still returns the card's JSON.
-- **The Worker** only forwards `/card/print/*` to that route and caches the answer at the edge.
+- **The Worker** only forwards `/card/print/*` to that route. (It cached at the edge at first; since 2026-10-31 nothing is cached.)
 
 The link (`bridge-classroom.org/card/print/<token>.pdf`) is unchanged, and stays so wherever the API or the renderer move.
 
