@@ -76,6 +76,11 @@ const PENDING = 'convention-card-import'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+// The standalone /convention-card route doesn't go through MainLayout, so the
+// user store may not have been hydrated yet. Before anything loads a card:
+// without the user, the API reads a private card as anonymous and says 403.
+// initialize() is idempotent.
+userStore.initialize()
 const editor = useCardEditor(bridgeClassroomStorage, bridgeClassroomOverlays)
 const handoff = reactive({ message: '', needsSignIn: false, error: false })
 const signedIn = computed(() => !!userStore.currentUser.value?.id)
@@ -155,10 +160,6 @@ async function importPending() {
   }
 }
 
-// The standalone /convention-card route doesn't go through
-// MainLayout, so the user store may not have been hydrated yet.
-// initialize() is idempotent.
-userStore.initialize()
 
 // A card arriving in the URL, on load or in a tab already open here (a
 // hash change reuses this view): keep it, take it out of the address bar,
@@ -174,7 +175,12 @@ watch(() => route.query.import, async incoming => {
 onMounted(importPending)
 
 // Signing in (here or in the lobby) saves a card that was waiting.
-watch(() => userStore.currentUser.value?.id, uid => { if (uid) importPending() })
+watch(() => userStore.currentUser.value?.id, uid => {
+  if (!uid) return
+  importPending()
+  // The address's card, if it failed to load while signed out
+  if (cardId.value && editor.currentCard.value?.id !== cardId.value) editor.switchCard(cardId.value)
+})
 </script>
 
 <style scoped>
