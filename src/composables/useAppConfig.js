@@ -147,8 +147,8 @@ const COLLECTIONS = [
     name: 'David Bailey Scenarios',
     description: 'Bidding and play-of-the-hand lessons',
     icon: '♦',
-    tocUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated/toc.json',
-    baseUrl: 'https://raw.githubusercontent.com/ADavidBailey/Practice-Bidding-Scenarios/main/coaching-non-rotated',
+    tocUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Practice-Bidding-Scenarios/main/coaching-non-rotated/toc.json',
+    baseUrl: 'https://raw.githubusercontent.com/bridge-craftwork/Practice-Bidding-Scenarios/main/coaching-non-rotated',
     // `report` is a three-state override of the per-board release flag:
     //   true  → force reporting on for the whole collection (used here: David's
     //           coaching content is curated as a set, and not all of it carries

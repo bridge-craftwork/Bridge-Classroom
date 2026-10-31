@@ -18,6 +18,38 @@ export function getBbaUrl() {
   return DEFAULT_BBA_URL
 }
 
+// Identifies classroom traffic in BBA's audit log and dashboard (issue #414).
+// Format is `ext=<name>; browser=<name>; os=<name>`, parsed by bba-server's
+// get_client_info(); unknown keys are ignored and every key is optional.
+function detectBrowser(ua) {
+  if (/Edg\//.test(ua)) return 'Edge'
+  if (/Firefox\//.test(ua)) return 'Firefox'
+  if (/Chrome\//.test(ua)) return 'Chrome'
+  if (/Safari\//.test(ua)) return 'Safari'
+  return 'Other'
+}
+
+function detectOs(ua) {
+  if (/iPhone|iPad|iPod/.test(ua)) return 'iOS'
+  if (/Android/.test(ua)) return 'Android'
+  if (/Mac OS X|Macintosh/.test(ua)) return 'macOS'
+  if (/Windows/.test(ua)) return 'Windows'
+  if (/CrOS/.test(ua)) return 'ChromeOS'
+  if (/Linux/.test(ua)) return 'Linux'
+  return 'Other'
+}
+
+export function clientInfoHeaders() {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+  const headers = {
+    'X-Client-Info': `ext=BridgeClassroom; browser=${detectBrowser(ua)}; os=${detectOs(ua)}`,
+  }
+  if (typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__) {
+    headers['X-Client-Version'] = String(__APP_VERSION__)
+  }
+  return headers
+}
+
 // opts:
 //   deal:         { hands:{N,E,S,W→{spades,...}}, dealer, vulnerable }
 //   scenario:     PBS scenario name (selects BBA's system)   — OR —
@@ -47,7 +79,7 @@ export async function fetchAuction({ deal, scenario, conventions, conventionCont
 
   const resp = await fetch(getBbaUrl() + '/api/auction/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...clientInfoHeaders() },
     body: JSON.stringify(body),
   })
   if (!resp.ok) {
