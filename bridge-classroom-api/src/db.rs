@@ -684,6 +684,26 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         .await
         .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // A print link's PDF, as last made: by a member's browser when they save
+    // the card (the editor renders it), or by card-pdf-service when a link is
+    // opened and none is current. Served while `version` and `template` are
+    // the card's. One row per card.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS card_print_pdfs (
+            card_id TEXT PRIMARY KEY REFERENCES convention_cards(id),
+            version INTEGER NOT NULL,
+            template TEXT NOT NULL,
+            pdf BLOB NOT NULL,
+            made_by TEXT REFERENCES users(id),
+            made_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Each card's current state as its first recorded version (idempotent).
     sqlx::query(
         r#"

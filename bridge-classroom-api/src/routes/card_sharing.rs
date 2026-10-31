@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use crate::{
-    routes::convention_cards::{can_read, fetch_card, is_admin, require_acting, standing},
+    routes::convention_cards::{
+        can_read, can_write, fetch_card, is_admin, require_acting, standing,
+    },
     AppState,
 };
 
@@ -583,15 +585,16 @@ const CARD_PDF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20)
 /// GET /api/cards/print/:token — the card behind a print link. No sign-in:
 /// the token is the permission. Without `.pdf`, the card as JSON, only what
 /// the PDF needs (no ids, no owner). With it (`:token.pdf`), the card's ACBL
-/// PDF, made by card-pdf-service: this is what bridge-classroom.org's Worker
-/// forwards a print link (`/card/print/<token>.pdf`) to.
+/// PDF: this is what bridge-classroom.org's Worker forwards a print link
+/// (`/card/print/<token>.pdf`) to. The PDF a member's browser stored for the
+/// card as it is now, else one card-pdf-service makes, which is stored.
 pub async fn print_card(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<Response, ApiError> {
     let pdf = token.ends_with(".pdf");
     let token = token.trim_end_matches(".pdf");
-    let card = sqlx::query_as::<_, crate::models::ConventionCard>(
+    let row = sqlx::query_as::<_, crate::models::ConventionCard>(
         "SELECT * FROM convention_cards WHERE print_token = ?",
     )
     .bind(token)
@@ -599,6 +602,22 @@ pub async fn print_card(
     .await
     .map_err(db_err)?
     .ok_or((StatusCode::NOT_FOUND, "No card for this link".to_string()))?;
+    if pdf {
+        let stored: Option<Vec<u8>> = sqlx::query_scalar(
+            "SELECT pdf FROM card_print_pdfs WHERE card_id = ? AND version = ? AND template = ?",
+        )
+        .bind(&row.id)
+        .bind(row.version)
+        .bind(&row.print_template)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(db_err)?;
+        if let Some(bytes) = stored {
+            return Ok(pdf_response(&row.name, &row.card_data, bytes));
+        }
+    }
+    let (card_id, version) = (row.id.clone(), row.version);
+    let card = row;
     let card_data = serde_json::from_str(&card.card_data).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -614,12 +633,131 @@ pub async fn print_card(
     if !pdf {
         return Ok(Json(card).into_response());
     }
-    render_pdf(&state, &card).await
+    let bytes = render_pdf(&state, &card).await?;
+    store_print_pdf(&state, &card_id, version, &card.template, &bytes, None).await?;
+    Ok(pdf_response(&card.name, &card.card_data.to_string(), bytes))
+}
+
+/// A print link's PDF, as served.
+fn pdf_response(name: &str, card_data: &str, bytes: Vec<u8>) -> Response {
+    let partners = serde_json::from_str::<serde_json::Value>(card_data)
+        .ok()
+        .and_then(|d| {
+            d.pointer("/metadata/partner_names")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
+    (
+        [
+            (header::CONTENT_TYPE, "application/pdf".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!(
+                    "inline; filename=\"{}\"",
+                    pdf_filename(name, partners.as_deref())
+                ),
+            ),
+            (header::CACHE_CONTROL, "public, max-age=300".to_string()),
+            (
+                header::HeaderName::from_static("x-robots-tag"),
+                "noindex".to_string(),
+            ),
+        ],
+        bytes,
+    )
+        .into_response()
+}
+
+async fn store_print_pdf(
+    state: &AppState,
+    card_id: &str,
+    version: i64,
+    template: &str,
+    pdf: &[u8],
+    made_by: Option<&str>,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        r#"
+        INSERT INTO card_print_pdfs (card_id, version, template, pdf, made_by, made_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(card_id) DO UPDATE SET
+            version = excluded.version, template = excluded.template, pdf = excluded.pdf,
+            made_by = excluded.made_by, made_at = excluded.made_at
+        "#,
+    )
+    .bind(card_id)
+    .bind(version)
+    .bind(template)
+    .bind(pdf)
+    .bind(made_by)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&state.db)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// The largest PDF a browser may store for a print link. A card page is
+/// well under 1 MB; the ACBL scoresheet with it, under 1 MB too.
+pub const PRINT_PDF_LIMIT: usize = 4 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+pub struct StorePrintPdfQuery {
+    pub acting_user_id: String,
+    /// The card version the PDF was made from: the card's current one.
+    pub version: i64,
+    /// The layout it was made in: the card's print template.
+    pub template: String,
+}
+
+/// PUT /api/cards/:card_id/print-pdf?acting_user_id=&version=&template= —
+/// a member's browser stores the PDF it made of the card, so its print link
+/// opens at once instead of waiting for card-pdf-service. The body is the
+/// PDF. Owners and editors only, for a card with a print link, made from the
+/// card as it is now (409 otherwise: a newer save has happened).
+pub async fn store_card_print_pdf(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(card_id): Path<String>,
+    Query(q): Query<StorePrintPdfQuery>,
+    body: axum::body::Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_acting(&state, &headers, &q.acting_user_id).await?;
+    let card = fetch_card(&state.db, &card_id).await?;
+    let who = standing(&state.db, &card, Some(&q.acting_user_id)).await?;
+    if !can_write(&card, &who) {
+        return Err(forbidden("Only the card's owners and editors can do that"));
+    }
+    if card.print_token.is_none() {
+        return Err((
+            StatusCode::CONFLICT,
+            "This card has no print link".to_string(),
+        ));
+    }
+    if q.version != card.version || q.template != card.print_template {
+        return Err((
+            StatusCode::CONFLICT,
+            "The card has changed since this PDF was made".to_string(),
+        ));
+    }
+    if !body.starts_with(b"%PDF-") {
+        return Err((StatusCode::BAD_REQUEST, "Not a PDF".to_string()));
+    }
+    store_print_pdf(
+        &state,
+        &card_id,
+        card.version,
+        &card.print_template,
+        &body,
+        Some(&q.acting_user_id),
+    )
+    .await?;
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 /// The card's PDF from card-pdf-service: POST /pdf?template= with the
 /// card as `{ name, card_data }`.
-async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Response, ApiError> {
+async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Vec<u8>, ApiError> {
     let unavailable = |why: String| {
         tracing::warn!("card print: {why}");
         (
@@ -652,33 +790,13 @@ async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Response, ApiE
         return Err(unavailable(format!("renderer refused: {status} {body}")));
     }
     let bytes = resp.bytes().await.map_err(|e| unavailable(e.to_string()))?;
-    Ok((
-        [
-            (header::CONTENT_TYPE, "application/pdf".to_string()),
-            (
-                header::CONTENT_DISPOSITION,
-                format!("inline; filename=\"{}\"", pdf_filename(card)),
-            ),
-            (header::CACHE_CONTROL, "public, max-age=300".to_string()),
-            (
-                header::HeaderName::from_static("x-robots-tag"),
-                "noindex".to_string(),
-            ),
-        ],
-        bytes,
-    )
-        .into_response())
+    Ok(bytes.to_vec())
 }
 
 /// "Rick-and-Dan.pdf": the partners' names, else the card's, made safe for a
 /// header and a file name.
-fn pdf_filename(card: &PrintCard) -> String {
-    let names = card
-        .card_data
-        .pointer("/metadata/partner_names")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or(&card.name);
+fn pdf_filename(name: &str, partners: Option<&str>) -> String {
+    let names = partners.filter(|s| !s.trim().is_empty()).unwrap_or(name);
     let base: String = names
         .trim()
         .chars()
@@ -703,21 +821,10 @@ mod tests {
 
     #[test]
     fn a_pdf_is_named_for_the_partners() {
-        let card = |name: &str, partners: Option<&str>| PrintCard {
-            name: name.to_string(),
-            template: "classic".to_string(),
-            card_data: match partners {
-                Some(p) => serde_json::json!({ "metadata": { "partner_names": p } }),
-                None => serde_json::json!({}),
-            },
-            updated_at: String::new(),
-        };
-        assert_eq!(
-            pdf_filename(&card("Our card", Some("Rick & Dan"))),
-            "Rick-Dan.pdf"
-        );
-        assert_eq!(pdf_filename(&card("2/1 \"GF\"", None)), "21-GF.pdf");
-        assert_eq!(pdf_filename(&card("♠♥", None)), "convention-card.pdf");
+        assert_eq!(pdf_filename("Our card", Some("Rick & Dan")), "Rick-Dan.pdf");
+        assert_eq!(pdf_filename("Our card", Some("  ")), "Our-card.pdf");
+        assert_eq!(pdf_filename("2/1 \"GF\"", None), "21-GF.pdf");
+        assert_eq!(pdf_filename("♠♥", None), "convention-card.pdf");
     }
 
     #[test]

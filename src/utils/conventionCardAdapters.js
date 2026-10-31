@@ -11,6 +11,7 @@ import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { BAKER_BRIDGE_TAXONOMY, getTaxonomyEntry, getSubfolderForSkill } from './bakerBridgeTaxonomy.js'
 import { RBB_WASM_INFO, getRbbClient } from './rbbClient.js'
 import { fetchScenarioSkills } from './pbsScenarios.js'
+import { loadAcblPdf } from './conventionCardLibrary.js'
 
 const userStore = useUserStore()
 const currentUserId = () => userStore.currentUser.value?.id
@@ -37,6 +38,32 @@ async function getJson(url, what) {
 
 // An invitation's link, as the API makes it (its list gives only the token)
 const JOIN_URL_BASE = 'https://bridge-classroom.org/solo-practice-app/#/cards/join/'
+
+// A card with a print link (#482) opens fastest from a PDF this browser
+// made: after each save, the card is rendered here (a third of a second;
+// the droplet's renderer takes several) and stored with the API, which
+// serves it while the card is unchanged. Best effort, in the background:
+// a PDF that is missing or stale is made by card-pdf-service when the link
+// is opened, so nothing here may fail a save.
+async function refreshPrintPdf(cardId) {
+  try {
+    const card = await fetchCardById(cardId)
+    // Only owners and editors may store it
+    if (!card.print_template || card.role === 'viewer') return
+    const { renderAcblPdfBytes } = await loadAcblPdf()
+    const pdf = await renderAcblPdfBytes(card, card.print_template, { flatten: true })
+    const query = `?acting_user_id=${encodeURIComponent(currentUserId())}&version=${card.version}&template=${encodeURIComponent(card.print_template)}`
+    const res = await apiFetch(cardUrl(cardId, `/print-pdf${query}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: pdf
+    })
+    // 409: someone saved again meanwhile, and their browser stores theirs
+    if (!res.ok && res.status !== 409) console.warn(`Print PDF not stored (${res.status})`)
+  } catch (err) {
+    console.warn('Print PDF not made:', err)
+  }
+}
 
 async function fetchCardById(cardId) {
   const viewerId = currentUserId()
@@ -109,6 +136,7 @@ export const bridgeClassroomStorage = {
       throw err
     }
     if (!res.ok) await fail(res, 'Save')
+    refreshPrintPdf(card.id)
   },
 
   // A saved version's card_data: the base the editor merges two edits from
@@ -141,8 +169,12 @@ export const bridgeClassroomStorage = {
     if (!res.ok) await fail(res, 'Revoke invitation')
   },
 
-  printLink: (cardId, template) =>
-    sendJson(cardUrl(cardId, '/print-link'), 'POST', { acting_user_id: currentUserId(), template }, 'Get PDF link'),
+  // Making the link (or changing its layout) also stores its PDF
+  async printLink(cardId, template) {
+    const link = await sendJson(cardUrl(cardId, '/print-link'), 'POST', { acting_user_id: currentUserId(), template }, 'Get PDF link')
+    refreshPrintPdf(cardId)
+    return link
+  },
 
   async overwrite(cardId, { name, description, cardData }) {
     const res = await apiFetch(`${API_URL}/cards/${encodeURIComponent(cardId)}`, {
@@ -156,6 +188,7 @@ export const bridgeClassroomStorage = {
       })
     })
     if (!res.ok) await fail(res, 'Overwrite')
+    refreshPrintPdf(cardId)
   },
 
   // `primary`: whether the new card becomes the one that opens first. The

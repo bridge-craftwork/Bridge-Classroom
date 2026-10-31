@@ -117,7 +117,7 @@ pub(crate) fn can_read(card: &ConventionCard, who: &Standing) -> bool {
 }
 
 /// Write-side check: admins, and a private card's owners and editors.
-fn can_write(card: &ConventionCard, who: &Standing) -> bool {
+pub(crate) fn can_write(card: &ConventionCard, who: &Standing) -> bool {
     if is_admin(&who.site_role) {
         return true;
     }

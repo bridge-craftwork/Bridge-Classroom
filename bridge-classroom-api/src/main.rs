@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     http::{header, Method},
     routing::{delete, get, patch, post, put},
     Router,
@@ -216,6 +217,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/cards/:card_id/print-link",
             post(routes::card_print_link),
+        )
+        .route(
+            "/api/cards/:card_id/print-pdf",
+            put(routes::store_card_print_pdf).layer(DefaultBodyLimit::max(routes::PRINT_PDF_LIMIT)),
         )
         .route("/api/cards/print/:token", get(routes::print_card))
         .route(
