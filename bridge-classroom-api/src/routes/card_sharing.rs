@@ -657,7 +657,8 @@ fn pdf_response(name: &str, card_data: &str, bytes: Vec<u8>) -> Response {
                     pdf_filename(name, partners.as_deref())
                 ),
             ),
-            (header::CACHE_CONTROL, "public, max-age=300".to_string()),
+            // Never cached: an edit or a delete shows on the next open
+            (header::CACHE_CONTROL, "no-store".to_string()),
             (
                 header::HeaderName::from_static("x-robots-tag"),
                 "noindex".to_string(),

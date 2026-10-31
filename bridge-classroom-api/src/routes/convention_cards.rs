@@ -445,8 +445,13 @@ pub async fn delete_card(
         ));
     }
 
-    // Cascade: remove the card's history, invitations and user-card links,
-    // then the card.
+    // Cascade: remove the card's print PDF, history, invitations and
+    // user-card links, then the card. Its print link then answers 404.
+    sqlx::query("DELETE FROM card_print_pdfs WHERE card_id = ?")
+        .bind(&card_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     sqlx::query("DELETE FROM card_invitations WHERE card_id = ?")
         .bind(&card_id)
         .execute(&state.db)

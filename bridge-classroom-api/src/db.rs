@@ -704,6 +704,14 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
 
+    // Print PDFs of cards deleted before delete_card removed them too.
+    sqlx::query(
+        "DELETE FROM card_print_pdfs WHERE card_id NOT IN (SELECT id FROM convention_cards)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| DbError::Migration(e.to_string()))?;
+
     // Each card's current state as its first recorded version (idempotent).
     sqlx::query(
         r#"
