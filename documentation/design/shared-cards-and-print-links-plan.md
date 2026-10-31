@@ -24,7 +24,10 @@ Both features hang off the same saved card, so they share one migration, one acc
 
 **Consequence of 5 (#368):** sessions don't cross TLDs. A partner who only ever signs in on `.com` arrives at a `.org` invitation signed out, and has to sign in on `.org` (the 6-digit code) before joining. They join as the same account, since the code is sent to their email, so nothing is lost. The join page should say so plainly ("Sign in to join this card. Use the email you use for Bridge Classroom."). Print links need no sign-in, so they are unaffected.
 
-## Where the PDF is made (decided: A)
+## Where the PDF is made (decided: A, then B)
+
+**Changed 2026-10-30:** in production the Worker failed with Error 1102: a render takes 200–300 ms of CPU and the free Workers plan allows 10 ms. Rather than pay for Workers Paid, the PDF is now made on the droplet by `card-print-service` (`card-print.bridge-craftwork.com`, port 8007; bridge-craftwork-platform). The Worker only forwards `/card/print/*` there and caches the answer, so the link (`bridge-classroom.org/card/print/<token>.pdf`) is unchanged.
+
 
 RealBridge wants a direct PDF URL. The PDF code is JavaScript (pdf-lib); the API is Rust.
 
