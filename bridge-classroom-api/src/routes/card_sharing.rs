@@ -9,7 +9,8 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -575,13 +576,20 @@ pub struct PrintCard {
     pub updated_at: String,
 }
 
-/// GET /api/cards/print/:token — the card behind a print link, for the
-/// Worker that renders it. No sign-in: the token is the permission. Returns
-/// only what the PDF needs (no ids, no owner).
+/// How long the renderer may take: a render is a third of a second, so this
+/// only bounds a renderer that is down or queued up.
+const CARD_PDF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// GET /api/cards/print/:token — the card behind a print link. No sign-in:
+/// the token is the permission. Without `.pdf`, the card as JSON, only what
+/// the PDF needs (no ids, no owner). With it (`:token.pdf`), the card's ACBL
+/// PDF, made by card-pdf-service: this is what bridge-classroom.org's Worker
+/// forwards a print link (`/card/print/<token>.pdf`) to.
 pub async fn print_card(
     State(state): State<AppState>,
     Path(token): Path<String>,
-) -> Result<Json<PrintCard>, ApiError> {
+) -> Result<Response, ApiError> {
+    let pdf = token.ends_with(".pdf");
     let token = token.trim_end_matches(".pdf");
     let card = sqlx::query_as::<_, crate::models::ConventionCard>(
         "SELECT * FROM convention_cards WHERE print_token = ?",
@@ -597,17 +605,120 @@ pub async fn print_card(
             format!("Failed to parse card data: {}", e),
         )
     })?;
-    Ok(Json(PrintCard {
+    let card = PrintCard {
         name: card.name,
         template: card.print_template,
         card_data,
         updated_at: card.updated_at,
-    }))
+    };
+    if !pdf {
+        return Ok(Json(card).into_response());
+    }
+    render_pdf(&state, &card).await
+}
+
+/// The card's PDF from card-pdf-service: POST /pdf?template= with the
+/// card as `{ name, card_data }`.
+async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Response, ApiError> {
+    let unavailable = |why: String| {
+        tracing::warn!("card print: {why}");
+        (
+            StatusCode::BAD_GATEWAY,
+            "The convention card couldn't be printed right now. Please try again shortly."
+                .to_string(),
+        )
+    };
+    let client = reqwest::Client::builder()
+        .timeout(CARD_PDF_TIMEOUT)
+        .build()
+        .map_err(|e| unavailable(e.to_string()))?;
+    let mut req = client
+        .post(format!(
+            "{}/pdf",
+            state.config.card_pdf_url.trim_end_matches('/')
+        ))
+        .query(&[("template", card.template.as_str())])
+        .json(&serde_json::json!({ "name": card.name, "card_data": card.card_data }));
+    if let Some(key) = &state.config.card_pdf_key {
+        req = req.header("X-Render-Key", key);
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| unavailable(format!("renderer unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(unavailable(format!("renderer refused: {status} {body}")));
+    }
+    let bytes = resp.bytes().await.map_err(|e| unavailable(e.to_string()))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/pdf".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("inline; filename=\"{}\"", pdf_filename(card)),
+            ),
+            (header::CACHE_CONTROL, "public, max-age=300".to_string()),
+            (
+                header::HeaderName::from_static("x-robots-tag"),
+                "noindex".to_string(),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// "Rick-and-Dan.pdf": the partners' names, else the card's, made safe for a
+/// header and a file name.
+fn pdf_filename(card: &PrintCard) -> String {
+    let names = card
+        .card_data
+        .pointer("/metadata/partner_names")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(&card.name);
+    let base: String = names
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '-' | '_'))
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-");
+    format!(
+        "{}.pdf",
+        if base.is_empty() {
+            "convention-card"
+        } else {
+            &base
+        }
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pdf_is_named_for_the_partners() {
+        let card = |name: &str, partners: Option<&str>| PrintCard {
+            name: name.to_string(),
+            template: "classic".to_string(),
+            card_data: match partners {
+                Some(p) => serde_json::json!({ "metadata": { "partner_names": p } }),
+                None => serde_json::json!({}),
+            },
+            updated_at: String::new(),
+        };
+        assert_eq!(
+            pdf_filename(&card("Our card", Some("Rick & Dan"))),
+            "Rick-Dan.pdf"
+        );
+        assert_eq!(pdf_filename(&card("2/1 \"GF\"", None)), "21-GF.pdf");
+        assert_eq!(pdf_filename(&card("♠♥", None)), "convention-card.pdf");
+    }
 
     #[test]
     fn joining_never_lowers_a_role() {

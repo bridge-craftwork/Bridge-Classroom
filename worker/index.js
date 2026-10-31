@@ -4,59 +4,17 @@
 //
 //   /card/print/<token>.pdf
 //
-// It reads the card from the API (no sign-in: the token is the permission)
-// and renders the official ACBL PDF with the convention-card library, so the
-// link always shows the card as it is now. The template PDFs and font come
-// from this site's own static files (build-site.sh copies them to
-// /card-print-assets/), not the bundle, which keeps the script small.
-
-import { setAssetLoader, TEMPLATE_FILES, FONT_FILE } from '@bridge-craftwork/convention-card/js/assets.js'
-import { renderAcblPdfBytes } from '@bridge-craftwork/convention-card/js/acblClassicFillPdf.js'
+// The API answers it (GET /api/cards/print/<token>.pdf): it reads the card
+// and has card-pdf-service on the droplet render it. A render takes
+// 200-300 ms of CPU, past the 10 ms a free Worker may spend (Error 1102),
+// so this script only passes the request on, and caches the answer at the
+// edge. The link stays the same wherever the API or the renderer move.
 
 const PRINT_PATH = /^\/card\/print\/([A-Za-z0-9_-]{20,128})(?:\.pdf)?$/
-// Edits show within this long; RealBridge and the like fetch the link often.
-const CACHE_SECONDS = 300
+const API = 'https://api.bridge-classroom.org/api'
 
 function text(status, body) {
   return new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } })
-}
-
-function filename(card) {
-  const base = String(card.card_data?.metadata?.partner_names || card.name || 'convention-card')
-    .trim().replace(/[^\w\s.-]+/g, '').replace(/\s+/g, '-')
-  return `${base || 'convention-card'}.pdf`
-}
-
-async function renderPrint(token, request, env) {
-  const api = env.API_BASE || 'https://api.bridge-classroom.org/api'
-  const res = await fetch(`${api}/cards/print/${token}`, { headers: { accept: 'application/json' } })
-  if (res.status === 404) return text(404, 'This convention card link is not valid.')
-  if (!res.ok) return text(502, "The convention card couldn't be loaded right now. Please try again shortly.")
-  const card = await res.json()
-
-  const asset = async (file) => {
-    const r = await env.ASSETS.fetch(new URL(`/card-print-assets/${file}`, request.url))
-    if (!r.ok) throw new Error(`asset ${file}: ${r.status}`)
-    return r.arrayBuffer()
-  }
-  setAssetLoader({ template: (name) => asset(TEMPLATE_FILES[name]), font: () => asset(FONT_FILE) })
-
-  const template = card.template === 'new' ? 'new' : 'classic'
-  // Flattened: a read-only link serves a card that looks the same in every
-  // viewer and can't be typed into (convention-card 0.27.3 keeps its ticks).
-  const bytes = await renderAcblPdfBytes(
-    { name: card.name, updated_at: card.updated_at, card_data: card.card_data || {} },
-    template,
-    { flatten: true },
-  )
-  return new Response(bytes, {
-    headers: {
-      'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${filename(card)}"`,
-      'cache-control': `public, max-age=${CACHE_SECONDS}`,
-      'x-robots-tag': 'noindex',
-    },
-  })
 }
 
 export default {
@@ -73,11 +31,13 @@ export default {
     if (hit) return hit
     let res
     try {
-      res = await renderPrint(m[1], request, env)
+      res = await fetch(`${env.API_BASE || API}/cards/print/${m[1]}.pdf`)
     } catch (err) {
       console.error('card print failed', err)
-      return text(500, "The convention card couldn't be printed right now.")
+      return text(502, "The convention card couldn't be printed right now. Please try again shortly.")
     }
+    // The API's own answer (404 for a link that isn't valid), as it gave it
+    res = new Response(res.body, res)
     if (res.ok) ctx.waitUntil(cache.put(key, res.clone()))
     return res
   },
