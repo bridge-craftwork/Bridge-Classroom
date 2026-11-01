@@ -68,7 +68,10 @@ export default {
     // to the hand row and must never render larger than the seats — cap =
     // min(1.0, seat scale), floored by touch ergonomics (≥44px targets), not
     // typography. The arranger resolves 'seats' → min(1.0, computed seat scale).
-    caps: { center: 1.8, seats: 1.8, nw: 1.0, ne: 1.0, se: 'seats', sw: 1.0 },
+    // ne is the completed auction pinned during declarer play. 'seats-track' lets it
+    // grow (and shrink) with the hands, as the review DD table does, so its calls
+    // stay the size of the cards beside them (#503).
+    caps: { center: 1.8, seats: 1.8, nw: 1.0, ne: 'seats-track', sw: 1.0, se: 'seats' },
     legibilityFloor: 0.65, // also the se touch floor — the box never shrinks below
                            // this (its buttons stay tappable), but 'SE ≤ seats'
                            // dominates: at a 0.65 table the box matches, not exceeds.
