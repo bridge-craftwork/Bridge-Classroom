@@ -141,9 +141,11 @@ export { rowReservePx, handReservePx }
  * @param {number} o.centerScale  the centre scale as currently rendered
  * @param {number} [o.floor]      legibility floor
  * @param {number} [o.centerFloor] the centre's own floor (config regionFloors)
+ * @param {boolean} [o.centerTracks] the stage holds cards (play: the trick area), so
+ *   with no hand beside it to equalise against it shrinks in proportion to the seats
  * @returns {{seatTarget:number, centerTarget:number|null, centerMode:string}|null}
  */
-export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerScale, floor = 0.65, centerFloor = floor }) {
+export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerScale, floor = 0.65, centerFloor = floor, centerTracks = false }) {
   if (!Array.isArray(rows) || !rows.length || !(seatScale > 0) || !(centerScale > 0)) return null
   const mid = rows[1] || []
   const centerM = mid.find((m) => m.kind === 'center')
@@ -161,10 +163,15 @@ export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerSca
   // 'natural'  — the middle row carries no hand (bidding: E/W are chips), so there
   //   is no peer height to equalise TO — a chip is not a target. Fall back to #363:
   //   the centre's growth ABOVE natural is discretionary, so spend that first.
+  // 'track'    — the middle row carries no hand, but the centre holds CARDS (the trick
+  //   area in play), so it follows the seat scale down (never above its own). Without
+  //   this the trick area held at 1.0x while the hands above and below it were
+  //   driven to the floor, which is how South ended up below the fold (2026-10-31).
   // 'fixed'    — the centre is already the smaller party; leave it alone.
   let centerMode = 'fixed'
   if (centerM) {
     if (midSeatH > 0) centerMode = 'equalise'
+    else if (centerTracks) centerMode = 'track'
     else if (centerScale > 1.01) centerMode = 'natural'
   }
 
@@ -190,6 +197,9 @@ export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerSca
       // the stage was the tallest thing in its row again.
       if (centerMode === 'equalise') return Math.min(m.h, midSeatH * k)
       if (centerMode === 'natural') return m.h / centerScale
+      // Follows the hands' scale but never grows: a centre at 1.0x beside 1.3x hands
+      // stays put until the hands come down past it, then rides them.
+      if (centerMode === 'track') return m.h * (Math.min(centerScale, seatScale * k) / centerScale)
       return m.h
     }
     return m.h
@@ -222,6 +232,8 @@ export function solveHeightFit({ rows, gridH, heightBudget, seatScale, centerSca
     centerTarget = Math.max(centerFloor, Math.min(centerScale, (centerScale * h) / centerM.h))
   } else if (centerMode === 'natural') {
     centerTarget = 1
+  } else if (centerMode === 'track') {
+    centerTarget = Math.max(centerFloor, Math.min(centerScale, seatScale * k))
   }
   // Round DOWN, not to nearest: the solve produces a CEILING ("at most this"), and
   // rounding 0.786 up to 0.79 hands back the last two pixels it just took away — which

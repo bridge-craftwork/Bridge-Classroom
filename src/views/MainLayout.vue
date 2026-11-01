@@ -331,7 +331,7 @@
              commentary + feedback + Next/Back controls ride the shell companion. Reuses
              the SAME handlers/helpers/scoped styles as the legacy path above. -->
         <div v-else class="practice-grid-layout">
-          <div class="practice-grid-stage">
+          <div class="practice-grid-stage" :style="gridStageStyle">
             <BoardMasteryStrip
               v-if="deals.length > 1"
               :boardNumbers="deals.map(d => d.displayNumber)"
@@ -347,6 +347,7 @@
             />
             <BridgeTable
               arrangement="grid"
+              @layout="onGridLayout"
               :table-config="a1Config"
               :phase="gridPhase"
               :hands="isDeclarerPlay ? currentDeal.hands : practice.hands.value"
@@ -436,7 +437,7 @@
           <div class="practice-grid-companion">
             <!-- Defence scenes: the completed auction rides atop the companion (above the
                  narrative), matching prod, instead of pinned tiny at NE. -->
-            <div v-if="companionAuction" class="a1-companion-auction">
+            <div v-if="companionAuction" class="a1-companion-auction" :style="companionAuctionStyle">
               <AuctionTable :you-seat="auctionYouSeat" :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
             </div>
             <!-- Blue context ribbon (the bridgeContext note that lived in DealInfo before
@@ -673,6 +674,30 @@ const auctionYouSeat = computed(() => {
   const seat = gridHeroSeat.value
   return practice.frameTurned?.value ? turnSeat(seat) : seat
 })
+// What the grid reports about itself (GridArrangement 'layout' event): the seat
+// scale, so the companion auction can match the cards, and the table's natural
+// width, so the companion stays beside the table whenever both fit.
+const gridSeatScale = ref(1)
+const gridNaturalWidth = ref(0)
+function onGridLayout({ seatScale, naturalWidth }) {
+  if (seatScale > 0) gridSeatScale.value = seatScale
+  if (naturalWidth > 0) gridNaturalWidth.value = naturalWidth
+}
+// The stage's flex-basis/min-width. During bidding it keeps the 640px floor (room
+// for status + hand + the fixed-width bidding box, the 2026-07-12 overlap fix);
+// otherwise it reserves only what the table needs at natural size, so a narrow
+// table keeps the coaching text beside it instead of wrapping it below the fold.
+const gridStageStyle = computed(() => {
+  const natural = gridNaturalWidth.value
+  if (!natural) return {}
+  const min = gridPhase.value === 'bidding' ? Math.max(640, natural) : natural
+  return { '--stage-min': min + 'px' }
+})
+// The companion auction sits outside the grid, so it takes the seat scale from the
+// grid's report: the size of the cards, never below the old 1.0x, at most 1.5x.
+const companionAuctionStyle = computed(() => ({
+  '--table-scale': Math.min(1.5, Math.max(1, gridSeatScale.value)),
+}))
 function onGridCardClick(payload) {
   if (isDeclarerPlay.value) onDeclarerCard(payload)
   else onCardClick(payload)
@@ -2456,11 +2481,13 @@ body {
   justify-content: center;
 }
 .practice-grid-stage {
-  /* Min width = room for status + hand + the fixed bidding box; below this the companion
-     wraps rather than squeezing the box onto the hand. min(…,100%) still allows shrink on
-     a genuinely tiny viewport (phone — not optimized; the box's narrow form is separate). */
-  flex: 1 1 640px;
-  min-width: min(640px, 100%);
+  /* Min width = --stage-min (gridStageStyle): during bidding, room for status + hand +
+     the fixed bidding box (640px floor); otherwise the table's own natural width, so a
+     narrow play/review table keeps the companion beside it. Below this the companion
+     wraps rather than squeezing the table. min(…,100%) still allows shrink on a
+     genuinely tiny viewport (phone — not optimized; the box's narrow form is separate). */
+  flex: 1 1 var(--stage-min, 640px);
+  min-width: min(var(--stage-min, 640px), 100%);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2487,11 +2514,9 @@ body {
   color: #0d3a66;
 }
 .practice-grid-companion .grid-context-ribbon-icon { color: #1976d2; font-weight: bold; flex-shrink: 0; }
-/* Completed auction atop the companion (defence scenes). The companion sits outside
-   the grid, so the arranger doesn't scale it: give it a fixed 1.5x to match the
-   enlarged hands (#503). At the companion's 460px reading width that's ~36px calls;
-   in a narrower companion the AuctionTable's dense rule shrinks it to fit. */
-.practice-grid-companion .a1-companion-auction { --table-scale: 1.5; }
+/* Completed auction atop the companion (defence scenes). Its --table-scale is set
+   inline from the grid's seat scale (companionAuctionStyle): card-sized, 1.0-1.5x.
+   In a narrow companion the AuctionTable's dense rule shrinks it to fit. */
 /* The grid scales the TABLE up (caps), so the companion prose is bumped to match —
    at base 15px it read small next to the enlarged hand/auction (2026-07-12 report).
    Senior-friendly; legacy (.practice-right) keeps 15px. */

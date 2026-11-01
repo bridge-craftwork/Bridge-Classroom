@@ -151,7 +151,7 @@ const props = defineProps({
   labelComponent: { type: [Object, Function], default: null },
   labelProps: { type: Object, default: null },
 })
-defineEmits(['card-click', 'card-inspect'])
+const emit = defineEmits(['card-click', 'card-inspect', 'layout'])
 
 const SEATS = ['N', 'E', 'S', 'W']
 const SUIT_LETTER = { spades: 'S', hearts: 'H', diamonds: 'D', clubs: 'C' }
@@ -429,6 +429,7 @@ const sizes = reactive({})
 // The full layout ledger from the pure allocator — the source of truth the render
 // applies and the bounding-box diagnostic reads (grid-arranger-spec §3/§5.1).
 const ledger = ref(null)
+const naturalWidth = ref(0)
 // Vertical accounting (MEASURED, display-only — never fed to scale): per-row track
 // height vs content height (→ slack), and the stage line. Kept separate from the
 // pure ledger (which is width-only + row topology) and merged into ledgerJson, so
@@ -603,6 +604,14 @@ function capsWithHeight(baseCaps) {
   return out
 }
 
+// Tell the shell what it can't measure from outside: the seat scale (so content it
+// hosts beside the table, like the companion auction, can match the cards) and the
+// table's natural width (so it can keep the companion beside the table whenever that
+// fits, rather than reserving a fixed width).
+watch(() => [scales.seats, naturalWidth.value], ([seatScale, natural]) => {
+  emit('layout', { seatScale, naturalWidth: natural })
+})
+
 function relayout(force = false) {
   const el = root.value
   if (!el) return
@@ -653,6 +662,12 @@ function relayout(force = false) {
     columnWeights: props.config.tracks?.columns,
   })
   ledger.value = l
+  // The width the table needs at natural size (1.0x): every occupied column's need +
+  // margins, plus the grid's own padding/border. Reserves only — it never reads the
+  // budget, so the shell can size its stage from it without a feedback loop.
+  naturalWidth.value = Math.ceil(
+    l.columns.reduce((t, c) => t + (c.occupied.length ? c.need + c.margin : 0), 0) + (el.offsetWidth - budget),
+  )
 
   for (let ci = 0; ci < 3; ci++) colAlloc[ci] = l.colWidths[ci]
   scales.seats = l.seats.scale
@@ -800,6 +815,9 @@ function applyHeightFit() {
         centerScale,
         floor: floor.value,
         centerFloor: props.config.scale?.regionFloors?.center ?? floor.value,
+        // In play the stage is the trick area: cards, so it shrinks with the hands
+        // when height is short instead of holding at 1.0x above them.
+        centerTracks: props.phase === 'play',
       })
     : null
 

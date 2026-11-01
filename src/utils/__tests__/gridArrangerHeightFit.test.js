@@ -67,6 +67,7 @@ function predictHeight({ rows, gridH, seatScale, centerScale }, { seatTarget, ce
     if (m.kind === 'center') {
       if (centerMode === 'equalise') return midSeatH * k
       if (centerMode === 'natural') return m.h / centerScale
+      if (centerMode === 'track') return m.h * (Math.min(centerScale, seatScale * k) / centerScale)
       return m.h
     }
     return m.h
@@ -190,5 +191,55 @@ describe('solveHeightFit — guards', () => {
   it('returns null on nonsense input rather than a scale', () => {
     expect(solveHeightFit({ rows: [], gridH: 700, heightBudget: 600, seatScale: 1, centerScale: 1 })).toBeNull()
     expect(solveHeightFit({ rows: REVIEW.rows, gridH: 700, heightBudget: 600, seatScale: 0, centerScale: 1 })).toBeNull()
+  })
+})
+
+// Play, 2026-10-31 report (Baker Finesse, 1048×605 at 125% zoom): W/E hidden, so the
+// middle row is the trick area alone (216×220 at 1.0×). North and South at 1.0× are
+// ~206px; the table starts ~190px down a 605px window.
+const PLAY = {
+  rows: [
+    [{ area: 'nw', h: 124, kind: 'fixed' }, { area: 'n', h: 206, kind: 'seat', hand: true }],
+    [{ area: 'center', h: 220, kind: 'center' }],
+    [{ area: 's', h: 206, kind: 'seat', hand: true }],
+  ],
+  gridH: 650,
+  heightBudget: 405,
+  seatScale: 1,
+  centerScale: 1,
+}
+
+describe('solveHeightFit — play, trick area tracks the hands (2026-10-31 report)', () => {
+  it('without tracking, the trick area holds at 1.0x and the hands alone hit the floor', () => {
+    const out = solveHeightFit(PLAY)
+    expect(out.centerMode).toBe('fixed')
+    expect(out.centerTarget).toBe(null)
+    expect(out.seatTarget).toBe(0.65)
+    expect(predictHeight(PLAY, out)).toBeGreaterThan(PLAY.heightBudget)
+  })
+
+  it('with centerTracks, the trick area shrinks with the hands and the stack is shorter', () => {
+    const fixed = solveHeightFit(PLAY)
+    const out = solveHeightFit({ ...PLAY, centerTracks: true })
+    expect(out.centerMode).toBe('track')
+    expect(out.centerTarget).toBe(out.seatTarget)
+    expect(predictHeight(PLAY, out)).toBeLessThan(predictHeight(PLAY, fixed) - 60)
+  })
+
+  it('never shrinks the trick area below its floor', () => {
+    const out = solveHeightFit({ ...PLAY, heightBudget: 100, centerTracks: true })
+    expect(out.centerTarget).toBe(0.65)
+  })
+
+  it('a centre smaller than the hands holds until the hands come down to it', () => {
+    // Hands at 1.3x, trick area at 1.0x: the trick cards must never end up smaller
+    // than the hand cards (the first cut scaled both by k and did exactly that).
+    const out = solveHeightFit({ ...PLAY, seatScale: 1.3, gridH: 650 + 0.3 * 412, centerTracks: true })
+    expect(out.centerTarget).toBe(Math.min(1, out.seatTarget))
+  })
+
+  it('a hand beside the centre still wins: equalise, not track', () => {
+    const rows = [PLAY.rows[0], [{ area: 'w', h: 206, kind: 'seat', hand: true }, ...PLAY.rows[1]], PLAY.rows[2]]
+    expect(solveHeightFit({ ...PLAY, rows, centerTracks: true }).centerMode).toBe('equalise')
   })
 })
