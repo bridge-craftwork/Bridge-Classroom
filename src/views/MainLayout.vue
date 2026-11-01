@@ -6,7 +6,7 @@
   />
 
   <!-- Main App (shown when user is authenticated) -->
-  <div v-else class="app" :class="{ 'intro-open': introReserved }" :style="{ '--intro-gutter': introGutter }" @click.capture="dismissWelcome">
+  <div v-else class="app" :class="{ 'intro-open': introReserved, 'wide-table': deals.length && arrangement !== 'legacy' }" :style="{ '--intro-gutter': introGutter }" @click.capture="dismissWelcome">
     <!-- View-as banner — shown when admin is rendering the app as another user -->
     <div v-if="isViewingAs" class="view-as-banner">
       <span class="view-as-text">
@@ -172,6 +172,7 @@
             <!-- Auction table - shown if deal has auction and [AUCTION off] not triggered -->
             <AuctionTable
               v-if="practice.showAuctionTable.value"
+              :you-seat="auctionYouSeat"
               :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
               :dealer="practice.displayAuctionDealer.value"
               :meanings="currentDeal?.auctionNotes || []"
@@ -401,6 +402,7 @@
                 />
                 <div v-else-if="practice.showAuctionTable.value && !companionAuction" class="a1-center-auction">
                   <AuctionTable
+                    :you-seat="auctionYouSeat"
                     :bids="practice.hasBidSteps.value ? practice.auctionState.displayedBids : (currentDeal?.auction || [])"
                     :dealer="practice.displayAuctionDealer.value"
                     :meanings="currentDeal?.auctionNotes || []"
@@ -414,7 +416,7 @@
               <!-- NE: the completed auction pinned during declarer play. -->
               <template v-if="pinnedAuction" #ne>
                 <div class="a1-grid-ne">
-                  <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
+                  <AuctionTable :you-seat="auctionYouSeat" :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
                 </div>
               </template>
               <!-- SE (hero's corner): the bidding box, clustered with the hand. -->
@@ -435,7 +437,7 @@
             <!-- Defence scenes: the completed auction rides atop the companion (above the
                  narrative), matching prod, instead of pinned tiny at NE. -->
             <div v-if="companionAuction" class="a1-companion-auction">
-              <AuctionTable :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
+              <AuctionTable :you-seat="auctionYouSeat" :bids="currentDeal?.auction || []" :dealer="practice.displayAuctionDealer.value" :meanings="currentDeal?.auctionNotes || []" :currentBidIndex="-1" />
             </div>
             <!-- Blue context ribbon (the bridgeContext note that lived in DealInfo before
                  #nw went compact) — reunited with the coaching prose it belongs beside. -->
@@ -576,7 +578,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { parsePbn, getDealTitle, isRotateStep } from '../utils/pbnParser.js'
+import { parsePbn, getDealTitle, isRotateStep, turnSeat } from '../utils/pbnParser.js'
 import { stripControlDirectives, colorizeSuits, flowText, formatBid } from '../utils/cardFormatting.js'
 import { useDealPractice } from '../composables/useDealPractice.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
@@ -665,6 +667,12 @@ const gridPhase = computed(() => a1DerivedPhase())
 const gridHeroSeat = computed(() =>
   isDeclarerPlay.value ? (currentDeal.value?.studentSeat || 'S') : (practice.studentSeat.value || 'S'),
 )
+// The student's seat as the auction draws it: the auction columns follow the
+// display frame (displayAuctionDealer), so turn the seat with it.
+const auctionYouSeat = computed(() => {
+  const seat = gridHeroSeat.value
+  return practice.frameTurned?.value ? turnSeat(seat) : seat
+})
 function onGridCardClick(payload) {
   if (isDeclarerPlay.value) onDeclarerCard(payload)
   else onCardClick(payload)
@@ -2112,6 +2120,15 @@ body {
   flex-direction: column;
 }
 
+/* The practice table uses the screen's width. Students need large cards and calls,
+   and the grid arranger turns width into scale, so the 1200px page cap (right for
+   the lobby and collection pages) was what kept the table small on wide monitors:
+   at 1721px the stage got 738px. The coaching column has its own reading-width cap
+   (.practice-grid-companion), so the extra width goes to the table. */
+.app.wide-table {
+  max-width: 1760px;
+}
+
 /* While the Lesson Introduction is docked at the left edge, go full-width and
    reserve a left gutter the width of the viewer, so the practice content (board
    selector, table, bidding) reflows entirely to the right of the Intro instead
@@ -2489,14 +2506,13 @@ body {
      leaves a ~20px cushion, and the companion still grows past 300 on wider viewports. */
   flex: 1 1 300px;
   min-width: min(300px, 100%);
+  /* A reading-width cap, so a wide screen's extra width goes to the table. */
+  max-width: 460px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   align-items: stretch;
 }
-/* Match the gallery's auction sizing (the caps/measurement work was verified against
-   this max-width; the auction renders in its dense form here as in the gallery). */
-.practice-grid-layout .a1-center-auction { max-width: 260px; }
 .practice-grid-layout .a1-grid-ne {
   background: #f7f9f6;
   border: 1px solid #e6e8e3;
