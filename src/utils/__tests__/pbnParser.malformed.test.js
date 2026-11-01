@@ -7,13 +7,14 @@ import { parsePbn } from '../pbnParser.js'
 const DEAL = '[Deal "N:J98.J74.QT3.KQ54 K432.83.J4.T9872 AQT5.AKQT62.6.J3 76.95.AK98752.A6"]'
 
 describe('pbnParser: malformed boards stay contained', () => {
-  it('ends an unclosed comment at the next [Board]', () => {
+  it('ends an unclosed comment at the next PBN tag', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const pbn = `
 [Board "2"]
 [Dealer "S"]
 ${DEAL}
 {Board two text.
+[BidSystemNS "2/1GF"]
 [Board "3"]
 [Dealer "S"]
 ${DEAL}
@@ -24,6 +25,7 @@ ${DEAL}
     expect(b3.boardNumber).toBe(3)
     expect(b2.commentary).toContain('Board two text.')
     expect(b2.commentary).not.toContain('Board three text.')
+    expect(b2.commentary).not.toContain('BidSystemNS')
     expect(b3.commentary).toContain('Board three text.')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()

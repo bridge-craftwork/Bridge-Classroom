@@ -55,11 +55,13 @@ export function parsePbn(pbnContent) {
 
     // Handle commentary blocks {...}
     if (inCommentary) {
-      // A comment left unclosed must not swallow the next board's commentary:
-      // a [Board] tag ends it, and the tag falls through to start the new deal.
-      const nextBoard = /^\s*\[Board\s+"/.test(line)
-      if (nextBoard) {
-        console.warn(`[pbnParser] board ${currentDeal?.boardNumber}: commentary not closed before the next [Board]`)
+      // A comment left unclosed must not swallow the tags after it or the next
+      // board's commentary. A PBN tag line ([Name "value"], a form commentary
+      // directives like [show S] or [BID 1S] never take) ends it, and the tag
+      // falls through to normal processing.
+      const nextTag = /^\s*\[\w+\s+"[^"]*"\]\s*$/.test(line)
+      if (nextTag) {
+        console.warn(`[pbnParser] board ${currentDeal?.boardNumber}: commentary not closed before ${line.trim()}`)
         currentCommentary.push(commentaryBuffer.trim())
         commentaryBuffer = ''
         inCommentary = false
@@ -71,7 +73,7 @@ export function parsePbn(pbnContent) {
       } else {
         commentaryBuffer += line + '\n'
       }
-      if (!nextBoard) continue
+      if (!nextTag) continue
     }
 
     if (line.includes('{')) {
