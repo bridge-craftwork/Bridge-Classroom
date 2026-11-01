@@ -55,7 +55,17 @@ export function parsePbn(pbnContent) {
 
     // Handle commentary blocks {...}
     if (inCommentary) {
-      if (line.includes('}')) {
+      // A comment left unclosed must not swallow the tags after it or the next
+      // board's commentary. A PBN tag line ([Name "value"], a form commentary
+      // directives like [show S] or [BID 1S] never take) ends it, and the tag
+      // falls through to normal processing.
+      const nextTag = /^\s*\[\w+\s+"[^"]*"\]\s*$/.test(line)
+      if (nextTag) {
+        console.warn(`[pbnParser] board ${currentDeal?.boardNumber}: commentary not closed before ${line.trim()}`)
+        currentCommentary.push(commentaryBuffer.trim())
+        commentaryBuffer = ''
+        inCommentary = false
+      } else if (line.includes('}')) {
         commentaryBuffer += line.substring(0, line.indexOf('}'))
         currentCommentary.push(commentaryBuffer.trim())
         commentaryBuffer = ''
@@ -63,7 +73,7 @@ export function parsePbn(pbnContent) {
       } else {
         commentaryBuffer += line + '\n'
       }
-      continue
+      if (!nextTag) continue
     }
 
     if (line.includes('{')) {
@@ -788,25 +798,26 @@ function parseCards(cardString) {
 }
 
 /**
- * Trim auction to end after the correct number of closing passes.
- * In bridge, 3 consecutive passes after a non-pass bid end the auction.
- * If no non-pass bid was made, 4 passes (all pass) ends it.
+ * Trim the auction at the point it ends: 3 consecutive passes after a call
+ * other than Pass, or 4 passes if nobody bid. Anything after that (extra
+ * passes, or a second copy of the auction written into the same board) is
+ * dropped. An auction that never ends is returned whole.
  * @param {Array} bids - Array of normalized bid strings
  * @returns {Array} Trimmed array
  */
 function trimAuction(bids) {
-  let lastNonPassIndex = -1
+  let bidMade = false
+  let passes = 0
   for (let i = 0; i < bids.length; i++) {
-    if (bids[i] !== 'Pass') lastNonPassIndex = i
+    if (bids[i] !== 'Pass') {
+      bidMade = true
+      passes = 0
+      continue
+    }
+    passes++
+    if (passes === (bidMade ? 3 : 4)) return bids.slice(0, i + 1)
   }
-
-  if (lastNonPassIndex === -1) {
-    // All passes - keep at most 4
-    return bids.slice(0, 4)
-  }
-
-  // Keep 3 passes after the last non-pass bid
-  return bids.slice(0, lastNonPassIndex + 4)
+  return bids
 }
 
 /** Pair each =N= mark with its [Note] text, for the calls left after trimming. */
