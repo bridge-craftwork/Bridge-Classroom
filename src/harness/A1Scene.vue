@@ -161,8 +161,8 @@ const shell = computed(() => {
 const sceneStyle = computed(() => {
   if (shell.value.mode !== 'two-column') return { gridTemplateColumns: '1fr' }
   return shell.value.companionPosition === 'left'
-    ? { gridTemplateColumns: '320px minmax(0, 1fr)' }
-    : { gridTemplateColumns: 'minmax(0, 1fr) 320px' }
+    ? { gridTemplateColumns: 'minmax(300px, 460px) minmax(0, 1fr)' }
+    : { gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 460px)' }
 })
 const narrativeOrder = computed(() => (['left', 'above'].includes(shell.value.companionPosition) ? -1 : 1))
 onMounted(() => { readWin(); window.addEventListener('resize', readWin) })
@@ -174,6 +174,7 @@ const auctionProps = computed(() => ({
   dealer: f.value.dealer || 'N',
   currentBidIndex: (f.value.bids || []).length,
   meanings: f.value.meanings || [],
+  youSeat: f.value.seat || 'S',
 }))
 </script>
 
@@ -181,7 +182,9 @@ const auctionProps = computed(() => ({
 /* Shell layout is driven by config.shell.perViewport (grid-template-columns +
    narrative order come from `sceneStyle`/`narrativeOrder`, not a media query). */
 .a1-scene {
-  max-width: 1180px;
+  /* Mirrors the app's practice shell (.app.wide-table, MainLayout.vue): the table
+     takes the screen's width; the companion stops at a reading width. */
+  max-width: 1760px;
   margin: 0 auto;
   padding: 20px;
   display: grid;
@@ -206,7 +209,6 @@ const auctionProps = computed(() => ({
   font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
   color: #6a726c; margin-bottom: 4px;
 }
-.a1-center-auction { max-width: 260px; }
 .a1-se { display: flex; }
 .a1-controls { display: flex; gap: 8px; }
 .a1-ctl {

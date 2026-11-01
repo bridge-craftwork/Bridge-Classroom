@@ -185,10 +185,10 @@ if (haveTrip) {
 // the table's fixed 2px border (which headerRowPx bakes in), so the rendered height at
 // a given scale is `BORDER + scale·(reserve − BORDER)` — empirically exact to <0.5px
 // across scales (verified with scripts/measure-auction.mjs: len1 @1.8× → 95.6 predicted
-// vs 95.16 rendered). NOTE: the A1 auction renders in DENSE (console-tile) mode at every
-// viewport — its `.a1-center-auction` max-width (260px) is below the 280px dense
-// threshold even at 1.0× — and `auctionMetrics` was re-baselined FROM these dense A1
-// scenes, so the metric already describes the dense height; dense is CHECKED, not skipped.
+// vs 95.16 rendered). The A1 centre auction renders FULL-SIZE rows (not the console-tile
+// `dense` form): dense now triggers only below the table's own min-width, and the old
+// 260px `.a1-center-auction` cap is gone (#280, 2026-10-31). Until then it was dense at
+// every viewport and the metric described dense rows.
 const AUCTION_ROUNDS = { 'a1-bidding-len1': 1, 'a1-bidding-len5': 2, 'a1-bidding-len9': 3 }
 const AUCTION_BORDER_PX = 2 // the .auction-table 2px border headerRowPx bakes in — doesn't scale
 let heightMismatches = 0

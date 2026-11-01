@@ -22,15 +22,20 @@ export const AUCTION_UNIT = {
   // (bidding len1/5/9), so a future typography pass that shifts these row heights
   // fails the walk instead of silently re-floating the auction.
   //
-  // Measured full-table heights at 1.0×: 1 round → 54, 2 → 89, 3 → 124 (marginal
-  // 35/round). So `roundRowPx = 35`, and `headerRowPx` is the FIXED overhead — the
-  // W/N/E/S band (~16px) PLUS the table's 2px top/bottom borders — chosen so
-  // `headerRowPx + rounds·roundRowPx` reproduces the measured heights exactly
-  // (19 + 35 = 54, 19 + 70 = 89, 19 + 105 = 124). The restyle compressed the header
-  // band (padding 8→2px, font 14→11px), which is why the pre-restyle 26/33 (reserve
-  // 59) overshot the real 54 by 5px.
-  headerRowPx: 19,
-  roundRowPx: 35,
+  // Fitted 2026-10-31 (#280) across all five gallery viewports (scales 0.65-1.51,
+  // scripts/measure-auction.mjs + a per-viewport sweep): the header band is 25.2px
+  // per unit of scale, and a round costs 43.7-44.8 depending on how the browser
+  // rounds the line box at that scale. headerRowPx 28.2 (band + the fixed border the
+  // walk's formula bakes in) and roundRowPx 44.2 keep every viewport within the
+  // walk's ±2px (1 round → 72.4, 3 → 160.8 at 1.0×).
+  //
+  // The previous 19/35 were measured while A1's centre auction was unintentionally
+  // in the console-tile `dense` mode (its cutoff was a fixed 280px, above the 220px
+  // min-width the centre is allocated, and a 260px wrapper cap held it there), so
+  // they described dense rows. With dense keyed to minWidthPx the centre renders
+  // full-size rows, and the seat-label band grew from 11px to 16px type.
+  headerRowPx: 28.2,
+  roundRowPx: 44.2,
   // Extra height (px, 1.0×) a round costs when one of its cells is a "you vs BBA"
   // stack. MEASURED 2026-07-30 from the AuctionTable specimens (plain vs
   // diverged-stacked / diverged-shipped, --table-scale 1): a plain round row is

@@ -1,10 +1,12 @@
 <template>
   <div ref="root" class="auction-table" :class="{ dense }" :style="{ '--at-min-w': AUCTION_UNIT.minWidthPx + 'px' }">
     <div class="header">
-      <div class="header-cell">W</div>
-      <div class="header-cell">N</div>
-      <div class="header-cell">E</div>
-      <div class="header-cell">S</div>
+      <div
+        v-for="seat in SEATS"
+        :key="seat"
+        class="header-cell"
+        :class="{ you: seat === youSeat }"
+      >{{ seat === youSeat ? 'You' : seat }}</div>
     </div>
     <div class="rounds">
       <div v-for="(round, roundIdx) in rounds" :key="roundIdx" class="round">
@@ -13,6 +15,7 @@
           :key="bidIdx"
           class="bid-cell"
           :class="{
+            'you-col': SEATS[bidIdx] === youSeat,
             'current-turn': isCurrentTurn(roundIdx, bidIdx),
             'wrong-bid': isWrongBid(roundIdx, bidIdx),
             'correct-bid': isCorrectBid(roundIdx, bidIdx),
@@ -121,8 +124,8 @@ const root = ref(null)
 const tableWidth = ref(9999)
 // Effective --table-scale — the dense threshold (and min-width floor) scale
 // with it, so at 1.5× a 320px container is correctly "narrow" and goes dense
-// instead of letting the scaled 462px grid overflow and clip. Read once on
-// mount (scale is static per render); default 1 keeps the 1.0 case identical.
+// instead of letting the scaled 462px grid overflow and clip. Read on
+// mount and again whenever the container resizes; default 1 keeps the 1.0 case identical.
 const uiScale = ref(1)
 let ro = null
 onMounted(() => {
@@ -137,7 +140,13 @@ onMounted(() => {
   // the honest "is this a console tile" signal.
   const el = root.value?.parentElement || root.value
   if (typeof ResizeObserver === 'undefined' || !el) return
-  ro = new ResizeObserver((entries) => { tableWidth.value = entries[0].contentRect.width })
+  ro = new ResizeObserver((entries) => {
+    // Re-read the scale here too: the arranger sets --table-scale after mount, so
+    // the value read above can be stale by the time the container settles.
+    const s = parseFloat(getComputedStyle(root.value).getPropertyValue('--table-scale'))
+    if (s > 0) uiScale.value = s
+    tableWidth.value = entries[0].contentRect.width
+  })
   ro.observe(el)
 })
 // A fixed-position tooltip would drift off its bid on scroll; just drop it.
@@ -146,7 +155,11 @@ onBeforeUnmount(() => {
   ro?.disconnect()
   window.removeEventListener('scroll', hideTip, true)
 })
-const dense = computed(() => tableWidth.value < 280 * uiScale.value)
+// Dense only when the full-size grid genuinely can't fit: below its own min-width
+// (AUCTION_UNIT.minWidthPx at this scale). The old fixed 280px cutoff was 60px
+// above that, so A1's centre (allocated exactly minWidthPx × scale) went dense
+// and shrank every call for nothing. 2px of slack absorbs allocation rounding.
+const dense = computed(() => tableWidth.value < AUCTION_UNIT.minWidthPx * uiScale.value - 2)
 
 // Render suits in a meaning as colored symbols: BBOalert codes (!C !D !H !S)
 // and the symbols themselves.
@@ -178,7 +191,16 @@ function isMeaningfulText(text, bid) {
   return true
 }
 
+// Header/column order is fixed W-N-E-S; the dealer only decides where calls start.
+const SEATS = ['W', 'N', 'E', 'S']
+
 const props = defineProps({
+  // The student's seat (in the displayed frame). Its header reads "You" and its
+  // column is tinted, so the student can tell their own calls from partner's (#280).
+  youSeat: {
+    type: String,
+    default: ''
+  },
   bids: {
     type: Array,
     default: () => []
@@ -402,10 +424,16 @@ function tooltipFor(bidIdx) {
   text-align: center;
   /* Header band compressed to ~⅓ (glyph-scale restyle, item 1): the W-N-E-S band
      is a label, not a stage — reclaim its height for the calls. */
-  padding: calc(2px * var(--table-scale)) calc(4px * var(--table-scale));
-  font-weight: 600;
-  font-size: calc(11px * var(--table-scale));
+  /* Seat labels at BBO-like prominence: a label the eye finds at a glance, about
+     two-thirds of a call's size (#280). */
+  padding: calc(3px * var(--table-scale)) calc(4px * var(--table-scale));
+  font-weight: 700;
+  font-size: calc(16px * var(--table-scale));
   line-height: 1.2;
+}
+
+.header-cell.you {
+  background: #2e7d32;
 }
 
 .rounds {
@@ -531,6 +559,10 @@ function tooltipFor(bidIdx) {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+.you-col {
+  background: #e8f5e9;
 }
 
 .current-turn {
