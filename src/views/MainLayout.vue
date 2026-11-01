@@ -2487,9 +2487,11 @@ body {
   color: #0d3a66;
 }
 .practice-grid-companion .grid-context-ribbon-icon { color: #1976d2; font-weight: bold; flex-shrink: 0; }
-/* Completed auction atop the companion (defence scenes) — natural size, capped so it
-   doesn't stretch the full companion width; the companion's --table-scale is 1.0. */
-.practice-grid-companion .a1-companion-auction { max-width: 300px; }
+/* Completed auction atop the companion (defence scenes). The companion sits outside
+   the grid, so the arranger doesn't scale it: give it a fixed 1.5x to match the
+   enlarged hands (#503). At the companion's 460px reading width that's ~36px calls;
+   in a narrower companion the AuctionTable's dense rule shrinks it to fit. */
+.practice-grid-companion .a1-companion-auction { --table-scale: 1.5; }
 /* The grid scales the TABLE up (caps), so the companion prose is bumped to match —
    at base 15px it read small next to the enlarged hand/auction (2026-07-12 report).
    Senior-friendly; legacy (.practice-right) keeps 15px. */
