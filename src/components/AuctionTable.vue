@@ -606,13 +606,6 @@ function tooltipFor(bidIdx) {
   background: rgba(0, 0, 0, 0.05);
 }
 
-.stacked-row.rejected .stacked-bid {
-  text-decoration: line-through;
-  text-decoration-color: #b00;
-  text-decoration-thickness: 2px;
-  opacity: 0.6;
-}
-
 .stacked-marker {
   font-size: calc(10px * var(--table-scale));
   color: #1D9E75;
