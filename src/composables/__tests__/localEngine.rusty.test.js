@@ -141,6 +141,17 @@ describe('LocalEngine with the Rusty bidder', () => {
     expect(engine.referenceName).toBe('BBA')
   })
 
+  it('points a differing student at the highlighted call in the auction', async () => {
+    const { engine } = engineWith({
+      script: ['1NT', 'Pass', null, 'Pass', 'Pass', 'Pass'],
+      bbaLine: ['1NT', 'Pass', '3NT', 'Pass', 'Pass', 'Pass'],
+    })
+    await engine.loadDeal(DEAL)
+    await engine.onUserBid('2C')
+    expect(engine.auctionComplete.value).toBe(true)
+    expect(engine.summary.value).toBe('1 of your bids differed from the BBA — see the highlighted call in the auction.')
+  })
+
   it('bids with Rusty even when BBA is down (no reference, fallbacks pass)', async () => {
     const { engine } = engineWith({ script: ['1NT', 'NORULE'], bbaLine: [], bbaFail: true })
     await engine.loadDeal(DEAL)

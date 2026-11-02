@@ -34,7 +34,7 @@ export default {
   // South's 2NT diverged from BBA. Index 8 in the call list.
   divergedBids: [8],
   divergence: true,
-  summary: '1 of your bids differed from the BBA — see the divergent cells above.',
+  summary: '1 of your bids differed from the BBA — see the highlighted call in the auction.',
   occupants: {
     N: { name: 'BBA' },
     E: { name: 'BBA' },

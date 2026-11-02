@@ -200,7 +200,7 @@ export function useLocalEngine(config = {}) {
     if (!auctionComplete.value) return ''
     const n = Object.keys(divergedBids.value).length
     if (n === 0) return `You matched the ${REFERENCE_NAME} all the way through.`
-    return `${n} of your bids differed from the ${REFERENCE_NAME} — see the divergent cells above.`
+    return `${n} of your bids differed from the ${REFERENCE_NAME} — see the highlighted ${n === 1 ? 'call' : 'calls'} in the auction.`
   })
   const canDouble = computed(() => {
     const trailing = []
