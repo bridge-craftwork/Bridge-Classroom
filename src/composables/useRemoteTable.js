@@ -74,8 +74,8 @@ const originalDeal = ref(null)
 const plays = ref([])
 // The claim that ended the play: { seat, tricks, ruling, at_trick, at_card }.
 const claim = ref(null)
-// { N: {kind:'human',name,connected} | {kind:'empty'}, ... } — empty seats
-// are played by the server's bots.
+// { N: {kind:'human',name,connected} | {kind:'bot'} | {kind:'reserved',name} |
+// {kind:'empty'}, ... } — see the service's seats_json.
 const seats = ref({})
 // Sides whose bots always pass in the auction (PassBot), e.g. ['EW']. From the
 // snapshot / seat_update. Host toggles it via sendPassSides.
@@ -238,14 +238,16 @@ const clickableSeat = computed(() => {
     return dummySeat.value
   }
   // You're a human dummy for a BOT-CONTROLLED declarer → you play the
-  // declarer's hand too. Bot-controlled = an empty seat OR a disconnected
-  // human (a ghost, greyed 🤖): a bot is covering it, so the human dummy runs
-  // both hands. Mirrors the server's declarer_side_controller (which treats a
-  // disconnected-past-grace declarer as a bot). Previously this only matched a
-  // truly-empty seat, so a ghost declarer left the human dummy unable to play
-  // and the bot declining (server says the human controls it) — a stuck hand.
+  // declarer's hand too. Bot-controlled = a bot seat, a seat reserved for an
+  // invited friend (a bot fills it until they arrive), an empty seat, OR a
+  // disconnected human (a ghost, greyed 🤖): a bot is covering it, so the human
+  // dummy runs both hands. Mirrors the server's declarer_side_controller (which
+  // treats a disconnected-past-grace declarer as a bot). Anything narrower leaves
+  // the human dummy unable to play and the bot declining (server says the human
+  // controls it) — a stuck hand.
   const decl = seats.value[declarer.value]
-  const declIsBot = !decl || decl.kind === 'empty' || decl.connected === false
+  const declIsBot = !decl || ['bot', 'reserved', 'empty'].includes(decl.kind) ||
+    decl.connected === false
   if (
     mine.includes(dummySeat.value) &&
     nextToAct.value === declarer.value &&
