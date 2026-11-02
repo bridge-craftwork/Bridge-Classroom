@@ -6,6 +6,8 @@
  * and correctness.
  */
 
+import { boardTokenFor } from './pbsScenarios.js'
+
 // Per-measurement idle ceiling. A single prompt's `time_ms` is wall-clock
 // between the prompt being shown and answered, so a student who walks away
 // mid-board can log hours on one bid. We cap each prompt at 2 minutes before
@@ -165,10 +167,11 @@ export function createObservation({
     jungle,
     // ADR-0001 board identity / prerelease (clear-text; sent by extractMetadata).
     // collection_id is tagged onto the deal at load from the active collection;
-    // prerelease = NOT stable (default-deny); the token is the opaque PBN stamp.
+    // prerelease = NOT stable (default-deny); the token is the opaque stamp, from
+    // the manifest roster (#94) or else the PBN tag that older files still carry.
     collection_id: deal.collectionId || null,
     prerelease: deal.stable !== true,
-    board_version_token: deal.boardVersionToken || null
+    board_version_token: boardTokenFor(deal) || deal.boardVersionToken || null
   }
 }
 
