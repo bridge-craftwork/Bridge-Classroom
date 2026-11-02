@@ -71,9 +71,29 @@ export function vulToBen(vulnerable, seat) {
 
 // ── HTTP ───────────────────────────────────────────────────────────────
 
+// Answers already fetched this page load, so restarting a solo deal replays
+// BEN's lead and cards instantly (#257). Keyed by the full request URL: BEN is
+// stateless, so the query string (hands, seat, dealer, vul, auction, played
+// cards) is everything its answer depends on, and any change to those is a
+// different key. Only successful answers carrying a card are kept. Oldest-used
+// entries go first once full; a full deal is at most about 50 calls.
+const BEN_CACHE_MAX = 256
+const benCache = new Map()
+
+// For tests.
+export function clearBenCache() {
+  benCache.clear()
+}
+
 async function benFetch(path, params, { timeoutMs = 180000, signal } = {}) {
   const qs = new URLSearchParams(params).toString()
   const url = `${getBenUrl()}${path}?${qs}`
+  const hit = benCache.get(url)
+  if (hit) {
+    benCache.delete(url)
+    benCache.set(url, hit)
+    return { json: structuredClone(hit), elapsedMs: 0 }
+  }
   const ctrl = new AbortController()
   const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs)
   // Caller can also pass an outer signal; abort the inner ctrl if it fires.
@@ -91,6 +111,10 @@ async function benFetch(path, params, { timeoutMs = 180000, signal } = {}) {
     }
     const json = await resp.json()
     const elapsedMs = ((typeof performance !== 'undefined') ? performance.now() : Date.now()) - startedAt
+    if (json?.card) {
+      benCache.set(url, structuredClone(json))
+      if (benCache.size > BEN_CACHE_MAX) benCache.delete(benCache.keys().next().value)
+    }
     return { json, elapsedMs }
   } finally {
     clearTimeout(timeoutId)
