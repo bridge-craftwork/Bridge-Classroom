@@ -23,7 +23,7 @@ import { SUIT_SYMBOLS } from '../../utils/cardFormatting.js'
 import { SERVER_CAPABILITIES } from './tableEngine.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchAuction } from '../../utils/bbaClient.js'
-import { firstNewDivergence } from '../../utils/handAnalysis.js'
+import { firstNewDivergence, isLegalCall, seatAtIndex } from '../../utils/handAnalysis.js'
 import { useClaimFlow } from '../useClaimFlow.js'
 import { validateClaimAt, claimLimitAt } from '../../utils/solverClient.js'
 
@@ -183,9 +183,13 @@ export function useServerEngine() {
   // reference, because the reference is replaced as the auction proceeds — see
   // below. Board-scoped.
   const divergedMap = ref({})
+  // Every index the reference has been re-anchored at, at any seat. Each index is
+  // re-requested once, so an answer that doesn't honour the prefix can't loop.
+  let anchored = {}
   watch(() => boardNumber.value, () => {
     expectedAuction.value = null
     divergedMap.value = {}
+    anchored = {}
     bbaToken++
   })
 
@@ -205,6 +209,7 @@ export function useServerEngine() {
   watch([fullDeal, showBbaCompare], ([deal, show]) => {
     if (!(capabilities.bbaExpectedAuction && deal && show)) return
     if (expectedAuction.value) return
+    anchored = {}
     fetchReference()
   }, { immediate: true })
 
@@ -212,32 +217,57 @@ export function useServerEngine() {
   //
   // The subtlety that makes this more than "drop the settled gate": a
   // from-scratch BBA reference is only positionally meaningful UP TO AND
-  // INCLUDING your first divergence. Once you bid something BBA didn't, every
-  // later reference call assumes BBA's line rather than the auction that actually
-  // happened — so comparing them to your real calls invents disagreements. So on
-  // each divergence we record it and RE-REQUEST the reference with the actual
-  // auction as the prefix, exactly as solo has always done. `firstNewDivergence`
-  // returns one at a time for that reason.
-  let refetching = false
-  watch([() => auction.value.length, expectedAuction, showBbaCompare, () => yourSeat.value],
-    async () => {
-      if (!capabilities.bbaExpectedAuction) return
-      if (!showBbaCompare.value || !yourSeat.value || refetching) return
-      const exp = expectedAuction.value?.auction
-      if (!exp) return
-      const hit = firstNewDivergence(
-        auction.value, exp, dealer.value, yourSeat.value, divergedMap.value,
-      )
-      if (!hit) return
-      divergedMap.value = { ...divergedMap.value, [hit.idx]: { user: hit.user, bba: hit.bba } }
-      refetching = true
-      try {
+  // INCLUDING the auction's first divergence. Once anyone at the table calls
+  // something BBA didn't — you, a partner or a bot — every later reference call
+  // assumes BBA's line rather than the auction that actually happened, so
+  // comparing them to your real calls invents disagreements, even insufficient
+  // bids. So on a divergence at ANY seat we RE-REQUEST the reference with the
+  // actual auction as the prefix, and only then look further along. Only your own
+  // divergences are recorded. `firstNewDivergence` returns one at a time for that
+  // reason.
+  //
+  // One pass runs at a time and re-reads the state after each fetch, so calls made
+  // while a request is out are compared against the reference it brings back.
+  let comparing = false
+  async function compareAuction() {
+    if (comparing) return
+    comparing = true
+    try {
+      while (capabilities.bbaExpectedAuction && showBbaCompare.value && yourSeat.value) {
+        if (forgetUndoneCalls()) {
+          await fetchReference(auction.value.slice())
+          continue
+        }
+        const exp = expectedAuction.value?.auction
+        if (!exp) return
+        const hit = firstNewDivergence(auction.value, exp, dealer.value, null, anchored)
+        if (!hit) return
+        anchored = { ...anchored, [hit.idx]: true }
+        if (seatAtIndex(dealer.value, hit.idx) === yourSeat.value &&
+            isLegalCall(hit.bba, auction.value.slice(0, hit.idx))) {
+          divergedMap.value = { ...divergedMap.value, [hit.idx]: { user: hit.user, bba: hit.bba } }
+        }
         await fetchReference(auction.value.slice(0, hit.idx + 1))
-      } finally {
-        refetching = false
       }
-    },
-    { immediate: true })
+    } finally {
+      comparing = false
+    }
+  }
+
+  // An undo can take back a call the reference is anchored on. Drop what was
+  // learned from the calls that are gone; returns whether there were any, in which
+  // case the reference has to be re-requested for the auction as it now stands.
+  function forgetUndoneCalls() {
+    const len = auction.value.length
+    const keep = (map) => Object.fromEntries(Object.entries(map).filter(([k]) => Number(k) < len))
+    if (Object.keys(anchored).every((k) => Number(k) < len)) return false
+    anchored = keep(anchored)
+    divergedMap.value = keep(divergedMap.value)
+    return true
+  }
+
+  watch([() => auction.value.length, expectedAuction, showBbaCompare, () => yourSeat.value],
+    compareAuction, { immediate: true })
 
   // What AuctionTable renders ({ idx: { user, bba } }), scoped to YOUR seat and
   // gated on the preference — a multi-human table shows each player only their own
