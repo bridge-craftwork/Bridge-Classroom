@@ -393,12 +393,12 @@ export function useLocalEngine(config = {}) {
     }
   }
 
-  // Rotate a deal 180°: N↔S, E↔W. Dealer + vulnerability flip with the seats.
+  // Rotate a deal 180°: N↔S, E↔W. The dealer moves with the seats. Vulnerability
+  // doesn't change: each partnership keeps its own two hands, so NS is still NS.
   function rotateDeal(deal) {
     return {
       ...deal,
       dealer: { N: 'S', S: 'N', E: 'W', W: 'E' }[deal.dealer] || deal.dealer,
-      vulnerable: deal.vulnerable === 'NS' ? 'EW' : deal.vulnerable === 'EW' ? 'NS' : deal.vulnerable,
       hands: { N: deal.hands.S, S: deal.hands.N, E: deal.hands.W, W: deal.hands.E },
     }
   }
