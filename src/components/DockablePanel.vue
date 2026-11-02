@@ -43,7 +43,7 @@
 // description identically. When docked it snaps to the left edge and reports its
 // geometry so the host layout can reserve a matching gutter (see MainLayout /
 // BiddingPracticeView `.intro-open`); floating overlays with no reflow.
-import { reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useAppConfig } from '../composables/useAppConfig.js'
 
 const props = defineProps({
@@ -91,6 +91,23 @@ watch(
   () => emit('geometry', props.visible ? { x: pos.x, w: size.w } : null),
   { immediate: true }
 )
+
+// Escape closes the panel. On the document because the panel opens without taking
+// focus. A focused text field keeps its Escape (e.g. the Report a Problem note).
+function onKeydown(e) {
+  if (e.key !== 'Escape' || e.defaultPrevented) return
+  if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+  emit('close')
+}
+watch(
+  () => props.visible,
+  (v) => {
+    document.removeEventListener('keydown', onKeydown)
+    if (v) document.addEventListener('keydown', onKeydown)
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 
 const interacting = ref(false)
 const dragOffset = reactive({ x: 0, y: 0, startW: 0, startH: 0 })
