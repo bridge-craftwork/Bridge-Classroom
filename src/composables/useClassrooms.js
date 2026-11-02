@@ -202,6 +202,42 @@ export function useClassrooms() {
     }
   }
 
+  /**
+   * The teachers a student is sharing with, as { success, grants }. Leaves out
+   * the admin grant every account gets at sign-up: it isn't a teacher's access.
+   */
+  async function fetchTeacherGrants(studentId) {
+    try {
+      const [grantsRes, adminRes] = await Promise.all([
+        apiFetch(`${API_URL}/grants?grantor_id=${encodeURIComponent(studentId)}`),
+        apiFetch(`${API_URL}/keys/admin`) // 404 just means no admin is configured
+      ])
+      if (!grantsRes.ok || (!adminRes.ok && adminRes.status !== 404)) {
+        return { success: false, error: 'Unable to load sharing details' }
+      }
+      const { grants } = await grantsRes.json()
+      const adminViewerId = adminRes.ok ? (await adminRes.json()).viewer_id : null
+      return { success: true, grants: grants.filter(g => g.grantee_id !== adminViewerId) }
+    } catch (err) {
+      console.error('Failed to fetch sharing grants:', err)
+      return { success: false, error: 'Unable to connect to server' }
+    }
+  }
+
+  /** Revoke a sharing grant (forward-looking: sets revoked on the server) */
+  async function revokeGrant(grantId) {
+    try {
+      const response = await apiFetch(`${API_URL}/grants/${encodeURIComponent(grantId)}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) return { success: false, error: `Server error ${response.status}` }
+      return await response.json()
+    } catch (err) {
+      console.error('Failed to revoke grant:', err)
+      return { success: false, error: 'Unable to connect to server' }
+    }
+  }
+
   /** Reset all state */
   function reset() {
     teacherClassrooms.value = []
@@ -222,6 +258,8 @@ export function useClassrooms() {
     fetchJoinInfo,
     joinClassroom,
     leaveClassroom,
+    fetchTeacherGrants,
+    revokeGrant,
     reset
   }
 }

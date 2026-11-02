@@ -111,6 +111,48 @@ async function handleLeaveClassroom(classroomId) {
   leavingClassroom.value = null
 }
 
+// Teachers this student shares with (#16). Hidden during an admin's "View as":
+// the shadow user must not be able to change the student's sharing.
+const teacherGrants = ref([])
+const grantsError = ref('')
+const revokingGrant = ref(null)
+const canManageSharing = computed(() => !!user.value && !userStore.isViewingAs.value)
+
+async function loadTeacherGrants() {
+  teacherGrants.value = []
+  grantsError.value = ''
+  if (!props.visible || !canManageSharing.value) return
+  const userId = user.value.id
+  const result = await classroomStore.fetchTeacherGrants(userId)
+  if (userId !== user.value?.id) return // switched user while this was loading
+  if (result.success) teacherGrants.value = result.grants
+  else grantsError.value = result.error
+}
+
+watch([() => props.visible, () => user.value?.id, canManageSharing], loadTeacherGrants, { immediate: true })
+
+async function handleStopSharing(grant) {
+  // Worded to match what revoking does. It removes the teacher's key to the
+  // encrypted detail, but the clear-text results behind the classroom dashboard
+  // follow membership, not the grant, and rejoining re-grants (classrooms.rs).
+  if (!confirm(
+    `Stop sharing your practice details with ${grant.grantee_name}?\n\n` +
+    'From their next visit, they won\'t be able to open your detailed practice results. Anything they have already seen can\'t be taken back.\n\n' +
+    'If you are still in their classroom, they will still see your assignment progress and accuracy. To stop that for new assignments, leave the classroom.\n\n' +
+    'Joining their classroom again turns sharing back on.'
+  )) return
+
+  grantsError.value = ''
+  revokingGrant.value = grant.id
+  const result = await classroomStore.revokeGrant(grant.id)
+  if (result.success) {
+    teacherGrants.value = teacherGrants.value.filter(g => g.id !== grant.id)
+  } else {
+    grantsError.value = `Could not stop sharing with ${grant.grantee_name}. Please try again.`
+  }
+  revokingGrant.value = null
+}
+
 function handleRemoveFromDevice() {
   if (!user.value) return
   if (!confirm('Remove your account from this device? Your data on the server is not affected. You can recover your account later using your email.')) return
@@ -298,6 +340,22 @@ function formatDate(isoString) {
               {{ leavingClassroom === classroomId ? 'Leaving...' : 'Leave' }}
             </button>
           </div>
+        </section>
+
+        <!-- Sharing with teachers -->
+        <section v-if="canManageSharing && (teacherGrants.length || grantsError)" class="settings-section">
+          <h3>Sharing My Data</h3>
+          <div v-for="grant in teacherGrants" :key="grant.id" class="classroom-row">
+            <span class="classroom-name-text">{{ grant.grantee_name }}</span>
+            <button
+              class="leave-btn"
+              :disabled="revokingGrant === grant.id"
+              @click="handleStopSharing(grant)"
+            >
+              {{ revokingGrant === grant.id ? 'Stopping...' : 'Stop sharing' }}
+            </button>
+          </div>
+          <p v-if="grantsError" class="grants-error" role="alert">{{ grantsError }}</p>
         </section>
 
         <!-- Display Options -->
@@ -648,6 +706,12 @@ function formatDate(isoString) {
 .leave-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.grants-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #b91c1c;
 }
 
 .become-teacher-btn {
