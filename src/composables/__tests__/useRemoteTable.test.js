@@ -173,6 +173,46 @@ describe('useRemoteTable', () => {
     expect(res.reason).toBe('illegal play')
   })
 
+  // The service hands a bot-controlled declarer's cards to a human dummy and its
+  // bot stands down (declarer_side_controller), so the client must offer them too.
+  describe('human dummy (S) with North declaring, North on turn', () => {
+    function dummyForDeclarer(northSeat) {
+      table._handleMessage({ t: 'welcome', seat: 'S', name: 'A', role: 'guest', table_id: 'demo' })
+      table._handleMessage({
+        ...snapshotMsg({
+          phase: 'play',
+          auction: ['1S', 'Pass', '4S', 'Pass', 'Pass', 'Pass'],
+          contract: { text: '4S', declarer: 'N' },
+          next_to_act: 'N',
+          current_trick: { leader: 'E', plays: [{ seat: 'E', card: 'H4' }, { seat: 'S', card: 'H2' }, { seat: 'W', card: 'H3' }] },
+          hands: {
+            N: { visible: true, cards: ['HQ', 'SJ'] },
+            E: { visible: false, count: 12 },
+            S: { visible: true, cards: ['SA', 'DK'] },
+            W: { visible: false, count: 12 },
+          },
+        }),
+        seats: { N: northSeat, E: { kind: 'bot' }, S: { kind: 'human', name: 'A', connected: true }, W: { kind: 'bot' } },
+      })
+    }
+
+    it.each([
+      ['a bot', { kind: 'bot' }],
+      ['reserved for a friend (a bot fills it)', { kind: 'reserved', name: 'Friend' }],
+      ['empty', { kind: 'empty' }],
+      ['a disconnected human', { kind: 'human', name: 'B', connected: false }],
+    ])("gives the dummy declarer's cards when declarer is %s", (_label, northSeat) => {
+      dummyForDeclarer(northSeat)
+      expect(table.dummySeat.value).toBe('S')
+      expect(table.clickableSeat.value).toBe('N')
+    })
+
+    it('leaves a connected human declarer in charge of their own cards', () => {
+      dummyForDeclarer({ kind: 'human', name: 'B', connected: true })
+      expect(table.clickableSeat.value).toBeNull()
+    })
+  })
+
   it('ignores stale events after a snapshot already covers them', () => {
     table._handleMessage(snapshotMsg({ seq: 5, auction: ['1S'], next_to_act: 'W' }))
     table._handleMessage({ t: 'event', kind: 'bid_made', seq: 3, call: '7NT', next_to_act: 'N' })
