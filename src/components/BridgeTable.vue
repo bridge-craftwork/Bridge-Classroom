@@ -28,6 +28,7 @@
     :label-props="labelProps"
     @card-click="(p) => $emit('card-click', p)"
     @card-inspect="(p) => $emit('card-inspect', p)"
+    @layout="(p) => $emit('layout', p)"
   >
     <template v-if="$slots.center" #center><slot name="center" /></template>
     <template v-if="$slots.nw" #nw><slot name="nw" /></template>
@@ -266,7 +267,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['card-click', 'card-inspect'])
+defineEmits(['card-click', 'card-inspect', 'layout'])
 
 function occName(seat) { return props.occupants?.[seat]?.name || null }
 function occPresence(seat) {
