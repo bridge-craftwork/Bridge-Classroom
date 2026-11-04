@@ -5,7 +5,7 @@
 // The package is NOT vendored (rusty-bidding-bot integration plan, Q7): it is
 // downloaded from a pinned GitHub release of bridge-craftwork/rusty-bidding-bot
 // and checked against the SHA-256 committed beside the tag in
-// scripts/rbb-wasm.release.json. Upgrading is a change of `tag` and `sha256`
+// scripts/rbb-wasm.release.json. Upgrading is a change of `tag`, `date` and `sha256`
 // there. public/rbb-wasm/ is gitignored.
 //
 //   node scripts/fetch-rbb-wasm.mjs           # prebuild: any failure fails the build
@@ -88,7 +88,7 @@ async function fromRelease(pin) {
     execFileSync('tar', ['xzf', join(tmp, pin.asset), '-C', tmp])
     install(join(tmp, 'pkg'))
     const info = await engineInfo(DEST)
-    writeInfo({ source: 'release', repo: pin.repo, tag: pin.tag, sha256: pin.sha256, ...info })
+    writeInfo({ source: 'release', repo: pin.repo, tag: pin.tag, date: pin.date, sha256: pin.sha256, ...info })
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
