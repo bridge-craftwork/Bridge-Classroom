@@ -408,7 +408,10 @@ bids every bot seat; the student is still marked against BBA's auction.
 - **The WASM is not committed.** `scripts/fetch-rbb-wasm.mjs` (run by `predev` /
   `prebuild`) downloads `rbb-wasm.tar.gz` from the rusty-bidding-bot release pinned in
   `scripts/rbb-wasm.release.json` (tag + SHA-256; a wrong hash fails the build) into
-  `public/rbb-wasm/` (gitignored). Upgrading = change tag and hash there.
+  `public/rbb-wasm/` (gitignored). Upgrading = change tag, date and hash there.
+- **Table settings → Bot versions** ([botVersions.js](src/utils/botVersions.js)): Rusty's
+  version and date come from that pin; BBA's and BEN's are written in that file (neither
+  service reports one), so update it when either is deployed.
 - **Local engine build** (before a release carries what you need):
   `(cd ../rusty-bidding-bot && crates/wasm/build.sh)`, then
   `RBB_WASM_LOCAL=../rusty-bidding-bot/crates/wasm/pkg npm run dev`. A plain

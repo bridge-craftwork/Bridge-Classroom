@@ -402,6 +402,7 @@
                 Takes effect once you're seated — the comparison is against your own calls.
               </div>
             </template>
+            <BotVersions />
           </div>
         </div>
       </template>
@@ -826,6 +827,7 @@
         <label class="bp-setting-row" title="Tint the calls BBA made for a Rusty bot where Rusty has no rule.">
           <input type="checkbox" v-model="flagFallbacks" data-testid="flag-fallbacks"> Flag BBA fallback calls
         </label>
+        <BotVersions />
       </div>
     </div>
   </div>
@@ -834,6 +836,7 @@
 <script setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
+import BotVersions from '../components/BotVersions.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import TableShell from '../components/table/TableShell.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
