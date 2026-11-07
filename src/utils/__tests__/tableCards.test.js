@@ -35,13 +35,14 @@ describe('table card choice', () => {
 
   it('resolves each kind of side', async () => {
     const loadCard = vi.fn(async () => ({ name: 'Mine', card_data: { notrump: { stayman: { play: true } } } }))
-    expect(await resolveSide('', '21GF-GIB', loadCard)).toEqual({ name: '21GF-GIB', rusty: '21GF-GIB', bba: { name: '21GF-GIB' } })
-    expect(await resolveSide('bba:Precision', '21GF-GIB', loadCard)).toEqual({ name: 'Precision', rusty: 'Precision', bba: { name: 'Precision' } })
+    expect(await resolveSide('', '21GF-GIB', loadCard)).toEqual({ name: '21GF-GIB', rusty: '21GF-GIB', bba: { name: '21GF-GIB' }, source: { kind: 'scenario', name: '21GF-GIB' } })
+    expect(await resolveSide('bba:Precision', '21GF-GIB', loadCard)).toEqual({ name: 'Precision', rusty: 'Precision', bba: { name: 'Precision' }, source: { kind: 'stock', name: 'Precision' } })
     const mine = await resolveSide('mine:c1', '21GF-GIB', loadCard)
     expect(loadCard).toHaveBeenCalledWith('c1')
     expect(mine.name).toBe('Mine')
     expect(mine.rusty).toEqual({ json: { notrump: { stayman: { play: true } } } })
     expect(mine.bba.name).toBe('Mine')
+    expect(mine.source).toMatchObject({ kind: 'mine', id: 'c1', name: 'Mine' })
     expect(mine.bba.content).toMatch(/^System type = \d+\r\n/)
   })
 

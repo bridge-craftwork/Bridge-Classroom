@@ -845,6 +845,7 @@ import DealSourceButton from '../components/table/DealSourceButton.vue'
 import ScenarioBar from '../components/table/ScenarioBar.vue'
 import RailCard from '../components/table/RailCard.vue'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
+import { buildBoardSnapshot } from '../report/boardSnapshot.js'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import ClaimPanel from '../components/table/ClaimPanel.vue'
 import { useClaimFlow } from '../composables/useClaimFlow.js'
@@ -1214,7 +1215,7 @@ const {
   selection, hasSelection, sourceSummary: poolSummary,
   currentDeal, dealsDrawn, boardNumber: localBoardNumber, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
-  boardBidder, bidderName, referenceName, rustyInfo, rustyFallbacks, fallbackCalls, cardsPending,
+  boardBidder, bidderName, referenceName, rustyInfo, boardCards, rustyFallbacks, fallbackCalls, cardsPending,
   finalContract, doubleDummy,
   auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
   phase: enginePhase,
@@ -1260,6 +1261,55 @@ const {
 // ⚠️ NEVER log the per-connection token (`myToken`). It is the roster/kick
 // handle — effectively a bearer for that socket — and bundles get attached to
 // GitHub issues. The session id is opaque and short-lived; safe.
+// The cards each side actually played this board, for a bug report (#531). A user's
+// own card goes in whole, with its id and version, because a private card can't be
+// fetched back by name and may have changed since. Scenario/stock cards are names.
+function reportCards() {
+  const c = boardCards.value
+  const names = c?.names || rustyInfo.value?.cards || null
+  if (!names) return null
+  const side = (s) => {
+    const src = c?.sources?.[s] || { kind: 'scenario', name: names[s] }
+    const json = src.kind === 'mine' ? (c?.rusty?.[s]?.json ?? null) : null
+    return { ...src, name: names[s], ...(json ? { cardData: json } : {}) }
+  }
+  return { ns: side('ns'), ew: side('ew') }
+}
+
+// The deal and auction this report is about (#531), app-blind (boardSnapshot.js).
+function reportBoardSnapshot(served) {
+  if (served) {
+    if (!srv.dealLoaded) return null
+    return buildBoardSnapshot({
+      hands: srv.fullDeal || srv.hands,
+      dealer: srv.dealer,
+      vulnerable: srv.vulnerable,
+      board: srv.boardNumber ?? null,
+      source: srv.dealSource?.label?.() || null,
+      bids: srv.auction,
+      humanSeats: srv.yourSeats?.length ? srv.yourSeats : (srv.yourSeat ? [srv.yourSeat] : []),
+      contract: srv.contract?.text || null,
+      declarer: srv.declarer || null,
+    })
+  }
+  const deal = currentDeal.value
+  if (!deal) return null
+  return buildBoardSnapshot({
+    hands: deal.hands,
+    dealer: deal.dealer,
+    vulnerable: deal.vulnerable,
+    board: localBoardNumber?.value ?? null,
+    source: currentScenarioLabel?.value || currentScenario?.value || null,
+    bids: bids.value,
+    meanings: meanings.value,
+    humanSeats: [yourSeat.value],
+    bidder: boardBidder.value,
+    fallbackIndices: fallbackCalls.value,
+    contract: auctionComplete.value ? (finalContract.value?.contract || null) : null,
+    declarer: auctionComplete.value ? (finalContract.value?.declarer || null) : null,
+  })
+}
+
 function tableReportContext() {
   const served = !!props.server && !!srv
   return {
@@ -1274,6 +1324,7 @@ function tableReportContext() {
       board: served ? (srv.boardNumber ?? null) : (localBoardNumber?.value ?? null),
     },
     context: {
+      board: reportBoardSnapshot(served),
       table: {
         settings: {
           playCardplay: playCardplay.value,
@@ -1293,6 +1344,7 @@ function tableReportContext() {
               rbbPackage: RBB_WASM_INFO,
               rusty: rustyInfo.value,
               fallbacks: rustyFallbacks.value.slice(-10),
+              cards: reportCards(),
             },
         dealSource: {
           summary: served ? (srv.dealSource?.label?.() || null) : (poolSummary.value || null),
