@@ -543,7 +543,7 @@ export function useServerEngine() {
     activeSeat, role, seeAll, isHost, botMode, boardMode,
     seq, boardNumber, dealer, vulnerable, phase,
     auction, contract, declarer, dummySeat,
-    nextToAct, hands, handCounts,
+    nextToAct, hands, handCounts, fullDeal,
     currentTrick, lastFinishedTrick, tricksTaken, seats,
     boardComplete, sessionClosed,
     dealLoaded, setLabel, clickableSeat, hasHumanSeat,

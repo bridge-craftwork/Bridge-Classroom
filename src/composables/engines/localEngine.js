@@ -141,6 +141,10 @@ export function useLocalEngine(config = {}) {
   let rustyFallbackMeanings = {}
   const rustyFallbacks = ref([])
   const rustyInfo = ref(null) // { rulesId, version, cards: {ns, ew} } of the current board
+  // This board's resolved cards ({ names, rusty, conventions, content, sources },
+  // resolveBoardCards), or null on the scenario's cards. For bug reports: the
+  // card a side actually played, which its name alone can't recover.
+  const boardCards = ref(null)
   // Indices of this board's calls BBA made where Rusty had no rule
   const fallbackCalls = ref([])
 
@@ -286,6 +290,7 @@ export function useLocalEngine(config = {}) {
       rusty: { ns: ns.rusty, ew: ew.rusty },
       conventions: { ns: ns.bba.name, ew: ew.bba.name },
       content,
+      sources: { ns: ns.source, ew: ew.source },
     }
   }
 
@@ -438,6 +443,9 @@ export function useLocalEngine(config = {}) {
       ? Promise.resolve(null)
       : resolveBoardCards(cardChoice, currentScenario.value)
     boardCardsP.catch(() => {}) // reported by whichever request awaits it
+    boardCards.value = null
+    const cardsFor = boardCardsP
+    cardsFor.then((c) => { if (boardCardsP === cardsFor) boardCards.value = c }, () => {})
     rustyBoard = null
     rustyFallbackMeanings = {}
     fallbackCalls.value = []
@@ -729,6 +737,7 @@ export function useLocalEngine(config = {}) {
     bidderName,
     referenceName: REFERENCE_NAME,
     rustyInfo,
+    boardCards,
     rustyFallbacks,
     divergedBids,
     auctionLoading,

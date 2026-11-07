@@ -614,6 +614,7 @@ import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { buildTrickFromShowcards, playedCardOnlySeats } from '../utils/defenseTrick.js'
 import { captureA1Snapshot, a1SnapshotToEnrich } from '../report/captureA1Snapshot.js'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
+import { buildBoardSnapshot } from '../report/boardSnapshot.js'
 import { resolveTableConfig } from '../report/tableConfigSnapshot.js'
 import DealNavigator from '../components/DealNavigator.vue'
 import FeedbackPanel from '../components/FeedbackPanel.vue'
@@ -2053,7 +2054,28 @@ function a1ReportProvider() {
     fixture: a1Fixture(),
     capturedAt: Date.now(),
   })
-  return a1SnapshotToEnrich(snapshot)
+  const enrich = a1SnapshotToEnrich(snapshot)
+  // The deal and auction (#531): the lesson's own PBN, in the deal's frame, with the
+  // calls shown so far and the PBN's alerts as their meanings.
+  if (deal.hands) {
+    enrich.context = {
+      ...enrich.context,
+      board: buildBoardSnapshot({
+        hands: deal.hands,
+        dealer: deal.auctionDealer || deal.dealer,
+        vulnerable: deal.vulnerable || null,
+        board: deal.displayNumber ?? deal.boardNumber ?? null,
+        source: [currentCollection.value, deal.subfolder || deal.category].filter(Boolean).join(' / ') || null,
+        bids: practice.hasBidSteps?.value ? practice.auctionState.displayedBids : (deal.auction || []),
+        meanings: deal.auctionNotes || [],
+        humanSeats: [gridHeroSeat.value],
+        bidder: 'pbn',
+        contract: deal.contract || null,
+        declarer: deal.declarer || null,
+      }),
+    }
+  }
+  return enrich
 }
 onMounted(() => setReportContextProvider(a1ReportProvider))
 onUnmounted(() => clearReportContextProvider(a1ReportProvider))
