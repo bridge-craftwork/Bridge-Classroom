@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bidderDivergence, normalizeCall, firstNewDivergence } from '../handAnalysis.js'
+import { bidderDivergence, normalizeCall, firstNewDivergence, isLegalCall } from '../handAnalysis.js'
 
 // dealer N → bid index 0=N, 1=E, 2=S, 3=W, 4=N, …
 // Report #52, verified 2026-07-30 against the live BBA service. Notrump has two
@@ -95,9 +95,49 @@ describe('firstNewDivergence — one at a time, so the reference can be re-ancho
     expect(firstNewDivergence(a, e, dealer, 'S')).toBeNull()
   })
 
+  it('checks every seat when no seat is given', () => {
+    expect(firstNewDivergence(['1C', 'Pass', '1S'], ['1D', 'Pass', '1S'], dealer, null))
+      .toEqual({ idx: 0, user: '1C', bba: '1D' })
+  })
+
   it('survives empty/absent input', () => {
     expect(firstNewDivergence([], [], dealer, 'S')).toBeNull()
     expect(firstNewDivergence(undefined, undefined, dealer, 'S')).toBeNull()
+  })
+})
+
+describe('isLegalCall', () => {
+  it('requires a bid to outrank the last bid, in either notrump spelling', () => {
+    expect(isLegalCall('1C', [])).toBe(true)
+    expect(isLegalCall('4D', ['1S', 'Pass', '4N', 'Pass'])).toBe(false)
+    expect(isLegalCall('4N', ['1S', 'Pass', '4NT', 'Pass'])).toBe(false)
+    expect(isLegalCall('5C', ['1S', 'Pass', '4N', 'Pass'])).toBe(true)
+    expect(isLegalCall('2NT', ['2S', 'X'])).toBe(true)
+    expect(isLegalCall('2S', ['2S'])).toBe(false)
+  })
+
+  it('allows a double only of an opponent\'s bid', () => {
+    expect(isLegalCall('X', [])).toBe(false)
+    expect(isLegalCall('X', ['Pass'])).toBe(false)
+    expect(isLegalCall('X', ['1S'])).toBe(true)
+    expect(isLegalCall('X', ['1S', 'Pass'])).toBe(false) // partner's bid
+    expect(isLegalCall('X', ['1S', 'Pass', 'Pass'])).toBe(true) // balancing
+    expect(isLegalCall('X', ['1S', 'X'])).toBe(false)
+  })
+
+  it('allows a redouble only of an opponent\'s double', () => {
+    expect(isLegalCall('XX', ['1S'])).toBe(false)
+    expect(isLegalCall('XX', ['1S', 'X'])).toBe(true)
+    expect(isLegalCall('XX', ['1S', 'X', 'Pass'])).toBe(false)
+    expect(isLegalCall('XX', ['1S', 'X', 'Pass', 'Pass'])).toBe(true)
+    expect(isLegalCall('XX', ['1S', 'X', 'XX'])).toBe(false)
+  })
+
+  it('allows a pass until the auction is over, and nothing unrecognised', () => {
+    expect(isLegalCall('Pass', ['1S', 'X'])).toBe(true)
+    expect(isLegalCall('Pass', ['1S', 'Pass', 'Pass', 'Pass'])).toBe(false)
+    expect(isLegalCall('8C', [])).toBe(false)
+    expect(isLegalCall(undefined, [])).toBe(false)
   })
 })
 
