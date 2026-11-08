@@ -805,6 +805,9 @@
           <p v-if="cardsPending && currentDeal" class="bp-setting-note">You've already bid on this board, so the new cards take over from the next board.</p>
         </template>
         <label class="bp-setting-row"><input type="checkbox" v-model="rotateDeals"> Rotate deals randomly</label>
+        <label class="bp-setting-row" title="When dealing from several sources, open the scenario's description each time the scenario changes. The Description button always shows it.">
+          <input type="checkbox" v-model="showDescriptionInMix" data-testid="show-description-in-mix"> Show description when a mix changes scenario
+        </label>
         <label class="bp-setting-row"><input type="checkbox" v-model="playCardplay"> Play the hand after bidding</label>
         <label v-if="playCardplay" class="bp-setting-row" title="The bots BID with the bidding bot above — this picks the CARDPLAY bot only.">
           <span>Play bot</span>
@@ -862,6 +865,7 @@ import BoardIndicator from '../components/BoardIndicator.vue'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
 import DockablePanel from '../components/DockablePanel.vue'
+import { loadShowDescriptionInMix, saveShowDescriptionInMix, autoOpensDescription } from '../utils/scenarioDescriptionSetting.js'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
@@ -1115,6 +1119,9 @@ watch(cardplayShowDdErrors, (v) => {
 watch(showBbaCompare, (v) => {
   try { localStorage.setItem(SHOW_BBA_COMPARE_KEY, v ? '1' : '0') } catch {}
 })
+
+const showDescriptionInMix = ref(loadShowDescriptionInMix())
+watch(showDescriptionInMix, (v) => saveShowDescriptionInMix(v))
 
 // Bidding engine (C2): which engine bids every bot seat — BBA (default) or Rusty.
 // Remembered in bp.biddingEngine; ?bidder= overrides it for a page load; embedded
@@ -2069,8 +2076,11 @@ watch(dealError, (msg) => {
   if (EMBEDDED && msg) postEmbedded({ type: 'bridge-classroom:error', message: msg })
 })
 
-// Show the scenario's @chat popup (fetch the .btn metadata if not cached yet).
-async function showChatForScenario(file) {
+// Load the scenario's @chat (fetch the .btn metadata if not cached yet) for the
+// panel and the Description button. `open` says whether the panel shows it now;
+// when false the panel also closes, so one already open doesn't announce the new
+// scenario either.
+async function showChatForScenario(file, { open = true } = {}) {
   let meta = chatCache.value[file]
   if (!meta) {
     meta = await fetchScenarioMeta(file)
@@ -2078,7 +2088,7 @@ async function showChatForScenario(file) {
   }
   if (meta?.description) {
     scenarioChat.value = { title: prettifyLabel(file), text: meta.description }
-    showScenarioChat.value = true
+    showScenarioChat.value = open
   } else {
     scenarioChat.value = null
     showScenarioChat.value = false
@@ -2117,10 +2127,13 @@ async function drawNextBoard() {
   await loadDeal(drawn.deal, { scenario: drawn.scenarioFile, label: drawn.label })
   drawing.value = false
   // Auto-show the scenario chat when a NEW scenario opens (not on same-scenario
-  // next-deals, non-scenario sources, or embedded single-deal mode).
+  // next-deals, non-scenario sources, or embedded single-deal mode). A multi-source
+  // mix only loads it, unless the student has asked to see it.
   if (drawn.scenarioFile && drawn.scenarioFile !== lastChatScenario && !EMBEDDED) {
     lastChatScenario = drawn.scenarioFile
-    showChatForScenario(drawn.scenarioFile)
+    showChatForScenario(drawn.scenarioFile, {
+      open: autoOpensDescription({ itemCount: selection.value?.items?.length || 0, showInMix: showDescriptionInMix.value }),
+    })
   } else if (!drawn.scenarioFile) {
     lastChatScenario = ''
     scenarioChat.value = null
