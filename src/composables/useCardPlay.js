@@ -294,7 +294,7 @@ async function advanceBotsIfTheirTurn() {
     if (stale() || playComplete.value) return
     // Finalize a completed trick first if 4 plays sit in currentTrick.
     if (currentTrick.plays.length === 4) {
-      await finalizeTrick()
+      await finalizeTrick(stale)
       if (stale()) return
       continue
     }
@@ -400,7 +400,12 @@ async function recordPlay({ seat, suit, rank }) {
   }
 }
 
-async function finalizeTrick() {
+// `stale` is the driver's epoch check. Undo and a new deal both bump the epoch
+// and rebuild the trick state themselves, so a trick whose pause they
+// interrupted must not be scored afterwards: that put tricksTaken one trick
+// ahead of `played` for the rest of the hand, and the claim checker then
+// refused every claim.
+async function finalizeTrick(stale) {
   const trump = dealCtx.value.trump
   const plays = currentTrick.plays.slice()
   const winner = trickWinner(plays, trump)
@@ -409,6 +414,7 @@ async function finalizeTrick() {
   // Let the UI render the completed trick for a moment before clearing.
   lastFinishedTrick.value = finished
   await sleep(dealCtx.value.pacing.betweenTricks)
+  if (stale()) return
 
   completedTricks.value = [...completedTricks.value, finished]
   tricksTaken.value = {
