@@ -1,8 +1,8 @@
 // The BBA-tracked "your bid vs BBA's bid" case with EVERYTHING production shows:
 // several diverged cells, each tinted (wrongBidIndices — prod derives these from
 // the diverged indices), both bids stacked label-over-bid with the rejected one
-// struck through and a per-cell toggle, plus the live current-turn `?` (South is
-// next to bid). Three divergences on purpose, across two rounds, so the grid is
+// marked by a hollow ○ and a per-cell toggle, plus the live current-turn `?` (South
+// is next to bid). Three divergences on purpose, across two rounds, so the grid is
 // stress-tested with multiple tall/tinted cells at once.
 export default {
   label: 'diverged · you vs BBA (tinted, stacked, ? to bid)',

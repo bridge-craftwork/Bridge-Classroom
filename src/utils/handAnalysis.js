@@ -74,14 +74,14 @@ export function bidderDivergence(actual, expected, dealer, seat) {
  * @param {string[]} actual    calls made so far
  * @param {string[]} expected  BBA's reference auction
  * @param {string} dealer
- * @param {string} seat        the viewer's own seat
+ * @param {string|null} seat   the seat to check, or null for any seat
  * @param {object} known       divergences already recorded, keyed by index
  * @returns {{idx:number,user:string,bba:string}|null}
  */
 export function firstNewDivergence(actual, expected, dealer, seat, known = {}) {
   const n = Math.min(actual?.length || 0, expected?.length || 0)
   for (let i = 0; i < n; i++) {
-    if (seatAtIndex(dealer, i) !== seat) continue
+    if (seat && seatAtIndex(dealer, i) !== seat) continue
     if (Object.prototype.hasOwnProperty.call(known, i)) continue
     if (normalizeCall(actual[i]) !== normalizeCall(expected[i])) {
       return { idx: i, user: actual[i], bba: expected[i] }
@@ -96,6 +96,30 @@ export function lastSuitBid(arr) {
     if (arr[i] !== 'Pass' && arr[i] !== 'X' && arr[i] !== 'XX') return arr[i]
   }
   return null
+}
+
+const STRAINS = ['C', 'D', 'H', 'S', 'N']
+
+function bidRank(bid) {
+  const m = /^([1-7])(C|D|H|S|NT?)$/.exec(bid)
+  return m ? Number(m[1]) * 5 + STRAINS.indexOf(m[2][0]) : null
+}
+
+// Could `call` legally be made next, after the calls in `prior`? Reference calls
+// are checked with this before being shown beside a real call: an insufficient bid
+// is never a useful thing to say the student should have made.
+export function isLegalCall(call, prior = []) {
+  if (isAuctionOver(prior)) return false
+  if (call === 'Pass') return true
+  let last = prior.length - 1
+  while (last >= 0 && prior[last] === 'Pass') last--
+  const byOpponent = (prior.length - 1 - last) % 2 === 0
+  if (call === 'X') return last >= 0 && byOpponent && prior[last] !== 'X' && prior[last] !== 'XX'
+  if (call === 'XX') return last >= 0 && byOpponent && prior[last] === 'X'
+  const rank = bidRank(call)
+  if (rank === null) return false
+  const contract = lastSuitBid(prior)
+  return !contract || rank > bidRank(contract)
 }
 
 // Resolve a completed auction to its contract + declarer (declarer = first of

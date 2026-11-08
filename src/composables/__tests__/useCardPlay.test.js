@@ -326,6 +326,77 @@ describe('useCardPlay', () => {
     const ewCalls = bot.calls.filter(c => c.seat === 'E' || c.seat === 'W')
     expect(ewCalls.every(c => c.decisionMakerSeat === c.seat)).toBe(true)
   })
+
+  // A finished trick stays on show for `pacing.betweenTricks` before it is
+  // scored. Undo, or a new deal, during that pause must not let the pending
+  // scoring land afterwards: it used to, leaving tricksTaken one trick ahead of
+  // the cards played, so every later claim failed the solver's cross-check
+  // ("The claim checker couldn't run") and the claim panel offered one trick too
+  // few (bridge-classroom-bug-artifacts #80, #81, #82).
+  describe('the pause after a finished trick', () => {
+    const BETWEEN_TRICKS = 40
+    const pause = (ms) => new Promise(r => setTimeout(r, ms))
+
+    // Opening leader is W (bot), so S (user) plays the 4th card of trick 1.
+    // Play N's card, then S's last card without awaiting it, and resolve while
+    // the finished trick is on show and not yet scored. The play's promise
+    // comes back wrapped: an async function returning it bare would await it,
+    // and so return only after the pause.
+    async function intoThePause() {
+      await cp.startPlay({
+        ...FIXTURE,
+        bot: RandomLegalBot,
+        userSeats: ['N', 'S'],
+        pacing: { betweenPlays: 0, betweenTricks: BETWEEN_TRICKS },
+      })
+      expect(cp.currentPlayer.value).toBe('N')
+      const n = cp.legalCardsForCurrent.value[0]
+      await cp.onUserCard(n.suit, n.rank)
+      expect(cp.currentPlayer.value).toBe('S')
+      const s = cp.legalCardsForCurrent.value[0]
+      const pending = cp.onUserCard(s.suit, s.rank)
+      await pause(BETWEEN_TRICKS / 4)
+      expect(cp.lastFinishedTrick.value).not.toBeNull()
+      expect(cp.completedTricks.value).toHaveLength(0)
+      return { pending }
+    }
+
+    // The trick state must always be what `played` says it is.
+    function expectConsistentWithPlayed() {
+      const n = cp.played.value.length
+      const completed = Math.floor(n / 4)
+      expect(cp.completedTricks.value).toHaveLength(completed)
+      expect(cp.tricksTaken.value.NS + cp.tricksTaken.value.EW).toBe(completed)
+      expect(cp.remainingTricks.value).toBe(13 - completed)
+      expect(cp.currentTrick.plays).toEqual(cp.played.value.slice(completed * 4))
+    }
+
+    it('Undo during the pause leaves the trick unscored', async () => {
+      const { pending } = await intoThePause()
+      expect(cp.undo().ok).toBe(true)
+      await pending
+      await pause(BETWEEN_TRICKS * 2)
+      expect(cp.played.value).toHaveLength(3)
+      expect(cp.currentPlayer.value).toBe('S')
+      expect(cp.lastFinishedTrick.value).toBeNull()
+      expectConsistentWithPlayed()
+    })
+
+    it('a new deal started during the pause is not scored with the old trick', async () => {
+      const { pending } = await intoThePause()
+      await cp.startPlay({
+        ...FIXTURE,
+        bot: RandomLegalBot,
+        userSeats: ['N', 'S'],
+        pacing: { betweenPlays: 0, betweenTricks: BETWEEN_TRICKS },
+      })
+      await pending
+      await pause(BETWEEN_TRICKS * 2)
+      expect(cp.played.value).toHaveLength(1)
+      expect(cp.lastFinishedTrick.value).toBeNull()
+      expectConsistentWithPlayed()
+    })
+  })
 })
 
 // Helper: BEN suit-letter → hand-object key.

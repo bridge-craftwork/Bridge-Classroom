@@ -402,6 +402,7 @@
                 Takes effect once you're seated — the comparison is against your own calls.
               </div>
             </template>
+            <BotVersions />
           </div>
         </div>
       </template>
@@ -804,6 +805,9 @@
           <p v-if="cardsPending && currentDeal" class="bp-setting-note">You've already bid on this board, so the new cards take over from the next board.</p>
         </template>
         <label class="bp-setting-row"><input type="checkbox" v-model="rotateDeals"> Rotate deals randomly</label>
+        <label class="bp-setting-row" title="When dealing from several sources, open the scenario's description each time the scenario changes. The Description button always shows it.">
+          <input type="checkbox" v-model="showDescriptionInMix" data-testid="show-description-in-mix"> Show description when a mix changes scenario
+        </label>
         <label class="bp-setting-row"><input type="checkbox" v-model="playCardplay"> Play the hand after bidding</label>
         <label v-if="playCardplay" class="bp-setting-row" title="The bots BID with the bidding bot above — this picks the CARDPLAY bot only.">
           <span>Play bot</span>
@@ -826,6 +830,7 @@
         <label class="bp-setting-row" title="Tint the calls BBA made for a Rusty bot where Rusty has no rule.">
           <input type="checkbox" v-model="flagFallbacks" data-testid="flag-fallbacks"> Flag BBA fallback calls
         </label>
+        <BotVersions />
       </div>
     </div>
   </div>
@@ -834,6 +839,7 @@
 <script setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import BridgeTable from '../components/BridgeTable.vue'
+import BotVersions from '../components/BotVersions.vue'
 import SeatControlTable from '../components/table/SeatControlTable.vue'
 import TableShell from '../components/table/TableShell.vue'
 import KibitzBox from '../components/table/KibitzBox.vue'
@@ -842,6 +848,7 @@ import DealSourceButton from '../components/table/DealSourceButton.vue'
 import ScenarioBar from '../components/table/ScenarioBar.vue'
 import RailCard from '../components/table/RailCard.vue'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
+import { buildBoardSnapshot } from '../report/boardSnapshot.js'
 import ActionCluster from '../components/table/ActionCluster.vue'
 import ClaimPanel from '../components/table/ClaimPanel.vue'
 import { useClaimFlow } from '../composables/useClaimFlow.js'
@@ -858,6 +865,7 @@ import BoardIndicator from '../components/BoardIndicator.vue'
 import { A1_BOARD_SIZE, boardIndicatorExtentPx } from '../components/boardIndicatorMetrics.js'
 import tableConfig from '../table-configs/table.tableConfig.js'
 import DockablePanel from '../components/DockablePanel.vue'
+import { loadShowDescriptionInMix, saveShowDescriptionInMix, autoOpensDescription } from '../utils/scenarioDescriptionSetting.js'
 import ScenarioChatBody from '../components/ScenarioChatBody.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import PageFooter from '../components/lobby/PageFooter.vue'
@@ -1112,6 +1120,9 @@ watch(showBbaCompare, (v) => {
   try { localStorage.setItem(SHOW_BBA_COMPARE_KEY, v ? '1' : '0') } catch {}
 })
 
+const showDescriptionInMix = ref(loadShowDescriptionInMix())
+watch(showDescriptionInMix, (v) => saveShowDescriptionInMix(v))
+
 // Bidding engine (C2): which engine bids every bot seat — BBA (default) or Rusty.
 // Remembered in bp.biddingEngine; ?bidder= overrides it for a page load; embedded
 // tables keep BBA unless the host passes bidder. Rusty needs a package with the
@@ -1211,7 +1222,7 @@ const {
   selection, hasSelection, sourceSummary: poolSummary,
   currentDeal, dealsDrawn, boardNumber: localBoardNumber, currentScenario, currentScenarioLabel, dealError, dealErrorHint,
   bids, expectedAuction, meanings, conventionsUsed, divergedBids, auctionLoading,
-  boardBidder, bidderName, referenceName, rustyInfo, rustyFallbacks, fallbackCalls, cardsPending,
+  boardBidder, bidderName, referenceName, rustyInfo, boardCards, rustyFallbacks, fallbackCalls, cardsPending,
   finalContract, doubleDummy,
   auctionComplete, currentSeat, lastNonPassNonDouble, wrongIndicesArray, hadDivergence,
   phase: enginePhase,
@@ -1257,6 +1268,55 @@ const {
 // ⚠️ NEVER log the per-connection token (`myToken`). It is the roster/kick
 // handle — effectively a bearer for that socket — and bundles get attached to
 // GitHub issues. The session id is opaque and short-lived; safe.
+// The cards each side actually played this board, for a bug report (#531). A user's
+// own card goes in whole, with its id and version, because a private card can't be
+// fetched back by name and may have changed since. Scenario/stock cards are names.
+function reportCards() {
+  const c = boardCards.value
+  const names = c?.names || rustyInfo.value?.cards || null
+  if (!names) return null
+  const side = (s) => {
+    const src = c?.sources?.[s] || { kind: 'scenario', name: names[s] }
+    const json = src.kind === 'mine' ? (c?.rusty?.[s]?.json ?? null) : null
+    return { ...src, name: names[s], ...(json ? { cardData: json } : {}) }
+  }
+  return { ns: side('ns'), ew: side('ew') }
+}
+
+// The deal and auction this report is about (#531), app-blind (boardSnapshot.js).
+function reportBoardSnapshot(served) {
+  if (served) {
+    if (!srv.dealLoaded) return null
+    return buildBoardSnapshot({
+      hands: srv.fullDeal || srv.hands,
+      dealer: srv.dealer,
+      vulnerable: srv.vulnerable,
+      board: srv.boardNumber ?? null,
+      source: srv.dealSource?.label?.() || null,
+      bids: srv.auction,
+      humanSeats: srv.yourSeats?.length ? srv.yourSeats : (srv.yourSeat ? [srv.yourSeat] : []),
+      contract: srv.contract?.text || null,
+      declarer: srv.declarer || null,
+    })
+  }
+  const deal = currentDeal.value
+  if (!deal) return null
+  return buildBoardSnapshot({
+    hands: deal.hands,
+    dealer: deal.dealer,
+    vulnerable: deal.vulnerable,
+    board: localBoardNumber?.value ?? null,
+    source: currentScenarioLabel?.value || currentScenario?.value || null,
+    bids: bids.value,
+    meanings: meanings.value,
+    humanSeats: [yourSeat.value],
+    bidder: boardBidder.value,
+    fallbackIndices: fallbackCalls.value,
+    contract: auctionComplete.value ? (finalContract.value?.contract || null) : null,
+    declarer: auctionComplete.value ? (finalContract.value?.declarer || null) : null,
+  })
+}
+
 function tableReportContext() {
   const served = !!props.server && !!srv
   return {
@@ -1271,6 +1331,7 @@ function tableReportContext() {
       board: served ? (srv.boardNumber ?? null) : (localBoardNumber?.value ?? null),
     },
     context: {
+      board: reportBoardSnapshot(served),
       table: {
         settings: {
           playCardplay: playCardplay.value,
@@ -1290,6 +1351,7 @@ function tableReportContext() {
               rbbPackage: RBB_WASM_INFO,
               rusty: rustyInfo.value,
               fallbacks: rustyFallbacks.value.slice(-10),
+              cards: reportCards(),
             },
         dealSource: {
           summary: served ? (srv.dealSource?.label?.() || null) : (poolSummary.value || null),
@@ -2014,8 +2076,11 @@ watch(dealError, (msg) => {
   if (EMBEDDED && msg) postEmbedded({ type: 'bridge-classroom:error', message: msg })
 })
 
-// Show the scenario's @chat popup (fetch the .btn metadata if not cached yet).
-async function showChatForScenario(file) {
+// Load the scenario's @chat (fetch the .btn metadata if not cached yet) for the
+// panel and the Description button. `open` says whether the panel shows it now;
+// when false the panel also closes, so one already open doesn't announce the new
+// scenario either.
+async function showChatForScenario(file, { open = true } = {}) {
   let meta = chatCache.value[file]
   if (!meta) {
     meta = await fetchScenarioMeta(file)
@@ -2023,7 +2088,7 @@ async function showChatForScenario(file) {
   }
   if (meta?.description) {
     scenarioChat.value = { title: prettifyLabel(file), text: meta.description }
-    showScenarioChat.value = true
+    showScenarioChat.value = open
   } else {
     scenarioChat.value = null
     showScenarioChat.value = false
@@ -2062,10 +2127,13 @@ async function drawNextBoard() {
   await loadDeal(drawn.deal, { scenario: drawn.scenarioFile, label: drawn.label })
   drawing.value = false
   // Auto-show the scenario chat when a NEW scenario opens (not on same-scenario
-  // next-deals, non-scenario sources, or embedded single-deal mode).
+  // next-deals, non-scenario sources, or embedded single-deal mode). A multi-source
+  // mix only loads it, unless the student has asked to see it.
   if (drawn.scenarioFile && drawn.scenarioFile !== lastChatScenario && !EMBEDDED) {
     lastChatScenario = drawn.scenarioFile
-    showChatForScenario(drawn.scenarioFile)
+    showChatForScenario(drawn.scenarioFile, {
+      open: autoOpensDescription({ itemCount: selection.value?.items?.length || 0, showInMix: showDescriptionInMix.value }),
+    })
   } else if (!drawn.scenarioFile) {
     lastChatScenario = ''
     scenarioChat.value = null

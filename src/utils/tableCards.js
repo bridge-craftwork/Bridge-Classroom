@@ -91,14 +91,17 @@ export function listBbaCards(fetchFn = globalThis.fetch) {
  */
 export async function resolveSide(key, base, loadCard) {
   const c = parseCardKey(key)
-  if (c.kind === 'bba') return { name: c.name, rusty: c.name, bba: { name: c.name } }
+  if (c.kind === 'bba') return { name: c.name, rusty: c.name, bba: { name: c.name }, source: { kind: 'stock', name: c.name } }
   if (c.kind === 'mine') {
     const card = await loadCard(c.id)
     const name = card?.name || 'My card'
     const data = card?.card_data || {}
-    return { name, rusty: { json: data }, bba: { name, content: exportBbsa(data).text } }
+    // `source` says which saved version this was, for bug reports: a private card
+    // can't be fetched back by name, and the card may change after the report.
+    const source = { kind: 'mine', id: c.id, name, version: card?.version ?? null, updatedAt: card?.updated_at ?? null }
+    return { name, rusty: { json: data }, bba: { name, content: exportBbsa(data).text }, source }
   }
-  return { name: base, rusty: base, bba: { name: base } }
+  return { name: base, rusty: base, bba: { name: base }, source: { kind: 'scenario', name: base } }
 }
 
 // Every card setting BBA plays from a .bbsa file: what it can be told of a card.

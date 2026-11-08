@@ -580,6 +580,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { parsePbn, getDealTitle, isRotateStep, turnSeat } from '../utils/pbnParser.js'
+import { boardTokenFor } from '../utils/pbsScenarios.js'
 import { stripControlDirectives, colorizeSuits, flowText, formatBid } from '../utils/cardFormatting.js'
 import { useDealPractice } from '../composables/useDealPractice.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
@@ -614,6 +615,7 @@ import { useTableStatus } from '../composables/engines/useTableStatus.js'
 import { buildTrickFromShowcards, playedCardOnlySeats } from '../utils/defenseTrick.js'
 import { captureA1Snapshot, a1SnapshotToEnrich } from '../report/captureA1Snapshot.js'
 import { setReportContextProvider, clearReportContextProvider } from '../report/reportContext.js'
+import { buildBoardSnapshot } from '../report/boardSnapshot.js'
 import { resolveTableConfig } from '../report/tableConfigSnapshot.js'
 import DealNavigator from '../components/DealNavigator.vue'
 import FeedbackPanel from '../components/FeedbackPanel.vue'
@@ -1863,6 +1865,7 @@ function openReport(e) {
     display_number: deal.displayNumber || (currentDealIndex.value + 1),
     board_tag: deal.boardNumber != null ? String(deal.boardNumber) : null,
     original_board: deal.originalBoard || null,
+    board_version_token: boardTokenFor(deal) || deal.boardVersionToken || null,
     student_seat: practice.studentSeat.value || deal.studentSeat || null,
     auction: [...practice.auctionState.displayedBids],
     contract: deal.contract || null,
@@ -2053,7 +2056,28 @@ function a1ReportProvider() {
     fixture: a1Fixture(),
     capturedAt: Date.now(),
   })
-  return a1SnapshotToEnrich(snapshot)
+  const enrich = a1SnapshotToEnrich(snapshot)
+  // The deal and auction (#531): the lesson's own PBN, in the deal's frame, with the
+  // calls shown so far and the PBN's alerts as their meanings.
+  if (deal.hands) {
+    enrich.context = {
+      ...enrich.context,
+      board: buildBoardSnapshot({
+        hands: deal.hands,
+        dealer: deal.auctionDealer || deal.dealer,
+        vulnerable: deal.vulnerable || null,
+        board: deal.displayNumber ?? deal.boardNumber ?? null,
+        source: [currentCollection.value, deal.subfolder || deal.category].filter(Boolean).join(' / ') || null,
+        bids: practice.hasBidSteps?.value ? practice.auctionState.displayedBids : (deal.auction || []),
+        meanings: deal.auctionNotes || [],
+        humanSeats: [gridHeroSeat.value],
+        bidder: 'pbn',
+        contract: deal.contract || null,
+        declarer: deal.declarer || null,
+      }),
+    }
+  }
+  return enrich
 }
 onMounted(() => setReportContextProvider(a1ReportProvider))
 onUnmounted(() => clearReportContextProvider(a1ReportProvider))
@@ -2784,6 +2808,17 @@ body {
 }
 
 .suit-black {
+  color: #000;
+}
+
+/* bidLabel()/formatBid() emit <span class="red|black">…</span> rather than the
+   suit-* classes colorizeSuits() uses. Scoped to the coaching prose because this
+   <style> block is unscoped and .red/.black are too generic to set globally. */
+.narrative-text .red {
+  color: #d32f2f;
+}
+
+.narrative-text .black {
   color: #000;
 }
 

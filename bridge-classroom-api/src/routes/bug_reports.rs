@@ -113,6 +113,14 @@ pub async fn create_bug_report(
 
     let env = context.get("env").cloned().unwrap_or(Value::Null);
     let layout = context.get("layout").cloned().unwrap_or(Value::Null);
+    // The deal and auction the report is about (#531), and the cards each side
+    // played on a Rusty/BBA table: rendered into the body so the report can be
+    // reproduced without opening the bundle.
+    let board = context.get("board").cloned().unwrap_or(Value::Null);
+    let cards = context
+        .pointer("/table/bidder/cards")
+        .cloned()
+        .unwrap_or(Value::Null);
     let now = chrono::Utc::now();
     let bundle_path = format!(
         "{}/{:02}/{}-{}",
@@ -166,6 +174,8 @@ pub async fn create_bug_report(
         note,
         env: &env,
         layout: &layout,
+        board: &board,
+        cards: &cards,
         reporter_name: req.reporter_name.as_deref(),
         contact_email: req.contact_email.as_deref(),
         repo,
@@ -375,6 +385,8 @@ struct BugBody<'a> {
     note: &'a str,
     env: &'a Value,
     layout: &'a Value,
+    board: &'a Value,
+    cards: &'a Value,
     reporter_name: Option<&'a str>,
     contact_email: Option<&'a str>,
     repo: &'a str,
@@ -452,6 +464,10 @@ fn build_issue_body(b: &BugBody) -> String {
     for (k, v) in env_rows(b.env) {
         out.push_str(&format!("| {k} | {v} |\n"));
     }
+
+    // Deal + auction straight after the env table: for a bidding report it is the
+    // reproduction, and triage reads it before the screenshot.
+    out.push_str(&build_board_section(b.board, b.cards));
 
     if let Some(url) = b.screenshot_url {
         out.push_str(&format!(
@@ -585,6 +601,116 @@ const LAYOUT_ANCHOR_CAP: usize = 10;
 /// primary hand-box ancestry (widths + min-width + Vue scope flag — the
 /// shrink-wrap/dead-`:deep()` story) and a capped anchor table. Empty string
 /// when there's no layout block (legacy a1, or no table on screen).
+/// One table cell's text: no pipes or newlines, so a meaning can't break the row.
+fn cell(v: Option<&Value>) -> String {
+    match v {
+        Some(Value::String(t)) => t.replace('|', "\\|").replace(['\n', '\r'], " "),
+        Some(Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
+    }
+}
+
+/// The deal and auction block (#531): one line each for the deal and the auction,
+/// the cards, and a collapsed per-call table with who bid it, its meaning and rule.
+/// Empty when the client sent no board (older clients, non-table views).
+fn build_board_section(board: &Value, cards: &Value) -> String {
+    let deal = board.get("deal").and_then(Value::as_str);
+    let auction = board.get("auction").and_then(Value::as_str).unwrap_or("");
+    let calls = board.get("calls").and_then(Value::as_array);
+    if deal.is_none() && auction.is_empty() {
+        return String::new();
+    }
+    let str_of = |k: &str| {
+        board
+            .get(k)
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
+    };
+
+    let mut head: Vec<String> = Vec::new();
+    if let Some(n) = board.get("board").filter(|v| !v.is_null()) {
+        head.push(format!("board {}", cell(Some(n))));
+    }
+    if let Some(d) = str_of("dealer") {
+        head.push(format!("dealer {d}"));
+    }
+    if let Some(v) = str_of("vulnerable") {
+        head.push(format!("vul {v}"));
+    }
+    if let Some(sc) = str_of("scoring") {
+        head.push(sc.to_string());
+    }
+    if let Some(src) = str_of("source") {
+        head.push(src.to_string());
+    }
+
+    let mut s = format!("\n**Deal** — {}\n\n", head.join(" · "));
+    if let Some(d) = deal {
+        s.push_str(&format!("```\n{d}\n```\n"));
+    }
+    if !auction.is_empty() {
+        s.push_str(&format!("**Auction:** `{auction}`"));
+        if let (Some(c), Some(by)) = (str_of("contract"), str_of("declarer")) {
+            s.push_str(&format!(" → {c} by {by}"));
+        }
+        s.push('\n');
+    }
+
+    // Cards per side: the name, and for a user's own card its id and version.
+    let side = |k: &str| -> Option<String> {
+        let c = cards.get(k)?;
+        let name = c.get("name").and_then(Value::as_str).unwrap_or("?");
+        let kind = c.get("kind").and_then(Value::as_str).unwrap_or("");
+        let mut t = format!("{} = {name}", k.to_uppercase());
+        if kind == "mine" {
+            let id = c.get("id").and_then(Value::as_str).unwrap_or("?");
+            let ver = c
+                .get("version")
+                .filter(|v| !v.is_null())
+                .map(|v| format!(", v{}", cell(Some(v))))
+                .unwrap_or_default();
+            t.push_str(&format!(
+                " (user card `{id}`{ver}; full card in context.json)"
+            ));
+        } else if !kind.is_empty() {
+            t.push_str(&format!(" ({kind})"));
+        }
+        Some(t)
+    };
+    let sides: Vec<String> = ["ns", "ew"].iter().filter_map(|k| side(k)).collect();
+    if !sides.is_empty() {
+        s.push_str(&format!("\n**Cards:** {}\n", sides.join(" · ")));
+    }
+
+    if let Some(list) = calls.filter(|c| !c.is_empty()) {
+        s.push_str(&format!(
+            "\n<details><summary>Calls — {} with meanings</summary>\n\n| # | Seat | Call | By | Meaning | Rule | Alert |\n|---|---|---|---|---|---|---|\n",
+            list.len()
+        ));
+        for c in list {
+            let alert = c
+                .get("alert")
+                .filter(|v| !v.is_null())
+                .or_else(|| c.get("announce").filter(|v| !v.is_null()));
+            s.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} | {} |\n",
+                cell(c.get("index")),
+                cell(c.get("seat")),
+                cell(c.get("call")),
+                cell(c.get("by")),
+                cell(c.get("meaning")),
+                c.get("rule")
+                    .and_then(Value::as_str)
+                    .map(|r| format!("`{r}`"))
+                    .unwrap_or_default(),
+                cell(alert),
+            ));
+        }
+        s.push_str("\n</details>\n");
+    }
+    s
+}
+
 fn build_layout_section(layout: &Value) -> String {
     let anchors = layout.get("anchors").and_then(Value::as_array);
     let ancestry = layout.get("ancestry").and_then(Value::as_array);
@@ -804,6 +930,8 @@ mod tests {
             note: "hand overlaps",
             env: &env,
             layout: &Value::Null,
+            board: &Value::Null,
+            cards: &Value::Null,
             screenshot_url: None,
             screenshot_boxes_url: None,
             reporter_name: None,
@@ -819,6 +947,49 @@ mod tests {
         );
         // Banner precedes the reporter's narrative.
         assert!(out.find("Anonymous report").unwrap() < out.find("hand overlaps").unwrap());
+    }
+
+    #[test]
+    fn board_section_renders_deal_auction_cards_and_calls() {
+        let board = json!({
+            "deal": "N:J98.J74.QT3.KQ54 K432.83.J4.T9872 AQT5.AKQT62.6.J3 76.95.AK98752.A6",
+            "dealer": "S", "vulnerable": "NS", "board": 2, "source": "Finesse_Simple",
+            "auction": "1H 2D 2H P 4H P P P", "contract": "4H", "declarer": "S",
+            "calls": [
+                { "index": 0, "seat": "S", "call": "1H", "by": "student", "meaning": null, "rule": null },
+                { "index": 1, "seat": "W", "call": "2D", "by": "rusty", "meaning": "Overcall | 5+", "rule": "comp.overcall", "alert": null },
+                { "index": 2, "seat": "N", "call": "2H", "by": "bba-fallback", "meaning": "Raise", "rule": null, "announce": "6-9" }
+            ]
+        });
+        let cards = json!({
+            "ns": { "kind": "mine", "id": "c-123", "version": 7, "name": "Our card", "cardData": { "x": 1 } },
+            "ew": { "kind": "scenario", "name": "21GF-DEFAULT" }
+        });
+        let s = build_board_section(&board, &cards);
+        assert!(
+            s.contains("**Deal** — board 2 · dealer S · vul NS · Finesse_Simple"),
+            "{s}"
+        );
+        assert!(s.contains("N:J98.J74.QT3.KQ54"));
+        assert!(s.contains("**Auction:** `1H 2D 2H P 4H P P P` → 4H by S"));
+        assert!(s.contains("NS = Our card (user card `c-123`, v7; full card in context.json)"));
+        assert!(s.contains("EW = 21GF-DEFAULT (scenario)"));
+        assert!(
+            s.contains("| 1 | W | 2D | rusty | Overcall \\| 5+ | `comp.overcall` |  |"),
+            "{s}"
+        );
+        assert!(s.contains("| 2 | N | 2H | bba-fallback | Raise |  | 6-9 |"));
+        // the card's full data never reaches the issue body
+        assert!(!s.contains("cardData"));
+    }
+
+    #[test]
+    fn board_section_empty_without_board() {
+        assert_eq!(build_board_section(&Value::Null, &Value::Null), "");
+        assert_eq!(
+            build_board_section(&json!({ "calls": [] }), &Value::Null),
+            ""
+        );
     }
 
     #[test]

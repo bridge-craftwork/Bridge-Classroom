@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import fs from 'node:fs'
+import path from 'node:path'
 import AuctionTable from '../AuctionTable.vue'
 
 const MEANINGS = [
@@ -94,5 +96,26 @@ describe('AuctionTable empty auction', () => {
     const w = mount(AuctionTable, { props: { bids: ['1S'], dealer: 'N' } })
     expect(w.findAll('.round')).toHaveLength(1)
     w.unmount()
+  })
+})
+
+describe('AuctionTable diverged cells', () => {
+  const props = { bids: ['2C'], dealer: 'N', divergedBids: { 0: { user: '1H', bba: '2C' } } }
+
+  it('marks the live call with a solid marker and the other with a hollow one', () => {
+    const w = mount(AuctionTable, { props })
+    const [you, bba] = w.findAll('.stacked-row')
+    expect(you.classes()).toContain('rejected')
+    expect(you.find('.stacked-marker').text()).toBe('○')
+    expect(bba.classes()).not.toContain('rejected')
+    expect(bba.find('.stacked-marker').text()).toBe('●')
+    w.unmount()
+  })
+
+  // Source-level, as in registry.scaleable.test.js: happy-dom applies no stylesheet.
+  it('leaves the rejected call at full strength, without a strike-through', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../AuctionTable.vue'), 'utf8')
+    expect(src).not.toMatch(/\.rejected \.stacked-bid/)
+    expect(src).not.toContain('line-through')
   })
 })
