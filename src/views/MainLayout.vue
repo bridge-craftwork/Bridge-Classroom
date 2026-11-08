@@ -2809,6 +2809,17 @@ body {
   color: #000;
 }
 
+/* bidLabel()/formatBid() emit <span class="red|black">…</span> rather than the
+   suit-* classes colorizeSuits() uses. Scoped to the coaching prose because this
+   <style> block is unscoped and .red/.black are too generic to set globally. */
+.narrative-text .red {
+  color: #d32f2f;
+}
+
+.narrative-text .black {
+  color: #000;
+}
+
 .instruction-controls {
   display: flex;
   gap: 12px;
