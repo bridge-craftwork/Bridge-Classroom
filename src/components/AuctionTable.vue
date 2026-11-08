@@ -322,6 +322,10 @@ const rounds = computed(() => {
     }
   }
 
+  // An empty auction still gets one row, so the box doesn't start as a squashed
+  // header and jump when the first call lands.
+  if (result.length === 0) result.push([null, null, null, null])
+
   return result
 })
 

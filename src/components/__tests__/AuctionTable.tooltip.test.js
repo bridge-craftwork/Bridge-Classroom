@@ -75,6 +75,30 @@ describe('AuctionTable alerted calls', () => {
   })
 })
 
+describe('AuctionTable empty auction', () => {
+  it('shows one empty row before the first call', () => {
+    const w = mount(AuctionTable, { props: { bids: [], dealer: 'N' } })
+    expect(w.findAll('.round')).toHaveLength(1)
+    expect(w.findAll('.bid-cell')).toHaveLength(4)
+    expect(w.findAll('.bid-cell').every(c => c.text() === '')).toBe(true)
+    w.unmount()
+  })
+
+  it('puts the turn indicator on the dealer in that row', () => {
+    const w = mount(AuctionTable, { props: { bids: [], dealer: 'E', currentBidIndex: 0, showTurnIndicator: true } })
+    const cells = w.findAll('.bid-cell')
+    expect(cells.map(c => c.text())).toEqual(['', '', '?', ''])
+    expect(cells[2].classes()).toContain('current-turn')
+    w.unmount()
+  })
+
+  it('does not add a row once there is a call', () => {
+    const w = mount(AuctionTable, { props: { bids: ['1S'], dealer: 'N' } })
+    expect(w.findAll('.round')).toHaveLength(1)
+    w.unmount()
+  })
+})
+
 describe('AuctionTable diverged cells', () => {
   const props = { bids: ['2C'], dealer: 'N', divergedBids: { 0: { user: '1H', bba: '2C' } } }
 
