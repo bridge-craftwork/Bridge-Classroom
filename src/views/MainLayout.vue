@@ -580,6 +580,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { parsePbn, getDealTitle, isRotateStep, turnSeat } from '../utils/pbnParser.js'
+import { boardTokenFor } from '../utils/pbsScenarios.js'
 import { stripControlDirectives, colorizeSuits, flowText, formatBid } from '../utils/cardFormatting.js'
 import { useDealPractice } from '../composables/useDealPractice.js'
 import { useCardPlay } from '../composables/useCardPlay.js'
@@ -1864,6 +1865,7 @@ function openReport(e) {
     display_number: deal.displayNumber || (currentDealIndex.value + 1),
     board_tag: deal.boardNumber != null ? String(deal.boardNumber) : null,
     original_board: deal.originalBoard || null,
+    board_version_token: boardTokenFor(deal) || deal.boardVersionToken || null,
     student_seat: practice.studentSeat.value || deal.studentSeat || null,
     auction: [...practice.auctionState.displayedBids],
     contract: deal.contract || null,

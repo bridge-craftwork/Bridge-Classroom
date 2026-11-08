@@ -1,6 +1,7 @@
 import { ref, computed, reactive } from 'vue'
 import { getSeatForBid, isRotateStep, turnSeat, turnSeatKeys } from '../utils/pbnParser.js'
 import { useObservationStore } from './useObservationStore.js'
+import { preloadBoardTokens } from '../utils/pbsScenarios.js'
 
 /**
  * Unified composable for deal practice — single step array architecture.
@@ -1041,6 +1042,7 @@ export function useDealPractice() {
   // ==================== METHODS: General ====================
   function loadDeal(deal) {
     currentDeal.value = deal
+    preloadBoardTokens(deal)
 
     // Reset unified state
     currentStepIndex.value = 0

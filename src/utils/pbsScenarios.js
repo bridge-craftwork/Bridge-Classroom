@@ -109,8 +109,9 @@ function parseChat(chat) {
 // The pre-built menu manifest (PBS #167): the whole Scenarios menu in ONE fetch
 // — the ordered layout tree AND per-scenario metadata (name/bba-works/tooltip) —
 // replacing fetchScenarioMenu + the ~100 per-.btn fetchScenarioMeta calls.
-// tier: 'release' (public) | 'beta' | 'test'. Returns { sections, meta } where
-// `sections` matches the button-layout shape and `meta` is keyed by file.
+// tier: 'release' (public) | 'beta' | 'test'. Returns { sections, meta, lessons }
+// where `sections` matches the button-layout shape, `meta` is keyed by file, and
+// `lessons` is the v2 per-board roster, keyed by PBN basename ({} before v2).
 export async function fetchScenarioManifest(tier = 'release') {
   const resp = await fetch(`${PBS.RAW_BASE}${PBS.MANIFEST_DIR}/manifest-${tier}.json`)
   if (!resp.ok) throw new Error(`manifest fetch failed (${resp.status})`)
@@ -139,7 +140,45 @@ export async function fetchScenarioManifest(tier = 'release') {
       }
     }
   }
-  return { sections, meta }
+  return { sections, meta, lessons: m.lessons || {} }
+}
+
+// The roster → Map of "basename#board" → boardVersionToken (#94).
+export function buildBoardTokenLookup(lessons) {
+  const tokens = new Map()
+  for (const [basename, lesson] of Object.entries(lessons || {})) {
+    for (const board of lesson.boards || []) {
+      if (board.boardVersionToken) tokens.set(`${basename}#${board.number}`, board.boardVersionToken)
+    }
+  }
+  return tokens
+}
+
+// The roster describes the David Bailey coaching lessons (coaching-non-rotated/,
+// the same files and numbering this app serves). Baker Bridge can reuse a lesson
+// name, so a lookup only applies to deals from this collection.
+const ROSTER_COLLECTION_ID = 'pbs-coaching'
+let boardTokens = null
+let boardTokensPromise = null
+
+// Load the roster once per page (the manifest is ~680 KB) when a coaching deal
+// loads. A failure only leaves tokens null, and the next deal tries again.
+export function preloadBoardTokens(deal) {
+  if (deal?.collectionId !== ROSTER_COLLECTION_ID || boardTokensPromise) return
+  boardTokensPromise = fetchScenarioManifest('release')
+    .then(({ lessons }) => { boardTokens = buildBoardTokenLookup(lessons) })
+    .catch((err) => {
+      console.warn('Could not load the board roster:', err)
+      boardTokensPromise = null
+    })
+}
+
+// A deal's token from the roster, or null if there is none or it hasn't loaded.
+// Synchronous so recording an observation never waits on the manifest.
+export function boardTokenFor(deal) {
+  if (!boardTokens || deal?.collectionId !== ROSTER_COLLECTION_ID) return null
+  const basename = (deal.subfolder || deal.category || '').split('/').pop()
+  return boardTokens.get(`${basename}#${deal.boardNumber || deal.dealNumber}`) || null
 }
 
 // Which scenarios practise each skill (the manifest's `scenarios[name].skills`,
