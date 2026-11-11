@@ -398,7 +398,8 @@ The solo table's bot seats bid with **BBA** (default) or **Rusty**, the rule-bas
 engine of the sibling repo `rusty-bidding-bot`, chosen in Table settings → "Bidding
 bot" (`bp.biddingEngine` in localStorage; `?bidder=bba|rusty` overrides it for one
 page load; embedded tables keep BBA unless the host passes `bidder`). One engine
-bids every bot seat; the student is still marked against BBA's auction.
+bids every bot seat, and the student is marked against that same engine: on a Rusty
+table, what Rusty would call for their seat (no rule for their hand = nothing marked).
 
 - Rusty runs in a module Web Worker ([rbbWorker.js](src/workers/rbbWorker.js)) behind
   [rbbClient.js](src/utils/rbbClient.js); LocalEngine drives it through

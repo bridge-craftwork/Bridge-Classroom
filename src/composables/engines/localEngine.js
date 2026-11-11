@@ -30,10 +30,12 @@
 //             rusty-bidding-bot's WASM), one `auction` request per bot turn;
 //             where Rusty has no rule, BBA's call for that seat, logged but not
 //             shown (rustyBidder.js).
-// Either way the REFERENCE the student is marked against is BBA's auction
-// (Q2): `expectedAuction`, `divergedBids[i].bba`, `summary`, `referenceName`.
-// On a Rusty table the reference is refreshed from BBA only when the actual
-// auction has left BBA's line by the human's turn.
+// The REFERENCE the student is marked against is the board's own bidder:
+// `expectedAuction`, `divergedBids[i].bba` (the reference's call, whichever
+// engine that is), `summary`, `referenceName`. On a Rusty table that is what
+// Rusty would call for the human's seat, asked at each of their turns, so a
+// convention only Rusty knows is marked correctly. Where Rusty has no rule for
+// the human's hand there is no reference for that call and nothing is marked.
 //
 // Test seams (config): rbbClient, fetchAuction, fetchScenarioCards, fetchBbsa,
 // loadCard, logFallback, paceMs.
@@ -48,7 +50,7 @@ import { LOCAL_CAPABILITIES, derivePhase, deriveWantsCall } from './tableEngine.
 import { fetchAuction as bbaFetchAuction } from '../../utils/bbaClient.js'
 import { getRbbClient, normalizeCall } from '../../utils/rbbClient.js'
 import { isScenarioDefault, resolveSide } from '../../utils/tableCards.js'
-import { prepareRustyBoard, runRustyBots, logRustyFallback } from './rustyBidder.js'
+import { prepareRustyBoard, runRustyBots, rustyCallForSeat, logRustyFallback } from './rustyBidder.js'
 import { fetchDoubleDummy } from '../../utils/ddsClient.js'
 import { fetchScenarioMeta, fetchScenarioCards as pbsScenarioCards } from '../../utils/pbsScenarios.js'
 import { seatAtIndex, isAuctionOver, lastSuitBid } from '../../utils/handAnalysis.js'
@@ -62,8 +64,6 @@ const DEFAULT_CARD = '21GF-DEFAULT'
 
 // The bidders a table can use, and their display names.
 export const BIDDERS = Object.freeze({ bba: 'BBA', rusty: 'Rusty' })
-// What the student's calls are compared with (Q2: BBA, whichever engine bids).
-export const REFERENCE_NAME = 'BBA'
 function normBidder(b) { return b === 'rusty' ? 'rusty' : 'bba' }
 function sameCall(a, b) { return normalizeCall(a) === normalizeCall(b) }
 
@@ -124,10 +124,8 @@ export function useLocalEngine(config = {}) {
   const originalMeanings = ref([])
   const conventionsUsed = ref(null)
   // `meanings` is what the auction grid shows: BBA's on a BBA table, Rusty's
-  // reading of every call on a Rusty table. `referenceMeanings` are BBA's, for
-  // the reference line (and a fallback call's meaning).
+  // reading of every call on a Rusty table.
   const meanings = ref([])
-  const referenceMeanings = ref([])
   const bids = ref([])
   const divergedBids = ref({})
   const auctionLoading = ref(false)
@@ -203,8 +201,9 @@ export function useLocalEngine(config = {}) {
   const summary = computed(() => {
     if (!auctionComplete.value) return ''
     const n = Object.keys(divergedBids.value).length
-    if (n === 0) return `You matched the ${REFERENCE_NAME} all the way through.`
-    return `${n} of your bids differed from the ${REFERENCE_NAME} — see the highlighted ${n === 1 ? 'call' : 'calls'} in the auction.`
+    const who = boardBidder.value === 'rusty' ? 'Rusty' : 'the BBA'
+    if (n === 0) return `You matched ${who} all the way through.`
+    return `${n} of your bids differed from ${who} — see the highlighted ${n === 1 ? 'call' : 'calls'} in the auction.`
   })
   const canDouble = computed(() => {
     const trailing = []
@@ -243,15 +242,11 @@ export function useLocalEngine(config = {}) {
     return fetchAuction(opts)
   }
 
-  // Take a BBA auction as the reference (and, on a BBA table, as the meanings shown).
-  // `prefixLen`: how many of its calls were given to BBA (forced), not predicted.
-  let referencePrefixLen = 0
-  function setReference(result, prefixLen = 0) {
-    referencePrefixLen = prefixLen
+  // Take a BBA auction as a BBA table's reference and the meanings shown.
+  function setReference(result) {
     expectedAuction.value = result.auction
-    referenceMeanings.value = result.meanings || []
+    meanings.value = result.meanings || []
     if (result.conventionsUsed) conventionsUsed.value = result.conventionsUsed
-    if (boardBidder.value === 'bba') meanings.value = referenceMeanings.value
   }
 
   // Auto-bid the non-human seats up to the human's turn, from BBA's expected
@@ -307,54 +302,29 @@ export function useLocalEngine(config = {}) {
     return { ns: DEFAULT_CARD, ew: DEFAULT_CARD }
   }
 
-  // Is the actual auction on a reference line, with BBA's next call predicted
-  // (not one of the calls BBA was given as the prefix)?
-  function onLine(auction, prefixLen) {
-    const n = bids.value.length
-    if (n < prefixLen || auction.length <= n) return false
-    for (let i = 0; i < n; i++) if (!sameCall(bids.value[i], auction[i])) return false
-    return true
-  }
-  function onReferenceLine() { return onLine(expectedAuction.value, referencePrefixLen) }
-
-  // BBA's call for a bot seat Rusty has no rule for (decision 6). From the
-  // reference when the auction is still on its line, else one BBA request from
-  // this prefix — whose answer is also the reference from here on.
+  // BBA's call for a bot seat Rusty has no rule for (decision 6): one BBA
+  // request from this prefix, the only ones a Rusty table makes.
   async function bbaFallbackCall(prefix) {
     const idx = prefix.length
-    if (onReferenceLine() && bids.value.length === idx) {
-      return {
-        call: expectedAuction.value[idx],
-        meaning: referenceMeanings.value.find((m) => m.position === idx) || null,
-      }
-    }
     const result = await generateAuction(currentDeal.value, currentScenario.value, prefix)
-    setReference(result, prefix.length)
     const call = result.auction[idx]
     return call ? { call, meaning: result.meanings?.find((m) => m.position === idx) || null } : null
   }
 
-  // Refresh BBA's reference when the actual auction has left its line (Rusty's
-  // calls differ from BBA's), so the human's next call is marked against what
-  // BBA would call HERE. The only BBA request a Rusty table makes besides the
-  // fallbacks. A failure leaves no reference for this call (nothing is marked).
+  // Ask Rusty what it would call for the human here, so their call is marked
+  // against that. No rule, or a failure, leaves no reference for this call
+  // (nothing is marked).
   async function ensureReference(dealRef) {
-    if (!currentDeal.value || isAuctionOver(bids.value) || onReferenceLine()) return
-    // Back on BBA's original line (after an undo or toggle): no request needed.
-    if (onLine(originalExpectedAuction.value, 0)) {
-      setReference({ auction: originalExpectedAuction.value, meanings: originalMeanings.value }, 0)
-      return
-    }
+    if (!rustyBoard || !currentDeal.value || isAuctionOver(bids.value)) return
+    const prefix = bids.value.slice()
+    let call = null
     try {
-      const prefix = bids.value.slice()
-      const result = await generateAuction(dealRef, currentScenario.value, prefix)
-      if (currentDeal.value !== dealRef) return
-      setReference(result, prefix.length)
+      call = await rustyCallForSeat(rbb(), rustyBoard, yourSeat.value, dealRef.hands[yourSeat.value], prefix)
     } catch (err) {
-      if (currentDeal.value !== dealRef) return
-      console.warn('[rusty] BBA reference unavailable:', err.message)
-      expectedAuction.value = []
+      console.warn('[rusty] reference unavailable:', err.message)
     }
+    if (currentDeal.value !== dealRef || bids.value.length !== prefix.length) return
+    expectedAuction.value = call ? [...prefix, call] : []
   }
 
   // Forget the fallback calls at or after `from` (the auction was rewound).
@@ -433,7 +403,6 @@ export function useLocalEngine(config = {}) {
     divergedBids.value = {}
     expectedAuction.value = []
     meanings.value = []
-    referenceMeanings.value = []
     auctionLoading.value = true
     cardplay.reset()
     boardBidder.value = normBidder(bidderSetting())
@@ -474,13 +443,8 @@ export function useLocalEngine(config = {}) {
     }
   }
 
-  // A Rusty board: BBA's reference and Rusty's engine in parallel, then Rusty
-  // bids to the human's turn. A missing reference only disables the marking.
+  // A Rusty board: prepare Rusty's engine, then Rusty bids to the human's turn.
   async function loadRustyDeal(dealRef) {
-    const refP = generateAuction(dealRef, currentScenario.value).then(
-      (r) => r,
-      (err) => { console.warn('[rusty] BBA reference unavailable:', err.message); return null },
-    )
     try {
       const cards = embedded ? null : await boardCardsP
       const cardNames = cards ? cards.names : await rustyCardNames(currentScenario.value)
@@ -488,19 +452,10 @@ export function useLocalEngine(config = {}) {
         client: rbb(), deal: dealRef, humanSeats: [yourSeat.value], cardNames,
         cardSpecs: cards?.rusty || null, fetchBbsa: config.fetchBbsa,
       })
-      const ref = await refP
       if (currentDeal.value !== dealRef) return
       rustyBoard = board
       rustyInfo.value = { rulesId: board.rulesId, version: board.version, cards: board.cardNames }
-      if (ref) {
-        setReference(ref)
-        originalExpectedAuction.value = ref.auction
-        originalMeanings.value = ref.meanings || []
-      } else {
-        originalExpectedAuction.value = []
-        originalMeanings.value = []
-      }
-      if (!conventionsUsed.value || !ref?.conventionsUsed) conventionsUsed.value = { ...board.cardNames }
+      conventionsUsed.value = { ...board.cardNames }
     } catch (err) {
       if (currentDeal.value !== dealRef) return
       dealError.value = 'Rusty error: ' + err.message
@@ -520,7 +475,7 @@ export function useLocalEngine(config = {}) {
     return false
   }
 
-  // A human bid. On divergence from BBA's expected bid, record both. A BBA table
+  // A human bid. On divergence from the reference's call, record both. A BBA table
   // re-requests from BBA with the new prefix so bots respond to this sequence; a
   // Rusty table just lets Rusty answer (nothing was predicted).
   async function onUserBid(bid) {
@@ -537,7 +492,7 @@ export function useLocalEngine(config = {}) {
       auctionLoading.value = true
       try {
         const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
-        setReference(result, bids.value.length)
+        setReference(result)
       } catch (err) {
         dealError.value = 'BBA error on divergence: ' + err.message
       } finally {
@@ -571,7 +526,7 @@ export function useLocalEngine(config = {}) {
     auctionLoading.value = true
     try {
       const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
-      setReference(result, bids.value.length)
+      setReference(result)
       await playToHumanTurn()
     } catch (err) {
       dealError.value = 'BBA error on toggle: ' + err.message
@@ -611,19 +566,19 @@ export function useLocalEngine(config = {}) {
     return true
   }
 
-  // Restart the current board's auction from BBA's original (no-prefix) line.
+  // Restart the current board's auction (a BBA table: from BBA's original line).
   async function resetAuction() {
     if (!currentDeal.value) return
     runGen++
     bids.value = []
     divergedBids.value = {}
     cardplay.reset()
-    setReference({ auction: originalExpectedAuction.value, meanings: originalMeanings.value }, 0)
     if (boardBidder.value === 'rusty') {
+      expectedAuction.value = []
       pruneFallbacks(0)
       auctionLoading.value = false
     } else {
-      meanings.value = originalMeanings.value
+      setReference({ auction: originalExpectedAuction.value, meanings: originalMeanings.value })
     }
     await playToHumanTurn()
   }
@@ -643,8 +598,7 @@ export function useLocalEngine(config = {}) {
   // Rewind the auction to just before the human's most recent bid (dropping the
   // bots' bids that followed) and restore BBA's expected continuation for that
   // prefix — otherwise the bot just re-bids the same thing. Then it's the human's
-  // turn to re-bid. (Rusty table: no bidding request; the reference is refreshed
-  // only if the prefix has left BBA's line.)
+  // turn to re-bid. (Rusty table: Rusty is just asked again for this turn.)
   async function undoLastBid() {
     if (!currentDeal.value || auctionLoading.value) return
     const dealer = currentDeal.value.dealer
@@ -668,7 +622,7 @@ export function useLocalEngine(config = {}) {
     }
     try {
       const result = await generateAuction(currentDeal.value, currentScenario.value, bids.value.slice())
-      setReference(result, bids.value.length)
+      setReference(result)
     } catch (err) {
       dealError.value = 'BBA error on undo: ' + err.message
     } finally {
@@ -730,12 +684,11 @@ export function useLocalEngine(config = {}) {
     bids,
     expectedAuction,
     meanings,
-    referenceMeanings,
     conventionsUsed,
     // bidder (C2): who bids the bot seats of this board, and the reference
     boardBidder,
     bidderName,
-    referenceName: REFERENCE_NAME,
+    referenceName: bidderName,
     rustyInfo,
     boardCards,
     rustyFallbacks,

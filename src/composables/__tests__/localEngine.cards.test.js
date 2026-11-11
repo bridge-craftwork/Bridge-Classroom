@@ -4,8 +4,9 @@ import { useLocalEngine } from '../engines/localEngine.js'
 import { makeFakeRusty, makeFakeBba, DEAL } from './fakeRusty.js'
 
 // The table's convention-card choice ("play my card"): per partnership, the
-// scenario's card, a BBA card, or one of the user's. Both bots and BBA's
-// reference play it, fixed per board like the bidder.
+// scenario's card, a BBA card, or one of the user's. The bots and BBA's calls
+// (its reference, or its fallbacks at a Rusty table) play it, fixed per board
+// like the bidder.
 
 const MY_CARD = { name: 'Rick 2/1', card_data: { notrump: { stayman: { play: true } } } }
 
@@ -28,6 +29,7 @@ describe('LocalEngine convention cards', () => {
   it('scenario default both ways: BBA resolves the scenario, as before', async () => {
     const { engine, fetchAuction, loadCard } = engineWith({ cards: { ns: '', ew: '' } })
     await engine.loadDeal(DEAL, { scenario: 'Jacoby_2N' })
+    await engine.onUserBid('2C') // Rusty has no rule at call 4, so BBA is asked
     expect(fetchAuction.requests[0]).toMatchObject({ scenario: 'Jacoby_2N', conventions: null, content: null })
     expect(loadCard).not.toHaveBeenCalled()
   })
@@ -35,6 +37,7 @@ describe('LocalEngine convention cards', () => {
   it('my card for N/S: Rusty gets its JSON, BBA its .bbsa text, E/W keeps the scenario card', async () => {
     const { engine, fetchAuction, rbbClient } = engineWith({ cards: { ns: 'mine:card-1', ew: '' } })
     await engine.loadDeal(DEAL, { scenario: 'Jacoby_2N' })
+    await engine.onUserBid('2C') // Rusty has no rule at call 4, so BBA is asked
     const req = fetchAuction.requests[0]
     expect(req.conventions).toEqual({ ns: 'Rick 2/1', ew: '21GF-GIB' })
     expect(req.scenario).toBeNull()

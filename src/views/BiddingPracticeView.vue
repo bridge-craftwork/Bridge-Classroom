@@ -777,7 +777,7 @@
           <h3>Table settings</h3>
           <button class="bp-settings-x" @click="showTableSettings = false" title="Close">&times;</button>
         </div>
-        <label class="bp-setting-row" title="The engine that bids every bot seat. Your own calls are still compared with BBA's.">
+        <label class="bp-setting-row" title="The engine that bids every bot seat. Your own calls are compared with what it would bid.">
           <span>Bidding bot</span>
           <select class="bp-bot-select" v-model="biddingEngine" data-testid="bidding-engine-select">
             <option value="bba">BBA</option>
@@ -788,7 +788,7 @@
         <template v-if="!EMBEDDED">
           <div class="bp-setting-sep">Convention cards</div>
           <template v-for="side in CARD_SIDES" :key="side.key">
-            <label class="bp-setting-row" :title="`The card ${side.label} bid with: the bots, and BBA's auction your calls are marked against.`">
+            <label class="bp-setting-row" :title="`The card ${side.label} bid with: the bots, and the auction your calls are marked against.`">
               <span>{{ side.label }}</span>
               <select class="bp-bot-select bp-card-select" v-model="tableCards[side.key]" :data-testid="`table-card-${side.key}`">
                 <option value="">Scenario default</option>
@@ -823,8 +823,8 @@
           <input type="checkbox" v-model="cardplayShowDdErrors"> Show double-dummy cardplay errors
         </label>
         <div class="bp-setting-sep">Auction</div>
-        <label class="bp-setting-row" title="Show the BBA expected-auction comparison in the bidding grid.">
-          <input type="checkbox" v-model="showBbaCompare"> Show BBA auction comparison
+        <label class="bp-setting-row" :title="`Show the ${referenceName} expected-auction comparison in the bidding grid.`">
+          <input type="checkbox" v-model="showBbaCompare"> Show {{ referenceName }} auction comparison
         </label>
         <div class="bp-setting-sep">Testing</div>
         <label class="bp-setting-row" title="Tint the calls BBA made for a Rusty bot where Rusty has no rule.">
@@ -1482,8 +1482,8 @@ const scenarioMetaLines = computed(() => {
 
 const shownDivergedBids = computed(() => showBbaCompare.value ? divergedBids.value : {})
 const shownWrongIndices = computed(() => showBbaCompare.value ? wrongIndicesArray.value : [])
-// `summary` is wholly a BBA statement — either "N of your bids differed…" or "You
-// matched the BBA all the way through" — so it's suppressed as a unit, not edited.
+// `summary` is wholly a comparison statement — either "N of your bids differed…" or
+// "You matched the BBA all the way through" — so it's suppressed as a unit, not edited.
 const shownSummary = computed(() => showBbaCompare.value ? summary.value : '')
 const availableBots = listBots()
 // Display name for a cardplay-bot key. `random`/`ben`/`rules` are all wired in

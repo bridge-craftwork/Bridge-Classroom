@@ -244,7 +244,7 @@ const props = defineProps({
   },
   referenceLabel: {
     // Who the stacked row's other call comes from: the reference the student is
-    // marked against (BBA today, whichever engine bids the bot seats).
+    // marked against: the engine bidding the bot seats (BBA or Rusty).
     type: String,
     default: 'BBA'
   },
