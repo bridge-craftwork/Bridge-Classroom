@@ -1,7 +1,8 @@
 // A scripted stand-in for rbbClient (the Rusty WASM in its worker), for tests.
 // `script[i]` is the bot call at auction index i; 'NORULE' makes the bot at i
-// stop with no rule (the table must take BBA's call there). Human indices are
-// never read. Steps: a bot's call reads `Rusty: <call>`; a call the script did
+// stop with no rule (the table must take BBA's call there). At a human's index
+// it is what Rusty would call for them, read when the table asks for its
+// reference; null is no rule, so no reference. Steps: a bot's call reads `Rusty: <call>`; a call the script did
 // not make (a human's, or a fallback's) has no rule.
 
 import { isAuctionOver, seatAtIndex } from '../../utils/handAnalysis.js'

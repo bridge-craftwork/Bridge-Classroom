@@ -52,6 +52,18 @@ export function logRustyFallback(record) {
 }
 
 /**
+ * What Rusty would call for `seat` (a human's) after `auction`: one `auction`
+ * request with that seat as the only bot, on the board's own cards. Null where
+ * Rusty has no rule for the hand.
+ */
+export async function rustyCallForSeat(client, board, seat, hand, auction) {
+  const r = await client.auction({
+    ...board.request, bots: [seat], hands: { [seat]: handToRbb(hand) }, auction, no_rule: 'stop',
+  })
+  return r.calls.length ? normalizeCall(r.calls[0].call) : null
+}
+
+/**
  * Bid the bot seats from `calls` until a human is to call or the auction ends.
  *
  * hooks:
