@@ -406,6 +406,15 @@ table, what Rusty would call for their seat (no rule for their hand = nothing ma
   [rustyBidder.js](src/composables/engines/rustyBidder.js). Where Rusty has no rule,
   the table takes BBA's call for that seat, unflagged, and logs it (`[rusty] no rule`
   in the console, `rusty_no_rule_fallback` diagnostics, and the bug-report context).
+- **The rules are fetched, not built in.** Rusty's worker fetches the newest
+  published rules ([rbbPack.js](src/workers/rbbPack.js): `manifest.json`, then
+  `pack.json`, from bridge-common-conventions' published snapshot, with the hash
+  checked) and hands them to the engine, so a rule change needs no new build
+  here. When the fetch fails, or the rules are in a rule language the engine does
+  not read, the engine bids with the rules built into it. `client.info()` says
+  which (`rules_number`, `rules_source`); Table settings → Bot versions and the
+  card editor's practice report show the rules number, and each board's record
+  and bug report carry it.
 - **The WASM is not committed.** `scripts/fetch-rbb-wasm.mjs` (run by `predev` /
   `prebuild`) downloads `rbb-wasm.tar.gz` from the rusty-bidding-bot release pinned in
   `scripts/rbb-wasm.release.json` (tag + SHA-256; a wrong hash fails the build) into

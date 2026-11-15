@@ -8,6 +8,12 @@
 //        dated by the image's build
 import { RBB_WASM_INFO } from './rbbClient.js'
 
+/** Rusty's rules, for its row: `rules 21`, and `(built in)` when the published ones could not be had. */
+export function rulesNote(rules) {
+  if (rules?.number == null) return ''
+  return `rules ${rules.number}${rules.source === 'built-in' ? ' (built in)' : ''}`
+}
+
 export const SERVICE_BOTS = [
   { id: 'bba', name: 'BBA', version: 'v2.5.0', date: '2026-10-28' },
   { id: 'ben', name: 'BEN', version: '0.8.8.7', date: '2026-09-16' },
