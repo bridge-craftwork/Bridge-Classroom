@@ -19,7 +19,8 @@ const currentUserId = () => userStore.currentUser.value?.id
 
 async function fail(res, what) {
   const text = await res.text().catch(() => '')
-  throw new Error(text || `${what} failed (${res.status})`)
+  // `status` lets a caller tell "sign in again" (401) from a real failure.
+  throw Object.assign(new Error(text || `${what} failed (${res.status})`), { status: res.status })
 }
 
 const cardUrl = (cardId, rest = '') => `${API_URL}/cards/${encodeURIComponent(cardId)}${rest}`

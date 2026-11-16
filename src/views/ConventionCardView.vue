@@ -147,12 +147,24 @@ async function importPending() {
   importing = true
   try {
     const record = await decodeCardFromUrl(text)
-    clearPending()
     const name = record.name || 'Imported convention card'
     const id = await editor.createCard({ name, description: record.description || null, cardData: record.card_data })
+    // Only once it is saved: a card that could not be saved yet is kept.
+    clearPending()
     Object.assign(handoff, { message: `Saved “${name}” to your cards.`, needsSignIn: false, error: false })
     openCard(id)
   } catch (err) {
+    // The browser remembers who you are, but this device's session with the
+    // server has gone (a 401): the card is kept and saved once you sign in
+    // again. Anything else is a real failure, and the card is let go.
+    if (err?.status === 401) {
+      Object.assign(handoff, {
+        message: 'Your Bridge Classroom session on this device has ended. Sign in again and the card you sent will be saved.',
+        needsSignIn: true,
+        error: false
+      })
+      return
+    }
     clearPending()
     Object.assign(handoff, { message: `Could not save the card you sent: ${err.message}`, needsSignIn: false, error: true })
   } finally {
