@@ -33,6 +33,11 @@
         Sign in to see and keep your convention cards.
         <a href="#/">Sign in</a>
       </p>
+      <!-- Remembered by the browser, refused by the server: not "no cards". -->
+      <p v-else-if="cardSessionEnded" class="handoff-note">
+        Your Bridge Classroom session on this device has ended, so your cards cannot be shown.
+        They are still saved. <a href="#/">Sign in again</a>
+      </p>
       <CardCatalog
         :key="userStore.currentUser.value?.id || 'signed-out'"
         :storage="bridgeClassroomStorage"
@@ -64,7 +69,7 @@ import { useCardEditor } from '@bridge-craftwork/convention-card/web/src/editor/
 import { decodeCardFromUrl } from '@bridge-craftwork/convention-card/js/handoff.js'
 import '../utils/conventionCardLibrary.js' // where the PDF export's template and font are served
 import { useUserStore } from '../composables/useUserStore.js'
-import { bridgeClassroomStorage, bridgeClassroomOverlays } from '../utils/conventionCardAdapters.js'
+import { bridgeClassroomStorage, bridgeClassroomOverlays, cardSessionEnded } from '../utils/conventionCardAdapters.js'
 
 defineProps({
   embedded: { type: Boolean, default: false }

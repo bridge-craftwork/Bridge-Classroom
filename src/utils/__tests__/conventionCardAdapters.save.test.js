@@ -14,7 +14,7 @@ vi.mock('../../composables/useUserStore.js', () => ({
 }))
 vi.mock('../../composables/useBoardStatus.js', () => ({ useBoardStatus: () => ({}) }))
 
-const { bridgeClassroomStorage } = await import('../conventionCardAdapters.js')
+const { bridgeClassroomStorage, cardSessionEnded } = await import('../conventionCardAdapters.js')
 
 describe('bridgeClassroomStorage.save', () => {
   beforeEach(() => { calls.length = 0; reply = { status: 200, body: { success: true, version: 4 } } })
@@ -32,5 +32,22 @@ describe('bridgeClassroomStorage.save', () => {
   it('overwrite replaces without a version check', async () => {
     await bridgeClassroomStorage.overwrite('c1', { name: 'X', cardData: {} })
     expect(JSON.parse(calls[0].opts.body)).not.toHaveProperty('base_version')
+  })
+})
+
+describe('bridgeClassroomStorage.listLinks', () => {
+  it('says the session has ended when the server refuses the list, and not otherwise', async () => {
+    reply = { status: 401, body: 'No session' }
+    expect(await bridgeClassroomStorage.listLinks()).toEqual([])
+    expect(cardSessionEnded.value).toBe(true)
+
+    reply = { status: 200, body: { cards: [{ card_id: 'c1', is_primary: true }] } }
+    expect(await bridgeClassroomStorage.listLinks()).toHaveLength(1)
+    expect(cardSessionEnded.value).toBe(false)
+
+    // A server fault is not a session that has ended.
+    reply = { status: 500, body: 'boom' }
+    expect(await bridgeClassroomStorage.listLinks()).toEqual([])
+    expect(cardSessionEnded.value).toBe(false)
   })
 })
