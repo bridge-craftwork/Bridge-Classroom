@@ -8,7 +8,8 @@ import { API_URL } from '@/utils/apiUrl.js'
 import { apiFetch } from '@/utils/apiFetch.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
-import { BAKER_BRIDGE_TAXONOMY, getTaxonomyEntry, getSubfolderForSkill } from './bakerBridgeTaxonomy.js'
+import { getSubfolderForSkill } from './bakerBridgeTaxonomy.js'
+import { loadLessonCovers, lessonCoversNow } from './bakerBridgeCovers.js'
 import { RBB_WASM_INFO, getRbbClient, rulesLabel } from './rbbClient.js'
 import { fetchScenarioSkills } from './pbsScenarios.js'
 import { loadAcblPdf } from './conventionCardLibrary.js'
@@ -267,8 +268,12 @@ export const bridgeClassroomOverlays = {
     {
       id: 'bb', name: 'Baker Bridge', short: 'BB', unit: 'lessons',
       async load() {
+        // A lesson is practice for its own skill path and for what the
+        // collection says it covers (bakerBridgeCovers.js).
         const skills = {}
-        for (const t of BAKER_BRIDGE_TAXONOMY) (skills[t.path] ||= []).push({ name: `${t.name} (${t.dealCount} deals)` })
+        for (const [id, lessons] of Object.entries(await loadLessonCovers())) {
+          skills[id] = lessons.map(t => ({ name: `${t.name} (${t.dealCount} deals)` }))
+        }
         return { skills }
       },
     },
@@ -302,14 +307,16 @@ export const bridgeClassroomOverlays = {
     },
   },
 
-  covered: skillPath => !!getTaxonomyEntry(skillPath),
+  covered: skillPath => !!lessonCoversNow()[skillPath]?.length,
 
   async mastery(user) {
     const bySubfolder = await useBoardStatus().fetchLessonMastery(user.id)
+    // A skill's mastery is that of the first lesson for it: its own lesson
+    // where it has one, else the first lesson that covers it.
     const bySkill = {}
-    for (const { path } of BAKER_BRIDGE_TAXONOMY) {
-      const tier = bySubfolder[getSubfolderForSkill(path)]
-      if (tier) bySkill[path] = tier
+    for (const [id, lessons] of Object.entries(await loadLessonCovers())) {
+      const tier = lessons.map(t => bySubfolder[getSubfolderForSkill(t.path)]).find(Boolean)
+      if (tier) bySkill[id] = tier
     }
     return bySkill
   }
