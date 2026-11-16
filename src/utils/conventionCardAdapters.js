@@ -4,6 +4,7 @@
 // live (this API, linked to users) and the lesson-mastery overlay stay here.
 // The calls are the ones useConventionCard.js made.
 
+import { ref } from 'vue'
 import { API_URL } from '@/utils/apiUrl.js'
 import { apiFetch } from '@/utils/apiFetch.js'
 import { useUserStore } from '../composables/useUserStore.js'
@@ -92,8 +93,17 @@ async function fetchPublicSystemCard() {
   return fetchCardById(card.id)
 }
 
+/**
+ * Whether the server refused the signed-in user's own card list: the browser
+ * remembers who they are, but this device has no session for them (it ended,
+ * or they signed in on the other domain). Their cards have not gone; they
+ * cannot be read until they sign in again here.
+ */
+export const cardSessionEnded = ref(false)
+
 async function fetchLinks(userId) {
   const res = await apiFetch(`${API_URL}/users/${encodeURIComponent(userId)}/cards`)
+  cardSessionEnded.value = res.status === 401 || res.status === 403
   if (!res.ok) return []
   const data = await res.json()
   return data.cards || data || []
