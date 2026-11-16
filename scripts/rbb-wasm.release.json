@@ -1,7 +1,7 @@
 {
   "repo": "bridge-craftwork/rusty-bidding-bot",
-  "tag": "v0.16.0",
-  "date": "2026-11-15",
+  "tag": "v0.16.1",
+  "date": "2026-11-16",
   "asset": "rbb-wasm.tar.gz",
-  "sha256": "7f32b9c531b934ff7e9a7fef8726fc4c3845eac39fb850727d4e66aa4dc540ca"
+  "sha256": "4afedafe41c9fbe304a150fd92fc0390e4722e40103198c3864eb8ee6fa762be"
 }
