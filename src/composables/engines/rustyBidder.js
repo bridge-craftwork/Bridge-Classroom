@@ -33,6 +33,8 @@ export async function prepareRustyBoard({ client, deal, humanSeats, cardNames, c
   return {
     engine,
     rulesId: info.rules_id,
+    rulesNumber: info.rules_number ?? null,
+    rulesSource: info.rules_source ?? null,
     version: info.version,
     cardNames: { ...cardNames },
     request: { engine, dealer: deal.dealer, vul: vulToRbb(deal.vulnerable), scoring: RUSTY_SCORING, bots, hands },
@@ -44,7 +46,7 @@ export function logRustyFallback(record) {
   console.info('[rusty] no rule; BBA bid for', record.seat, 'at call', record.index, record)
   try {
     logDiagnostic('rusty_no_rule_fallback', JSON.stringify({
-      rules_id: record.rules_id, cards: record.cards, dealer: record.dealer, vul: record.vul,
+      rules_id: record.rules_id, rules_number: record.rules_number ?? null, cards: record.cards, dealer: record.dealer, vul: record.vul,
       scoring: record.scoring, seat: record.seat, index: record.index, auction: record.auction,
       call: record.call, bba_error: record.bbaError || null,
     }))
@@ -100,7 +102,7 @@ export async function runRustyBots(board, calls, hooks) {
     // No rule for this bot: BBA's call for the seat, from this prefix.
     const { dealer, vul, scoring } = board.request
     const record = {
-      rules_id: r.rules_id, cards: r.cards, dealer, vul, scoring,
+      rules_id: r.rules_id, rules_number: board.rulesNumber ?? null, cards: r.cards, dealer, vul, scoring,
       seat: r.stop.seat, index: r.stop.index, auction: r.stop.auction.slice(),
       candidates: r.stop.candidates || null,
     }

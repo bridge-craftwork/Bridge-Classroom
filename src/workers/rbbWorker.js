@@ -2,9 +2,11 @@
 // (rusty-bidding-bot's WASM package). The main thread talks to it only through
 // src/utils/rbbClient.js. The package is loaded lazily, on the first request,
 // from `base` (…/rbb-wasm/, where scripts/fetch-rbb-wasm.mjs installs it and
-// Vite serves it), so a BBA-only session never downloads it.
+// Vite serves it), so a BBA-only session never downloads it. Its rules are
+// the newest published ones (rbbPack.js), fetched with it.
 
 import { createRbbDispatcher } from './rbbDispatch.js'
+import { fetchPublishedPack } from './rbbPack.js'
 
 let base = null
 
@@ -13,7 +15,7 @@ const dispatch = createRbbDispatcher(async () => {
   const glue = await import(/* @vite-ignore */ new URL('rbb_wasm.js', base).href)
   await glue.default({ module_or_path: new URL('rbb_wasm_bg.wasm', base) })
   return glue
-})
+}, () => fetchPublishedPack())
 
 self.onmessage = async (e) => {
   const msg = e.data || {}

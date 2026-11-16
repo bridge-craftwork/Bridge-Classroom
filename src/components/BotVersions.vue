@@ -1,7 +1,11 @@
 <script setup>
-import { botVersions } from '../utils/botVersions.js'
+import { computed } from 'vue'
+import { botVersions, rulesNote } from '../utils/botVersions.js'
+import { rustyRules } from '../utils/rbbClient.js'
 
 const rows = botVersions()
+// Known once a Rusty table has loaded the engine, which fetches its rules.
+const rules = computed(() => rulesNote(rustyRules.value))
 </script>
 
 <template>
@@ -11,6 +15,7 @@ const rows = botVersions()
       <th scope="row">{{ r.name }}</th>
       <td>{{ r.version }}</td>
       <td>{{ r.date }}</td>
+      <td v-if="r.id === 'rusty' && rules" data-testid="bot-version-rusty-rules">{{ rules }}</td>
     </tr>
   </table>
 </template>

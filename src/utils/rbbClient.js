@@ -12,11 +12,23 @@
 // hands as `S.H.D.C` strings, card names from PBN `% CC1/CC2` headers, and a
 // Rusty auction step as the meaning object AuctionTable already takes.
 
+import { shallowRef } from 'vue'
 import { fetchPbsBbsa } from './pbsScenarios.js'
 
 // Build info of the installed package (vite.config.js → scripts/fetch-rbb-wasm.mjs):
 // { source, tag, sha256, api, version, rules_id, supports_auction } or null.
 export const RBB_WASM_INFO = typeof __RBB_WASM__ !== 'undefined' ? __RBB_WASM__ : null
+
+// The rules Rusty is bidding with, once the engine has loaded: { number,
+// source: 'published' | 'built-in', commit } (rbbDispatch.js), else null.
+// The rules are fetched with the engine, so nothing is known before then.
+export const rustyRules = shallowRef(null)
+
+/** `rules 21`, or the start of a rules id from an engine with no rules number. */
+export function rulesLabel(info) {
+  if (info?.rules_number != null) return `rules ${info.rules_number}`
+  return info?.rules_id ? `rules ${String(info.rules_id).slice(0, 8)}` : ''
+}
 
 // The engine's API version this client speaks.
 export const RBB_API = 1
@@ -43,7 +55,8 @@ export function diagnosticsError(res, what) {
 /**
  * createRbbClient({ createWorker, base }) → client
  *   client.call(fn, request)   raw: resolves the engine's parsed response (ok or not)
- *   client.info()              info(), cached; rejects on an API mismatch
+ *   client.info()              info(), cached, with the rules being bid with
+ *                              (rules_number, rules_source); rejects on an API mismatch
  *   client.engineFor(cards)    createEngine handle for {ns, ew} card specs, cached
  *   client.auction(request)    auction(); rejects with the diagnostics when !ok
  *   client.meaning(request)    meaning(); rejects with the diagnostics when !ok
@@ -97,6 +110,7 @@ export function createRbbClient({ createWorker = defaultWorker, base = null } = 
   function info() {
     infoPromise ??= call('info').then((r) => {
       if (r.api !== RBB_API) throw new Error(`Rusty: engine API ${r.api}, this app speaks ${RBB_API}`)
+      rustyRules.value = { number: r.rules_number ?? null, source: r.rules_source ?? 'built-in', commit: r.rules_commit ?? null }
       return r
     })
     infoPromise.catch(() => { infoPromise = null })

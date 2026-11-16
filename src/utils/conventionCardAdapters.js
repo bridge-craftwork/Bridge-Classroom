@@ -9,7 +9,7 @@ import { apiFetch } from '@/utils/apiFetch.js'
 import { useUserStore } from '../composables/useUserStore.js'
 import { useBoardStatus } from '../composables/useBoardStatus.js'
 import { BAKER_BRIDGE_TAXONOMY, getTaxonomyEntry, getSubfolderForSkill } from './bakerBridgeTaxonomy.js'
-import { RBB_WASM_INFO, getRbbClient } from './rbbClient.js'
+import { RBB_WASM_INFO, getRbbClient, rulesLabel } from './rbbClient.js'
 import { fetchScenarioSkills } from './pbsScenarios.js'
 import { loadAcblPdf } from './conventionCardLibrary.js'
 
@@ -284,8 +284,11 @@ export const bridgeClassroomOverlays = {
     name: 'Rusty',
     short: 'Rusty',
     async info() {
-      const i = RBB_WASM_INFO || await getRbbClient().info()
-      return { version: i.tag || `v${i.version}`, rules: i.rules_id?.slice(0, 8), statusUrl: RUSTY_STATUS_URL }
+      // The engine says which rules it is bidding with (the newest published,
+      // or the ones built into it); the build info, its release tag and date.
+      const i = await getRbbClient().info().catch(() => RBB_WASM_INFO || {})
+      const version = RBB_WASM_INFO?.tag || `v${i.version}`
+      return { version, rules: rulesLabel(i).replace(/^rules /, ''), statusUrl: RUSTY_STATUS_URL }
     },
     async coverage(cardData) {
       // The editor's card is a Vue proxy, which a Worker can't be sent: a plain copy

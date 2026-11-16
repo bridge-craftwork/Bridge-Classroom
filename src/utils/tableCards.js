@@ -132,7 +132,10 @@ const BBA_PATHS = (() => {
 export async function cardCoverage(cardData, client = getRbbClient()) {
   const json = JSON.parse(JSON.stringify(cardData || {}))
   const rusty = (await client.coverage({ cards: { ns: { json } } })).ns
-  const settings = [...(rusty.read || []), ...(rusty.ignored || [])]
+  // Rusty names a setting by its address in the convention pack
+  // (`bidding_conventions/stayman`); BBA_PATHS are card paths. `field` reads
+  // either as the same field.
+  const settings = [...(rusty.read || []), ...(rusty.ignored || [])].map((p) => field(p)?.path ?? p)
   const bba = {
     read: settings.filter((p) => BBA_PATHS.has(p)),
     ignored: settings.filter((p) => !BBA_PATHS.has(p)),

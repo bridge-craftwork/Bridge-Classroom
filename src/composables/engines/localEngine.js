@@ -138,7 +138,7 @@ export function useLocalEngine(config = {}) {
   let rustyBoard = null
   let rustyFallbackMeanings = {}
   const rustyFallbacks = ref([])
-  const rustyInfo = ref(null) // { rulesId, version, cards: {ns, ew} } of the current board
+  const rustyInfo = ref(null) // { rulesId, rulesNumber, rulesSource, version, cards: {ns, ew} } of the current board
   // This board's resolved cards ({ names, rusty, conventions, content, sources },
   // resolveBoardCards), or null on the scenario's cards. For bug reports: the
   // card a side actually played, which its name alone can't recover.
@@ -454,7 +454,7 @@ export function useLocalEngine(config = {}) {
       })
       if (currentDeal.value !== dealRef) return
       rustyBoard = board
-      rustyInfo.value = { rulesId: board.rulesId, version: board.version, cards: board.cardNames }
+      rustyInfo.value = { rulesId: board.rulesId, rulesNumber: board.rulesNumber, rulesSource: board.rulesSource, version: board.version, cards: board.cardNames }
       conventionsUsed.value = { ...board.cardNames }
     } catch (err) {
       if (currentDeal.value !== dealRef) return
