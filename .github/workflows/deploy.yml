@@ -25,7 +25,7 @@ permissions:
 # "latest-wins" guarantee that keeps BOTH domains from drifting when pushes land
 # close together (the failure mode Cloudflare's own Git builder had for .org).
 concurrency:
-  group: deploy-site
+  group: deploy-site-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -103,9 +103,12 @@ jobs:
     env:
       # Mapped to an env var so the deploy step can be conditioned on the
       # secret's presence (secrets can't be referenced directly in `if:`).
-      # Self-gating: no-op until CLOUDFLARE_API_TOKEN is set, so this workflow
-      # is safe to merge before the secret exists.
-      CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Self-gating: a no-op while the secret is missing.
+      #
+      # The organization's Worker-deploy token (Cloudflare token
+      # ci-workers-deploy), shared with the org's other Workers so it is rotated
+      # in one place; see family-computing/tools/secrets.
+      CF_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -141,8 +144,19 @@ jobs:
       # entry-point) with "Missing entry-point". wrangler reads the token +
       # account id from these env vars.
       - name: Deploy Worker (.org)
-        if: env.CF_API_TOKEN != ''
+        if: env.CF_API_TOKEN != '' && github.ref == 'refs/heads/main'
         run: npx wrangler deploy
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # A run from any other branch (workflow_dispatch) uploads a version
+      # without routing traffic to it, so it proves the build and the token
+      # with production untouched. A plain `wrangler deploy` from a branch would
+      # replace the live .org site.
+      - name: Upload Worker version (not deployed)
+        if: env.CF_API_TOKEN != '' && github.ref != 'refs/heads/main'
+        run: npx wrangler versions upload --message "branch ${GITHUB_REF_NAME} (${GITHUB_SHA::7}), not deployed"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
