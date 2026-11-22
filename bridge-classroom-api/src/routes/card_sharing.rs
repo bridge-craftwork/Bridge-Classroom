@@ -502,13 +502,21 @@ pub struct PrintLinkRequest {
     /// editors). Omitted: keep it.
     #[serde(default)]
     pub template: Option<String>,
+    /// "none", "acbl" or "notes": change the page it prints on the back
+    /// (owners and editors). Omitted: keep it.
+    #[serde(default)]
+    pub second_page: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PrintLinkResponse {
     pub url: String,
     pub template: String,
+    pub second_page: String,
 }
+
+/// The second pages a print link may print (convention-card's SECOND_PAGES).
+const SECOND_PAGES: [&str; 3] = ["none", "acbl", "notes"];
 
 /// POST /api/cards/:card_id/print-link — the card's read-only PDF link, for
 /// anyone who can read the card. The token is minted on first ask and never
@@ -525,17 +533,27 @@ pub async fn card_print_link(
     if !can_read(&card, &who) {
         return Err(forbidden("Not allowed to read this card"));
     }
-    if let Some(t) = req
+    let template = req
         .template
         .as_deref()
-        .filter(|t| *t != card.print_template)
-    {
-        if !matches!(t, "classic" | "new") {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "template must be classic or new".to_string(),
-            ));
-        }
+        .filter(|t| *t != card.print_template);
+    let second_page = req
+        .second_page
+        .as_deref()
+        .filter(|s| *s != card.print_second_page);
+    if template.is_some_and(|t| !matches!(t, "classic" | "new")) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "template must be classic or new".to_string(),
+        ));
+    }
+    if second_page.is_some_and(|s| !SECOND_PAGES.contains(&s)) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "second_page must be none, acbl or notes".to_string(),
+        ));
+    }
+    if template.is_some() || second_page.is_some() {
         let writer = is_admin(&who.site_role)
             || (card.visibility != "public"
                 && matches!(who.member_role.as_deref(), Some("owner" | "editor")));
@@ -544,12 +562,16 @@ pub async fn card_print_link(
                 "Only the card's owners and editors can change its layout",
             ));
         }
-        sqlx::query("UPDATE convention_cards SET print_template = ? WHERE id = ?")
-            .bind(t)
-            .bind(&card_id)
-            .execute(&state.db)
-            .await
-            .map_err(db_err)?;
+        sqlx::query(
+            "UPDATE convention_cards SET print_template = COALESCE(?, print_template), \
+             print_second_page = COALESCE(?, print_second_page) WHERE id = ?",
+        )
+        .bind(template)
+        .bind(second_page)
+        .bind(&card_id)
+        .execute(&state.db)
+        .await
+        .map_err(db_err)?;
     }
     if card.print_token.is_none() {
         // Guarded, so two first asks at once settle on one token.
@@ -567,6 +589,7 @@ pub async fn card_print_link(
     Ok(Json(PrintLinkResponse {
         url: format!("{PRINT_URL_BASE}{token}.pdf"),
         template: card.print_template,
+        second_page: card.print_second_page,
     }))
 }
 
@@ -574,6 +597,7 @@ pub async fn card_print_link(
 pub struct PrintCard {
     pub name: String,
     pub template: String,
+    pub second_page: String,
     pub card_data: serde_json::Value,
     pub updated_at: String,
 }
@@ -604,11 +628,13 @@ pub async fn print_card(
     .ok_or((StatusCode::NOT_FOUND, "No card for this link".to_string()))?;
     if pdf {
         let stored: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT pdf FROM card_print_pdfs WHERE card_id = ? AND version = ? AND template = ?",
+            "SELECT pdf FROM card_print_pdfs \
+             WHERE card_id = ? AND version = ? AND template = ? AND second_page = ?",
         )
         .bind(&row.id)
         .bind(row.version)
         .bind(&row.print_template)
+        .bind(&row.print_second_page)
         .fetch_optional(&state.db)
         .await
         .map_err(db_err)?;
@@ -627,6 +653,7 @@ pub async fn print_card(
     let card = PrintCard {
         name: card.name,
         template: card.print_template,
+        second_page: card.print_second_page,
         card_data,
         updated_at: card.updated_at,
     };
@@ -634,7 +661,15 @@ pub async fn print_card(
         return Ok(Json(card).into_response());
     }
     let bytes = render_pdf(&state, &card).await?;
-    store_print_pdf(&state, &card_id, version, &card.template, &bytes, None).await?;
+    store_print_pdf(
+        &state,
+        &card_id,
+        version,
+        (&card.template, &card.second_page),
+        &bytes,
+        None,
+    )
+    .await?;
     Ok(pdf_response(&card.name, &card.card_data.to_string(), bytes))
 }
 
@@ -673,22 +708,24 @@ async fn store_print_pdf(
     state: &AppState,
     card_id: &str,
     version: i64,
-    template: &str,
+    (template, second_page): (&str, &str),
     pdf: &[u8],
     made_by: Option<&str>,
 ) -> Result<(), ApiError> {
     sqlx::query(
         r#"
-        INSERT INTO card_print_pdfs (card_id, version, template, pdf, made_by, made_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO card_print_pdfs (card_id, version, template, second_page, pdf, made_by, made_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(card_id) DO UPDATE SET
-            version = excluded.version, template = excluded.template, pdf = excluded.pdf,
+            version = excluded.version, template = excluded.template,
+            second_page = excluded.second_page, pdf = excluded.pdf,
             made_by = excluded.made_by, made_at = excluded.made_at
         "#,
     )
     .bind(card_id)
     .bind(version)
     .bind(template)
+    .bind(second_page)
     .bind(pdf)
     .bind(made_by)
     .bind(chrono::Utc::now().to_rfc3339())
@@ -709,9 +746,16 @@ pub struct StorePrintPdfQuery {
     pub version: i64,
     /// The layout it was made in: the card's print template.
     pub template: String,
+    /// The second page it was made with. Omitted (an older editor): none.
+    #[serde(default = "no_second_page")]
+    pub second_page: String,
 }
 
-/// PUT /api/cards/:card_id/print-pdf?acting_user_id=&version=&template= —
+fn no_second_page() -> String {
+    "none".to_string()
+}
+
+/// PUT /api/cards/:card_id/print-pdf?acting_user_id=&version=&template=&second_page= —
 /// a member's browser stores the PDF it made of the card, so its print link
 /// opens at once instead of waiting for card-pdf-service. The body is the
 /// PDF. Owners and editors only, for a card with a print link, made from the
@@ -735,7 +779,10 @@ pub async fn store_card_print_pdf(
             "This card has no print link".to_string(),
         ));
     }
-    if q.version != card.version || q.template != card.print_template {
+    if q.version != card.version
+        || q.template != card.print_template
+        || q.second_page != card.print_second_page
+    {
         return Err((
             StatusCode::CONFLICT,
             "The card has changed since this PDF was made".to_string(),
@@ -748,7 +795,7 @@ pub async fn store_card_print_pdf(
         &state,
         &card_id,
         card.version,
-        &card.print_template,
+        (&card.print_template, &card.print_second_page),
         &body,
         Some(&q.acting_user_id),
     )
@@ -756,7 +803,7 @@ pub async fn store_card_print_pdf(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
-/// The card's PDF from card-pdf-service: POST /pdf?template= with the
+/// The card's PDF from card-pdf-service: POST /pdf?template=&second_page= with the
 /// card as `{ name, card_data, updated_at }` (the PDF prints its last edit).
 async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Vec<u8>, ApiError> {
     let unavailable = |why: String| {
@@ -776,7 +823,10 @@ async fn render_pdf(state: &AppState, card: &PrintCard) -> Result<Vec<u8>, ApiEr
             "{}/pdf",
             state.config.card_pdf_url.trim_end_matches('/')
         ))
-        .query(&[("template", card.template.as_str())])
+        .query(&[
+            ("template", card.template.as_str()),
+            ("second_page", card.second_page.as_str()),
+        ])
         .json(&serde_json::json!({
             "name": card.name,
             "card_data": card.card_data,

@@ -54,8 +54,9 @@ async function refreshPrintPdf(cardId) {
     // Only owners and editors may store it
     if (!card.print_template || card.role === 'viewer') return
     const { renderAcblPdfBytes } = await loadAcblPdf()
-    const pdf = await renderAcblPdfBytes(card, card.print_template, { flatten: true })
-    const query = `?acting_user_id=${encodeURIComponent(currentUserId())}&version=${card.version}&template=${encodeURIComponent(card.print_template)}`
+    const secondPage = card.print_second_page || 'none'
+    const pdf = await renderAcblPdfBytes(card, card.print_template, { flatten: true, secondPage })
+    const query = `?acting_user_id=${encodeURIComponent(currentUserId())}&version=${card.version}&template=${encodeURIComponent(card.print_template)}&second_page=${encodeURIComponent(secondPage)}`
     const res = await apiFetch(cardUrl(cardId, `/print-pdf${query}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/pdf' },
@@ -181,9 +182,9 @@ export const bridgeClassroomStorage = {
     if (!res.ok) await fail(res, 'Revoke invitation')
   },
 
-  // Making the link (or changing its layout) also stores its PDF
-  async printLink(cardId, template) {
-    const link = await sendJson(cardUrl(cardId, '/print-link'), 'POST', { acting_user_id: currentUserId(), template }, 'Get PDF link')
+  // Making the link (or changing its layout or second page) also stores its PDF
+  async printLink(cardId, template, { secondPage } = {}) {
+    const link = await sendJson(cardUrl(cardId, '/print-link'), 'POST', { acting_user_id: currentUserId(), template, second_page: secondPage }, 'Get PDF link')
     refreshPrintPdf(cardId)
     return link
   },
