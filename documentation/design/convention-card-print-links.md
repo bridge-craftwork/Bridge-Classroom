@@ -29,30 +29,30 @@ No sign-in. The token is the permission. The link shows the card as it is now, n
 | `card_print_pdfs` | the API's database | one stored PDF per card, tagged with the card version and layout it shows |
 | card-pdf-service | droplet, `card-pdf.bridge-craftwork.com` ([repo](https://github.com/bridge-craftwork/card-pdf-service)) | generic renderer: POST a card's JSON, get its PDF. Stores nothing |
 
-All three renderers (the browser, card-pdf-service and Export PDF) use the same library call, `renderAcblPdfBytes` from `@bridge-craftwork/convention-card`. The output is flattened and is the card page only (no scoresheet, since v0.30.0).
+All three renderers (the browser, card-pdf-service and Export PDF) use the same library call, `renderAcblPdfBytes` from `@bridge-craftwork/convention-card`. The output is flattened. It is the card page only unless the link's second page says otherwise (`print_second_page`: `none`, the default; `notes`; or `acbl`, the ACBL scoresheet), as Print and Export PDF ask.
 
 ## 1. Making the link
 
-`POST /api/cards/:id/print-link {template?}`, any member:
+`POST /api/cards/:id/print-link {template?, second_page?}`, any member:
 
 - Mints `convention_cards.print_token` the first time it's asked for (guarded, so two first asks at once settle on one token). After that, the same token is returned every time.
-- An owner or editor may set `print_template` (`classic` | `new`). For a viewer, the card's current layout stands.
-- Returns `{ url, template }`.
+- An owner or editor may set `print_template` (`classic` | `new`) and `print_second_page` (`none` | `notes` | `acbl`). For a viewer, the card's current layout stands.
+- Returns `{ url, template, second_page }`.
 
 ## 2. Rendering in the browser, then storing
 
 After **save**, **overwrite** (the merge after a 409) and **printLink**, the adapter calls `refreshPrintPdf(cardId)` in the background:
 
-1. It reads the card back (`GET /api/cards/:id`), getting `version`, the caller's `role`, and `print_template`. The API sets `print_template` only when a print link exists.
+1. It reads the card back (`GET /api/cards/:id`), getting `version`, the caller's `role`, `print_template` and `print_second_page`. The API sets them only when a print link exists.
 2. It stops there if the card has no link or the caller is a viewer.
-3. It runs `renderAcblPdfBytes(card, template, { flatten: true })`, which takes about 0.2 s of CPU on a laptop.
-4. It uploads with `PUT /api/cards/:id/print-pdf?acting_user_id=&version=&template=`, the PDF as the body.
+3. It runs `renderAcblPdfBytes(card, template, { flatten: true, secondPage })`, which takes about 0.2 s of CPU on a laptop.
+4. It uploads with `PUT /api/cards/:id/print-pdf?acting_user_id=&version=&template=&second_page=`, the PDF as the body.
 
 The API stores it (an upsert on `card_id`) only if all of these hold:
 
 - the caller is signed in (cookie) and is an owner or editor;
 - the card has a print token (otherwise 409);
-- `version` and `template` match the card now (otherwise 409, so an older render never replaces a newer one);
+- `version`, `template` and `second_page` match the card now (otherwise 409, so an older render never replaces a newer one);
 - the body starts with `%PDF-` (otherwise 400);
 - it's no bigger than 4 MB (`PRINT_PDF_LIMIT`; otherwise 413).
 
@@ -67,8 +67,8 @@ anyone's browser
   → GET api.bridge-classroom.org/api/cards/print/<token>.pdf   (API, on the Mac)
       no card has this token          → 404 "No card for this link"
       stored PDF matches the card's
-        version and print_template    → served
-      otherwise                       → POST card-pdf.bridge-craftwork.com/pdf?template=…
+        version, template, 2nd page   → served
+      otherwise                       → POST card-pdf.bridge-craftwork.com/pdf?template=…&second_page=…
                                            (X-Render-Key, 20 s timeout)
                                         → stored in card_print_pdfs, then served
                                         → 502 if the renderer fails
@@ -95,7 +95,7 @@ A member who leaves doesn't delete the card. The card and its link stay as long 
 - **Not in the Worker:** a render takes 200–300 ms of CPU, and the free Workers plan allows 10 ms (Error 1102). We chose not to pay for Workers Paid.
 - **The API reads the card and calls the renderer**, and the Worker only forwards: the API already has the database, so the renderer stays generic and needs no access to it.
 - **Rendering in the browser first:** the droplet has one shared vCPU, so a render there took about 5–8 s on first open. Members' browsers do the work for free when they save, so the droplet only renders on a cold open.
-- **Card page only:** a scoresheet doesn't help a site that wants your card. Dropping it cut the PDF from 1.6 MB to 0.5 MB and the render time by about 40%. Export PDF still offers the scoresheet ("Second page"), and a team scoresheet can be added later as another value in `SCORESHEETS`.
+- **Card page only, by default:** a scoresheet doesn't help a site that wants your card. Dropping it cut the PDF from 1.6 MB to 0.5 MB and the render time by about 40%. Since convention-card v0.52.0 the Share dialog offers the same second page as Print and Export PDF (Rick Wilson, 2026-11-22), for someone printing from the link on both sides; it starts as the card only.
 
 ## Running it
 

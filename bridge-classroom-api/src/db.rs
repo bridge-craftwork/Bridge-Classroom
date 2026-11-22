@@ -679,6 +679,15 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
         "TEXT NOT NULL DEFAULT 'classic'",
     )
     .await?;
+    // The page printed on the back (convention-card's `secondPage`): none,
+    // the ACBL's own (acbl), or the card's notes (notes).
+    add_column_if_missing(
+        pool,
+        "convention_cards",
+        "print_second_page",
+        "TEXT NOT NULL DEFAULT 'none'",
+    )
+    .await?;
     sqlx::query(r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_print_token ON convention_cards(print_token)"#)
         .execute(pool)
         .await
@@ -686,8 +695,8 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
 
     // A print link's PDF, as last made: by a member's browser when they save
     // the card (the editor renders it), or by card-pdf-service when a link is
-    // opened and none is current. Served while `version` and `template` are
-    // the card's. One row per card.
+    // opened and none is current. Served while `version`, `template` and
+    // `second_page` are the card's. One row per card.
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS card_print_pdfs (
@@ -703,6 +712,13 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), DbError> {
     .execute(pool)
     .await
     .map_err(|e| DbError::Migration(e.to_string()))?;
+    add_column_if_missing(
+        pool,
+        "card_print_pdfs",
+        "second_page",
+        "TEXT NOT NULL DEFAULT 'none'",
+    )
+    .await?;
 
     // Print PDFs of cards deleted before delete_card removed them too.
     sqlx::query(

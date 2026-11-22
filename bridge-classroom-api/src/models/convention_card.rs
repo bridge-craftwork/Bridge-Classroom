@@ -20,6 +20,9 @@ pub struct ConventionCard {
     pub print_token: Option<String>,
     /// The ACBL layout the print link renders: "classic" or "new".
     pub print_template: String,
+    /// The page the print link prints on the back: "none", "acbl" (the
+    /// ACBL's own) or "notes" (the card's notes).
+    pub print_second_page: String,
 }
 
 /// User-card link stored in the database
@@ -157,6 +160,9 @@ pub struct ConventionCardFull {
     /// one: a member's browser stores the PDF it makes in that layout on
     /// each save, so the link opens at once. Not the link's token.
     pub print_template: Option<String>,
+    /// The print link's second page (`none` | `acbl` | `notes`), when it
+    /// has one, for the PDF the browser stores.
+    pub print_second_page: Option<String>,
 }
 
 /// User's linked cards response
@@ -201,6 +207,7 @@ impl ConventionCard {
             version: 1,
             print_token: None,
             print_template: "classic".to_string(),
+            print_second_page: "none".to_string(),
         }
     }
 }
@@ -242,6 +249,10 @@ impl ConventionCard {
                 .print_token
                 .as_ref()
                 .map(|_| self.print_template.clone()),
+            print_second_page: self
+                .print_token
+                .as_ref()
+                .map(|_| self.print_second_page.clone()),
         })
     }
 }
