@@ -7,6 +7,7 @@ import { setAssetLoader, TEMPLATE_FILES } from '@bridge-craftwork/convention-car
 import classicUrl from '@bridge-craftwork/convention-card/assets/templates/acbl-classic-2023.pdf?url'
 import newUrl from '@bridge-craftwork/convention-card/assets/templates/acbl-new.pdf?url'
 import fontUrl from '@bridge-craftwork/convention-card/assets/fonts/BarlowCondensed-Regular.ttf?url'
+import boldFontUrl from '@bridge-craftwork/convention-card/assets/fonts/BarlowCondensed-SemiBold.ttf?url'
 
 const TEMPLATE_URLS = { classic: classicUrl, new: newUrl }
 
@@ -19,6 +20,8 @@ async function bytes(url, what) {
 setAssetLoader({
   template: name => bytes(TEMPLATE_URLS[name], `the ACBL ${TEMPLATE_FILES[name]} template`),
   font: () => bytes(fontUrl, 'the condensed field font'),
+  // The card's names and general approach, in semibold
+  boldFont: () => bytes(boldFontUrl, 'the semibold field font'),
 })
 
 /** The ACBL PDF module, loaded only when it is needed (it brings pdf-lib). */
