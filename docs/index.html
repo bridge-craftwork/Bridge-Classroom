@@ -94,6 +94,17 @@
 .pbs-cells{display:grid;grid-template-columns:1fr 1fr;gap:2px}
 .pbs-cell{font-size:7.5px;text-align:center;background:#fff;border:0.5px solid #dcdcdc;border-radius:2px;padding:2px 1px;color:#222;line-height:1.1}
 .pbs-cell-dim{color:#aaa}
+/* bridge-classroom-fetch — a club results page with the extension's button and menu */
+.thumb-fetch{background:#f3f6fa;display:flex;flex-direction:column;position:relative}
+.fx-bar{background:#1f4e94;display:flex;align-items:center;justify-content:space-between;padding:6px 8px}
+.fx-logo{font-size:9px;font-weight:700;color:#9ccc65;letter-spacing:0.03em}
+.fx-btn{font-size:7.5px;font-weight:600;background:#1a73e8;color:#fff;border-radius:2px;padding:3px 6px}
+.fx-menu{position:absolute;right:8px;top:24px;background:#fff;border:0.5px solid #cfd6df;border-radius:2px;box-shadow:0 2px 4px rgba(0,0,0,0.12);display:flex;flex-direction:column}
+.fx-menu span{font-size:7.5px;color:#222;padding:2px 8px;border-bottom:0.5px solid #eef1f4}
+.fx-menu span:first-child{background:#e8f0fe}
+.fx-rows{display:flex;flex-direction:column;gap:2px;padding:6px 8px}
+.fx-row{display:flex;gap:6px;font-size:7.5px;color:#333;background:#fff;padding:2px 4px;border-radius:1px}
+.fx-row .fx-link{margin-left:auto;color:#1a73e8}
 
 .thumb-bid{background:#F0F7F4;display:flex;flex-direction:column;padding:10px 12px;gap:4px}
 .bd-row{display:flex;align-items:center;gap:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
@@ -367,6 +378,26 @@
           <div class="tile-desc">Browser extension &#8212; practice bidding on BBO with curated scenario deals.</div>
           <div class="tile-tags"><span class="tag tag-purple">4 browser stores</span></div>
           <div class="tile-actions"><a class="tbtn tbtn-ghost" href="bbo-scenarios.html">Learn More</a></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="thumb thumb-fetch">
+          <div class="fx-bar"><span class="fx-logo">ACBL LIVE</span><span class="fx-btn">Analyze in Bridge Classroom</span></div>
+          <div class="fx-menu"><span>Most recent</span><span>Last month</span><span>Last 3 months</span><span>All time</span></div>
+          <div class="fx-rows">
+            <div class="fx-row"><span>08/10</span><span>Pairs</span><span class="fx-link">Results</span></div>
+            <div class="fx-row"><span>08/03</span><span>Pairs</span><span class="fx-link">Results</span></div>
+            <div class="fx-row"><span>07/27</span><span>Pairs</span><span class="fx-link">Results</span></div>
+            <div class="fx-row"><span>07/20</span><span>Pairs</span><span class="fx-link">Results</span></div>
+            <div class="fx-row"><span>07/13</span><span>Pairs</span><span class="fx-link">Results</span></div>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="tile-name">Bridge Classroom Fetch</div>
+          <div class="tile-desc">Browser extension &#8212; one click sends a game from ACBL Live, your club&#8217;s results or Bridge Base Online to Game Analysis.</div>
+          <div class="tile-tags"><span class="tag tag-green">Live</span><span class="tag tag-purple">Browsers &amp; iPhone</span></div>
+          <div class="tile-actions"><a class="tbtn tbtn-ghost" href="fetch.html">Learn More</a></div>
         </div>
       </div>
 

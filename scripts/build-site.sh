@@ -50,6 +50,7 @@ cp docs/classrooms.html        dist/classrooms.html
 cp docs/game-analysis.html     dist/game-analysis.html
 cp docs/game-analysis-guide.html dist/game-analysis-guide.html
 cp docs/bbo-scenarios.html     dist/bbo-scenarios.html
+cp docs/fetch.html             dist/fetch.html
 cp docs/lesson-materials.html  dist/lesson-materials.html
 cp docs/teacher-utilities.html dist/teacher-utilities.html
 cp docs/hand-curator.html      dist/hand-curator.html
