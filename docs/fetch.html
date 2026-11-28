@@ -113,7 +113,7 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
         <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
         <div>
           <div id="btnLabel">Install extension</div>
-          <div style="font-size:11px;opacity:0.85;font-weight:400" id="btnSub">Chrome, Edge, Firefox, and Safari on iPhone and iPad</div>
+          <div style="font-size:11px;opacity:0.85;font-weight:400" id="btnSub">Chrome, Edge, Firefox, and Safari on Mac, iPhone and iPad</div>
         </div>
       </a>
       <div class="other-browsers" id="stores">
@@ -121,9 +121,8 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
         <a class="other-link" data-k="chrome" href="https://chromewebstore.google.com/detail/bridge-classroom-fetch/cpokagdkdagcojoogocjheefiicacnca" target="_blank" rel="noopener">Chrome</a><span class="sep"> &middot; </span>
         <a class="other-link" data-k="edge" href="https://microsoftedge.microsoft.com/addons/detail/pjomfmbcmaiikkfcnnpnlblmpokbcdei" target="_blank" rel="noopener">Edge</a><span class="sep"> &middot; </span>
         <a class="other-link" data-k="firefox" href="https://addons.mozilla.org/en-US/firefox/addon/bridge-classroom-fetch/" target="_blank" rel="noopener">Firefox</a><span class="sep"> &middot; </span>
-        <a class="other-link" data-k="ios" href="https://apps.apple.com/app/bridge-classroom-fetch/id6800538262" target="_blank" rel="noopener">Safari on iPhone and iPad</a>
+        <a class="other-link" data-k="safari" href="https://apps.apple.com/app/bridge-classroom-fetch/id6800538262" target="_blank" rel="noopener">Safari on Mac, iPhone and iPad</a>
       </div>
-      <div class="other-browsers">Safari on Mac: coming soon.</div>
     </div>
 
     <div class="links">
@@ -158,15 +157,15 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
 <script>
 /* Point the button at the store for the browser in front of it. Without
    JavaScript, or on a browser it cannot serve, the button jumps to the list
-   of stores below it, which names all of them. Safari on Mac is still in
-   review: when it is approved, set its url and drop the "coming soon" line. */
+   of stores below it, which names all of them. Safari on Mac, iPhone and
+   iPad share one App Store listing, and one link in that list. */
 (function () {
   var STORES = {
     chrome:  { name: 'Chrome',  store: 'Chrome Web Store', url: 'https://chromewebstore.google.com/detail/bridge-classroom-fetch/cpokagdkdagcojoogocjheefiicacnca' },
     edge:    { name: 'Edge',    store: 'Edge Add-ons',     url: 'https://microsoftedge.microsoft.com/addons/detail/pjomfmbcmaiikkfcnnpnlblmpokbcdei' },
     firefox: { name: 'Firefox', store: 'Firefox Add-ons',  url: 'https://addons.mozilla.org/en-US/firefox/addon/bridge-classroom-fetch/' },
     ios:     { name: 'Safari',  store: 'App Store',        url: 'https://apps.apple.com/app/bridge-classroom-fetch/id6800538262' },
-    mac:     { name: 'Safari',  store: 'Mac App Store',    url: null }
+    mac:     { name: 'Safari',  store: 'Mac App Store',    url: 'https://apps.apple.com/app/bridge-classroom-fetch/id6800538262' }
   }
   var ua = navigator.userAgent
   /* An iPad in desktop mode reports "Macintosh"; only maxTouchPoints tells it from a Mac. */
@@ -187,7 +186,7 @@ h1{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1.
     btn.target = '_blank'
     btn.rel = 'noopener'
     document.getElementById('otherLabel').textContent = 'Also available for:'
-    var mine = document.querySelector('.other-link[data-k="' + detected + '"]')
+    var mine = document.querySelector('.other-link[data-k="' + (detected === 'ios' || detected === 'mac' ? 'safari' : detected) + '"]')
     if (mine) {
       var sep = mine.nextElementSibling && mine.nextElementSibling.classList.contains('sep') ? mine.nextElementSibling : mine.previousElementSibling
       if (sep && sep.classList.contains('sep')) sep.remove()
